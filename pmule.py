@@ -68,7 +68,7 @@ class PertGraph:
         return a
 
     def write_dot(self, filename, size=None, orientation='landscape', rankdir='LR', ordering='out', ranksep=1,
-                  nodesep=1, rotate=0, **kwargs):
+                  nodesep=1, rotate=0, tiempos=True, **kwargs):
         dot_graph = pgv.AGraph(size=size,
                                orientation=orientation,
                                rankdir=rankdir,
@@ -84,19 +84,28 @@ class PertGraph:
         for nodo in dot_graph.nodes():
             current_node = dot_graph.get_node(nodo)
             node_number = int(nodo)
-            current_node.attr['label'] = (f"{node_number} | {{ "
-                                          f"<early> {self.graph.nodes[node_number]['temprano']} | "
-                                          f"<last>  {self.graph.nodes[node_number]['tardio']} }}")
+            if tiempos:
+                current_node.attr['label'] = (f"{node_number} | {{ "
+                                              f"<early> {self.graph.nodes[node_number]['temprano']} | "
+                                              f"<last>  {self.graph.nodes[node_number]['tardio']} }}")
+            else:
+                current_node.attr['label'] = (f"{node_number} | {{ "
+                                              f"<early>  | "
+                                              f"<last>   }}")
 
         for origin, destination in dot_graph.edges_iter():
             current_edge = dot_graph.get_edge(origin, destination)
             current_edge_tuple_of_ints = (int(origin), int(destination))
             current_edge.attr['headport'] = 'early'
             current_edge.attr['tailport'] = 'last'
-            current_edge.attr['label'] = (f"{self.graph.edges[current_edge_tuple_of_ints]['nombre']}"
-                                          f"({self.graph.edges[current_edge_tuple_of_ints]['duracion']})")
+            if tiempos:
+                current_edge.attr['label'] = (f"{self.graph.edges[current_edge_tuple_of_ints]['nombre']}"
+                                              f"({self.graph.edges[current_edge_tuple_of_ints]['duracion']})")
+            else:
+                current_edge.attr['label'] = f"{self.graph.edges[current_edge_tuple_of_ints]['nombre']}"
 
-            if self.graph.edges[current_edge_tuple_of_ints]['H_total'] == 0:
+
+            if self.graph.edges[current_edge_tuple_of_ints]['H_total'] == 0 and tiempos:
                 current_edge.attr['color'] = 'red:red'
                 current_edge.attr['style'] = 'bold'
 
