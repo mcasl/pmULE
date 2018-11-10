@@ -58,10 +58,7 @@ class PertGraph:
         nx.draw(self.graph, with_labels=True)
 
     def zaderenko(self):
-        a = pd.DataFrame(data=nx.adjacency_matrix(self.graph, weight='duracion').todense(),
-                         index=self.graph.nodes(),
-                         columns=self.graph.nodes()
-                         ).replace(0, np.nan)
+        a = nx.to_pandas_adjacency(self.graph, weight='duracion', nonedge=np.nan)
         tiempos = self.tiempos()
         a['temprano'] = tiempos.loc['temprano', :]
         a = a.append(tiempos.loc['tardio', :]).fillna('')
