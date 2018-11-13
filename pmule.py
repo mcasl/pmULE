@@ -15,13 +15,14 @@ class PertGraph:
         self.calcula_pert()
 
     def calcula_pert(self):
-        lista_de_nodos = list(self.graph)
+        lista_de_nodos = list(nx.topological_sort(self.graph))
 
         # [0] sirve para inicializar el tiempo temprano del nodo inicial correctamente
         # [self.graph.nodes[lista_de_nodos[-1]]['temprano']] sirve para
         # inicializar el tiempo tardío del nodo final correctamente con el valor del tiempo temprano
 
         for nodo in lista_de_nodos:
+
             self.graph.nodes[nodo]['temprano'] = max([0] +
                                                      [(self.graph.nodes[inicial]['temprano'] + attributes['duracion'])
                                                       for (inicial, final, attributes) in
