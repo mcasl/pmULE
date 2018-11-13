@@ -12,6 +12,11 @@ class PertGraph:
             self.graph.add_edge(*edge)
             self.graph.edges[edge]['nombre'] = activity['index']
             self.graph.edges[edge]['duracion'] = activity['duracion']
+            if 'recursos' in activity.dtype.names:
+                self.graph.edges[edge]['recursos'] = activity['recursos']
+            if 'CUR' in activity.dtype.names:
+                self.graph.edges[edge]['CUR'] = activity['CUR']
+
         self.calcula_pert()
 
     def calcula_pert(self):
@@ -112,3 +117,68 @@ class PertGraph:
 
         self.dot_graph = dot_graph
         dot_graph.draw(filename, prog='dot')
+
+
+    def gantt_recursos(self, type='recursos'):
+        key_a_representar = type
+
+        actividades = [self.graph.edges[edge]['nombre'] for edge in self.graph.edges]
+        actividades_sin_ficticias = [nombre for nombre in actividades if nombre[0] != 'f']
+        periodos = range(1, self.duracion() + 1)
+        gantt = pd.DataFrame('', index=actividades_sin_ficticias, columns=periodos)
+
+        for edge in self.graph.edges:
+            fila = self.graph.edges[edge]['nombre']
+            if fila[0] != 'f':
+                nodo_inicial = edge[0]
+                comienzo_tarea = self.graph.nodes[nodo_inicial]['temprano']
+                duracion = self.graph.edges[edge]['duracion']
+                gantt.loc[fila, (comienzo_tarea + 1):(comienzo_tarea + duracion)] = self.graph.edges[edge][
+                    key_a_representar]
+
+        def color_gantt(val):
+            background = 'white' if val == '' else 'sandybrown'
+            style = f'background-color: {background}'
+            return style
+
+        # Set CSS properties for th elements in dataframe
+        th_props = [
+            ('font-size', '11px'),
+            ('text-align', 'center'),
+            ('font-weight', 'bold'),
+            ('color', '#6d6d6d'),
+            ('background-color', '#f7f7f9'),
+            ('border', '1px solid')
+        ]
+
+        # Set CSS properties for td elements in dataframe
+        td_props = [
+            ('font-size', '11px'),
+            ('border-color', '#c0c0c0'),
+            ('border', '1px solid'),
+        ]
+
+        # Set table styles
+        styles = [
+            dict(selector="th", props=th_props),
+            dict(selector="td", props=td_props),
+            dict(selector='', props=[('border', '3px solid')]),
+        ]
+
+        def summary(df, fn=np.sum, axis=0, name='Total'):
+            df_total = df.replace('', 0)
+            total = df_total.apply(fn, axis=axis).to_frame(name)
+            if axis == 0:
+                total = total.T
+            out = pd.concat([df, total], axis=axis)
+            return out
+
+        mat = (summary(gantt, axis=0)
+               .style
+               .set_table_styles(styles)
+               .applymap(color_gantt)
+               .apply(lambda x: ['background: #f7f7f9' if x.name == "Total" else '' for i in x], axis=1)
+               )
+        return mat
+
+
