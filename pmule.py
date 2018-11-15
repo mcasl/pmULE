@@ -1,77 +1,87 @@
+from math import ceil
 import networkx as nx
 import numpy as np
 import pandas as pd
 import pygraphviz as pgv
+from IPython.display import Image
+from decimal import Decimal
 
-
-class PertGraph:
-    def __init__(self, data):
+class GrafoProyecto:
+    def __init__(self, aristas):
         self.graph = nx.DiGraph()
-        for activity in data.to_records(index=True):
+        for activity in aristas.to_records(index=True):
             edge = (activity['nodo_inicial'], activity['nodo_final'])
             self.graph.add_edge(*edge)
-            self.graph.edges[edge]['nombre'] = activity['index']
-            self.graph.edges[edge]['duracion'] = activity['duracion']
-            if 'recursos' in activity.dtype.names:
-                self.graph.edges[edge]['recursos'] = activity['recursos']
-            if 'CUR' in activity.dtype.names:
-                self.graph.edges[edge]['CUR'] = activity['CUR']
+            self.graph.edges[edge]['nombre'] = activity['actividad']
 
-        self.calcula_pert()
+    @property
+    def nodos(self):
+        return list(nx.topological_sort(self.graph))
 
-    def calcula_pert(self):
-        lista_de_nodos = list(nx.topological_sort(self.graph))
+    @property
+    def actividades(self):
+        return [self.graph.edges[edge]['nombre'] for edge in self.graph.edges]
 
-        # [0] sirve para inicializar el tiempo temprano del nodo inicial correctamente
-        # [self.graph.nodes[lista_de_nodos[-1]]['temprano']] sirve para
-        # inicializar el tiempo tardío del nodo final correctamente con el valor del tiempo temprano
+    def calcula_pert(self, duraciones):
+        dtype=type(duraciones[0])
+        tempranos  = pd.Series(0, index=self.nodos).apply(dtype)
+        tardios    = pd.Series(0, index=self.nodos).apply(dtype)
+        H_total    = pd.Series(0, index=self.actividades).apply(dtype)
 
-        for nodo in lista_de_nodos:
 
-            self.graph.nodes[nodo]['temprano'] = max([0] +
-                                                     [(self.graph.nodes[inicial]['temprano'] + attributes['duracion'])
-                                                      for (inicial, final, attributes) in
-                                                      self.graph.in_edges(nodo, data=True)])
-        for nodo in lista_de_nodos[::-1]:
-            self.graph.nodes[nodo]['tardio'] = min([self.graph.nodes[lista_de_nodos[-1]]['temprano']] +
-                                                   [(self.graph.nodes[final]['tardio'] - attributes['duracion'])
-                                                    for (inicial, final, attributes) in
-                                                    self.graph.out_edges(nodo, data=True)])
+        for nodo in self.nodos[1:]:
+            tempranos[nodo] = max([(tempranos[inicial] + duraciones.get(attributes['nombre']))
+                                    for (inicial, final, attributes) in  self.graph.in_edges(nodo, data=True)])
+
+
+        tardios[self.nodos[-1]] =  tempranos[self.nodos[-1]]
+        for nodo in self.nodos[-2::-1]:
+            tardios[nodo] = min([tardios[final] - duraciones.get(attributes['nombre'])
+                                 for (inicial, final, attributes) in self.graph.out_edges(nodo, data=True)])
+
+
 
         for (nodo_inicial, nodo_final) in self.graph.edges:
-            self.graph.edges[nodo_inicial, nodo_final]['H_total'] = self.graph.nodes[nodo_final]['tardio'] - \
-                                                                    self.graph.edges[nodo_inicial, nodo_final][
-                                                                        'duracion'] - self.graph.nodes[nodo_inicial][
-                                                                        'temprano']
+            activity_name = self.graph.edges[nodo_inicial, nodo_final]['nombre']
+            H_total[activity_name] = tardios[nodo_final] - duraciones.get(activity_name) - tempranos[nodo_inicial]
 
-    def duracion(self):
-        return nx.dag_longest_path_length(self.graph, weight='duracion')
 
-    def camino_critico(self):
-        return {'Actividades': [(attributes['nombre']) for (nodo_inicial, nodo_final, attributes) in
-                                self.graph.edges(data=True) if attributes['H_total'] == 0],
-                'Nodos': nx.dag_longest_path(self.graph, weight='duracion')}
+        resultado = dict(tiempos = pd.DataFrame(dict(tempranos=tempranos, tardios=tardios)),
+                         H_total = H_total)
+        return resultado
 
-    def tiempos(self):
-        return pd.DataFrame(dict(self.graph.nodes(data=True)))
+    def duracion_proyecto(self, duraciones):
+        resultados_pert = self.calcula_pert(duraciones)
+        duracion = resultados_pert['tiempos']['tempranos'].values[-1]
+        return duracion
 
-    def holguras(self):
-        holguras = pd.DataFrame([{'H_total': attributes['H_total'], 'nombre': attributes['nombre']}
-                                 for (inicial, final, attributes) in self.graph.edges(data=True)]).set_index('nombre')
-        return holguras
+    def camino_critico(self, duraciones):
+        resultados_pert = self.calcula_pert(duraciones)
+        H_total = resultados_pert['H_total']
+        return H_total[H_total==0].index
 
-    def draw(self):
-        nx.draw(self.graph, with_labels=True)
+    def zaderenko(self, duraciones):
+        resultados_pert = self.calcula_pert(duraciones)['tiempos']
+        lista_de_nodos_ordenada = self.nodos
+        lista_de_nodos_ordenada.sort()
+        z = pd.DataFrame(np.nan, index=lista_de_nodos_ordenada, columns=lista_de_nodos_ordenada)
 
-    def zaderenko(self):
-        a = nx.to_pandas_adjacency(self.graph, weight='duracion', nonedge=np.nan)
-        tiempos = self.tiempos()
-        a['temprano'] = tiempos.loc['temprano', :]
-        a = a.append(tiempos.loc['tardio', :]).fillna('')
-        return a
+        for edge in self.graph.edges:
+            activity_name = self.graph.edges[edge]['nombre']
+            z.loc[edge[0], edge[1]] = duraciones[activity_name]
 
-    def write_dot(self, filename, size=None, orientation='landscape', rankdir='LR', ordering='out', ranksep=1,
-                  nodesep=1, rotate=0, tiempos=True, **kwargs):
+        z['temprano'] = resultados_pert['tempranos']
+        z = z.append(resultados_pert['tardios']).fillna('')
+        return z
+
+    def pert(self, filename, duraciones=None, size=None,
+             orientation='landscape', rankdir='LR', ordering='out', ranksep=1, nodesep=1, rotate=0, **kwargs):
+        if duraciones is not None:
+            resultados_pert = self.calcula_pert(duraciones)
+            tempranos = resultados_pert['tiempos']['tempranos']
+            tardios   = resultados_pert['tiempos']['tardios']
+            H_total   = resultados_pert['H_total']
+
         dot_graph = pgv.AGraph(size=size,
                                orientation=orientation,
                                rankdir=rankdir,
@@ -81,16 +91,18 @@ class PertGraph:
                                rotate=rotate,
                                directed=True,
                                **kwargs)
+
         dot_graph.node_attr['shape'] = 'Mrecord'
         dot_graph.add_edges_from(self.graph.edges)
 
         for nodo in dot_graph.nodes():
             current_node = dot_graph.get_node(nodo)
             node_number = int(nodo)
-            if tiempos:
+
+            if duraciones is not None:
                 current_node.attr['label'] = (f"{node_number} | {{ "
-                                              f"<early> {self.graph.nodes[node_number]['temprano']} | "
-                                              f"<last>  {self.graph.nodes[node_number]['tardio']} }}")
+                                              f"<early> {tempranos[node_number]} | "
+                                              f"<last>  {tardios[node_number]} }}")
             else:
                 current_node.attr['label'] = (f"{node_number} | {{ "
                                               f"<early>  | "
@@ -98,43 +110,48 @@ class PertGraph:
 
         for origin, destination in dot_graph.edges_iter():
             current_edge = dot_graph.get_edge(origin, destination)
-            current_edge_tuple_of_ints = (int(origin), int(destination))
             current_edge.attr['headport'] = 'early'
             current_edge.attr['tailport'] = 'last'
-            if tiempos:
-                current_edge.attr['label'] = (f"{self.graph.edges[current_edge_tuple_of_ints]['nombre']}"
-                                              f"({self.graph.edges[current_edge_tuple_of_ints]['duracion']})")
+
+            current_edge_tuple_of_ints = (int(origin), int(destination))
+            activity_name = self.graph.edges[current_edge_tuple_of_ints]['nombre']
+            if duraciones is not None:
+                current_edge.attr['label'] = (f"{activity_name}"
+                                              f"({duraciones[activity_name]})")
+                if H_total[activity_name] == 0:
+                    current_edge.attr['color'] = 'red:red'
+                    current_edge.attr['style'] = 'bold'
+
+                if self.graph.edges[current_edge_tuple_of_ints]['nombre'][0] == 'f':
+                    current_edge.attr['style'] = 'dashed'
             else:
-                current_edge.attr['label'] = f"{self.graph.edges[current_edge_tuple_of_ints]['nombre']}"
+                current_edge.attr['label'] = f"{activity_name}"
 
 
-            if self.graph.edges[current_edge_tuple_of_ints]['H_total'] == 0 and tiempos:
-                current_edge.attr['color'] = 'red:red'
-                current_edge.attr['style'] = 'bold'
 
-            if self.graph.edges[current_edge_tuple_of_ints]['nombre'][0] == 'f':
-                current_edge.attr['style'] = 'dashed'
 
         self.dot_graph = dot_graph
         dot_graph.draw(filename, prog='dot')
+        return Image(filename)
 
 
-    def gantt_recursos(self, type='recursos'):
-        key_a_representar = type
-
-        actividades = [self.graph.edges[edge]['nombre'] for edge in self.graph.edges]
-        actividades_sin_ficticias = [nombre for nombre in actividades if nombre[0] != 'f']
-        periodos = range(1, self.duracion() + 1)
-        gantt = pd.DataFrame('', index=actividades_sin_ficticias, columns=periodos)
+    def gantt(self, duraciones, representar=None, total=None, acumulado=False):
+        duraciones = duraciones.reindex( self.actividades, fill_value=0)
+        resultados_pert = self.calcula_pert(duraciones)
+        tempranos = resultados_pert['tiempos']['tempranos']
+        duracion_proyecto = tempranos.values[-1]
+        periodos = range(1, ceil(duracion_proyecto) + 1)
+        actividades_con_duracion = [nombre for nombre in self.actividades if duraciones.get(nombre, 0) != 0]
+        actividades_con_duracion.sort()
+        gantt = pd.DataFrame('', index=actividades_con_duracion, columns=periodos)
 
         for edge in self.graph.edges:
-            fila = self.graph.edges[edge]['nombre']
-            if fila[0] != 'f':
-                nodo_inicial = edge[0]
-                comienzo_tarea = self.graph.nodes[nodo_inicial]['temprano']
-                duracion = self.graph.edges[edge]['duracion']
-                gantt.loc[fila, (comienzo_tarea + 1):(comienzo_tarea + duracion)] = self.graph.edges[edge][
-                    key_a_representar]
+            activity_name = self.graph.edges[edge]['nombre']
+            duracion_tarea = duraciones.get(activity_name, 0)
+            if duracion_tarea != 0:
+                comienzo_tarea = tempranos[edge[0]]
+                valor = representar[activity_name] if representar is not None else ' '
+                gantt.loc[activity_name, (comienzo_tarea + 1):(comienzo_tarea + duracion_tarea)] = valor
 
         def color_gantt(val):
             background = 'white' if val == '' else 'sandybrown'
@@ -173,12 +190,72 @@ class PertGraph:
             out = pd.concat([df, total], axis=axis)
             return out
 
-        mat = (summary(gantt, axis=0)
-               .style
-               .set_table_styles(styles)
-               .applymap(color_gantt)
-               .apply(lambda x: ['background: #f7f7f9' if x.name == "Total" else '' for i in x], axis=1)
-               )
-        return mat
+        if total is None:
+            mat = gantt
 
+        elif total == 'columna':
+            mat = summary(gantt, axis=1)
 
+        elif total == 'fila':
+            mat = summary(gantt, axis=0)
+            if acumulado:
+                fila_acumulado = mat.loc['Total'].cumsum()
+                fila_acumulado.name = 'Acumulado'
+                mat = mat.append(fila_acumulado).fillna('')
+
+        elif total == 'ambas':
+            mat = summary( summary(gantt, axis=0), axis=1)
+            if acumulado:
+                fila_acumulado = mat.loc['Total'].drop('Total').cumsum()
+                fila_acumulado.name = 'Acumulado'
+                mat = mat.append(fila_acumulado).fillna('')
+
+        resultado = (mat
+                    .style
+                    .set_table_styles(styles)
+                    .applymap(color_gantt)
+                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado"]
+                                                           else '' for i in x], axis=0)
+                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado"]
+                                                           else '' for i in x], axis=1)
+
+                    )
+
+        return resultado
+
+class ValorGanado():
+    def __init__(self, pert):
+        self.pert = pert
+
+    def calcula_gantts(self,
+                       duraciones_planificadas,
+                       duraciones_reales,
+                       costes_planificados,
+                       costes_reales,
+                       porcentaje_de_completacion):
+        if any(porcentaje_de_completacion>1):
+            porcentaje_de_completacion = porcentaje_de_completacion/100
+
+        costes_planificados_por_periodo = costes_planificados/duraciones_planificadas
+        gantt_PV = self.pert.gantt(duraciones_planificadas,
+                                   representar=costes_planificados_por_periodo,
+                                   total='ambas', acumulado=True)
+
+        costes_reales_por_periodo = (costes_reales / duraciones_reales).reindex(costes_planificados.index, fill_value=0)
+        duraciones_reales = duraciones_reales.reindex(duraciones_planificadas.index, fill_value=0)
+        gantt_AC = self.pert.gantt(duraciones_reales,
+                                   representar=costes_reales_por_periodo,
+                                   total='ambas', acumulado=True)
+
+        valor_ganado_total_tarea = (costes_planificados * porcentaje_de_completacion).reindex(costes_planificados.index, fill_value=0)
+        valor_ganado_por_periodo = (valor_ganado_total_tarea / duraciones_reales).reindex(costes_planificados.index, fill_value=0)
+        gantt_EV = self.pert.gantt(duraciones_reales,
+                                   representar=valor_ganado_por_periodo,
+                                   total='ambas', acumulado=True)
+
+        acumulados = pd.DataFrame(dict(PV=gantt_PV.data.loc['Total',:].cumsum(),
+                                       EV=gantt_EV.data.loc['Total',:].cumsum(),
+                                       AC=gantt_AC.data.loc['Total',:].cumsum(), ),
+                                  index = gantt_EV.data.columns).drop('Total')
+
+        return dict(Gantt_PV=gantt_PV, Gantt_AC=gantt_AC, Gantt_EV=gantt_EV, acumulados=acumulados)
