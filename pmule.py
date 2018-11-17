@@ -2,21 +2,55 @@ from math import ceil
 import networkx as nx
 import numpy as np
 import pandas as pd
+import string
+from random import choice
 import pygraphviz as pgv
 from IPython.display import Image
 from decimal import Decimal
 
+
+def genera_random_str(tamano):
+    allchar = string.ascii_letters + string.punctuation + string.digits
+    password = "".join(choice(allchar) for x in range(tamano))
+    return password
+
+
 class GrafoProyecto:
     def __init__(self, aristas):
-        self.graph = nx.DiGraph()
-        for activity in aristas.to_records(index=True):
-            edge = (activity['nodo_inicial'], activity['nodo_final'])
-            self.graph.add_edge(*edge)
-            self.graph.edges[edge]['nombre'] = activity['actividad']
+        if aristas is None:
+            self.graph = nx.DiGraph()
+        else:
+            tamano_cadena = 2
+            aristas = aristas.loc[:, ['nodo_inicial', 'nodo_final']]
+            ids = {key: str(key) + '___' + genera_random_str(tamano_cadena)
+                   for key in set(aristas.loc[:, ['nodo_inicial', 'nodo_final']].values.flatten())}
+
+            while len(ids) != len(set(ids.values())):
+                tamano_cadena += 1
+                ids = {key: str(key) + '___' + genera_random_str(tamano_cadena)
+                       for key in set(aristas.loc[:, ['nodo_inicial', 'nodo_final']].values.flatten())}
+
+            aristas.nodo_inicial = aristas.nodo_inicial.map(ids)
+            aristas.nodo_final = aristas.nodo_final.map(ids)
+            self.graph = nx.DiGraph()
+
+            for numero, cadena in ids.items():
+                self.graph.add_node(cadena, id=numero)
+
+            for activity in aristas.to_records(index=True):
+                edge = (activity['nodo_inicial'], activity['nodo_final'])
+                self.graph.add_edge(*edge)
+                self.graph.edges[edge]['nombre'] = activity['actividad']
+
+    def copy(self):
+        grafo = GrafoProyecto(aristas=None)
+        grafo.graph = self.graph.copy()
+        return grafo
 
     @property
     def nodos(self):
-        return list(nx.topological_sort(self.graph))
+        return [self.graph.node[nodo]['id'] for nodo in list(nx.topological_sort(self.graph))]
+
 
     @property
     def actividades(self):
@@ -24,26 +58,30 @@ class GrafoProyecto:
 
     def calcula_pert(self, duraciones):
         dtype=type(duraciones[0])
-        tempranos  = pd.Series(0, index=self.nodos).apply(dtype)
-        tardios    = pd.Series(0, index=self.nodos).apply(dtype)
+        nodos = self.nodos
+        id_to_str = {self.graph.nodes[nodo]['id']:nodo for nodo in self.graph.nodes}
+        str_to_id = {nodo:self.graph.nodes[nodo]['id'] for nodo in self.graph.nodes}
+
+        tempranos  = pd.Series(0, index=nodos).apply(dtype)
+        tardios    = pd.Series(0, index=nodos).apply(dtype)
         H_total    = pd.Series(0, index=self.actividades).apply(dtype)
 
 
-        for nodo in self.nodos[1:]:
-            tempranos[nodo] = max([(tempranos[inicial] + duraciones.get(attributes['nombre']))
-                                    for (inicial, final, attributes) in  self.graph.in_edges(nodo, data=True)])
+        for nodo_id in nodos[1:]:
+            tempranos[nodo_id] = max([(tempranos[str_to_id[inicial]] + duraciones.get(attributes['nombre']))
+                                    for (inicial, final, attributes) in  self.graph.in_edges(id_to_str[nodo_id], data=True)])
 
 
-        tardios[self.nodos[-1]] =  tempranos[self.nodos[-1]]
-        for nodo in self.nodos[-2::-1]:
-            tardios[nodo] = min([tardios[final] - duraciones.get(attributes['nombre'])
-                                 for (inicial, final, attributes) in self.graph.out_edges(nodo, data=True)])
+        tardios[nodos[-1]] =  tempranos[nodos[-1]]
+        for nodo_id in nodos[-2::-1]:
+            tardios[nodo_id] = min([tardios[str_to_id[final]] - duraciones.get(attributes['nombre'])
+                                 for (inicial, final, attributes) in self.graph.out_edges(id_to_str[nodo_id], data=True)])
 
 
 
         for (nodo_inicial, nodo_final) in self.graph.edges:
             activity_name = self.graph.edges[nodo_inicial, nodo_final]['nombre']
-            H_total[activity_name] = tardios[nodo_final] - duraciones.get(activity_name) - tempranos[nodo_inicial]
+            H_total[activity_name] = tardios[str_to_id[nodo_final]] - duraciones.get(activity_name) - tempranos[str_to_id[nodo_inicial]]
 
 
         resultado = dict(tiempos = pd.DataFrame(dict(tempranos=tempranos, tardios=tardios)),
@@ -65,17 +103,19 @@ class GrafoProyecto:
         lista_de_nodos_ordenada = self.nodos
         lista_de_nodos_ordenada.sort()
         z = pd.DataFrame(np.nan, index=lista_de_nodos_ordenada, columns=lista_de_nodos_ordenada)
+        str_to_id = {nodo:self.graph.nodes[nodo]['id'] for nodo in self.graph.nodes}
 
         for edge in self.graph.edges:
+            id_inicial = str_to_id[edge[0]]
+            id_final   = str_to_id[edge[1]]
             activity_name = self.graph.edges[edge]['nombre']
-            z.loc[edge[0], edge[1]] = duraciones[activity_name]
+            z.loc[id_inicial, id_final] = duraciones[activity_name]
 
         z['temprano'] = resultados_pert['tempranos']
         z = z.append(resultados_pert['tardios']).fillna('')
         return z
 
-    def pert(self, filename, duraciones=None, size=None,
-             orientation='landscape', rankdir='LR', ordering='out', ranksep=1, nodesep=1, rotate=0, **kwargs):
+    def pert(self, filename, duraciones=None, size=None, orientation='landscape', rankdir='LR', ordering='out', ranksep=1, nodesep=1, rotate=0, **kwargs):
         if duraciones is not None:
             resultados_pert = self.calcula_pert(duraciones)
             tempranos = resultados_pert['tiempos']['tempranos']
@@ -94,10 +134,10 @@ class GrafoProyecto:
 
         dot_graph.node_attr['shape'] = 'Mrecord'
         dot_graph.add_edges_from(self.graph.edges)
-
+        str_to_id = {nodo: self.graph.nodes[nodo]['id'] for nodo in self.graph.nodes}
         for nodo in dot_graph.nodes():
             current_node = dot_graph.get_node(nodo)
-            node_number = int(nodo)
+            node_number = int(str_to_id[nodo])
 
             if duraciones is not None:
                 current_node.attr['label'] = (f"{node_number} | {{ "
@@ -113,8 +153,7 @@ class GrafoProyecto:
             current_edge.attr['headport'] = 'early'
             current_edge.attr['tailport'] = 'last'
 
-            current_edge_tuple_of_ints = (int(origin), int(destination))
-            activity_name = self.graph.edges[current_edge_tuple_of_ints]['nombre']
+            activity_name = self.graph.edges[origin, destination]['nombre']
             if duraciones is not None:
                 current_edge.attr['label'] = (f"{activity_name}"
                                               f"({duraciones[activity_name]})")
@@ -122,7 +161,7 @@ class GrafoProyecto:
                     current_edge.attr['color'] = 'red:red'
                     current_edge.attr['style'] = 'bold'
 
-                if self.graph.edges[current_edge_tuple_of_ints]['nombre'][0] == 'f':
+                if self.graph.edges[origin, destination]['nombre'][0] == 'f':
                     current_edge.attr['style'] = 'dashed'
             else:
                 current_edge.attr['label'] = f"{activity_name}"
@@ -137,6 +176,7 @@ class GrafoProyecto:
 
     def gantt(self, duraciones, representar=None, total=None, acumulado=False):
         duraciones = duraciones.reindex( self.actividades, fill_value=0)
+        representar = representar.reindex(self.actividades, fill_value=0)
         resultados_pert = self.calcula_pert(duraciones)
         tempranos = resultados_pert['tiempos']['tempranos']
         duracion_proyecto = tempranos.values[-1]
@@ -144,12 +184,13 @@ class GrafoProyecto:
         actividades_con_duracion = [nombre for nombre in self.actividades if duraciones.get(nombre, 0) != 0]
         actividades_con_duracion.sort()
         gantt = pd.DataFrame('', index=actividades_con_duracion, columns=periodos)
+        str_to_id = {nodo: self.graph.nodes[nodo]['id'] for nodo in self.graph.nodes}
 
         for edge in self.graph.edges:
             activity_name = self.graph.edges[edge]['nombre']
             duracion_tarea = duraciones.get(activity_name, 0)
             if duracion_tarea != 0:
-                comienzo_tarea = tempranos[edge[0]]
+                comienzo_tarea = tempranos[str_to_id[edge[0]]]
                 valor = representar[activity_name] if representar is not None else ' '
                 gantt.loc[activity_name, (comienzo_tarea + 1):(comienzo_tarea + duracion_tarea)] = valor
 
@@ -222,6 +263,29 @@ class GrafoProyecto:
                     )
 
         return resultado
+
+    def desplazar(self, duraciones, actividades):
+        proyecto = self.copy()
+        slides = pd.Series({('slide_' + nombre): duracion for nombre, duracion in actividades.items()})
+        duraciones = duraciones.append(slides)
+
+        lista_edges = list(proyecto.graph.edges)
+        for edge in lista_edges:
+            activity_name = proyecto.graph.edges[edge]['nombre']
+            if activity_name in actividades:
+                proyecto.graph.remove_edge(edge[0], edge[1])
+                tamano_cadena = 1
+                nodo_auxiliar_str = activity_name + '___' + genera_random_str(tamano_cadena)
+                while nodo_auxiliar_str in proyecto.graph.nodes():
+                    nodo_auxiliar_str = activity_name + '___' + genera_random_str(tamano_cadena)
+                proyecto.graph.add_node(nodo_auxiliar_str, id=nodo_auxiliar_str)
+                proyecto.graph.add_edge(edge[0], nodo_auxiliar_str, nombre='slide_' + activity_name)
+                proyecto.graph.add_edge(nodo_auxiliar_str, edge[1], nombre=activity_name)
+
+        nx.set_node_attributes(proyecto.graph, {nodo: {'id': (id + 1)}
+                                                for id, nodo in enumerate(nx.topological_sort(proyecto.graph))})
+        return {'proyecto': proyecto, 'duraciones': duraciones}
+
 
 class ValorGanado():
     def __init__(self, pert):
