@@ -66,7 +66,6 @@ class GrafoProyecto:
         tardios    = pd.Series(0, index=nodos).apply(dtype)
         H_total    = pd.Series(0, index=self.actividades).apply(dtype)
 
-
         for nodo_id in nodos[1:]:
             tempranos[nodo_id] = max([(tempranos[str_to_id[inicial]] + duraciones.get(attributes['nombre']))
                                     for (inicial, final, attributes) in  self.graph.in_edges(id_to_str[nodo_id], data=True)])
@@ -87,6 +86,30 @@ class GrafoProyecto:
         resultado = dict(tiempos = pd.DataFrame(dict(tempranos=tempranos, tardios=tardios)),
                          H_total = H_total)
         return resultado
+
+    def calendario(self, duraciones):
+        calendario = pd.DataFrame(0, index=duraciones.index, columns=['inicio_mas_temprano',
+                                                                      'inicio_mas_tardio',
+                                                                      'fin_mas_temprano',
+                                                                      'fin_mas_tardio'])
+
+        resultados_pert= self.calcula_pert(duraciones)
+        calendario['H_total'] = resultados_pert['H_total']
+
+        tempranos = resultados_pert['tiempos']['tempranos']
+        tardios = resultados_pert['tiempos']['tardios']
+        str_to_id = {nodo:self.graph.nodes[nodo]['id'] for nodo in self.graph.nodes}
+
+        for (nodo_inicial, nodo_final) in self.graph.edges:
+            activity_name = self.graph.edges[nodo_inicial, nodo_final]['nombre']
+            calendario.loc[activity_name, 'inicio_mas_temprano'] = tempranos[str_to_id[nodo_inicial]]
+            calendario.loc[activity_name, 'inicio_mas_tardio'] = tardios[str_to_id[nodo_final]] - duraciones.get(activity_name)
+            calendario.loc[activity_name, 'fin_mas_temprano'] = tempranos[str_to_id[nodo_inicial]] +  duraciones.get(activity_name)
+            calendario.loc[activity_name, 'fin_mas_tardio'] = tardios[str_to_id[nodo_final]]
+
+        return calendario
+
+
 
     def duracion_proyecto(self, duraciones):
         resultados_pert = self.calcula_pert(duraciones)
@@ -174,7 +197,7 @@ class GrafoProyecto:
         return Image(filename)
 
 
-    def gantt(self, duraciones, representar=None, total=None, acumulado=False):
+    def gantt(self, duraciones, representar=None, total=None, acumulado=False, holguras=False):
         duraciones = duraciones.reindex( self.actividades, fill_value=0)
         representar = representar.reindex(self.actividades, fill_value=0)
         resultados_pert = self.calcula_pert(duraciones)
@@ -251,13 +274,18 @@ class GrafoProyecto:
                 fila_acumulado.name = 'Acumulado'
                 mat = mat.append(fila_acumulado).fillna('')
 
+        if holguras:
+            mat['H_total'] = resultados_pert['H_total']
+            if total == 'fila' or total =='ambas':
+                mat.loc['Total', 'H_total'] = None
+
         resultado = (mat
                     .style
                     .set_table_styles(styles)
                     .applymap(color_gantt)
-                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado"]
+                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total"]
                                                            else '' for i in x], axis=0)
-                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado"]
+                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total"]
                                                            else '' for i in x], axis=1)
 
                     )
