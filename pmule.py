@@ -199,7 +199,13 @@ class GrafoProyecto:
 
     def gantt(self, duraciones, representar=None, total=None, acumulado=False, holguras=False):
         duraciones = duraciones.reindex( self.actividades, fill_value=0)
-        representar = representar.reindex(self.actividades, fill_value=0)
+        if representar is None:
+            representar = pd.Series({actividad: '  ' for actividad in duraciones.index})
+        elif isinstance(representar, str) and representar == 'nombres':
+            representar = pd.Series({actividad:actividad for actividad in duraciones.index})
+        else:
+            representar = representar.reindex(self.actividades, fill_value=0)
+
         resultados_pert = self.calcula_pert(duraciones)
         tempranos = resultados_pert['tiempos']['tempranos']
         duracion_proyecto = tempranos.values[-1]
@@ -214,8 +220,7 @@ class GrafoProyecto:
             duracion_tarea = duraciones.get(activity_name, 0)
             if duracion_tarea != 0:
                 comienzo_tarea = tempranos[str_to_id[edge[0]]]
-                valor = representar[activity_name] if representar is not None else ' '
-                gantt.loc[activity_name, (comienzo_tarea + 1):(comienzo_tarea + duracion_tarea)] = valor
+                gantt.loc[activity_name, (comienzo_tarea + 1):(comienzo_tarea + duracion_tarea)] = representar[activity_name]
 
         def color_gantt(val):
             background = 'white' if val == '' else 'sandybrown'
