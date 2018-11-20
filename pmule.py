@@ -10,8 +10,8 @@ from decimal import Decimal
 
 
 def genera_random_str(tamano):
-    allchar = string.ascii_letters + string.punctuation + string.digits
-    password = "".join(choice(allchar) for x in range(tamano))
+    letters_and_digits = string.ascii_letters +  string.digits
+    password = "".join(choice(letters_and_digits) for x in range(tamano))
     return password
 
 
