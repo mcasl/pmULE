@@ -94,7 +94,8 @@ class GrafoProyecto:
                                                                       'fin_mas_tardio'])
 
         resultados_pert= self.calcula_pert(duraciones)
-        calendario['H_total'] = resultados_pert['H_total']
+        calendario['H_total']  = resultados_pert['H_total']
+        calendario['duracion'] = duraciones
 
         tempranos = resultados_pert['tiempos']['tempranos']
         tardios = resultados_pert['tiempos']['tardios']
