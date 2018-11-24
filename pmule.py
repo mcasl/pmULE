@@ -152,7 +152,7 @@ class GrafoProyecto:
         return z
 
     def pert(self,
-             filename,
+             filename=None,
              duraciones=None,
              size=None,
              orientation='landscape',
@@ -162,6 +162,10 @@ class GrafoProyecto:
              nodesep=0.5,
              rotate=0,
              **kwargs):
+
+        if filename is None:
+            filename = 'output_pert_figure.png'
+
         if duraciones is None:
             duraciones = self.data['duracion']
 
@@ -374,8 +378,9 @@ class GrafoProyecto:
                 self.graph.add_edge(edge[0], nodo_auxiliar_str, nombre='slide_' + activity_name)
                 self.graph.add_edge(nodo_auxiliar_str, edge[1], nombre=activity_name)
 
+        lista_nodos = nx.topological_sort(self.graph)
         nx.set_node_attributes(self.graph, {nodo: {'id': (id + 1)}
-                                                for id, nodo in enumerate(nx.topological_sort(self.graph))})
+                                                for id, nodo in enumerate(lista_nodos)})
 
         if isinstance(mostrar, str) and mostrar == 'cargas':
             representacion = self.gantt_cargas()
@@ -396,11 +401,10 @@ class GrafoProyecto:
             maximo = int(resultados_pert['actividades'].loc[actividad, 'H_total'])
 
         suma_cuadrados = pd.DataFrame(0, index=range(minimo, maximo + 1), columns=['Suma_de_cuadrados'])
-        for d in range(minimo, maximo+1):
-            print('Desplazamiento:', d)
-            gantt = self.evaluar_desplazamiento(E=d)
-            suma_cuadrados.loc[d, 'Suma_de_cuadrados'] = gantt.data.loc[
-                'Cuadrados', 'H_total']  # El nombre de la columna no es representativo del significado
+        for slide in range(minimo, maximo+1):
+            print('Desplazamiento:', slide)
+            gantt = self.evaluar_desplazamiento(**{actividad:slide})
+            suma_cuadrados.loc[slide, 'Suma_de_cuadrados'] = gantt.data.loc['Cuadrados', 'H_total']  # Aunque sea la columna H_total el valor es la suma de los cuadrados, no unaholgura
             display(gantt)
 
         return suma_cuadrados
