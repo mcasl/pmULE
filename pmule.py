@@ -5,7 +5,7 @@ import pandas as pd
 import string
 from random import choice
 import pygraphviz as pgv
-from IPython.display import Image
+from IPython.display import Image, display
 from decimal import Decimal
 
 
@@ -16,12 +16,14 @@ def genera_random_str(tamano):
 
 
 class GrafoProyecto:
-    def __init__(self, aristas):
-        if aristas is None:
+    def __init__(self, data=None):
+        if data is None:
+            self.data = None
             self.graph = nx.DiGraph()
         else:
+            self.data = data.copy()
             tamano_cadena = 2
-            aristas = aristas.loc[:, ['nodo_inicial', 'nodo_final']]
+            aristas = self.data.loc[:, ['nodo_inicial', 'nodo_final']]
             ids = {key: str(key) + '___' + genera_random_str(tamano_cadena)
                    for key in set(aristas.loc[:, ['nodo_inicial', 'nodo_final']].values.flatten())}
 
@@ -43,8 +45,7 @@ class GrafoProyecto:
                 self.graph.edges[edge]['nombre'] = activity['actividad']
 
     def copy(self):
-        grafo = GrafoProyecto(aristas=None)
-        grafo.graph = self.graph.copy()
+        grafo = GrafoProyecto(data=self.data)
         return grafo
 
     @property
@@ -56,8 +57,11 @@ class GrafoProyecto:
     def actividades(self):
         return [self.graph.edges[edge]['nombre'] for edge in self.graph.edges]
 
-    def calcula_pert(self, duraciones):
-        dtype=type(duraciones[0])
+    def calcula_pert(self, duraciones=None):
+        if duraciones is None:
+            duraciones = self.data['duracion']
+
+        dtype = type(duraciones[0])
         nodos = self.nodos
         id_to_str = {self.graph.nodes[nodo]['id']:nodo for nodo in self.graph.nodes}
         str_to_id = {nodo:self.graph.nodes[nodo]['id'] for nodo in self.graph.nodes}
@@ -70,60 +74,68 @@ class GrafoProyecto:
             tempranos[nodo_id] = max([(tempranos[str_to_id[inicial]] + duraciones.get(attributes['nombre']))
                                     for (inicial, final, attributes) in  self.graph.in_edges(id_to_str[nodo_id], data=True)])
 
-
         tardios[nodos[-1]] =  tempranos[nodos[-1]]
         for nodo_id in nodos[-2::-1]:
             tardios[nodo_id] = min([tardios[str_to_id[final]] - duraciones.get(attributes['nombre'])
-                                 for (inicial, final, attributes) in self.graph.out_edges(id_to_str[nodo_id], data=True)])
-
-
+                                    for (inicial, final, attributes) in self.graph.out_edges(id_to_str[nodo_id], data=True)])
 
         for (nodo_inicial, nodo_final) in self.graph.edges:
             activity_name = self.graph.edges[nodo_inicial, nodo_final]['nombre']
             H_total[activity_name] = tardios[str_to_id[nodo_final]] - duraciones.get(activity_name) - tempranos[str_to_id[nodo_inicial]]
 
-
-        resultado = dict(tiempos = pd.DataFrame(dict(tempranos=tempranos, tardios=tardios)),
-                         H_total = H_total)
+        resultado = dict(nodos = pd.DataFrame(dict(tempranos=tempranos, tardios=tardios)),
+                         actividades = pd.DataFrame(dict(H_total=H_total)) )
         return resultado
 
-    def calendario(self, duraciones):
+    def calendario(self, duraciones=None):
+        if duraciones is None:
+            duraciones = self.data['duracion']
+
         calendario = pd.DataFrame(0, index=duraciones.index, columns=['inicio_mas_temprano',
                                                                       'inicio_mas_tardio',
                                                                       'fin_mas_temprano',
                                                                       'fin_mas_tardio'])
 
         resultados_pert= self.calcula_pert(duraciones)
-        calendario['H_total']  = resultados_pert['H_total']
+        calendario['H_total']  = resultados_pert['actividades']['H_total']
         calendario['duracion'] = duraciones
 
-        tempranos = resultados_pert['tiempos']['tempranos']
-        tardios = resultados_pert['tiempos']['tardios']
+        tempranos = resultados_pert['nodos']['tempranos']
+        tardios = resultados_pert['nodos']['tardios']
         str_to_id = {nodo:self.graph.nodes[nodo]['id'] for nodo in self.graph.nodes}
 
         for (nodo_inicial, nodo_final) in self.graph.edges:
             activity_name = self.graph.edges[nodo_inicial, nodo_final]['nombre']
             calendario.loc[activity_name, 'inicio_mas_temprano'] = tempranos[str_to_id[nodo_inicial]]
             calendario.loc[activity_name, 'inicio_mas_tardio'] = tardios[str_to_id[nodo_final]] - duraciones.get(activity_name)
-            calendario.loc[activity_name, 'fin_mas_temprano'] = tempranos[str_to_id[nodo_inicial]] +  duraciones.get(activity_name)
+            calendario.loc[activity_name, 'fin_mas_temprano'] = tempranos[str_to_id[nodo_inicial]] + duraciones.get(activity_name)
             calendario.loc[activity_name, 'fin_mas_tardio'] = tardios[str_to_id[nodo_final]]
 
         return calendario
 
 
 
-    def duracion_proyecto(self, duraciones):
-        resultados_pert = self.calcula_pert(duraciones)
-        duracion = resultados_pert['tiempos']['tempranos'].values[-1]
-        return duracion
+    def duracion_proyecto(self, duraciones=None):
+        if duraciones is None:
+            duraciones = self.data['duracion']
 
-    def camino_critico(self, duraciones):
         resultados_pert = self.calcula_pert(duraciones)
-        H_total = resultados_pert['H_total']
+        duraciones = resultados_pert['nodos']['tempranos'].values[-1]
+        return duraciones
+
+    def camino_critico(self, duraciones=None):
+        if duraciones is None:
+            duraciones = self.data['duracion']
+
+        resultados_pert = self.calcula_pert(duraciones)
+        H_total = resultados_pert['actividades']['H_total']
         return H_total[H_total==0].index
 
-    def zaderenko(self, duraciones):
-        resultados_pert = self.calcula_pert(duraciones)['tiempos']
+    def resolver_zaderenko(self, duraciones=None):
+        if duraciones is None:
+            duraciones = self.data['duracion']
+
+        resultados_pert = self.calcula_pert(duraciones)['nodos']
         lista_de_nodos_ordenada = self.nodos
         lista_de_nodos_ordenada.sort()
         z = pd.DataFrame(np.nan, index=lista_de_nodos_ordenada, columns=lista_de_nodos_ordenada)
@@ -139,12 +151,25 @@ class GrafoProyecto:
         z = z.append(resultados_pert['tardios']).fillna('')
         return z
 
-    def pert(self, filename, duraciones=None, size=None, orientation='landscape', rankdir='LR', ordering='out', ranksep=1, nodesep=1, rotate=0, **kwargs):
-        if duraciones is not None:
+    def pert(self,
+             filename,
+             duraciones=None,
+             size=None,
+             orientation='landscape',
+             rankdir='LR',
+             ordering='out',
+             ranksep=0.5,
+             nodesep=0.5,
+             rotate=0,
+             **kwargs):
+        if duraciones is None:
+            duraciones = self.data['duracion']
+
+        if duraciones is not False:
             resultados_pert = self.calcula_pert(duraciones)
-            tempranos = resultados_pert['tiempos']['tempranos']
-            tardios   = resultados_pert['tiempos']['tardios']
-            H_total   = resultados_pert['H_total']
+            tempranos = resultados_pert['nodos']['tempranos']
+            tardios   = resultados_pert['nodos']['tardios']
+            H_total   = resultados_pert['actividades']['H_total']
 
         dot_graph = pgv.AGraph(size=size,
                                orientation=orientation,
@@ -163,7 +188,7 @@ class GrafoProyecto:
             current_node = dot_graph.get_node(nodo)
             node_number = int(str_to_id[nodo])
 
-            if duraciones is not None:
+            if duraciones is not False:
                 current_node.attr['label'] = (f"{node_number} | {{ "
                                               f"<early> {tempranos[node_number]} | "
                                               f"<last>  {tardios[node_number]} }}")
@@ -178,7 +203,7 @@ class GrafoProyecto:
             current_edge.attr['tailport'] = 'last'
 
             activity_name = self.graph.edges[origin, destination]['nombre']
-            if duraciones is not None:
+            if duraciones is not False:
                 current_edge.attr['label'] = (f"{activity_name}"
                                               f"({duraciones[activity_name]})")
                 if H_total[activity_name] == 0:
@@ -191,24 +216,37 @@ class GrafoProyecto:
                 current_edge.attr['label'] = f"{activity_name}"
 
 
-
-
         self.dot_graph = dot_graph
         dot_graph.draw(filename, prog='dot')
         return Image(filename)
 
 
-    def gantt(self, duraciones, representar=None, total=None, acumulado=False, holguras=False):
-        duraciones = duraciones.reindex( self.actividades, fill_value=0)
+    def gantt(self, duraciones=None,
+              representar=None,
+              total=None,
+              acumulado=False,
+              holguras=False,
+              cuadrados = False):
+
+        if duraciones is None:
+            duraciones = self.data['duracion']
+
+        duraciones = duraciones.reindex(self.actividades, fill_value=0)
         if representar is None:
             representar = pd.Series({actividad: '  ' for actividad in duraciones.index})
-        elif isinstance(representar, str) and representar == 'nombres':
-            representar = pd.Series({actividad:actividad for actividad in duraciones.index})
+        elif isinstance(representar, str):
+            if representar == 'nombres' or representar == 'actividad':
+                representar = pd.Series({actividad:actividad for actividad in duraciones.index})
+            elif representar == 'vacio':
+                representar = pd.Series({actividad:'  ' for actividad in duraciones.index})
+            else:
+                representar = pd.Series({actividad:self.data.loc[actividad, representar]
+                                     for actividad in duraciones.index})
         else:
             representar = representar.reindex(self.actividades, fill_value=0)
 
         resultados_pert = self.calcula_pert(duraciones)
-        tempranos = resultados_pert['tiempos']['tempranos']
+        tempranos = resultados_pert['nodos']['tempranos']
         duracion_proyecto = tempranos.values[-1]
         periodos = range(1, ceil(duracion_proyecto) + 1)
         actividades_con_duracion = [nombre for nombre in self.actividades if duraciones.get(nombre, 0) != 0]
@@ -272,7 +310,10 @@ class GrafoProyecto:
                 fila_acumulado = mat.loc['Total'].cumsum()
                 fila_acumulado.name = 'Acumulado'
                 mat = mat.append(fila_acumulado).fillna('')
-
+            if cuadrados:
+                fila_cuadrados =  mat.loc['Total'] ** 2
+                fila_cuadrados.name = 'Cuadrados'
+                mat = mat.append(fila_cuadrados).fillna('')
         elif total == 'ambas':
             mat = summary( summary(gantt, axis=0), axis=1)
             if acumulado:
@@ -281,7 +322,7 @@ class GrafoProyecto:
                 mat = mat.append(fila_acumulado).fillna('')
 
         if holguras:
-            mat['H_total'] = resultados_pert['H_total']
+            mat['H_total'] = resultados_pert['actividades']['H_total']
             if total == 'fila' or total =='ambas':
                 mat.loc['Total', 'H_total'] = None
 
@@ -289,36 +330,102 @@ class GrafoProyecto:
                     .style
                     .set_table_styles(styles)
                     .applymap(color_gantt)
-                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total"]
+                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
                                                            else '' for i in x], axis=0)
-                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total"]
+                    .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
                                                            else '' for i in x], axis=1)
 
                     )
 
         return resultado
 
-    def desplazar(self, duraciones, actividades):
-        proyecto = self.copy()
-        slides = pd.Series({('slide_' + nombre): duracion for nombre, duracion in actividades.items()})
-        duraciones = duraciones.append(slides)
+    def gantt_cargas(self, duraciones=None):
+        gantt = self.gantt(representar='recursos', total='fila', acumulado=False, holguras=True, cuadrados=True)
+        gantt.data.loc['Total', 'H_total'] = ''
+        gantt.data.loc['Cuadrados', 'H_total'] = gantt.data.loc['Cuadrados', :].sum()
+        return gantt
 
-        lista_edges = list(proyecto.graph.edges)
+
+    def desplazar(self, mostrar='cargas', **desplazamientos):
+
+        for actividad, duracion in desplazamientos.items():
+            nombre_slide = 'slide_' + actividad
+            if nombre_slide in self.data.index:
+                self.data.loc[nombre_slide, 'duracion'] += duracion
+            else:
+                nueva_fila = pd.Series({'duracion': duracion},
+                                       name=nombre_slide,
+                                       index=self.data.columns).fillna(0)
+                self.data = self.data.append(nueva_fila)
+
+        lista_edges = list(self.graph.edges)
         for edge in lista_edges:
-            activity_name = proyecto.graph.edges[edge]['nombre']
-            if activity_name in actividades:
-                proyecto.graph.remove_edge(edge[0], edge[1])
+            activity_name = self.graph.edges[edge]['nombre']
+            slide_name = 'slide_' + activity_name
+
+            if (activity_name in desplazamientos
+                and slide_name not in self.actividades):
+                self.graph.remove_edge(edge[0], edge[1])
                 tamano_cadena = 1
                 nodo_auxiliar_str = activity_name + '___' + genera_random_str(tamano_cadena)
-                while nodo_auxiliar_str in proyecto.graph.nodes():
+                while nodo_auxiliar_str in self.graph.nodes():
                     nodo_auxiliar_str = activity_name + '___' + genera_random_str(tamano_cadena)
-                proyecto.graph.add_node(nodo_auxiliar_str, id=nodo_auxiliar_str)
-                proyecto.graph.add_edge(edge[0], nodo_auxiliar_str, nombre='slide_' + activity_name)
-                proyecto.graph.add_edge(nodo_auxiliar_str, edge[1], nombre=activity_name)
+                self.graph.add_node(nodo_auxiliar_str, id=nodo_auxiliar_str)
+                self.graph.add_edge(edge[0], nodo_auxiliar_str, nombre='slide_' + activity_name)
+                self.graph.add_edge(nodo_auxiliar_str, edge[1], nombre=activity_name)
 
-        nx.set_node_attributes(proyecto.graph, {nodo: {'id': (id + 1)}
-                                                for id, nodo in enumerate(nx.topological_sort(proyecto.graph))})
-        return {'proyecto': proyecto, 'duraciones': duraciones}
+        nx.set_node_attributes(self.graph, {nodo: {'id': (id + 1)}
+                                                for id, nodo in enumerate(nx.topological_sort(self.graph))})
+
+        if isinstance(mostrar, str) and mostrar == 'cargas':
+            representacion = self.gantt_cargas()
+        else:
+            representacion = self.gantt(representar=self.data['recursos'],
+                                        total='fila',
+                                        holguras=True)
+
+        return representacion
+
+    def evaluar_desplazamiento(self, **desplazamientos):
+        proyecto = self.copy()
+        return proyecto.desplazar(**desplazamientos)
+
+    def evaluar_rango_de_desplazamientos(self, actividad, minimo=1, maximo=None):
+        if maximo is None:
+            resultados_pert = self.calcula_pert()
+            maximo = int(resultados_pert['actividades'].loc[actividad, 'H_total'])
+
+        suma_cuadrados = pd.DataFrame(0, index=range(minimo, maximo + 1), columns=['Suma_de_cuadrados'])
+        for d in range(minimo, maximo+1):
+            print('Desplazamiento:', d)
+            gantt = self.evaluar_desplazamiento(E=d)
+            suma_cuadrados.loc[d, 'Suma_de_cuadrados'] = gantt.data.loc[
+                'Cuadrados', 'H_total']  # El nombre de la columna no es representativo del significado
+            display(gantt)
+
+        return suma_cuadrados
+
+    def cur_ordenado(self, rama):
+        return self.data.loc[rama, ['cur', 'duracion', 'duracion_tope']].sort_values(by='cur')
+
+    def reducir(self, **kwargs):
+        sobrecoste = 0
+        for actividad, decremento in kwargs.items():
+            self.data.loc[actividad, 'duracion'] -= decremento
+            sobrecoste += self.data.loc[actividad, 'cur'] * decremento
+        print('Sobrecoste de la reducción:', sobrecoste)
+
+    def desviacion_proyecto(self, *ramas):
+        if 'varianza' not in self.data.columns:
+            varianza = self.data['desviacion'] ** 2
+        else:
+            varianza = self.data['varianza']
+
+        desviacion_ramas = {'-'.join(rama):varianza[rama].sum() ** 0.5 for rama in ramas}
+        [print('Desviación rama:', key, ':', value) for key, value in desviacion_ramas.items() ]
+        desviacion = max(desviacion_ramas.values())
+        print('Desviación del proyecto:', desviacion)
+        return desviacion
 
 
 class ValorGanado():
