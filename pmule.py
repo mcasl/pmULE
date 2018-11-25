@@ -45,7 +45,9 @@ class GrafoProyecto:
                 self.graph.edges[edge]['nombre'] = activity['actividad']
 
     def copy(self):
-        grafo = GrafoProyecto(data=self.data)
+        grafo = GrafoProyecto()
+        grafo.data = self.data.copy()
+        grafo.graph = self.graph.copy()
         return grafo
 
     @property
@@ -343,14 +345,17 @@ class GrafoProyecto:
 
         return resultado
 
-    def gantt_cargas(self, duraciones=None):
+    def gantt_cargas(self, duraciones=None, report=True):
         gantt = self.gantt(representar='recursos', total='fila', acumulado=False, holguras=True, cuadrados=True)
         gantt.data.loc['Total', 'H_total'] = ''
-        gantt.data.loc['Cuadrados', 'H_total'] = gantt.data.loc['Cuadrados', :].sum()
+        suma_cuadrados = gantt.data.loc['Cuadrados', :].sum()
+        gantt.data.loc['Cuadrados', 'H_total'] = suma_cuadrados
+        if report:
+            print('Suma de cuadrados:', suma_cuadrados, '\n' )
         return gantt
 
 
-    def desplazar(self, mostrar='cargas', **desplazamientos):
+    def desplazar(self, mostrar='cargas', report=True, **desplazamientos):
 
         for actividad, duracion in desplazamientos.items():
             nombre_slide = 'slide_' + actividad
@@ -378,35 +383,39 @@ class GrafoProyecto:
                 self.graph.add_edge(edge[0], nodo_auxiliar_str, nombre='slide_' + activity_name)
                 self.graph.add_edge(nodo_auxiliar_str, edge[1], nombre=activity_name)
 
-        lista_nodos = nx.topological_sort(self.graph)
-        nx.set_node_attributes(self.graph, {nodo: {'id': (id + 1)}
-                                                for id, nodo in enumerate(lista_nodos)})
+        lista_nodos = list(nx.topological_sort(self.graph))
+        nx.set_node_attributes(self.graph, {nodo: {'id': (id + 1)} for id, nodo in enumerate(lista_nodos)})
 
-        if isinstance(mostrar, str) and mostrar == 'cargas':
-            representacion = self.gantt_cargas()
-        else:
-            representacion = self.gantt(representar=self.data['recursos'],
-                                        total='fila',
-                                        holguras=True)
+        if report and mostrar == 'cargas':
+             representacion = self.gantt_cargas()
+             display(representacion)
+             return
 
-        return representacion
+        if report and mostrar in self.data.columns:
+            representacion = self.gantt(representar=self.data[mostrar], total='fila', holguras=True)
+            display(representacion)
+            return
 
-    def evaluar_desplazamiento(self, **desplazamientos):
+
+
+    def evaluar_desplazamiento(self, report=True, **desplazamientos):
         proyecto = self.copy()
-        return proyecto.desplazar(**desplazamientos)
+        proyecto.desplazar(**desplazamientos, report=report)
+        suma_cuadrados = proyecto.gantt_cargas(report=False).data.loc['Cuadrados', 'H_total']  # No una holgura, pero está ahí el dato
+        return suma_cuadrados
 
-    def evaluar_rango_de_desplazamientos(self, actividad, minimo=1, maximo=None):
-        if maximo is None:
-            resultados_pert = self.calcula_pert()
-            maximo = int(resultados_pert['actividades'].loc[actividad, 'H_total'])
-
+    def evaluar_rango_de_desplazamientos(self, actividad, report=True):
+        minimo = 0
+        maximo = int(self.calcula_pert()['actividades'].loc[actividad, 'H_total'])
         suma_cuadrados = pd.DataFrame(0, index=range(minimo, maximo + 1), columns=['Suma_de_cuadrados'])
-        for slide in range(minimo, maximo+1):
-            print('Desplazamiento:', slide)
-            gantt = self.evaluar_desplazamiento(**{actividad:slide})
-            suma_cuadrados.loc[slide, 'Suma_de_cuadrados'] = gantt.data.loc['Cuadrados', 'H_total']  # Aunque sea la columna H_total el valor es la suma de los cuadrados, no unaholgura
-            display(gantt)
-
+        if report:
+            print('Sin desplazar:')
+        suma_cuadrados.loc[0, 'Suma_de_cuadrados'] = self.gantt_cargas(report=report).data.loc['Cuadrados', 'H_total']
+        for slide in range(minimo + 1, maximo + 1):
+            if report:
+                print('Desplazamiento:', slide)
+            carga2 = self.evaluar_desplazamiento(**{actividad:slide}, report=report)
+            suma_cuadrados.loc[slide, 'Suma_de_cuadrados'] = carga2
         return suma_cuadrados
 
     def cur_ordenado(self, rama):
