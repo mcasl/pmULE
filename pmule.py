@@ -437,6 +437,7 @@ class GrafoProyecto:
         desviacion_ramas = {'-'.join(rama):varianza[rama].sum() ** 0.5 for rama in ramas}
         [print('Desviación rama:', key, ':', value) for key, value in desviacion_ramas.items() ]
         desviacion = max(desviacion_ramas.values())
+        print('Varianza del proyecto:', desviacion ** 2)
         print('Desviación del proyecto:', desviacion)
         return desviacion
 
