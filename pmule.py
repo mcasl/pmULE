@@ -14,6 +14,18 @@ def genera_random_str(tamano):
     password = "".join(choice(letters_and_digits) for x in range(tamano))
     return password
 
+def encadenamientos(precedentes):
+    mat = pd.DataFrame('', index=precedentes.index, columns=precedentes.index)
+    for fila, columnas in precedentes.items():
+        columnas_preprocesadas = (columnas
+                                     .replace('-','')
+                                     .replace(' ','')
+                                     .split(',')
+                                  )
+        columnas_dict = {key:True for key in columnas_preprocesadas if key}
+        mat.loc[fila, :] = mat.columns.map(columnas_dict).fillna('')
+    return mat
+
 
 class GrafoProyecto:
     def __init__(self, data=None):
@@ -58,6 +70,7 @@ class GrafoProyecto:
     @property
     def actividades(self):
         return [self.graph.edges[edge]['nombre'] for edge in self.graph.edges]
+
 
     def calcula_pert(self, duraciones=None):
         if duraciones is None:
