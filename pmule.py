@@ -53,6 +53,7 @@ class GrafoProyecto:
             self.roy_graph = nx.DiGraph()
         else:
             self.data = data.copy()
+
             tamano_cadena = 2
             aristas = self.data.loc[:, ['nodo_inicial', 'nodo_final']]
             ids = {key: str(key) + '___' + genera_random_str(tamano_cadena)
