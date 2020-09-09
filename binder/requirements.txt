@@ -2,6 +2,6 @@ pandas
 numpy
 matplotlib
 scipy
-networkx
+networkx==2.2
 pygraphviz
 qgrid
