@@ -11,8 +11,7 @@ from decimal import Decimal
 
 def genera_random_str(tamano):
     letters_and_digits = string.ascii_letters +  string.digits
-    password = "".join(choice(letters_and_digits) for x in range(tamano))
-    return password
+    return "".join(choice(letters_and_digits) for _ in range(tamano))
 
 def calcula_encadenamientos(precedentes):
     mat = pd.DataFrame('', index=precedentes.index, columns=precedentes.index)
@@ -56,13 +55,23 @@ class GrafoProyecto:
 
             tamano_cadena = 2
             aristas = self.data.loc[:, ['nodo_inicial', 'nodo_final']]
-            ids = {key: str(key) + '___' + genera_random_str(tamano_cadena)
-                   for key in set(aristas.loc[:, ['nodo_inicial', 'nodo_final']].values.flatten())}
+            ids = {
+                key: f'{str(key)}___' + genera_random_str(tamano_cadena)
+                for key in set(
+                    aristas.loc[:, ['nodo_inicial', 'nodo_final']].values.flatten()
+                )
+            }
 
             while len(ids) != len(set(ids.values())):
                 tamano_cadena += 1
-                ids = {key: str(key) + '___' + genera_random_str(tamano_cadena)
-                       for key in set(aristas.loc[:, ['nodo_inicial', 'nodo_final']].values.flatten())}
+                ids = {
+                    key: f'{str(key)}___' + genera_random_str(tamano_cadena)
+                    for key in set(
+                        aristas.loc[
+                            :, ['nodo_inicial', 'nodo_final']
+                        ].values.flatten()
+                    )
+                }
 
             aristas.nodo_inicial = aristas.nodo_inicial.map(ids)
             aristas.nodo_final = aristas.nodo_final.map(ids)
@@ -106,21 +115,31 @@ class GrafoProyecto:
         H_total    = pd.Series(0, index=self.actividades).apply(dtype)
 
         for nodo_id in nodos[1:]:
-            tempranos[nodo_id] = max([(tempranos[str_to_id[inicial]] + duraciones.get(attributes['nombre']))
-                                      for (inicial, final, attributes) in self.pert_graph.in_edges(id_to_str[nodo_id], data=True)])
+            tempranos[nodo_id] = max(
+                tempranos[str_to_id[inicial]]
+                + duraciones.get(attributes['nombre'])
+                for (inicial, final, attributes) in self.pert_graph.in_edges(
+                    id_to_str[nodo_id], data=True
+                )
+            )
 
         tardios[nodos[-1]] =  tempranos[nodos[-1]]
         for nodo_id in nodos[-2::-1]:
-            tardios[nodo_id] = min([tardios[str_to_id[final]] - duraciones.get(attributes['nombre'])
-                                    for (inicial, final, attributes) in self.pert_graph.out_edges(id_to_str[nodo_id], data=True)])
+            tardios[nodo_id] = min(
+                tardios[str_to_id[final]] - duraciones.get(attributes['nombre'])
+                for (inicial, final, attributes) in self.pert_graph.out_edges(
+                    id_to_str[nodo_id], data=True
+                )
+            )
 
         for (nodo_inicial, nodo_final) in self.pert_graph.edges:
             activity_name = self.pert_graph.edges[nodo_inicial, nodo_final]['nombre']
             H_total[activity_name] = tardios[str_to_id[nodo_final]] - duraciones.get(activity_name) - tempranos[str_to_id[nodo_inicial]]
 
-        resultado = dict(nodos = pd.DataFrame(dict(tempranos=tempranos, tardios=tardios)),
-                         actividades = pd.DataFrame(dict(H_total=H_total)) )
-        return resultado
+        return dict(
+            nodos=pd.DataFrame(dict(tempranos=tempranos, tardios=tardios)),
+            actividades=pd.DataFrame(dict(H_total=H_total)),
+        )
 
     def calendario(self, duraciones=None):
         if duraciones is None:
@@ -340,7 +359,7 @@ class GrafoProyecto:
         if representar is None:
             representar = pd.Series({actividad: '  ' for actividad in duraciones.index})
         elif isinstance(representar, str):
-            if representar == 'nombres' or representar == 'actividad':
+            if representar in ['nombres', 'actividad']:
                 representar = pd.Series({actividad:actividad for actividad in duraciones.index})
             elif representar == 'vacio':
                 representar = pd.Series({actividad:'  ' for actividad in duraciones.index})
@@ -428,7 +447,7 @@ class GrafoProyecto:
 
         if holguras:
             mat['H_total'] = resultados_pert['actividades']['H_total']
-            if total == 'fila' or total =='ambas':
+            if total in ['fila', 'ambas']:
                 mat.loc['Total', 'H_total'] = None
 
         resultado = (mat
@@ -500,8 +519,7 @@ class GrafoProyecto:
     def evaluar_desplazamiento(self, report=True, **desplazamientos):
         proyecto = self.copy()
         proyecto.desplazar(**desplazamientos, report=report)
-        suma_cuadrados = proyecto.gantt_cargas(report=False).data.loc['Cuadrados', 'H_total']  # No una holgura, pero está ahí el dato
-        return suma_cuadrados
+        return proyecto.gantt_cargas(report=False).data.loc['Cuadrados', 'H_total']
 
     def evaluar_rango_de_desplazamientos(self, actividad, report=True):
         minimo = 0
