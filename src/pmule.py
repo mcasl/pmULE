@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 pd.set_option('future.no_silent_downcasting', True)
 import pygraphviz as pgv
-from IPython.display import display, Image, SVG
+from IPython.display import display, Image, SVG, Latex
 
 from numpyarray_to_latex import to_ltx
 from numpyarray_to_latex.jupyter import to_jup
