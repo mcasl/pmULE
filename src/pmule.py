@@ -10,6 +10,8 @@ pd.set_option('future.no_silent_downcasting', True)
 import pygraphviz as pgv
 from IPython.display import display, Image, SVG
 
+from numpyarray_to_latex import to_ltx
+from numpyarray_to_latex.jupyter import to_jup
 
 def read_rcp(filename):
 	data = {
@@ -130,7 +132,7 @@ class PredecessorTable:
 	@staticmethod
 	def from_project(project, dummies=False) -> 'PredecessorTable':
 		new_data = project.distant_predecessor(dummies=dummies)
-		return PredecessorTable.from_dict_of_sets(data=new_data, simplify=False)
+		return PredecessorTable.from_dict_of_sets(data=new_data, simplify=True)
 	
 	def __init__(self, data, simplify=True):
 		self.immediate_predecessor = dict(sorted(data.items()))
@@ -1094,4 +1096,64 @@ class LatexArray(np.ndarray):
         return {
             "text/latex": f"${latex_str}$"
         }, None
+
+
+
+def SVD(rutas):
+  U, S, VT = np.linalg.svd(rutas, full_matrices=True)
+
+  # Create a diagonal matrix from S (singular values)
+  S = np.diag(S)
+
+  # Pad the diagonal matrix to match the original dimensions of rutas
+  m, n = rutas.shape
+  if m > n:
+      # If m > n, pad with zeros to make S_full m x m
+      S = np.pad(S, ((0, m - n), (0, 0)), mode='constant')
+  elif m < n:
+      # If m < n, pad with zeros to make S_full n x n
+      S = np.pad(S, ((0, 0), (0, n - m)), mode='constant')
+  return {'U': U, 'S': S, 'VT':VT}
+
+def pretty(x, dec=0, latex=False, **kwds):
+  if latex:
+    pretty_function = to_ltx
+  else:
+    pretty_function = to_jup
+
+  if dec == 0:
+    try:
+      result = pretty_function(x, fmt='{:d}', **kwds)
+    except:
+      result = pretty_function(x, fmt=f'{{:.{dec}f}}', **kwds)
+  else:
+    result = pretty_function(x, fmt=f'{{:.{dec}f}}', **kwds)
+
+  return result
+
+def pretty_latex(x, dec=0, **kwds):
+  return pretty(x, dec=dec, latex=True, **kwds)
+
+def beautify(*args):
+  converter = lambda x: pretty_latex(x) if isinstance(x, np.ndarray) or isinstance(x, pd.DataFrame) else str(x)
+  return Latex(' '.join([converter(arg) for arg in args]))
+
+def tanto_por_uno(x):
+  return np.abs(x) / np.abs(x).sum()
+
+def ordena_rutas(rutas, importancia_actividades, importancia_rutas):
+  def highlight_positive(val):
+    color = 'background-color: yellow' if val > 0 else ''
+    return color
+
+  rutas = rutas * importancia_actividades
+  sorted_indices = np.flip(np.argsort(importancia_actividades))
+  rutas = rutas.iloc[:, sorted_indices ]
+
+  rutas['Importancia'] = importancia_rutas
+  rutas = rutas.sort_values('Importancia', ascending=False)
+
+  rutas = rutas.style.map(lambda x: '' if pd.Series(x).name == 'Importancia' else highlight_positive(x), subset=rutas.columns.drop('Importancia'))
+
+  return rutas
 
