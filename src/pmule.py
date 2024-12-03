@@ -1001,8 +1001,24 @@ class ProjectGraph:
 				result.apply(lambda x: ['background-color: yellow' for _ in x], axis=1, subset=recortadas)
 		print('\n' * 2)
 		return result, best_option, durations, periods_available
-
-
+	
+	def incidence_matrix(self):
+		nodos_ordenados = sorted(self.pert_graph.nodes)
+		aristas_sin_ordenar = self.pert_graph.edges
+		nombres_sin_ordenar = [self.pert_graph.edges[edge]['activity'] for edge in self.pert_graph.edges]
+		aristas_ordenadas = [x for _, x in sorted(zip(nombres_sin_ordenar, aristas_sin_ordenar))]
+		nombres_ordenados = [self.pert_graph.edges[edge]['activity'] for edge in aristas_ordenadas]
+		H = pd.DataFrame(nx.incidence_matrix(self.pert_graph, oriented=True, nodelist=nodos_ordenados,
+		                                     edgelist=aristas_ordenadas).toarray().T,
+		                 index=nombres_ordenados, columns=nodos_ordenados)
+		return H
+	
+	def nullspace(self):
+		nodos_ordenados = sorted(self.pert_graph.nodes)
+		H = self.incidence_matrix()
+		nullspace = H.drop(columns=[nodos_ordenados[0], nodos_ordenados[-1]])
+		return nullspace
+	
 class EarnedValue():
 	def __init__(self, pert):
 		self.pert = pert
