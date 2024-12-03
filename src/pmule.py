@@ -1010,7 +1010,7 @@ class ProjectGraph:
 		nombres_ordenados = [self.pert_graph.edges[edge]['activity'] for edge in aristas_ordenadas]
 		H = pd.DataFrame(nx.incidence_matrix(self.pert_graph, oriented=True, nodelist=nodos_ordenados,
 		                                     edgelist=aristas_ordenadas).toarray().T,
-		                 index=nombres_ordenados, columns=nodos_ordenados)
+		                 index=nombres_ordenados, columns=nodos_ordenados).astype(int)
 		return H
 	
 	def nullspace(self):
@@ -1172,4 +1172,37 @@ def ordena_rutas(rutas, importancia_actividades, importancia_rutas):
   rutas = rutas.style.map(lambda x: '' if pd.Series(x).name == 'Importancia' else highlight_positive(x), subset=rutas.columns.drop('Importancia'))
 
   return rutas
+
+
+def highlight_blue_red(df_or_array): # chatgpt dixit
+    """
+    Takes a DataFrame or a NumPy array and returns a styled DataFrame
+    with:
+    - A blue background for cells where the value is 1 or True.
+    - A red background for cells where the value is -1 or False.
+
+    Parameters:
+        df_or_array (pd.DataFrame or np.ndarray): The input data.
+
+    Returns:
+        pd.io.formats.style.Styler: A styled DataFrame.
+    """
+    # Ensure the input is a DataFrame
+    if isinstance(df_or_array, np.ndarray):
+        df = pd.DataFrame(df_or_array)
+    elif isinstance(df_or_array, pd.DataFrame):
+        df = df_or_array
+    else:
+        raise ValueError("Input must be a pandas DataFrame or a NumPy array.")
+
+    # Define the style function
+    def style_cell(val):
+        if val == 1 or val is True:
+            return "background-color: blue; color: white;"
+        elif val == -1 or val is False:
+            return "background-color: red; color: white;"
+        return ""
+
+    # Apply the style to the DataFrame
+    return df.style.map(style_cell)
 
