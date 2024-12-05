@@ -316,11 +316,12 @@ class ProjectGraph:
 		edges_from_nodes = self.edges_from_nodes
 		result = []
 		for index, path in enumerate(nx.all_simple_edge_paths(self.pert_graph, source=first_node, target=last_node), 1):
-			result.append(list(edges_from_nodes[source, target] for source, target in path))
+			new_item = list(edges_from_nodes[source, target] for source, target in path)
 			if not dummies:
-				result.append(list(filter(lambda x: x[0] != '@', result[f'Route_{index}'])))
+				new_item = list(filter(lambda x: x[0] != '@', new_item))
+			result.append(new_item)
 		
-		result = {'Route_' + str(i + 1): value for i, value in enumerate(result)}
+		result = {'Route_' + str(i + 1): value for i, value in enumerate(sorted(result))}
 		return result
 	
 	def path_matrix(self, dummies=True):
