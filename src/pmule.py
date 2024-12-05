@@ -623,11 +623,11 @@ class ProjectGraph:
 	def gantt(self,
 	          data,
 	          duration_label,
-	          resource_label=None,
-	          total=None,
-	          acumulado=False,
-	          holguras=False,
-	          cuadrados=False):
+	          resource_label = None,
+	          total          = None,
+	          acumulado      = False,
+	          holguras       = False,
+	          cuadrados      = False):
 		
 		my_data = data.copy()
 		
@@ -1050,7 +1050,7 @@ class EarnedValue():
 		                           'AC_per_period',
 		                           total='ambas',
 		                           acumulado=True)
-		my_data.loc[:, 'EV'] = my_data.loc[:, 'PV_per_period'] * my_data.loc[:, percentage_complete_label]
+		my_data.loc[:, 'EV'] = my_data.loc[:, PV_label] * my_data.loc[:, percentage_complete_label]
 		my_data.loc[:, 'EV_per_period'] = my_data.loc[:, 'EV'] / my_data.loc[:, actual_durations_label]
 
 		gantt_EV = self.pert.gantt(my_data,
