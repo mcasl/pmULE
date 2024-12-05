@@ -314,11 +314,13 @@ class ProjectGraph:
 	def paths(self, dummies=True):
 		first_node, last_node = self.nodes[0], self.nodes[-1]
 		edges_from_nodes = self.edges_from_nodes
-		result = {}
+		result = []
 		for index, path in enumerate(nx.all_simple_edge_paths(self.pert_graph, source=first_node, target=last_node), 1):
-			result[f'Route_{index}'] = list(edges_from_nodes[source, target] for source, target in path)
+			result.append(list(edges_from_nodes[source, target] for source, target in path))
 			if not dummies:
-				result[f'Route_{index}'] = list(filter(lambda x: x[0] != '@', result[f'Route_{index}']))
+				result.append(list(filter(lambda x: x[0] != '@', result[f'Route_{index}'])))
+		
+		result = {'Route_' + str(i + 1): value for i, value in enumerate(result)}
 		return result
 	
 	def path_matrix(self, dummies=True):
