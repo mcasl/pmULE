@@ -877,7 +877,7 @@ class ProjectGraph:
 			print('Suma de cuadrados:', suma_cuadrados, '\n')
 		return gantt, dibujo
 	
-	def desplazar(self, data, duration_label, resource_label, report=True, **activity_shifts):
+	def desplazar(self, data, duration_label, resource_label, report=True, tikz=False, **activity_shifts):
 		my_data = data.copy()
 		
 		for actividad, duracion in activity_shifts.items():
@@ -887,7 +887,7 @@ class ProjectGraph:
 			else:
 				nueva_fila = pd.Series({duration_label: duracion},
 									   name=slide_label,
-									   index=my_data.columns).fillna(0)
+									   index=my_data.columns).fillna(0).astype(int)
 				my_data = pd.concat([my_data, nueva_fila.to_frame().T], axis=0)
 		
 		lista_edges = list(self.pert_graph.edges)
@@ -908,7 +908,8 @@ class ProjectGraph:
 		nx.set_node_attributes(self.pert_graph, {nodo: {'id': (id + 1)} for id, nodo in enumerate(lista_nodos)})
 		
 		if report and (resource_label in my_data.columns):
-			return my_data, representacion, dibujo
+			gantt_df, dibujo = self.gantt_cargas(my_data, duration_label, resource_label, tikz=tikz)
+			return my_data, gantt_df, dibujo
 	
 	def evaluar_desplazamiento(self, data, duration_label, resource_label, report=True, **desplazamientos):
 		proyecto = self.copy()
@@ -1280,6 +1281,7 @@ def make_gantt_tikz(gantt_data,
 	names_width                     = params.get('names_width', 						2)
 	extra_cols_width                = params.get('extra_cols_width', 					2)
 	number_of_periods			    = params.get('number_of_periods', (gantt_data['start'] + gantt_data['duration']).max())
+	number_of_periods			    = int(number_of_periods)
 	regular_background_color 		= params.get('regular_background_color', 			"white!80!green")
 	critical_background_color 		= params.get('critical_background_color', 			"red")
 	regular_text_color 				= params.get('regular_text_color', 					"black")
