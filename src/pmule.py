@@ -34,7 +34,7 @@ def read_rcp(filename):
 		num_digits = len(str(data['num_activities']))
 		
 		data['predecessors'] = {f'A{str(iteration + 1).zfill(num_digits)}': [] for iteration in
-		                        range(data['num_activities'])}
+								range(data['num_activities'])}
 		second_line = lines[1].strip().split()
 		
 		resource_columns = [f"Resource {i + 1}" for i in range(data['num_resources'])]
@@ -80,7 +80,7 @@ def read_rcp(filename):
 		
 		# Create resource DataFrame
 		data['resources'] = pd.DataFrame(resource_data, columns=resource_columns,
-		                                 index=[activity['name'] for activity in data['activities']])
+							index=[activity['name'] for activity in data['activities']])
 		
 		# Convert predecessors values to comma-separated strings
 		for key in data['predecessors']:
@@ -104,10 +104,10 @@ class PredecessorTable:
 	def from_dict_of_strings(data: Dict[str, str], simplify=True):
 		def replace_and_split(x):
 			result = set(x.replace(' ', '')
-			             .replace('-', '')
-			             .replace(';', ',')
-			             .split(',')
-			             ) - {''}
+							.replace('-', '')
+							.replace(';', ',')
+							.split(',')
+							) - {''}
 			return result
 		
 		dict_of_sets = {key: replace_and_split(value) for key, value in data.items()}
@@ -122,7 +122,7 @@ class PredecessorTable:
 	
 	@staticmethod
 	def from_dataframe_of_strings(data: pd.DataFrame, activity: str, predecessor: str,
-	                              simplify=True) -> 'PredecessorTable':
+									simplify=True) -> 'PredecessorTable':
 		dataframe = data.reset_index().copy(deep=True)
 		miniframe = dataframe.loc[:, [activity, predecessor]]
 		miniframe.set_index(activity, inplace=True)
@@ -138,11 +138,11 @@ class PredecessorTable:
 		self.immediate_predecessor = dict(sorted(data.items()))
 		# distant_predecessor MUST be calculated before immediate_predecessor. It is used by calculate_immediate_predecessor_of
 		self.distant_predecessor = {key: self.calculate_distant_predecessor_of(key) for key in
-		                            self.immediate_predecessor.keys()}
+									self.immediate_predecessor.keys()}
 		self.distant_predecessor = dict(sorted(self.distant_predecessor.items()))
 		if simplify:
 			self.immediate_predecessor = {key: self.calculate_immediate_predecessor_of(key) for key in
-			                              self.immediate_predecessor.keys()}
+											self.immediate_predecessor.keys()}
 			self.immediate_predecessor = dict(sorted(self.immediate_predecessor.items()))
 	
 	@property
@@ -197,8 +197,8 @@ class PredecessorTable:
 	@property
 	def dummies(self):
 		result = (self.augmented_predecessor.keys()
-		          | chain.from_iterable(self.augmented_predecessor.values())
-		          ) - set(self.activity_names)
+				  | chain.from_iterable(self.augmented_predecessor.values())
+				  ) - set(self.activity_names)
 		return result
 	
 	@property
@@ -218,12 +218,12 @@ class PredecessorTable:
 			return name.replace('@', '').split('⤑') + [{'activity': name}]
 		
 		edgelist_dummy_activities = list(create_edge_info_for_dummy(name)
-		                                 for name in chain.from_iterable(self.augmented_predecessor.values())
-		                                 if name[0] == '@'
-		                                 )
+										 for name in chain.from_iterable(self.augmented_predecessor.values())
+										 if name[0] == '@'
+										 )
 		
 		edgelist_actual_activities = list((f'Δ{name}', f'∇{name}', {'activity': name})
-		                                  for name in self.activity_names)
+										  for name in self.activity_names)
 		edgelist = edgelist_dummy_activities + edgelist_actual_activities
 		
 		pert_graph = nx.from_edgelist(edgelist, create_using=nx.DiGraph)
@@ -300,14 +300,14 @@ class ProjectGraph:
 	
 	@staticmethod
 	def from_dataframe_of_strings(data: pd.DataFrame,
-	                              activity: str,
-	                              predecessor: str,
-	                              simplify=True) -> 'PredecessorTable':
+								  activity: str,
+								  predecessor: str,
+								  simplify=True) -> 'PredecessorTable':
 		# for simplify see the reasons in from_dict_of_strings
 		result_table = PredecessorTable.from_dataframe_of_strings(data=data,
-		                                                          activity=activity,
-		                                                          predecessor=predecessor,
-		                                                          simplify=simplify)
+																  activity=activity,
+																  predecessor=predecessor,
+																  simplify=simplify)
 		result_project = result_table.create_project(simplify=simplify)
 		return result_project
 	
@@ -373,21 +373,21 @@ class ProjectGraph:
 		# new_graph = nx.convert_node_labels_to_integers(new_project.pert_graph, ordering='increasing degree', first_label=1)
 		# new_graph = nx.relabel_nodes(new_graph, {id: str(id) for id in new_graph.nodes})
 		new_graph = nx.relabel_nodes(new_project.pert_graph,
-		                             {id: str(indice + 1) for indice, id in
-		                              enumerate(nx.topological_sort(new_project.pert_graph))})
+									 {id: str(indice + 1) for indice, id in
+									  enumerate(nx.topological_sort(new_project.pert_graph))})
 		return ProjectGraph(new_graph)
 	
 	@property
 	def nodes_from_edges(self) -> Dict[str, Tuple[str, str]]:  # activity_name: (source, target)
 		list_of_dicts = list({attributes['activity']: (f'{source}', f'{target}')}
-		                     for (source, target, attributes) in self.pert_graph.edges(data=True))
+							 for (source, target, attributes) in self.pert_graph.edges(data=True))
 		combined_dict = reduce(lambda x, y: {**x, **y}, list_of_dicts, {})
 		return combined_dict
 	
 	@property
 	def edges_from_nodes(self):
 		list_of_dicts = list({(f'{source}', f'{target}'): attributes['activity']}
-		                     for (source, target, attributes) in self.pert_graph.edges(data=True))
+							 for (source, target, attributes) in self.pert_graph.edges(data=True))
 		combined_dict = reduce(lambda x, y: {**x, **y}, list_of_dicts, {})
 		return combined_dict
 	
@@ -418,8 +418,8 @@ class ProjectGraph:
 		source, target = self.nodes_from_edges[activity]
 		edges_from_nodes_dict = self.edges_from_nodes
 		predecessors = [edges_from_nodes_dict[(s, t)]
-		                for s, t, reverse
-		                in nx.edge_dfs(self.pert_graph, source=source, orientation='reverse')]
+						for s, t, reverse
+						in nx.edge_dfs(self.pert_graph, source=source, orientation='reverse')]
 		
 		result = predecessors if dummies else filter(lambda x: x[0] != '@', predecessors)
 		return set(result)
@@ -469,13 +469,13 @@ class ProjectGraph:
 		H_total = pd.Series(0, index=self.activities).apply(dtype)
 		for nodo_id in nodos[1:]:
 			tempranos[nodo_id] = max(tempranos[source] + duraciones.get(edges_from_nodes[(source, target)])
-			                         for (source, target) in self.pert_graph.in_edges(nodo_id)
-			                         )
+									 for (source, target) in self.pert_graph.in_edges(nodo_id)
+									 )
 		tardios[nodos[-1]] = tempranos[nodos[-1]]
 		for nodo_id in nodos[-2::-1]:
 			tardios[nodo_id] = min(tardios[target] - duraciones.get(edges_from_nodes[(source, target)])
-			                       for (source, target) in self.pert_graph.out_edges(nodo_id)
-			                       )
+								   for (source, target) in self.pert_graph.out_edges(nodo_id)
+								   )
 		
 		for (source, target) in self.pert_graph.edges():
 			activity_name = edges_from_nodes[(source, target)]
@@ -489,9 +489,9 @@ class ProjectGraph:
 	def calendar(self, duraciones):
 		
 		calendario = pd.DataFrame(0, index=duraciones.index, columns=['inicio_mas_temprano',
-		                                                              'inicio_mas_tardio',
-		                                                              'fin_mas_temprano',
-		                                                              'fin_mas_tardio'])
+																	  'inicio_mas_tardio',
+																	  'fin_mas_temprano',
+																	  'fin_mas_tardio'])
 		
 		resultados_pert = self.calculate_pert(duraciones)
 		calendario['H_total'] = resultados_pert['activities']['H_total']
@@ -548,16 +548,16 @@ class ProjectGraph:
 		return z
 	
 	def pert(self,
-	         filename=None,
-	         durations=False,
-	         size=None,
-	         orientation='landscape',
-	         rankdir='LR',
-	         ordering='out',
-	         ranksep=0.5,
-	         nodesep=0.5,
-	         rotate=0,
-	         **kwargs):
+			 filename=None,
+			 durations=False,
+			 size=None,
+			 orientation='landscape',
+			 rankdir='LR',
+			 ordering='out',
+			 ranksep=0.5,
+			 nodesep=0.5,
+			 rotate=0,
+			 **kwargs):
 		if filename is None:
 			filename = 'output_pert_figure.svg'
 		
@@ -570,14 +570,14 @@ class ProjectGraph:
 			H_total = resultados_pert['activities']['H_total']
 		
 		dot_graph = pgv.AGraph(size=size,
-		                       orientation=orientation,
-		                       rankdir=rankdir,
-		                       ordering=ordering,
-		                       ranksep=ranksep,
-		                       nodesep=nodesep,
-		                       rotate=rotate,
-		                       directed=True,
-		                       **kwargs)
+							   orientation=orientation,
+							   rankdir=rankdir,
+							   ordering=ordering,
+							   ranksep=ranksep,
+							   nodesep=nodesep,
+							   rotate=rotate,
+							   directed=True,
+							   **kwargs)
 		
 		dot_graph.node_attr['shape'] = 'Mrecord'
 		dot_graph.add_edges_from(self.pert_graph.edges)
@@ -587,12 +587,12 @@ class ProjectGraph:
 			
 			if isinstance(durations, pd.Series) or durations:
 				current_node.attr['label'] = (f"{node_number} | {{ "
-				                              f"<early> {tempranos[node_number]} | "
-				                              f"<last>  {tardios[node_number]} }}")
+											  f"<early> {tempranos[node_number]} | "
+											  f"<last>  {tardios[node_number]} }}")
 			else:
 				current_node.attr['label'] = (f"{node_number} | {{ "
-				                              f"<early>  | "
-				                              f"<last>   }}")
+											  f"<early>  | "
+											  f"<last>   }}")
 		
 		for origin, destination in dot_graph.edges_iter():
 			current_edge = dot_graph.get_edge(origin, destination)
@@ -602,7 +602,7 @@ class ProjectGraph:
 			activity_name = self.edges_from_nodes[(origin, destination)]
 			if isinstance(durations, pd.Series) or durations:
 				current_edge.attr['label'] = (f"{activity_name}"
-				                              f"({duraciones[activity_name]})")
+											  f"({duraciones[activity_name]})")
 				if H_total[activity_name] == 0:
 					current_edge.attr['color'] = 'red:red'
 					current_edge.attr['fontcolor'] = 'red'
@@ -623,14 +623,15 @@ class ProjectGraph:
 			return SVG(filename)
 		return Image(filename)
 	
-	def gantt(self,
-	          data,
-	          duration_label,
-	          resource_label = None,
-	          total          = None,
-	          acumulado      = False,
-	          holguras       = False,
-	          cuadrados      = False):
+	
+	def gantt_tikz(self,
+			  data,
+			  duration_label,
+			  resource_label = None,
+			  total          = None,
+			  acumulado      = False,
+			  holguras       = False,
+			  cuadrados      = False):
 		
 		my_data = data.copy()
 		
@@ -647,7 +648,100 @@ class ProjectGraph:
 		duracion_proyecto = tempranos.max()
 		periodos = range(1, ceil(duracion_proyecto) + 1)
 		actividades_con_duracion = [nombre for nombre in self.activities if
-		                            my_data.loc[:, duration_label].get(nombre, 0) != 0]
+									my_data.loc[:, duration_label].get(nombre, 0) != 0]
+		actividades_con_duracion.sort()
+		gantt = pd.DataFrame('', index=actividades_con_duracion, columns=periodos)
+		gantt_data = pd.DataFrame(index=actividades_con_duracion, columns=['start', 'duration'])		
+		for edge in self.pert_graph.edges:
+			activity_name = self.pert_graph.edges[edge]['activity']
+			if activity_name[0] == '@':
+				continue
+			duracion_tarea = my_data.loc[:, duration_label].get(activity_name, 0)
+			if duracion_tarea != 0:
+				comienzo_tarea = tempranos[edge[0]]
+				gantt.loc[activity_name,
+						(comienzo_tarea + 1):(comienzo_tarea + duracion_tarea)
+						] = my_data.loc[activity_name, resource_label]
+				gantt_data.loc[activity_name, ['start', 'duration']] = [comienzo_tarea,  duracion_tarea]
+				
+	
+		def summary(df, fn=np.sum, axis=0, name='Total'):
+			df_total = df.replace('', 0)
+			total = df_total.apply(fn, axis=axis).to_frame(name)
+			if axis == 0:
+				total = total.T
+			out = pd.concat([df, total], axis=axis)
+			return out
+		
+		if total is None:
+			mat = gantt
+		
+		elif total == 'columna':
+			mat = summary(gantt, axis=1)
+		
+		elif total == 'fila':
+			mat = summary(gantt, axis=0)
+			if acumulado:
+				fila_acumulado = mat.loc['Total'].cumsum()
+				fila_acumulado.name = 'Acumulado'
+				mat = pd.concat([mat, fila_acumulado.to_frame().T], axis=0).fillna('')
+			if cuadrados:
+				fila_cuadrados = mat.loc['Total'] ** 2
+				fila_cuadrados.name = 'Cuadrados'
+				mat = pd.concat([mat, fila_cuadrados.to_frame().T], axis=0).fillna('')
+		elif total == 'ambas':
+			mat = summary(summary(gantt, axis=0), axis=1)
+			if acumulado:
+				fila_acumulado = mat.loc['Total'].drop('Total').cumsum()
+				fila_acumulado.name = 'Acumulado'
+				mat = pd.concat([mat, fila_acumulado.to_frame().T], axis=0).fillna('')
+		
+		mat['H_total'] = resultados_pert['activities']['H_total']
+		if total in ['fila', 'ambas']:
+			mat.loc['Total', 'H_total'] = None
+		gantt_data['Htotal'] = mat['H_total'].astype('Int64')
+		#gantt_data = gantt_data.astype('Int64', errors='ignore')
+		resultado = make_gantt_tikz(
+      							gantt_data=gantt_data,
+                              	number_of_periods=duracion_proyecto,
+                                extra_cols=gantt_data[['Htotal']])
+		
+		return resultado
+	
+	def gantt(self,
+			  data,
+			  duration_label,
+			  resource_label = None,
+			  total          = None,
+			  acumulado      = False,
+			  holguras       = False,
+			  cuadrados      = False,
+ 			  tikz           = False):
+		if tikz:
+			return self.gantt_tikz( data,
+									duration_label,
+									resource_label,
+									total         ,
+									acumulado     ,
+									holguras      ,
+									cuadrados     ,
+									)
+		my_data = data.copy()
+		
+		if resource_label is None:
+			resource_label = 'resources'
+			my_data[resource_label] = '  '
+		
+		if isinstance(resource_label, str) and resource_label == 'names':
+			resource_label = 'resources'
+			my_data[resource_label] = my_data.index
+		
+		resultados_pert = self.calculate_pert(my_data.loc[:, duration_label])
+		tempranos = resultados_pert['nodes']['early']
+		duracion_proyecto = tempranos.max()
+		periodos = range(1, ceil(duracion_proyecto) + 1)
+		actividades_con_duracion = [nombre for nombre in self.activities if
+									my_data.loc[:, duration_label].get(nombre, 0) != 0]
 		actividades_con_duracion.sort()
 		gantt = pd.DataFrame('', index=actividades_con_duracion, columns=periodos)
 		
@@ -728,29 +822,29 @@ class ProjectGraph:
 				mat.loc['Total', 'H_total'] = None
 		
 		resultado = (mat
-		             .style
-		             .set_table_styles(styles)
-		             .map(color_gantt)
-		             .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
-		                               else '' for i in x], axis=0)
-		             .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
-		                               else '' for i in x], axis=1)
-		             
-		             )
+					 .style
+					 .set_table_styles(styles)
+					 .map(color_gantt)
+					 .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
+									   else '' for i in x], axis=0)
+					 .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
+									   else '' for i in x], axis=1)
+					 
+					 )
 		
 		return resultado
 	
 	def roy(self,
-	        filename=None,
-	        duraciones=False,
-	        size=None,
-	        orientation='landscape',
-	        rankdir='LR',
-	        ordering='out',
-	        ranksep=0.5,
-	        nodesep=0.5,
-	        rotate=0,
-	        **kwargs):
+			filename=None,
+			duraciones=False,
+			size=None,
+			orientation='landscape',
+			rankdir='LR',
+			ordering='out',
+			ranksep=0.5,
+			nodesep=0.5,
+			rotate=0,
+			**kwargs):
 		# precedentes = (self.data.precedentes
 		#               .drop([actividad for actividad in self.data.index if actividad[0] == 'f'])
 		#               )
@@ -780,14 +874,14 @@ class ProjectGraph:
 			inicio_mas_tardio['fin'] = inicio_mas_temprano['fin']
 		
 		dot_graph = pgv.AGraph(size=size,
-		                       orientation=orientation,
-		                       rankdir=rankdir,
-		                       ordering=ordering,
-		                       ranksep=ranksep,
-		                       nodesep=nodesep,
-		                       rotate=rotate,
-		                       directed=True,
-		                       **kwargs)
+							   orientation=orientation,
+							   rankdir=rankdir,
+							   ordering=ordering,
+							   ranksep=ranksep,
+							   nodesep=nodesep,
+							   rotate=rotate,
+							   directed=True,
+							   **kwargs)
 		
 		dot_graph.node_attr['shape'] = 'Mrecord'
 		dot_graph.add_edges_from(self.roy_graph.edges)
@@ -796,14 +890,14 @@ class ProjectGraph:
 			current_node = dot_graph.get_node(nodo)
 			if duraciones is not False:
 				current_node.attr['label'] = (f"{nodo} | {{ "
-				                              f"<min> {inicio_mas_temprano[str(nodo)]} |"
-				                              f"<dur> {duraciones[str(nodo)]}          | "
-				                              f"<max> {inicio_mas_tardio[str(nodo)]}   }}")
+											  f"<min> {inicio_mas_temprano[str(nodo)]} |"
+											  f"<dur> {duraciones[str(nodo)]}          | "
+											  f"<max> {inicio_mas_tardio[str(nodo)]}   }}")
 			else:
 				current_node.attr['label'] = (f"{nodo} | {{ "
-				                              f"<min>  | "
-				                              f"<dur>  | "
-				                              f"<max>   }}")
+											  f"<min>  | "
+											  f"<dur>  | "
+											  f"<max>   }}")
 		
 		dot_graph.draw(filename, prog='dot')
 		return Image(filename)
@@ -812,7 +906,7 @@ class ProjectGraph:
 		my_data = data.copy()
 		
 		gantt = self.gantt(my_data, duration_label, resource_label, total='fila', acumulado=False, holguras=True,
-		                   cuadrados=True)
+						   cuadrados=True)
 		gantt.data.loc['Total', 'H_total'] = np.nan
 		suma_cuadrados = gantt.data.loc['Cuadrados', :].sum()
 		gantt.data.loc['Cuadrados', 'H_total'] = suma_cuadrados
@@ -829,8 +923,8 @@ class ProjectGraph:
 				my_data.loc[slide_label, duration_label] += duracion
 			else:
 				nueva_fila = pd.Series({duration_label: duracion},
-				                       name=slide_label,
-				                       index=my_data.columns).fillna(0)
+									   name=slide_label,
+									   index=my_data.columns).fillna(0)
 				my_data = pd.concat([my_data, nueva_fila.to_frame().T], axis=0)
 		
 		lista_edges = list(self.pert_graph.edges)
@@ -860,9 +954,9 @@ class ProjectGraph:
 		my_data = data.copy()
 		
 		new_data = proyecto.desplazar(my_data,
-		                              duration_label=duration_label,
-		                              resource_label=resource_label,
-		                              **desplazamientos, report=report)
+									  duration_label=duration_label,
+									  resource_label=resource_label,
+									  **desplazamientos, report=report)
 		return proyecto.gantt_cargas(new_data, duration_label, resource_label, report=False).data.loc['Cuadrados', 'H_total']
 	
 	def evaluar_rango_de_desplazamientos(self, data, duration_label, resource_label, activity, report=True):
@@ -874,9 +968,9 @@ class ProjectGraph:
 		if report:
 			print('Sin desplazar:')
 		suma_cuadrados.loc[0, 'Suma_de_cuadrados'] = self.gantt_cargas(my_data,
-		                                                               duration_label,
-		                                                               resource_label,
-		                                                               report=report).data.loc['Cuadrados', 'H_total']
+																	   duration_label,
+																	   resource_label,
+																	   report=report).data.loc['Cuadrados', 'H_total']
 		for slide in range(minimo + 1, maximo + 1):
 			if report:
 				print('Desplazamiento:', slide)
@@ -889,7 +983,7 @@ class ProjectGraph:
 		varianza.update(variances)
 		caminos = self.critical_path(durations=durations)
 		varianza_caminos = {key: sum(varianza[activity] for activity in path)
-		                    for key, path in caminos.items()}
+							for key, path in caminos.items()}
 		[print('Variance path:', key, ':', value) for key, value in varianza_caminos.items()]
 		varianza_proyecto = max(varianza_caminos.values())
 		std_deviation = varianza_proyecto ** 0.5
@@ -954,10 +1048,10 @@ class ProjectGraph:
 			critical_paths = self.critical_path(durations)
 			critical_path_matrix = result.loc[critical_paths.keys(), activity_names]
 			mini_path_matrix = (result
-			                    .loc[critical_paths.keys(), self.actual_activities]
-			                    .loc[:, periods_available != 0]
-			                    
-			                    )
+								.loc[critical_paths.keys(), self.actual_activities]
+								.loc[:, periods_available != 0]
+								
+								)
 			mini_path_matrix_filtered = mini_path_matrix.apply(lambda x: mini_path_matrix.columns[x.notna()], axis=1)
 			
 			mini_path_matrix_filtered_has_empty_rows = any(mini_path_matrix_filtered.apply(len) == 0)
@@ -966,7 +1060,7 @@ class ProjectGraph:
 				break
 			
 			costes = {key: calculate_reduction_cost(key, costs) for key in
-			          product(*mini_path_matrix_filtered.values)}
+					  product(*mini_path_matrix_filtered.values)}
 			best_option[step] = list(set(min(costes, key=costes.get)))
 			print(
 				f'Step: {step},\t Best option: {best_option[step]}, \t Cost: {calculate_reduction_cost(best_option[step], costs)}, \t Critical paths: {list(critical_paths.keys())}')
@@ -985,19 +1079,19 @@ class ProjectGraph:
 		curs = idx[path_names, activity_names]
 		
 		result = (result
-		          .astype(float)
-		          .style
-		          .set_table_styles([dict(selector='th', props=[('text-align', 'center'), ('border', '1px')]),
-		                             dict(selector="", props=[("border", "1px solid")]),
-		                             ])
-		          
-		          .format(na_rep="", precision=1)
-		          .map(highlight_cur, subset=curs)
-		          # .apply(lambda x: ['background-color: cyan' for _ in x], axis=1, subset=abajo )
-		          # .apply(lambda x: ['background-color: cyan' for _ in x], axis=1, subset=derecha )
-		          .apply(highlight_maximum, axis=0, subset=derecha)
-		          # .apply(highlight_minimum, axis=1, subset=filas_steps)
-		          )
+				  .astype(float)
+				  .style
+				  .set_table_styles([dict(selector='th', props=[('text-align', 'center'), ('border', '1px')]),
+									 dict(selector="", props=[("border", "1px solid")]),
+									 ])
+				  
+				  .format(na_rep="", precision=1)
+				  .map(highlight_cur, subset=curs)
+				  # .apply(lambda x: ['background-color: cyan' for _ in x], axis=1, subset=abajo )
+				  # .apply(lambda x: ['background-color: cyan' for _ in x], axis=1, subset=derecha )
+				  .apply(highlight_maximum, axis=0, subset=derecha)
+				  # .apply(highlight_minimum, axis=1, subset=filas_steps)
+				  )
 		for index in range(step):
 			for activity in best_option[index]:
 				recortadas = idx[index, activity]
@@ -1012,8 +1106,8 @@ class ProjectGraph:
 		aristas_ordenadas = [x for _, x in sorted(zip(nombres_sin_ordenar, aristas_sin_ordenar))]
 		nombres_ordenados = [self.pert_graph.edges[edge]['activity'] for edge in aristas_ordenadas]
 		H = pd.DataFrame(nx.incidence_matrix(self.pert_graph, oriented=True, nodelist=nodos_ordenados,
-		                                     edgelist=aristas_ordenadas).toarray().T,
-		                 index=nombres_ordenados, columns=nodos_ordenados).astype(int)
+											 edgelist=aristas_ordenadas).toarray().T,
+						 index=nombres_ordenados, columns=nodos_ordenados).astype(int)
 		return H
 	
 	def nullspace(self):
@@ -1027,12 +1121,12 @@ class EarnedValue():
 		self.pert = pert
 	
 	def calcula_gantts(self,
-	                   data,
-	                   planned_durations_label,
-	                   actual_durations_label,
-	                   PV_label,
-	                   AC_label,
-	                   percentage_complete_label):
+					   data,
+					   planned_durations_label,
+					   actual_durations_label,
+					   PV_label,
+					   AC_label,
+					   percentage_complete_label):
 		my_data = data.copy()
 		
 		if any(my_data.loc[:, percentage_complete_label] > 1):
@@ -1041,31 +1135,31 @@ class EarnedValue():
 		
 		my_data.loc[:, 'PV_per_period'] = my_data.loc[:, PV_label]  / my_data.loc[:, planned_durations_label]
 		gantt_PV = self.pert.gantt(my_data,
-		                           planned_durations_label,
-		                           'PV_per_period',
-		                           total='ambas',
-		                           acumulado=True)
+								   planned_durations_label,
+								   'PV_per_period',
+								   total='ambas',
+								   acumulado=True)
 		
 		my_data.loc[:, 'AC_per_period'] = (my_data.loc[:, AC_label] / my_data.loc[:, actual_durations_label])
 		
 		gantt_AC = self.pert.gantt(my_data,
-		                           actual_durations_label,
-		                           'AC_per_period',
-		                           total='ambas',
-		                           acumulado=True)
+								   actual_durations_label,
+								   'AC_per_period',
+								   total='ambas',
+								   acumulado=True)
 		my_data.loc[:, 'EV'] = my_data.loc[:, PV_label] * my_data.loc[:, percentage_complete_label]
 		my_data.loc[:, 'EV_per_period'] = my_data.loc[:, 'EV'] / my_data.loc[:, actual_durations_label]
 
 		gantt_EV = self.pert.gantt(my_data,
-		                           actual_durations_label,
-		                           'EV_per_period',
-		                           total='ambas',
-		                           acumulado=True)
+								   actual_durations_label,
+								   'EV_per_period',
+								   total='ambas',
+								   acumulado=True)
 		
 		acumulados = pd.DataFrame(dict(PV=gantt_PV.data.loc['Total', :].cumsum(),
-		                               EV=gantt_EV.data.loc['Total', :].cumsum(),
-		                               AC=gantt_AC.data.loc['Total', :].cumsum(), ),
-		                          index=gantt_EV.data.columns).drop('Total')
+									   EV=gantt_EV.data.loc['Total', :].cumsum(),
+									   AC=gantt_AC.data.loc['Total', :].cumsum(), ),
+								  index=gantt_EV.data.columns).drop('Total')
 		
 		return dict(Gantt_PV=gantt_PV, Gantt_AC=gantt_AC, Gantt_EV=gantt_EV, acumulados=acumulados)
 
@@ -1075,12 +1169,12 @@ def make_Roy(linkage_matrix):
 	graph.add_nodes_from(['start', 'finish'])
 	
 	enlaces_iniciales = [('start', actividad) for actividad in linkage_matrix.index
-	                     if not any(linkage_matrix.loc[actividad, :])]
+						 if not any(linkage_matrix.loc[actividad, :])]
 	
 	graph.add_edges_from(enlaces_iniciales)
 	
 	enlaces_finales = [(actividad, 'finish') for actividad in linkage_matrix.index
-	                   if not any(linkage_matrix.loc[:, actividad])]
+					   if not any(linkage_matrix.loc[:, actividad])]
 	
 	graph.add_edges_from(enlaces_finales)
 	
@@ -1091,121 +1185,231 @@ def make_Roy(linkage_matrix):
 
 class LatexArray(np.ndarray):
 # chatgpt dixit
-    """
-    A subclass of numpy.ndarray with a custom _repr_mimebundle_ method
-    for LaTeX rendering.
-    """
-    def __new__(cls, input_array):
-        # Create an instance of LatexArray
-        obj = np.asarray(input_array).view(cls)
-        return obj
+	"""
+	A subclass of numpy.ndarray with a custom _repr_mimebundle_ method
+	for LaTeX rendering.
+	"""
+	def __new__(cls, input_array):
+		# Create an instance of LatexArray
+		obj = np.asarray(input_array).view(cls)
+		return obj
 
-    def _repr_mimebundle_(self, include=None, exclude=None):
-        """
-        Custom MIME bundle representation for Jupyter Notebook.
-        Returns a LaTeX representation if the array is 2D.
-        """
-        if self.ndim != 2:
-            return {}, None  # Fallback for non-2D arrays
+	def _repr_mimebundle_(self, include=None, exclude=None):
+		"""
+		Custom MIME bundle representation for Jupyter Notebook.
+		Returns a LaTeX representation if the array is 2D.
+		"""
+		if self.ndim != 2:
+			return {}, None  # Fallback for non-2D arrays
 
-        # Convert the array to LaTeX bmatrix
-        rows = [" & ".join(map(str, row)) for row in self]
-        latex_str = "\\begin{bmatrix}\n" + " \\\\\n".join(rows) + "\n\\end{bmatrix}"
+		# Convert the array to LaTeX bmatrix
+		rows = [" & ".join(map(str, row)) for row in self]
+		latex_str = "\\begin{bmatrix}\n" + " \\\\\n".join(rows) + "\n\\end{bmatrix}"
 
-        return {
-            "text/latex": f"${latex_str}$"
-        }, None
+		return {
+			"text/latex": f"${latex_str}$"
+		}, None
 
 
 
 def SVD(rutas):
-  U, S, VT = np.linalg.svd(rutas, full_matrices=True)
+	U, S, VT = np.linalg.svd(rutas, full_matrices=True)
 
-  # Create a diagonal matrix from S (singular values)
-  S = np.diag(S)
+	# Create a diagonal matrix from S (singular values)
+	S = np.diag(S)
 
-  # Pad the diagonal matrix to match the original dimensions of rutas
-  m, n = rutas.shape
-  if m > n:
-      # If m > n, pad with zeros to make S_full m x m
-      S = np.pad(S, ((0, m - n), (0, 0)), mode='constant')
-  elif m < n:
-      # If m < n, pad with zeros to make S_full n x n
-      S = np.pad(S, ((0, 0), (0, n - m)), mode='constant')
-  return {'U': U, 'S': S, 'VT':VT}
+	# Pad the diagonal matrix to match the original dimensions of rutas
+	m, n = rutas.shape
+	if m > n:
+		# If m > n, pad with zeros to make S_full m x m
+		S = np.pad(S, ((0, m - n), (0, 0)), mode='constant')
+	elif m < n:
+		# If m < n, pad with zeros to make S_full n x n
+		S = np.pad(S, ((0, 0), (0, n - m)), mode='constant')
+	return {'U': U, 'S': S, 'VT':VT}
 
 def pretty(x, dec=0, latex=False, **kwds):
-  if latex:
-    pretty_function = to_ltx
-  else:
-    pretty_function = to_jup
+	if latex:
+		pretty_function = to_ltx
+	else:
+		pretty_function = to_jup
 
-  if dec == 0:
-    try:
-      result = pretty_function(x, fmt='{:d}', **kwds)
-    except:
-      result = pretty_function(x, fmt=f'{{:.{dec}f}}', **kwds)
-  else:
-    result = pretty_function(x, fmt=f'{{:.{dec}f}}', **kwds)
+	if dec == 0:
+		try:
+		  	result = pretty_function(x, fmt='{:d}', **kwds)
+		except:
+	  		result = pretty_function(x, fmt=f'{{:.{dec}f}}', **kwds)
+	else:
+		result = pretty_function(x, fmt=f'{{:.{dec}f}}', **kwds)
 
-  return result
+	return result	
 
 def pretty_latex(x, dec=0, **kwds):
   return pretty(x, dec=dec, latex=True, **kwds)
 
 def beautify(*args):
-  converter = lambda x: pretty_latex(x) if isinstance(x, np.ndarray) or isinstance(x, pd.DataFrame) else str(x)
-  return Latex(' '.join([converter(arg) for arg in args]))
+	converter = lambda x: pretty_latex(x) if isinstance(x, np.ndarray) or isinstance(x, pd.DataFrame) else str(x)
+	return Latex(' '.join([converter(arg) for arg in args]))
 
 def tanto_por_uno(x):
-  return np.abs(x) / np.abs(x).sum()
+	return np.abs(x) / np.abs(x).sum()
 
 def ordena_rutas(rutas, importancia_actividades, importancia_rutas):
-  def highlight_positive(val):
-    color = 'background-color: yellow' if val > 0 else ''
-    return color
+	def highlight_positive(val):
+		color = 'background-color: yellow' if val > 0 else ''
+		return color
 
-  rutas = rutas * importancia_actividades
-  sorted_indices = np.flip(np.argsort(importancia_actividades))
-  rutas = rutas.iloc[:, sorted_indices ]
+	rutas = rutas * importancia_actividades
+	sorted_indices = np.flip(np.argsort(importancia_actividades))
+	rutas = rutas.iloc[:, sorted_indices ]
 
-  rutas['Importancia'] = importancia_rutas
-  rutas = rutas.sort_values('Importancia', ascending=False)
+	rutas['Importancia'] = importancia_rutas
+	rutas = rutas.sort_values('Importancia', ascending=False)
 
-  rutas = rutas.style.map(lambda x: '' if pd.Series(x).name == 'Importancia' else highlight_positive(x), subset=rutas.columns.drop('Importancia'))
+	rutas = rutas.style.map(lambda x: '' if pd.Series(x).name == 'Importancia' else highlight_positive(x), subset=rutas.columns.drop('Importancia'))
 
-  return rutas
+	return rutas
 
 
 def highlight_blue_red(df_or_array): # chatgpt dixit
-    """
-    Takes a DataFrame or a NumPy array and returns a styled DataFrame
-    with:
-    - A blue background for cells where the value is 1 or True.
-    - A red background for cells where the value is -1 or False.
+	"""
+	Takes a DataFrame or a NumPy array and returns a styled DataFrame
+	with:
+	- A blue background for cells where the value is 1 or True.
+	- A red background for cells where the value is -1 or False.
 
-    Parameters:
-        df_or_array (pd.DataFrame or np.ndarray): The input data.
+	Parameters:
+		df_or_array (pd.DataFrame or np.ndarray): The input data.
 
-    Returns:
-        pd.io.formats.style.Styler: A styled DataFrame.
-    """
-    # Ensure the input is a DataFrame
-    if isinstance(df_or_array, np.ndarray):
-        df = pd.DataFrame(df_or_array)
-    elif isinstance(df_or_array, pd.DataFrame):
-        df = df_or_array
-    else:
-        raise ValueError("Input must be a pandas DataFrame or a NumPy array.")
+	Returns:
+		pd.io.formats.style.Styler: A styled DataFrame.
+	"""
+	# Ensure the input is a DataFrame
+	if isinstance(df_or_array, np.ndarray):
+		df = pd.DataFrame(df_or_array)
+	elif isinstance(df_or_array, pd.DataFrame):
+		df = df_or_array
+	else:
+		raise ValueError("Input must be a pandas DataFrame or a NumPy array.")
 
-    # Define the style function
-    def style_cell(val):
-        if val == 1 or val is True:
-            return "background-color: blue; color: white;"
-        elif val == -1 or val is False:
-            return "background-color: red; color: white;"
-        return ""
+	# Define the style function
+	def style_cell(val):
+		if val == 1 or val is True:
+			return "background-color: blue; color: white;"
+		elif val == -1 or val is False:
+			return "background-color: red; color: white;"
+		return ""
 
-    # Apply the style to the DataFrame
-    return df.style.map(style_cell)
+	# Apply the style to the DataFrame
+	return df.style.map(style_cell)
 
+def make_gantt_tikz(gantt_data,
+					extra_rows=None,
+					extra_cols=None, 
+					background_horizontal_line_color = "white!80!blue",
+					background_vertical_bars_color = "white!90!cyan",
+					row_height = 0.8,
+					activity_relative_height = 0.7,
+					period_width = 1,
+					names_width = 2,
+					extra_cols_width = 2,
+					number_of_periods = 12,
+					regular_background_color = "white!80!green",
+					critical_background_color = "red",
+					regular_text_color = "black",
+					critical_text_color = "white",
+					activity_inner_text_style  = r"\bfseries\large",
+					arrow_width = "1pt",
+					row_totals=False,
+					nan_string='---',
+					inner_text=None
+				   ):
+	activity_list = list(gantt_data.index)
+	number_of_activities = len(activity_list)
+	number_of_extra_rows = 0 if extra_rows is None else extra_rows.shape[0]
+	number_of_extra_columns = 0 if extra_cols is None else extra_cols.shape[1]
+	activity_box_height = number_of_activities * row_height
+	activity_box_width  = number_of_periods * period_width
+	
+	text=""
+	text+="\n" + r"\begin{tikzpicture}[>= latex, scale=1]"
+	text+="\n" + r"% Cuadrícula"
+	text+="\n" + r"%Barras verticales fondo"
+	for xpos in range(1, number_of_periods, 2):
+		text+="\n" +f"\\fill[color={background_vertical_bars_color}] ( {xpos * period_width}cm, {row_height}cm) rectangle ++({period_width}cm,-{row_height*(1 + number_of_activities)}cm);"
+	
+	text+="\n" + r"%Recuadro exterior"
+	text+="\n" + fr"\draw (0,0) rectangle ++({activity_box_width}cm,  {row_height}cm);"
+	text+="\n" + fr"\draw (0,0) rectangle ++({activity_box_width}cm, -{activity_box_height}cm);"
+
+	text+="\n" + fr"%Columna de actividades"
+	text+="\n" + fr"\draw ({-names_width },0) rectangle ++({names_width },{row_height} )   node[pos=0.5, anchor=center, transform shape] {{Actividad}};"
+	for y,actividad in enumerate(activity_list):
+		text += "\n" + fr"\draw ({-names_width },{-(y+1)*row_height}cm) rectangle ++({names_width },{row_height})   node[pos=0.5, anchor=center, transform shape] {{" + actividad +"};" 
+		text+="\n" + fr"  \draw[{background_horizontal_line_color},very thin] (0, {-(y+1)*row_height}) -- ({activity_box_width}, {-(y+1)*row_height});"
+
+	text+="\n" + r"%Columnas extra"
+	for column_number in range(0,number_of_extra_columns):
+		col_name = extra_cols.columns[column_number]
+		text+="\n" + fr"\draw ({activity_box_width + column_number*extra_cols_width},0) rectangle ++({extra_cols_width },{row_height} )   node[pos=0.5, anchor=center, transform shape] {{ {col_name} }};"
+		for y,activity in enumerate(activity_list):
+			text += "\n" + fr"\draw ({activity_box_width + column_number*extra_cols_width },{-(y+1)*row_height}cm) rectangle ++({extra_cols_width},{row_height})   node[pos=0.5, anchor=center, transform shape] {{" + str(extra_cols.loc[activity, col_name]) +"};" 
+				
+	text+="\n" + r"%Fila de periodos"
+	for x in range(1, number_of_periods+1):
+		text+="\n" + fr"\draw ({ (x-0.5)*period_width},{0.5*row_height}) node[transform shape, minimum width={period_width}, minimum height={row_height}] { {x} }; "
+	text+="\n" + r"% Fin de la cuadrícula principal"
+
+	
+	text+="\n" + r"%Filas extra"
+	text+="\n" + r"%Barras verticales fondo"
+	for xpos in range(1, number_of_periods, 2):
+		text+="\n" +fr"\fill[color={background_vertical_bars_color}] ( {xpos * period_width}cm, {-activity_box_height}cm ) rectangle ++({period_width}cm, {-row_height*number_of_extra_rows}cm);"
+	
+	for row_number in range(0,number_of_extra_rows):
+		row_name = extra_rows.index[row_number]
+		text+="\n" + r"%Casilla del nombre de la fila"
+		text+="\n" + fr"\draw ({-names_width},-{(number_of_activities + (row_number+1))*row_height}) rectangle ++({names_width},{row_height})   node[pos=0.5, anchor=center, transform shape] {{ {str(row_name)} }};"
+	
+		for x in range(number_of_periods):
+			if x >= extra_rows.shape[1]:
+				x_data= nan_string
+			else:
+				x_data = str(extra_rows.iloc[row_number, x])
+			text += "\n" + fr"\draw ({ x*period_width },{-activity_box_height - (row_number + 1)*row_height }) rectangle ++({period_width},{row_height}) node[pos=0.5, transform shape, minimum width={period_width}cm, minimum height={row_height}cm, anchor=center]  {{" + x_data +"};" 
+
+		if row_totals:
+			x_data = str(extra_rows.iloc[row_number,].sum())
+			text += "\n" + fr"\draw ({ activity_box_width },{-activity_box_height - (row_number + 1)*row_height }) rectangle ++({extra_cols_width},{row_height}) node[pos=0.5, transform shape, minimum width={period_width}cm, minimum height={row_height}cm, anchor=center]  {{" + x_data +"};" 
+ 
+	
+	text+="\n" + r"%Fin retícula adicional inferior"
+
+	text+="%Dibujo de las actividades"
+	for y,actividad in enumerate(activity_list):
+		background_color = critical_background_color if gantt_data.loc[actividad, 'Htotal'] == 0 else regular_background_color
+		text_color = critical_text_color if gantt_data.loc[actividad, 'Htotal'] == 0 else regular_text_color
+		start=gantt_data.loc[actividad, 'start']
+		duration= gantt_data.loc[actividad, 'duration']
+		name=actividad        
+		text+="\n" + fr"""\node[draw=black, fill={background_color}, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width={duration*period_width}cm, minimum height={row_height*activity_relative_height}cm, font=""" + activity_inner_text_style + fr""", transform shape, text= {text_color} ] ( {name} ) at ( {start*period_width}, {(-y -1 + (1-activity_relative_height)/2)*row_height} ) {{  \strut }};"""
+
+		
+		if inner_text is not None:
+			for idx,x in enumerate(range(start,start+duration)):
+				#texto = r"\strut" 
+				texto = "M" 
+				if isinstance(inner_text, str):
+					texto = str(gantt_data.loc[actividad, inner_text])
+				else:
+					if duration == len(inner_text.loc[name, 'data']):
+						texto = str(inner_text.loc[name, 'data'][idx])
+				text+=("\n" + fr"""\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width={period_width}cm, minimum height={row_height*activity_relative_height}cm, font=""" 
+				+ activity_inner_text_style + fr""", transform shape, text= {text_color} ] 
+				at ( {(x + 0.5)*period_width}, {(-y -0.5 )*row_height} ) {{ {texto} }};"""
+				)
+
+	text+="%Escritura de los números internos"    
+	
+	text+="\n" + r"\end{tikzpicture}"  
+	return text
