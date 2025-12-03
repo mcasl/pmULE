@@ -689,11 +689,7 @@ class ProjectGraph:
 					gantt_data.loc[activity_name, ['start']    ] = comienzo_tarea
 					gantt_data.loc[activity_name, ['duration'] ] = duracion_tarea
 					gantt_data.loc[activity_name, ['resource'] ] = my_data.loc[activity_name, resource_label]
-                    
-                    
-                    
-
-		
+                    		
 		def color_gantt(val):
 			background = 'white' if val == '' else 'sandybrown'
 			style = f'background-color: {background}'
@@ -798,7 +794,6 @@ class ProjectGraph:
 								extra_rows=extra_rows,
         						params=params
         				)
-		#number_of_periods=duracion_proyecto
 		return resultado, dibujo
 	
  
@@ -871,17 +866,16 @@ class ProjectGraph:
 		dot_graph.draw(filename, prog='dot')
 		return Image(filename)
 	
-	def gantt_cargas(self, data, duration_label, resource_label, report=True):
+	def gantt_cargas(self, data, duration_label, resource_label, report=True, tikz=False):
 		my_data = data.copy()
 		
-		gantt = self.gantt(my_data, duration_label, resource_label, total='fila', acumulado=False, holguras=True,
-						   cuadrados=True)
+		gantt, dibujo = self.gantt(my_data, duration_label, resource_label, total='fila', acumulado=False, holguras=True, cuadrados=True, tikz=tikz)
 		gantt.data.loc['Total', 'H_total'] = np.nan
 		suma_cuadrados = gantt.data.loc['Cuadrados', :].sum()
 		gantt.data.loc['Cuadrados', 'H_total'] = suma_cuadrados
 		if report:
 			print('Suma de cuadrados:', suma_cuadrados, '\n')
-		return gantt
+		return gantt, dibujo
 	
 	def desplazar(self, data, duration_label, resource_label, report=True, **activity_shifts):
 		my_data = data.copy()
