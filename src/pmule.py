@@ -908,9 +908,7 @@ class ProjectGraph:
 		nx.set_node_attributes(self.pert_graph, {nodo: {'id': (id + 1)} for id, nodo in enumerate(lista_nodos)})
 		
 		if report and (resource_label in my_data.columns):
-			representacion = self.gantt_cargas(my_data, duration_label, resource_label)
-			display(representacion)
-			return my_data
+			return my_data, representacion, dibujo
 	
 	def evaluar_desplazamiento(self, data, duration_label, resource_label, report=True, **desplazamientos):
 		proyecto = self.copy()
