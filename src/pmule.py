@@ -1,5 +1,6 @@
 from functools import reduce
 from itertools import chain, product
+import math
 from math import ceil
 from typing import Dict, Set, Tuple
 
@@ -12,6 +13,18 @@ from IPython.display import display, Image, SVG, Latex
 
 from numpyarray_to_latex import to_ltx
 from numpyarray_to_latex.jupyter import to_jup
+
+def truncate_and_pad(value, n_decimal_places):
+    def truncate_float(value, n_digits):
+        if n_digits < 0:
+            raise ValueError("n_digits must be non-negative.")
+        multiplier = 10 ** n_digits
+        truncated_value = math.trunc(value * multiplier) / multiplier
+        return int(truncated_value) if n_digits == 0 else truncated_value
+    
+    truncated = truncate_float(value, n_decimal_places)
+    format_string = f"{{:.{n_decimal_places}f}}"
+    return format_string.format(truncated)
 
 def read_rcp(filename):
 	data = {
@@ -624,90 +637,9 @@ class ProjectGraph:
 		return Image(filename)
 	
 	
-	def gantt_tikz(self,
-			  data,
-			  duration_label,
-			  resource_label = None,
-			  total          = None,
-			  acumulado      = False,
-			  holguras       = False,
-			  cuadrados      = False):
 		
-		my_data = data.copy()
-		
-		if resource_label is None:
-			resource_label = 'resources'
-			my_data[resource_label] = '  '
-		
-		if isinstance(resource_label, str) and resource_label == 'names':
-			resource_label = 'resources'
-			my_data[resource_label] = my_data.index
-		
-		resultados_pert = self.calculate_pert(my_data.loc[:, duration_label])
-		tempranos = resultados_pert['nodes']['early']
-		duracion_proyecto = tempranos.max()
-		periodos = range(1, ceil(duracion_proyecto) + 1)
-		actividades_con_duracion = [nombre for nombre in self.activities if
-									my_data.loc[:, duration_label].get(nombre, 0) != 0]
-		actividades_con_duracion.sort()
-		gantt = pd.DataFrame('', index=actividades_con_duracion, columns=periodos)
-		gantt_data = pd.DataFrame(index=actividades_con_duracion, columns=['start', 'duration'])		
-		for edge in self.pert_graph.edges:
-			activity_name = self.pert_graph.edges[edge]['activity']
-			if activity_name[0] == '@':
-				continue
-			duracion_tarea = my_data.loc[:, duration_label].get(activity_name, 0)
-			if duracion_tarea != 0:
-				comienzo_tarea = tempranos[edge[0]]
-				gantt.loc[activity_name,
-						(comienzo_tarea + 1):(comienzo_tarea + duracion_tarea)
-						] = my_data.loc[activity_name, resource_label]
-				gantt_data.loc[activity_name, ['start', 'duration']] = [comienzo_tarea,  duracion_tarea]
 				
-	
-		def summary(df, fn=np.sum, axis=0, name='Total'):
-			df_total = df.replace('', 0)
-			total = df_total.apply(fn, axis=axis).to_frame(name)
-			if axis == 0:
-				total = total.T
-			out = pd.concat([df, total], axis=axis)
-			return out
-		
-		if total is None:
-			mat = gantt
-		
-		elif total == 'columna':
-			mat = summary(gantt, axis=1)
-		
-		elif total == 'fila':
-			mat = summary(gantt, axis=0)
-			if acumulado:
-				fila_acumulado = mat.loc['Total'].cumsum()
-				fila_acumulado.name = 'Acumulado'
-				mat = pd.concat([mat, fila_acumulado.to_frame().T], axis=0).fillna('')
-			if cuadrados:
-				fila_cuadrados = mat.loc['Total'] ** 2
-				fila_cuadrados.name = 'Cuadrados'
-				mat = pd.concat([mat, fila_cuadrados.to_frame().T], axis=0).fillna('')
-		elif total == 'ambas':
-			mat = summary(summary(gantt, axis=0), axis=1)
-			if acumulado:
-				fila_acumulado = mat.loc['Total'].drop('Total').cumsum()
-				fila_acumulado.name = 'Acumulado'
-				mat = pd.concat([mat, fila_acumulado.to_frame().T], axis=0).fillna('')
-		
-		mat['H_total'] = resultados_pert['activities']['H_total']
-		if total in ['fila', 'ambas']:
-			mat.loc['Total', 'H_total'] = None
-		gantt_data['Htotal'] = mat['H_total'].astype('Int64')
-		#gantt_data = gantt_data.astype('Int64', errors='ignore')
-		resultado = make_gantt_tikz(
-      							gantt_data=gantt_data,
-                              	number_of_periods=duracion_proyecto,
-                                extra_cols=gantt_data[['Htotal']])
-		
-		return resultado
-	
+				
 	def gantt(self,
 			  data,
 			  duration_label,
@@ -716,16 +648,12 @@ class ProjectGraph:
 			  acumulado      = False,
 			  holguras       = False,
 			  cuadrados      = False,
- 			  tikz           = False):
-		if tikz:
-			return self.gantt_tikz( data,
-									duration_label,
-									resource_label,
-									total         ,
-									acumulado     ,
-									holguras      ,
-									cuadrados     ,
-									)
+ 			  tikz           = False,
+      		  params		 = None,
+        ):
+		if params is None:
+			params = dict()
+   
 		my_data = data.copy()
 		
 		if resource_label is None:
@@ -743,6 +671,8 @@ class ProjectGraph:
 		actividades_con_duracion = [nombre for nombre in self.activities if
 									my_data.loc[:, duration_label].get(nombre, 0) != 0]
 		actividades_con_duracion.sort()
+		if tikz:
+			gantt_data = pd.DataFrame(index=actividades_con_duracion, columns=['start', 'duration'])
 		gantt = pd.DataFrame('', index=actividades_con_duracion, columns=periodos)
 		
 		for edge in self.pert_graph.edges:
@@ -755,6 +685,14 @@ class ProjectGraph:
 				gantt.loc[activity_name,
 						(comienzo_tarea + 1):(comienzo_tarea + duracion_tarea)
 						] = my_data.loc[activity_name, resource_label]
+				if tikz:
+					gantt_data.loc[activity_name, ['start']    ] = comienzo_tarea
+					gantt_data.loc[activity_name, ['duration'] ] = duracion_tarea
+					gantt_data.loc[activity_name, ['resource'] ] = my_data.loc[activity_name, resource_label]
+                    
+                    
+                    
+
 		
 		def color_gantt(val):
 			background = 'white' if val == '' else 'sandybrown'
@@ -793,47 +731,78 @@ class ProjectGraph:
 			out = pd.concat([df, total], axis=axis)
 			return out
 		
+		extra_rows = None
+		extra_cols = None
+	
 		if total is None:
-			mat = gantt
-		
+			mat = gantt		
 		elif total == 'columna':
 			mat = summary(gantt, axis=1)
-		
+			extra_cols = mat.copy().loc[actividades_con_duracion,['Total']]
 		elif total == 'fila':
 			mat = summary(gantt, axis=0)
+			extra_rows = mat.copy().loc[['Total'],]
 			if acumulado:
 				fila_acumulado = mat.loc['Total'].cumsum()
 				fila_acumulado.name = 'Acumulado'
 				mat = pd.concat([mat, fila_acumulado.to_frame().T], axis=0).fillna('')
+				extra_rows = mat.copy().loc[['Total', 'Acumulado'],]
+
 			if cuadrados:
 				fila_cuadrados = mat.loc['Total'] ** 2
 				fila_cuadrados.name = 'Cuadrados'
 				mat = pd.concat([mat, fila_cuadrados.to_frame().T], axis=0).fillna('')
+				extra_rows = mat.copy().loc[['Total', 'Cuadrados'],]
 		elif total == 'ambas':
 			mat = summary(summary(gantt, axis=0), axis=1)
+			extra_rows = mat.copy().loc[['Total'],]
+			extra_cols = mat.copy().loc[actividades_con_duracion, ['Total']]
 			if acumulado:
 				fila_acumulado = mat.loc['Total'].drop('Total').cumsum()
 				fila_acumulado.name = 'Acumulado'
 				mat = pd.concat([mat, fila_acumulado.to_frame().T], axis=0).fillna('')
-		
+				extra_rows = mat.copy().loc[['Total', 'Acumulado'],]
+				extra_cols = mat.copy().loc[actividades_con_duracion, ['Total']]	
+			
+			if cuadrados:
+				fila_cuadrados = mat.loc['Total'] ** 2
+				fila_cuadrados.name = 'Cuadrados'
+				mat = pd.concat([mat, fila_cuadrados.to_frame().T], axis=0).fillna('')
+				extra_rows = mat.copy().loc[['Total', 'Cuadrados'],]		
+    
 		if holguras:
 			mat['H_total'] = resultados_pert['activities']['H_total']
 			if total in ['fila', 'ambas']:
 				mat.loc['Total', 'H_total'] = None
 		
-		resultado = (mat
-					 .style
-					 .set_table_styles(styles)
-					 .map(color_gantt)
-					 .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
-									   else '' for i in x], axis=0)
-					 .apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
-									   else '' for i in x], axis=1)
-					 
-					 )
 		
-		return resultado
+		resultado = (mat
+					.style
+					.set_table_styles(styles)
+					.map(color_gantt)
+					.apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
+									else '' for i in x], axis=0)
+					.apply(lambda x: ['background: #f7f7f9' if x.name in ["Total", "Acumulado", "H_total", "Cuadrados"]
+									else '' for i in x], axis=1)
+					
+					)
+		dibujo = ''
+		if tikz:
+			gantt_data['Htotal'] = resultados_pert['activities']['H_total'].astype('Int64')
+			if holguras:
+				extra_cols = pd.concat([extra_cols, gantt_data[['Htotal']] ], axis=1).copy()
+			params['inner_text'] = params.get('inner_text', 'resource')
+			dibujo = make_gantt_tikz(
+      							gantt_data=gantt_data,
+                                extra_cols=extra_cols,
+								extra_rows=extra_rows,
+        						params=params
+        				)
+		#number_of_periods=duracion_proyecto
+		return resultado, dibujo
 	
+ 
+ 
 	def roy(self,
 			filename=None,
 			duraciones=False,
@@ -1306,24 +1275,31 @@ def highlight_blue_red(df_or_array): # chatgpt dixit
 def make_gantt_tikz(gantt_data,
 					extra_rows=None,
 					extra_cols=None, 
-					background_horizontal_line_color = "white!80!blue",
-					background_vertical_bars_color = "white!90!cyan",
-					row_height = 0.8,
-					activity_relative_height = 0.7,
-					period_width = 1,
-					names_width = 2,
-					extra_cols_width = 2,
-					number_of_periods = 12,
-					regular_background_color = "white!80!green",
-					critical_background_color = "red",
-					regular_text_color = "black",
-					critical_text_color = "white",
-					activity_inner_text_style  = r"\bfseries\large",
-					arrow_width = "1pt",
-					row_totals=False,
-					nan_string='---',
-					inner_text=None
+					params=None,
 				   ):
+	if params is None:
+		params = dict()	
+    
+	background_horizontal_line_color= params.get('background_horizontal_line_color', 	"white!80!blue")  
+	background_vertical_bars_color  = params.get('background_vertical_bars_color',		"white!90!cyan")
+	row_height                      = params.get('row_height',							0.8)
+	activity_relative_height        = params.get('activity_relative_height', 			0.7)
+	period_width                    = params.get('period_width', 						1)
+	names_width                     = params.get('names_width', 						2)
+	extra_cols_width                = params.get('extra_cols_width', 					2)
+	number_of_periods			    = params.get('number_of_periods', (gantt_data['start'] + gantt_data['duration']).max())
+	regular_background_color 		= params.get('regular_background_color', 			"white!80!green")
+	critical_background_color 		= params.get('critical_background_color', 			"red")
+	regular_text_color 				= params.get('regular_text_color', 					"black")
+	critical_text_color 			= params.get('critical_text_color', 				"white")
+	activity_inner_text_style 		= params.get('activity_inner_text_style', 			r"\bfseries\large")
+	arrow_width 					= params.get('arrow_width', 						"1pt")
+	row_totals 						= params.get('row_totals', 							False)
+	nan_string 						= params.get('nan_string', 							'---')
+	inner_text 						= params.get('inner_text', 							None)
+	inner_text_digits				= params.get('inner_text_digits', 					0)
+  
+    
 	activity_list = list(gantt_data.index)
 	number_of_activities = len(activity_list)
 	number_of_extra_rows = 0 if extra_rows is None else extra_rows.shape[0]
@@ -1360,7 +1336,6 @@ def make_gantt_tikz(gantt_data,
 		text+="\n" + fr"\draw ({ (x-0.5)*period_width},{0.5*row_height}) node[transform shape, minimum width={period_width}, minimum height={row_height}] { {x} }; "
 	text+="\n" + r"% Fin de la cuadrícula principal"
 
-	
 	text+="\n" + r"%Filas extra"
 	text+="\n" + r"%Barras verticales fondo"
 	for xpos in range(1, number_of_periods, 2):
@@ -1394,16 +1369,14 @@ def make_gantt_tikz(gantt_data,
 		name=actividad        
 		text+="\n" + fr"""\node[draw=black, fill={background_color}, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width={duration*period_width}cm, minimum height={row_height*activity_relative_height}cm, font=""" + activity_inner_text_style + fr""", transform shape, text= {text_color} ] ( {name} ) at ( {start*period_width}, {(-y -1 + (1-activity_relative_height)/2)*row_height} ) {{  \strut }};"""
 
-		
 		if inner_text is not None:
 			for idx,x in enumerate(range(start,start+duration)):
-				#texto = r"\strut" 
-				texto = "M" 
+				texto = r"\strut" 
 				if isinstance(inner_text, str):
-					texto = str(gantt_data.loc[actividad, inner_text])
+					texto = truncate_and_pad(gantt_data.loc[actividad, inner_text], inner_text_digits)
 				else:
 					if duration == len(inner_text.loc[name, 'data']):
-						texto = str(inner_text.loc[name, 'data'][idx])
+						texto = truncate_and_pad(inner_text.loc[name, 'data'][idx], inner_text_digits)
 				text+=("\n" + fr"""\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width={period_width}cm, minimum height={row_height*activity_relative_height}cm, font=""" 
 				+ activity_inner_text_style + fr""", transform shape, text= {text_color} ] 
 				at ( {(x + 0.5)*period_width}, {(-y -0.5 )*row_height} ) {{ {texto} }};"""
