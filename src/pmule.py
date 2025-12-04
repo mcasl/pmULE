@@ -22,6 +22,8 @@ def truncate_and_pad(value, n_decimal_places):
         truncated_value = math.trunc(value * multiplier) / multiplier
         return int(truncated_value) if n_digits == 0 else truncated_value
     
+    if isinstance(value, str):
+        value = float(value)
     truncated = truncate_float(value, n_decimal_places)
     format_string = f"{{:.{n_decimal_places}f}}"
     return format_string.format(truncated)
@@ -634,6 +636,10 @@ class ProjectGraph:
 		dot_graph.draw(filename, prog='dot')
 		if filename.lower().endswith('.svg'):
 			return SVG(filename)
+		elif filename.lower().endswith(('.pdf')):
+			filename = filename.replace('.pdf', '.svg')
+			dot_graph.draw(filename, prog='dot')   # Create additional SVG file
+			return SVG(filename)
 		return Image(filename)
 	
 	
@@ -1088,7 +1094,9 @@ class EarnedValue():
 					   actual_durations_label,
 					   PV_label,
 					   AC_label,
-					   percentage_complete_label):
+					   percentage_complete_label,
+        			   tikz=False, 
+                       params=None):
 		my_data = data.copy()
 		
 		if any(my_data.loc[:, percentage_complete_label] > 1):
@@ -1096,34 +1104,42 @@ class EarnedValue():
 			my_data.loc[:, percentage_complete_label] = my_data.loc[:, percentage_complete_label] / 100
 		
 		my_data.loc[:, 'PV_per_period'] = my_data.loc[:, PV_label]  / my_data.loc[:, planned_durations_label]
-		gantt_PV = self.pert.gantt(my_data,
+
+		gantt_PV, dibujo_PV = self.pert.gantt(my_data,
 								   planned_durations_label,
 								   'PV_per_period',
 								   total='ambas',
-								   acumulado=True)
+								   acumulado=True,
+           						   tikz=True,
+           						   params=params)
 		
 		my_data.loc[:, 'AC_per_period'] = (my_data.loc[:, AC_label] / my_data.loc[:, actual_durations_label])
 		
-		gantt_AC = self.pert.gantt(my_data,
+		gantt_AC, dibujo_AC = self.pert.gantt(my_data,
 								   actual_durations_label,
 								   'AC_per_period',
 								   total='ambas',
-								   acumulado=True)
+								   acumulado=True,
+           						   tikz=True,
+           						   params=params)
+  
 		my_data.loc[:, 'EV'] = my_data.loc[:, PV_label] * my_data.loc[:, percentage_complete_label]
 		my_data.loc[:, 'EV_per_period'] = my_data.loc[:, 'EV'] / my_data.loc[:, actual_durations_label]
 
-		gantt_EV = self.pert.gantt(my_data,
+		gantt_EV, dibujo_EV = self.pert.gantt(my_data,
 								   actual_durations_label,
 								   'EV_per_period',
 								   total='ambas',
-								   acumulado=True)
+								   acumulado=True,
+           						   tikz=True,
+		   						   params=params)
 		
 		acumulados = pd.DataFrame(dict(PV=gantt_PV.data.loc['Total', :].cumsum(),
 									   EV=gantt_EV.data.loc['Total', :].cumsum(),
 									   AC=gantt_AC.data.loc['Total', :].cumsum(), ),
 								  index=gantt_EV.data.columns).drop('Total')
 		
-		return dict(Gantt_PV=gantt_PV, Gantt_AC=gantt_AC, Gantt_EV=gantt_EV, acumulados=acumulados)
+		return dict(Gantt_PV=gantt_PV, Gantt_AC=gantt_AC, Gantt_EV=gantt_EV, acumulados=acumulados, gantt_PV=dibujo_PV, gantt_AC=dibujo_AC, gantt_EV=dibujo_EV)
 
 
 def make_Roy(linkage_matrix):
@@ -1323,7 +1339,7 @@ def make_gantt_tikz(gantt_data,
 		col_name = extra_cols.columns[column_number]
 		text+="\n" + fr"\draw ({activity_box_width + column_number*extra_cols_width},0) rectangle ++({extra_cols_width },{row_height} )   node[pos=0.5, anchor=center, transform shape] {{ {col_name} }};"
 		for y,activity in enumerate(activity_list):
-			text += "\n" + fr"\draw ({activity_box_width + column_number*extra_cols_width },{-(y+1)*row_height}cm) rectangle ++({extra_cols_width},{row_height})   node[pos=0.5, anchor=center, transform shape] {{" + str(extra_cols.loc[activity, col_name]) +"};" 
+			text += "\n" + fr"\draw ({activity_box_width + column_number*extra_cols_width },{-(y+1)*row_height}cm) rectangle ++({extra_cols_width},{row_height})   node[pos=0.5, anchor=center, transform shape] {{" + str( truncate_and_pad(extra_cols.loc[activity, col_name], inner_text_digits) ) +"};" 
 				
 	text+="\n" + r"%Fila de periodos"
 	for x in range(1, number_of_periods+1):
@@ -1344,11 +1360,11 @@ def make_gantt_tikz(gantt_data,
 			if x >= extra_rows.shape[1]:
 				x_data= nan_string
 			else:
-				x_data = str(extra_rows.iloc[row_number, x])
+				x_data = str( truncate_and_pad(extra_rows.iloc[row_number, x], inner_text_digits) )
 			text += "\n" + fr"\draw ({ x*period_width },{-activity_box_height - (row_number + 1)*row_height }) rectangle ++({period_width},{row_height}) node[pos=0.5, transform shape, minimum width={period_width}cm, minimum height={row_height}cm, anchor=center]  {{" + x_data +"};" 
 
 		if row_totals:
-			x_data = str(extra_rows.iloc[row_number,].sum())
+			x_data = str( truncate_and_pad(extra_rows.iloc[row_number,].sum(), inner_text_digits) )
 			text += "\n" + fr"\draw ({ activity_box_width },{-activity_box_height - (row_number + 1)*row_height }) rectangle ++({extra_cols_width},{row_height}) node[pos=0.5, transform shape, minimum width={period_width}cm, minimum height={row_height}cm, anchor=center]  {{" + x_data +"};" 
  
 	
@@ -1358,19 +1374,28 @@ def make_gantt_tikz(gantt_data,
 	for y,actividad in enumerate(activity_list):
 		background_color = critical_background_color if gantt_data.loc[actividad, 'Htotal'] == 0 else regular_background_color
 		text_color = critical_text_color if gantt_data.loc[actividad, 'Htotal'] == 0 else regular_text_color
-		start=gantt_data.loc[actividad, 'start']
-		duration= gantt_data.loc[actividad, 'duration']
-		name=actividad        
+		start = gantt_data.loc[actividad, 'start']
+		duration = gantt_data.loc[actividad, 'duration']
+		name = actividad
+		if math.isnan(start) or math.isnan(duration):
+			continue
+
 		text+="\n" + fr"""\node[draw=black, fill={background_color}, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width={duration*period_width}cm, minimum height={row_height*activity_relative_height}cm, font=""" + activity_inner_text_style + fr""", transform shape, text= {text_color} ] ( {name} ) at ( {start*period_width}, {(-y -1 + (1-activity_relative_height)/2)*row_height} ) {{  \strut }};"""
 
 		if inner_text is not None:
 			for idx,x in enumerate(range(start,start+duration)):
 				texto = r"\strut" 
 				if isinstance(inner_text, str):
-					texto = truncate_and_pad(gantt_data.loc[actividad, inner_text], inner_text_digits)
+					texto = gantt_data.loc[actividad, inner_text]
+					if pd.isna(texto):
+						texto = nan_string
+					elif isinstance(texto, (int, float)):
+						texto = float(texto)		
+						texto = truncate_and_pad(texto, inner_text_digits)
 				else:
 					if duration == len(inner_text.loc[name, 'data']):
 						texto = truncate_and_pad(inner_text.loc[name, 'data'][idx], inner_text_digits)
+
 				text+=("\n" + fr"""\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width={period_width}cm, minimum height={row_height*activity_relative_height}cm, font=""" 
 				+ activity_inner_text_style + fr""", transform shape, text= {text_color} ] 
 				at ( {(x + 0.5)*period_width}, {(-y -0.5 )*row_height} ) {{ {texto} }};"""
