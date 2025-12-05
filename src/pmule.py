@@ -1031,7 +1031,7 @@ class ProjectGraph:
 					  product(*mini_path_matrix_filtered.values)}
 			best_option[step] = list(set(min(costes, key=costes.get)))
 			print(
-				f'Step: {step},\t Best option: {best_option[step]}, \t Cost: {calculate_reduction_cost(best_option[step], costs)}, \t Critical paths: {list(critical_paths.keys())}')
+				f'Step: {step},\t Best option: {best_option[step]}, \t Cost: {calculate_reduction_cost(best_option[step], costs)}, \n\t\t Critical paths: {list(critical_paths.keys())}')
 			for activity in best_option[step]:
 				periods_available[activity] -= 1
 				durations[activity] -= 1
