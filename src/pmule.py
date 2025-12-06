@@ -15,18 +15,20 @@ from numpyarray_to_latex import to_ltx
 from numpyarray_to_latex.jupyter import to_jup
 
 def truncate_and_pad(value, n_decimal_places):
-    def truncate_float(value, n_digits):
-        if n_digits < 0:
-            raise ValueError("n_digits must be non-negative.")
-        multiplier = 10 ** n_digits
-        truncated_value = math.trunc(value * multiplier) / multiplier
-        return int(truncated_value) if n_digits == 0 else truncated_value
-    
-    if isinstance(value, str):
-        value = float(value)
-    truncated = truncate_float(value, n_decimal_places)
-    format_string = f"{{:.{n_decimal_places}f}}"
-    return format_string.format(truncated)
+	def truncate_float(value, n_digits):
+		if n_digits < 0:
+			raise ValueError("n_digits must be non-negative.")
+		multiplier = 10 ** n_digits
+		truncated_value = math.trunc(value * multiplier) / multiplier
+		return int(truncated_value) if n_digits == 0 else truncated_value
+
+	if isinstance(value, str):
+		value = float(value)
+	elif isinstance(value, np.int64) or isinstance(value, np.int32) or isinstance(value, np.int16) or isinstance(value, np.int8):
+		value = int(value)
+	truncated = truncate_float(value, n_decimal_places)
+	format_string = f"{{:.{n_decimal_places}f}}"
+	return format_string.format(truncated)
 
 def read_rcp(filename):
 	data = {
@@ -872,10 +874,10 @@ class ProjectGraph:
 		dot_graph.draw(filename, prog='dot')
 		return Image(filename)
 	
-	def gantt_cargas(self, data, duration_label, resource_label, report=True, tikz=False):
+	def gantt_cargas(self, data, duration_label, resource_label, report=True, tikz=False, params=None):
 		my_data = data.copy()
 		
-		gantt, dibujo = self.gantt(my_data, duration_label, resource_label, total='fila', acumulado=False, holguras=True, cuadrados=True, tikz=tikz)
+		gantt, dibujo = self.gantt(my_data, duration_label, resource_label, total='fila', acumulado=False, holguras=True, cuadrados=True, tikz=tikz, params=params)
 		gantt.data.loc['Total', 'H_total'] = np.nan
 		suma_cuadrados = gantt.data.loc['Cuadrados', :].sum()
 		gantt.data.loc['Cuadrados', 'H_total'] = suma_cuadrados
@@ -883,7 +885,7 @@ class ProjectGraph:
 			print('Suma de cuadrados:', suma_cuadrados, '\n')
 		return gantt, dibujo
 	
-	def desplazar(self, data, duration_label, resource_label, report=True, tikz=False, **activity_shifts):
+	def desplazar(self, data, duration_label, resource_label, report=True, tikz=False, params=None, **activity_shifts):
 		my_data = data.copy()
 		
 		for actividad, duracion in activity_shifts.items():
@@ -914,7 +916,7 @@ class ProjectGraph:
 		nx.set_node_attributes(self.pert_graph, {nodo: {'id': (id + 1)} for id, nodo in enumerate(lista_nodos)})
 		
 		if report and (resource_label in my_data.columns):
-			gantt_df, dibujo = self.gantt_cargas(my_data, duration_label, resource_label, tikz=tikz)
+			gantt_df, dibujo = self.gantt_cargas(my_data, duration_label, resource_label, tikz=tikz, params=params)
 			return my_data, gantt_df, dibujo
 	
 	def evaluar_desplazamiento(self, data, duration_label, resource_label, report=True, **desplazamientos):
@@ -1006,11 +1008,8 @@ class ProjectGraph:
 		result.replace(0, np.nan, inplace=True)
 		result = result.multiply(costs, axis='columns')
 		step = 0
-		print("D shape", durations.shape)
-		print("Path matrix shape", path_matrix.shape)
 		result.loc[:, step] = path_matrix @ durations
 		result.loc[step, :] = durations - min_durations
-		print('\n')
 		best_option = dict()
 		while step < reduction:
 			critical_paths = self.critical_path(durations)
@@ -1030,8 +1029,8 @@ class ProjectGraph:
 			costes = {key: calculate_reduction_cost(key, costs) for key in
 					  product(*mini_path_matrix_filtered.values)}
 			best_option[step] = list(set(min(costes, key=costes.get)))
-			print(
-				f'Step: {step},\t Best option: {best_option[step]}, \t Cost: {calculate_reduction_cost(best_option[step], costs)}, \n\t\t Critical paths: {list(critical_paths.keys())}')
+			print(f'Step: {step},\t Critical paths: {list(critical_paths.keys())}')
+			print(f'\t\t Best option: {best_option[step]}, \t Cost: {calculate_reduction_cost(best_option[step], costs)}')
 			for activity in best_option[step]:
 				periods_available[activity] -= 1
 				durations[activity] -= 1
