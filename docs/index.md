@@ -1,3 +1,4 @@
 # Ejercicios resueltos
 
-[Ej_Molibdeno.html](Ej_Molibdeno.html)
+[Ejercicio Molibdeno](Ej_Molibdeno.html)
+[Ejercicio 22.html](Ejercicio_22.html)
