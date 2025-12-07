@@ -1114,6 +1114,10 @@ class EarnedValue():
 		
 		my_data.loc[:, 'AC_per_period'] = (my_data.loc[:, AC_label] / my_data.loc[:, actual_durations_label])
 		
+		if params is None:
+			params = dict()	
+		params['critical_background_color'] = params.get('regular_background_color', 'white!80!green')
+		params['critical_text_color']       = params.get('regular_text_color', 'black')
 		gantt_AC, dibujo_AC = self.pert.gantt(my_data,
 								   actual_durations_label,
 								   'AC_per_period',
