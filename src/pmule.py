@@ -663,7 +663,7 @@ class ProjectGraph:
 			params = dict()
    
 		my_data = data.copy()
-		
+		my_data[duration_label] = my_data[duration_label].astype(int)
 		if resource_label is None:
 			resource_label = 'resources'
 			my_data[resource_label] = '  '
@@ -673,14 +673,14 @@ class ProjectGraph:
 			my_data[resource_label] = my_data.index
 		
 		resultados_pert = self.calculate_pert(my_data.loc[:, duration_label])
-		tempranos = resultados_pert['nodes']['early']
+		tempranos = (resultados_pert['nodes']['early']).astype(int)
 		duracion_proyecto = tempranos.max()
 		periodos = range(1, ceil(duracion_proyecto) + 1)
 		actividades_con_duracion = [nombre for nombre in self.activities if
 									my_data.loc[:, duration_label].get(nombre, 0) != 0]
 		actividades_con_duracion.sort()
 		if tikz:
-			gantt_data = pd.DataFrame(index=actividades_con_duracion, columns=['start', 'duration'])
+			gantt_data = pd.DataFrame(index=actividades_con_duracion, columns=['start', 'duration'],  dtype='int64')
 		gantt = pd.DataFrame('', index=actividades_con_duracion, columns=periodos)
 		
 		for edge in self.pert_graph.edges:
@@ -1287,6 +1287,8 @@ def make_gantt_tikz(gantt_data,
 				   ):
 	if params is None:
 		params = dict()	
+	gantt_data['start']    = gantt_data['start'].astype(int)
+	gantt_data['duration'] = gantt_data['duration'].astype(int)
     
 	background_horizontal_line_color= params.get('background_horizontal_line_color', 	"white!80!blue")  
 	background_vertical_bars_color  = params.get('background_vertical_bars_color',		"white!90!cyan")
