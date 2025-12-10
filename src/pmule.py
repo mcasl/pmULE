@@ -538,6 +538,7 @@ class ProjectGraph:
 		return duraciones
 	
 	def critical_path(self, durations):
+		"""
 		def calculate_path_float(path, floats):
 			path_floats = [floats[activity] for activity in path]
 			return sum(path_floats)
@@ -547,7 +548,11 @@ class ProjectGraph:
 		resultados_pert = self.calculate_pert(duraciones)
 		total_floats = resultados_pert['activities']['H_total']
 		
-		result = {name: path for name, path in self.paths().items() if calculate_path_float(path, total_floats) == 0}
+		result = {name: path for name, path in self.paths().items() if calculate_path_float(path, total_floats) == 0}"""
+		rutas = self.path_matrix(dummies=False)
+		duraciones_rutas = rutas.dot(pd.Series(durations))
+		duracion_proyecto = duraciones_rutas.max()
+		result = {name: list(rutas.columns[rutas.loc[name] == 1]) for name in rutas.index if duraciones_rutas[name] == duracion_proyecto}
 		return result
 	
 	def zaderenko(self, durations: Dict[str, float]):
@@ -1001,7 +1006,9 @@ class ProjectGraph:
 			costs = pd.Series(costs)
 		
 		periods_available = durations - min_durations
-		
+		#print(80*"-")
+		#print("Periods available for reduction:")
+		#print(periods_available)
 		# Data preparation
 		path_matrix = self.path_matrix(dummies=False)
 		path_names = path_matrix.index
@@ -1012,16 +1019,32 @@ class ProjectGraph:
 		result = result.multiply(costs, axis='columns')
 		step = 0
 		result.loc[:, step] = path_matrix @ durations
-		result.loc[step, :] = durations - min_durations
+		result.loc[step, :] = periods_available
+		#print(80*"-")
+		#print("Result initial:")
+		#print(result)
 		best_option = dict()
 		while step < reduction:
+			#print(80*"-")
+			#print(f"Step {step}: Durations:")
+			#print(durations)
+			#print(f"Step {step}: Periods available:")
+			#print(periods_available)
 			critical_paths = self.critical_path(durations)
+			#print(80*"-")
+			#print(f"Step {step}: Critical paths found: {list(critical_paths.keys())}")
 			critical_path_matrix = result.loc[critical_paths.keys(), activity_names]
+			#print(80*"-")
+			#print("Critical path matrix:")
+			#print(critical_path_matrix)
 			mini_path_matrix = (result
 								.loc[critical_paths.keys(), self.actual_activities]
 								.loc[:, periods_available != 0]
 								
 								)
+			#print(80*"-")
+			#print("Mini path matrix:")
+			#print(mini_path_matrix)
 			mini_path_matrix_filtered = mini_path_matrix.apply(lambda x: mini_path_matrix.columns[x.notna()], axis=1)
 			
 			mini_path_matrix_filtered_has_empty_rows = any(mini_path_matrix_filtered.apply(len) == 0)
@@ -1066,7 +1089,7 @@ class ProjectGraph:
 			for activity in best_option[index]:
 				recortadas = idx[index, activity]
 				result.apply(lambda x: ['background-color: yellow' for _ in x], axis=1, subset=recortadas)
-		print('\n' * 2)
+		print('\n' + 80 * '-')
 		return result, best_option, durations, periods_available
 	
 	def incidence_matrix(self):
