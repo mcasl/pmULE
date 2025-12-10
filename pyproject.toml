@@ -1,0 +1,15 @@
+[project]
+name = "pmule"
+version = "0.1.0"
+description = "A python library to represent Gantt, Pert, and Roy diagrams, and to perform project management computations" 
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "amplpy>=0.16.0",
+    "jupyter-tikz>=0.5.6",
+    "matplotlib>=3.10.8",
+    "numpy>=2.3.5",
+    "numpyarray-to-latex>=0.1.0",
+    "pandas[excel]>=2.3.3",
+    "pygraphviz>=1.14",
+]
