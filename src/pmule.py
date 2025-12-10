@@ -885,7 +885,7 @@ class ProjectGraph:
 			print('Suma de cuadrados:', suma_cuadrados, '\n')
 		return gantt, dibujo
 	
-	def desplazar(self, data, duration_label, resource_label, report=True, tikz=False, params=None, **activity_shifts):
+	def desplazar(self, data, duration_label, resource_label, report=True, tikz=False, holguras=True, cuadrados=True, params=None, **activity_shifts):
 		my_data = data.copy()
 		
 		for actividad, duracion in activity_shifts.items():
@@ -916,7 +916,10 @@ class ProjectGraph:
 		nx.set_node_attributes(self.pert_graph, {nodo: {'id': (id + 1)} for id, nodo in enumerate(lista_nodos)})
 		
 		if report and (resource_label in my_data.columns):
-			gantt_df, dibujo = self.gantt_cargas(my_data, duration_label, resource_label, tikz=tikz, params=params)
+			if cuadrados:
+				gantt_df, dibujo = self.gantt_cargas(my_data, duration_label, resource_label, tikz=tikz, params=params)
+			else:
+				gantt_df, dibujo = self.gantt(my_data, duration_label, resource_label, total='fila', holguras=holguras, cuadrados=cuadrados, tikz=tikz, params=params)
 			return my_data, gantt_df, dibujo
 	
 	def evaluar_desplazamiento(self, data, duration_label, resource_label, report=True, **desplazamientos):
