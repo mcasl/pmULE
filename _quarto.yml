@@ -1,0 +1,39 @@
+project:
+  type: website
+  output-dir: "docs"
+  execute-dir: project
+
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+    fig-responsive: true
+    toc: true
+    
+  pdf:
+    df-print: tibble
+    documentclass: scrreprt
+    papersize: A4
+    classoption: []
+    include-in-header: |
+      \usepackage{scrlayer-scrpage}
+      \clearpairofpagestyles
+      \ofoot{\pagemark}
+      \usepackage{geometry}
+    geometry:
+      - top=20mm
+      - bottom=20mm
+      - left=10mm
+      - right=10mm
+      - marginparsep=10mm
+
+execute:
+  echo: false
+  warning: false
+  message: false
+  freeze: auto
+  cache-dir: "_cache"
+
+lang: es
+jupyter: python3
+

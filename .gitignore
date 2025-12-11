@@ -1,5 +1,28 @@
+# Entorno uv
+.venv/
+
+# macOS
 .DS_Store
 **/.DS_Store
-.venv/
+
+pmULE
+**/pmULE
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+
