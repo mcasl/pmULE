@@ -1329,19 +1329,21 @@ def make_gantt_tikz(gantt_data,
 	extra_cols_width                = params.get('extra_cols_width', 					2)
 	number_of_periods			    = params.get('number_of_periods', (gantt_data['start'] + gantt_data['duration']).max())
 	number_of_periods			    = int(number_of_periods)
-	regular_background_color 		= params.get('regular_background_color', 			"white!80!green")
-	critical_background_color 		= params.get('critical_background_color', 			"red")
+	regular_background_color 		= params.get('regular_background_color', 			"white!90!green")
+	critical_background_color 		= params.get('critical_background_color', 			"white!90!red")
 	regular_text_color 				= params.get('regular_text_color', 					"black")
-	critical_text_color 			= params.get('critical_text_color', 				"white")
+	critical_text_color 			= params.get('critical_text_color', 				"black")
 	activity_inner_text_style 		= params.get('activity_inner_text_style', 			r"\bfseries\large")
 	arrow_width 					= params.get('arrow_width', 						"1pt")
 	row_totals 						= params.get('row_totals', 							False)
 	nan_string 						= params.get('nan_string', 							'---')
 	inner_text 						= params.get('inner_text', 							None)
 	inner_text_digits				= params.get('inner_text_digits', 					0)
-  
-    
-	activity_list = list(gantt_data.index)
+
+
+	activity_list =   list(activity for activity in gantt_data.index if not activity.startswith('💤'))
+	slide_activity =  list(activity for activity in gantt_data.index if activity.startswith('💤'))
+	slide_activity_dict = {activity: activity_list.index(activity.removeprefix("💤")) for activity in slide_activity}
 	number_of_activities = len(activity_list)
 	number_of_extra_rows = 0 if extra_rows is None else extra_rows.shape[0]
 	number_of_extra_columns = 0 if extra_cols is None else extra_cols.shape[1]
@@ -1431,8 +1433,21 @@ def make_gantt_tikz(gantt_data,
 				+ activity_inner_text_style + fr""", transform shape, text= {text_color} ] 
 				at ( {(x + 0.5)*period_width}, {(-y -0.5 )*row_height} ) {{ {texto} }};"""
 				)
+	text+="%Dibujo de los desplazamientos"
+	for actividad, y in slide_activity_dict.items():
+		#print(actividad, y)
+		background_color = critical_background_color if gantt_data.loc[actividad, 'Htotal'] == 0 else regular_background_color
+		text_color = critical_text_color if gantt_data.loc[actividad, 'Htotal'] == 0 else regular_text_color
+		start = gantt_data.loc[actividad, 'start']
+		duration = gantt_data.loc[actividad, 'duration']
+		name = actividad
+		if math.isnan(start) or math.isnan(duration):
+			print("NaN found")
+			continue
 
-	text+="%Escritura de los números internos"    
+		text+="\n" + fr"""\node[draw=black, fill={background_color}, pattern=north east lines,inner sep=0pt, outer sep=0pt, anchor=south west, minimum width={duration*period_width}cm, minimum height={row_height*activity_relative_height}cm, font=""" + activity_inner_text_style + fr""", transform shape, text= {text_color} ] ( {name} ) at ( {start*period_width}, {(-y -1 + (1-activity_relative_height)/2)*row_height} ) {{  \strut }};"""
+
+ 
 	
 	text+="\n" + r"\end{tikzpicture}"  
 	return text
