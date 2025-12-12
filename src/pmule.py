@@ -927,17 +927,19 @@ class ProjectGraph:
 				gantt_df, dibujo = self.gantt(my_data, duration_label, resource_label, total='fila', holguras=holguras, cuadrados=cuadrados, tikz=tikz, params=params)
 			return my_data, gantt_df, dibujo
 	
-	def evaluar_desplazamiento(self, data, duration_label, resource_label, report=True, **desplazamientos):
+	def evaluar_desplazamiento(self, data, duration_label, resource_label, report=True, tikz=True, **desplazamientos):
 		proyecto = self.copy()
 		my_data = data.copy()
 		
-		new_data = proyecto.desplazar(my_data,
+		new_data, gantt_df, dibujo = proyecto.desplazar(my_data,
 									  duration_label=duration_label,
 									  resource_label=resource_label,
-									  **desplazamientos, report=report)
-		return proyecto.gantt_cargas(new_data, duration_label, resource_label, report=False).data.loc['Cuadrados', 'H_total']
+									  **desplazamientos, 
+           							  report=report)
+		gantt_df, dibujo = proyecto.gantt_cargas(new_data, duration_label, resource_label, report=False, tikz=tikz)
+		return gantt_df.data.loc['Cuadrados', 'H_total'], dibujo
 	
-	def evaluar_rango_de_desplazamientos(self, data, duration_label, resource_label, activity, report=True):
+	def evaluar_rango_de_desplazamientos(self, data, duration_label, resource_label, activity, report=True, tikz=True):
 		my_data = data.copy()
 		
 		minimo = 0
@@ -945,16 +947,19 @@ class ProjectGraph:
 		suma_cuadrados = pd.DataFrame(0, index=range(minimo, maximo + 1), columns=['Suma_de_cuadrados'])
 		if report:
 			print('Sin desplazar:')
-		suma_cuadrados.loc[0, 'Suma_de_cuadrados'] = self.gantt_cargas(my_data,
-																	   duration_label,
-																	   resource_label,
-																	   report=report).data.loc['Cuadrados', 'H_total']
+		gantt_df, dibujo= self.gantt_cargas(my_data,
+							duration_label,
+							resource_label,
+							report=report,
+							tikz=tikz)
+		suma_cuadrados.loc[0, 'Suma_de_cuadrados'] = gantt_df.data.loc['Cuadrados', 'H_total']
 		for slide in range(minimo + 1, maximo + 1):
 			if report:
 				print('Desplazamiento:', slide)
-			carga2 = self.evaluar_desplazamiento(my_data, duration_label, resource_label, **{activity: slide}, report=report)
+			carga2, dibujo = self.evaluar_desplazamiento(my_data, duration_label, resource_label,
+                                                **{activity: slide}, report=report, tikz=tikz)
 			suma_cuadrados.loc[slide, 'Suma_de_cuadrados'] = carga2
-		return suma_cuadrados
+		return suma_cuadrados, dibujo
 	
 	def standard_deviation(self, durations, variances):
 		varianza = {key: 0 for key in self.activities}
