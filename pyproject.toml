@@ -13,6 +13,7 @@ dependencies = [
     "pandas[excel]>=2.3.3",
     "pygraphviz>=1.14",
     "seaborn>=0.13.2",
+    "sympy>=1.14.0",
 ]
 [dependency-groups]
 dev = [

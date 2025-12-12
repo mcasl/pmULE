@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 pd.set_option('future.no_silent_downcasting', True)
 import pygraphviz as pgv
-from IPython.display import display, Image, SVG, Latex
+from IPython.display import display, Image, SVG, Latex, Markdown
 
 from numpyarray_to_latex import to_ltx
 from numpyarray_to_latex.jupyter import to_jup
@@ -555,6 +555,15 @@ class ProjectGraph:
 		result = {name: list(rutas.columns[rutas.loc[name] == 1]) for name in rutas.index if duraciones_rutas[name] == duracion_proyecto}
 		return result
 	
+	def display_critical_path(self, durations):
+		critical_path = self.critical_path(durations)
+		result = ""
+		for ruta, actividades in critical_path.items():
+			result += f"{ruta}:\t" + ', '.join(actividades) + ' <br> '
+		display(Markdown(result))
+		
+
+
 	def zaderenko(self, durations: Dict[str, float]):
 		duraciones = {key: 0 for key in self.activities}
 		duraciones.update(durations)
@@ -890,9 +899,19 @@ class ProjectGraph:
 			print('Suma de cuadrados:', suma_cuadrados, '\n')
 		return gantt, dibujo
 	
-	def desplazar(self, data, duration_label, resource_label, report=True, tikz=False, holguras=True, cuadrados=True, params=None, **activity_shifts):
+	def desplazar(self,
+					data,
+					duration_label,
+					resource_label,
+					report=True, 
+					tikz=False,
+					holguras=True,
+					cuadrados=True,
+					params=None,
+					**activity_shifts):
 		my_data = data.copy()
-		
+		dibujo = ''
+		gantt_df = None
 		for actividad, duracion in activity_shifts.items():
 			slide_label = '💤' + actividad
 			if slide_label in my_data.index:
@@ -926,11 +945,12 @@ class ProjectGraph:
 			else:
 				gantt_df, dibujo = self.gantt(my_data, duration_label, resource_label, total='fila', holguras=holguras, cuadrados=cuadrados, tikz=tikz, params=params)
 			return my_data, gantt_df, dibujo
+		return my_data, gantt_df, dibujo
 	
 	def evaluar_desplazamiento(self, data, duration_label, resource_label, report=True, tikz=True, **desplazamientos):
 		proyecto = self.copy()
 		my_data = data.copy()
-		
+		dibujo = ''
 		new_data, gantt_df, dibujo = proyecto.desplazar(my_data,
 									  duration_label=duration_label,
 									  resource_label=resource_label,
@@ -941,6 +961,7 @@ class ProjectGraph:
 	
 	def evaluar_rango_de_desplazamientos(self, data, duration_label, resource_label, activity, report=True, tikz=True):
 		my_data = data.copy()
+		dibujo = ''
 		
 		minimo = 0
 		maximo = int(self.calculate_pert(my_data.loc[:,duration_label])['activities'].loc[activity, 'H_total'])
