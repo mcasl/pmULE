@@ -1299,6 +1299,8 @@ class ProjectGraph:
             maximo = pd.Series([maximo] * (duracion_proyecto), index=range(1, duracion_proyecto+1))
         if isinstance(maximo, pd.Series) and maximo.index.min() != 1:
                 raise ValueError("Error: maximo debe estar indexado empezando en el periodo 1")
+        if data[resource_label].max() > max(maximo):
+            raise ValueError("Error: Hay actividades que requieren más recursos que el máximo permitido")
         
         periodo = 1
         while periodo <= duracion_proyecto:
