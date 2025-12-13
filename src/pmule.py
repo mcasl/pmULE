@@ -982,6 +982,35 @@ class ProjectGraph:
 			suma_cuadrados.loc[slide, 'Suma_de_cuadrados'] = carga2
 		return suma_cuadrados, dibujo
 	
+	def nivelar(self, data, duration_label, resource_label):
+		calendario = self.calendar(data[duration_label])
+		calendario = calendario.loc[calendario['H_total'] > 0, :]
+		maxima_holgura = calendario['H_total'].max()
+		actividades = calendario.sort_values(by='fin_mas_temprano', ascending=False)
+		cuadrados = pd.DataFrame(0,
+								columns=actividades.index,
+								index=range(maxima_holgura+1))
+		desplazamientos = dict()
+		for actividad in actividades.index:
+			suma_de_cuadrados, dibujo = self.evaluar_rango_de_desplazamientos(data=data,
+												duration_label=duration_label,
+												resource_label=resource_label,
+												activity=actividad,
+												report=False,
+												tikz=False)
+			cuadrados[actividad] = suma_de_cuadrados
+			desplazamientos[actividad] = suma_de_cuadrados['Suma_de_cuadrados'].idxmin()
+		_, gantt_df, dibujo = self.desplazar(data=data,
+											duration_label=duration_label,
+											resource_label=resource_label,
+											tikz=True,
+											cuadrados=True,
+											report=True,
+											**desplazamientos)
+		desplazamientos = pd.Series(desplazamientos).to_frame(name='desplazamientos')
+		return desplazamientos, cuadrados.T, gantt_df, dibujo
+    
+
 	def standard_deviation(self, durations, variances):
 		varianza = {key: 0 for key in self.activities}
 		varianza.update(variances)
