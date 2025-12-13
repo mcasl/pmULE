@@ -26,3 +26,6 @@ pip-delete-this-directory.txt
 .vscode/
 .idea/
 
+
+/.quarto/
+**/*.quarto_ipynb
