@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = "==3.12.3"
 dependencies = [
     "amplpy>=0.16.0",
+    "jupyter-ai-jupyternaut>=0.0.6",
     "matplotlib>=3.10.8",
     "networkx>=3.6.1",
     "numpy>=2.3.5",
