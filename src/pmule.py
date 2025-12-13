@@ -1276,7 +1276,7 @@ class ProjectGraph:
         return desplazamientos, cuadrados.T, my_data, gantt_df, dibujo
 
 
-    def asignar(self, data, duration_label='duration', resource_label='resources', maximo=None, report=True):
+    def asignar(self, data, duration_label='duration', resource_label='resources', maximo=None, report=True, params=None):
         # maximo is indexed starting at 1
         if maximo is None:
             raise ValueError("Error: Debe introducir un valor para Máximo")
@@ -1284,6 +1284,8 @@ class ProjectGraph:
             raise ValueError("Error: Duration label not in data columns")
         if resource_label not in data.columns:
             raise ValueError("Error: Resource label not in data columns")
+        if params is None:
+            params = dict() 
         my_data = data.copy()
         empezadas = pd.Series({actividad: False for actividad in my_data.index}).to_frame(name='Empezadas')
         
@@ -1308,7 +1310,8 @@ class ProjectGraph:
                 current_max = maximo[periodo]
             else:
                 current_max = maximo.iloc[-1]
-            display(Markdown(f"<br> Periodo: {periodo}. "))
+            if report:
+                display(Markdown(f"<br> Periodo: {periodo}. "))
             df = pd.concat([gantt_df.data, my_data[duration_label], empezadas], axis=1)
             total = df.loc['Total', periodo]
             df = (df.loc[:, [periodo, 'H_total', duration_label, 'Empezadas']]
@@ -1317,24 +1320,23 @@ class ProjectGraph:
                     .sort_values(by=['Empezadas', 'H_total', duration_label], ascending=[False, True, True])
                     .drop(labels='Total', axis=0)
                     )
-            #display("df")
-            #display(df)
-            #display(f"{total=:}")
             elegibles = df.index.to_list()
-            display(f"{elegibles=:}")
             
             if total > current_max:
                 acumulada = df[periodo].cumsum()
                 se_programan = set(df.loc[acumulada <= current_max,:].index)
-                display(Markdown(f"Periodo: {periodo}. Total: {total}. Se programan: {list(se_programan)}"))
+                if report:
+                    display(Markdown(f"Periodo: {periodo}. Total: {total}. Se programan: {list(se_programan)}"))
                 se_retrasan = set(elegibles) - se_programan
-                display(Markdown(f"Periodo: {periodo}. Se desplazan: {list(se_retrasan)}"))
+                if report:
+                    display(Markdown(f"Periodo: {periodo}. Se desplazan: {list(se_retrasan)}"))
                 empezadas.loc[list(se_programan), 'Empezadas'] = True
                 my_data, gantt_df, dibujo = self.desplazar(
                                             data = my_data, 
                                             duration_label = duration_label,
                                             resource_label = resource_label,
                                             tikz = False,
+                                            report=False,
                                             **{actividad: 1 for actividad in se_retrasan}
                 )
                 
@@ -1342,7 +1344,8 @@ class ProjectGraph:
                 acumulada = df[periodo].cumsum()
                 se_programan = set(df.loc[acumulada <= current_max,:].index)
                 empezadas.loc[list(se_programan), 'Empezadas'] = True
-                display(Markdown(f"Periodo: {periodo}. Total: {total}. Se programan: {list(se_programan)}"))
+                if report:
+                    display(Markdown(f"Periodo: {periodo}. Total: {total}. Se programan: {list(se_programan)}"))
                 
             
             periodo += 1
@@ -1359,7 +1362,8 @@ class ProjectGraph:
                                     resource_label=resource_label,
                                     holguras=True,
                                     total='fila',
-                                    tikz=True)
+                                    tikz=True,
+                                    params=params)
         return gantt_df, dibujo
 
     def standard_deviation(self, durations, variances):
