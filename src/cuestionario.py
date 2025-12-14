@@ -15,7 +15,6 @@ from numpyarray_to_latex import to_ltx
 from numpyarray_to_latex.jupyter import to_jup
 
 	
-		)
 
 class ProjectQuestionMaker():
 	def __init__(self, project):
@@ -38,7 +37,7 @@ class ProjectQuestionMaker():
 	def distant_predecessor(self, question=None):
 		if question is None:
 			question = "¿Cuáles son sus los predecesores distantes? (Escribir los nombres de las actividades en orden alfabético separados por un espacio como, por ejemplo, A B C D E)"
-		predecessor_dataframe = self.project.distant_predecessor(format='DataFrame').replace('----', np.nan).dropna()
+		predecessor_dataframe = self.project.distant_predecessor(format='DataFrame').replace('----', np.nan).dropna().to_frame()
 		for activity in predecessor_dataframe.index:
 			self.text += f"\n\nPara la actividad {activity}, {question} {{ ={predecessor_dataframe.loc[activity, 'predecessors']} ={predecessor_dataframe.loc[activity, 'predecessors'].replace(', ','-')} ={predecessor_dataframe.loc[activity, 'predecessors'].replace(', ',' ')} }}"
 	
