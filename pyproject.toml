@@ -14,6 +14,7 @@ dependencies = [
     "numpyarray-to-latex>=0.1.0",
     "pandas[excel]>=2.3.3",
     "pygraphviz>=1.14",
+    "scipy>=1.16.3",
     "seaborn>=0.13.2",
     "sympy>=1.14.0",
 ]
