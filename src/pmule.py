@@ -56,6 +56,12 @@ def truncate_and_pad(value, n_decimal_places):
         or isinstance(value, np.int8)
     ):
         value = int(value)
+    elif (
+        value is None
+        or np.isnan(value)
+    ):
+        value = 0.0
+
     truncated = truncate_float(value, n_decimal_places)
     format_string = f"{{:.{n_decimal_places}f}}"
     return format_string.format(truncated)
@@ -829,9 +835,14 @@ class ProjectGraph:
         cuadrados=False,
         tikz=False,
         params=None,
+        extra_rows = None,
+        extra_cols = None
     ):
         if params is None:
             params = dict()
+        
+        user_cols = extra_cols.copy() if extra_cols is not None else None
+        user_rows = extra_rows.copy() if extra_rows is not None else None
 
         my_data = data.copy()
         my_data[duration_label] = my_data[duration_label].astype(int)
@@ -916,8 +927,7 @@ class ProjectGraph:
             out = pd.concat([df, total], axis=axis)
             return out
 
-        extra_rows = None
-        extra_cols = None
+
 
         if total is None:
             mat = gantt
@@ -960,6 +970,11 @@ class ProjectGraph:
             if total in ["fila", "ambas"]:
                 mat.loc["Total", "H_total"] = None
 
+        if user_cols is not None:
+            mat = pd.concat([user_cols, mat], axis=1)
+        if user_rows is not None:
+            mat = pd.concat([user_rows, mat], axis=0)
+
         resultado = (
             mat.style.set_table_styles(styles)
             .map(color_gantt)
@@ -996,6 +1011,10 @@ class ProjectGraph:
                     [extra_cols, gantt_data[["Htotal"]]], axis=1
                 ).copy()
             params["inner_text"] = params.get("inner_text", "resource")
+            if user_cols is not None:
+                extra_cols = pd.concat([user_cols, extra_cols], axis=1)
+            if user_rows is not None:
+                extra_rows = pd.concat([user_rows, extra_rows], axis=0) 
             dibujo = make_gantt_tikz(
                 gantt_data=gantt_data,
                 extra_cols=extra_cols,
@@ -1279,7 +1298,7 @@ class ProjectGraph:
     def asignar(self, data, duration_label='duration', resource_label='resources', maximo=None, report=True, params=None):
         # maximo is indexed starting at 1
         if maximo is None:
-            raise ValueError("Error: Debe introducir un valor para Máximo")
+            raise ValueError("Error: Debe introducir un valor para Máximo. Si es un vector use una serie indexada desde 1")
         if duration_label not in data.columns:
             raise ValueError("Error: Duration label not in data columns")
         if resource_label not in data.columns:
@@ -1299,6 +1318,8 @@ class ProjectGraph:
         duracion_proyecto = gantt_df.data.columns.drop('H_total').max()
         if isinstance(maximo, (int, float)):
             maximo = pd.Series([maximo] * (duracion_proyecto), index=range(1, duracion_proyecto+1))
+        if isinstance(maximo, list):
+            maximo = pd.Series(maximo, index=range(1, len(maximo)+1))
         if isinstance(maximo, pd.Series) and maximo.index.min() != 1:
                 raise ValueError("Error: maximo debe estar indexado empezando en el periodo 1")
         if data[resource_label].max() > max(maximo):
@@ -1310,6 +1331,7 @@ class ProjectGraph:
                 current_max = maximo[periodo]
             else:
                 current_max = maximo.iloc[-1]
+                maximo[periodo] = current_max
             if report:
                 display(Markdown(f"<br> Periodo: {periodo}. "))
             df = pd.concat([gantt_df.data, my_data[duration_label], empezadas], axis=1)
@@ -1356,14 +1378,15 @@ class ProjectGraph:
                                         total='fila',
                                         tikz=False)
             duracion_proyecto = gantt_df.data.columns.drop('H_total').max()
-        
+        maximo = maximo.to_frame(name='Máximo')
         gantt_df, dibujo = self.gantt(data=my_data, 
                                     duration_label=duration_label,
                                     resource_label=resource_label,
                                     holguras=True,
                                     total='fila',
                                     tikz=True,
-                                    params=params)
+                                    params=params,
+                                    extra_rows=maximo.T)
         return gantt_df, dibujo
 
     def standard_deviation(self, durations, variances):
