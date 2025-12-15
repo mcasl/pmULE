@@ -1130,7 +1130,7 @@ class ProjectGraph:
         **activity_shifts,
     ):
         if resource_label not in data.columns:
-            raise ValueError("Resource label not in data columns, report will be False")
+            raise ValueError("Resource label not in data columns")
 
         my_data = data.copy()
         dibujo = ""
@@ -1281,16 +1281,20 @@ class ProjectGraph:
             cuadrados[actividad] = suma_de_cuadrados
 
             desplazamientos[actividad] = suma_de_cuadrados["Suma_de_cuadrados"].idxmin()
+            #print(f"Actividad: {actividad}. Desplazamiento óptimo: {desplazamientos[actividad]}")
             if desplazamientos[actividad] > 0:
+                print(f"Actividad: {actividad}. Desplazamiento óptimo: {desplazamientos[actividad]} dentro de bloque if")
                 my_data, gantt_df, dibujo = self.desplazar(
                     data=my_data,
                     duration_label=duration_label,
                     resource_label=resource_label,
-                    tikz=True,
+                    tikz=False,
                     cuadrados=True,
                     report=False,
                     **{actividad: desplazamientos[actividad]},
                 )
+        gantt_df, dibujo = self.gantt_cargas(my_data, duration_label, resource_label,
+                                              report=False, tikz=True)
         desplazamientos = pd.Series(desplazamientos).to_frame(name="desplazamientos")
         return desplazamientos, cuadrados.T, my_data, gantt_df, dibujo
 
