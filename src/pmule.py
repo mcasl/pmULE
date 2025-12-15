@@ -1,6 +1,6 @@
 from numpyarray_to_latex.jupyter import to_jup
 from numpyarray_to_latex import to_ltx
-from IPython.display import display, Image, SVG, Latex, Markdown
+from IPython.display import display, Image, SVG, Latex, Markdown, Math 
 import pygraphviz as pgv
 from functools import reduce
 from itertools import chain, product
@@ -1750,7 +1750,7 @@ def beautify(*args):
             else str(x)
         )
 
-    return Latex(" ".join([converter(arg) for arg in args]))
+    return Math(" ".join([converter(arg) for arg in args]))
 
 
 def tanto_por_uno(x):

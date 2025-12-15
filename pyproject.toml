@@ -6,7 +6,12 @@ readme = "README.md"
 requires-python = "==3.12.3"
 dependencies = [
     "amplpy>=0.16.0",
+    "handcalcs>=1.10.0",
+    "ipywidgets>=8.1.8",
+    "jedi-language-server>=0.46.0",
     "jupyter-ai-jupyternaut>=0.0.6",
+    "jupyterlab>=4.5.0",
+    "jupyterlab-mathjax3>=4.3.0",
     "jupytext>=1.18.1",
     "matplotlib>=3.10.8",
     "networkx>=3.6.1",
