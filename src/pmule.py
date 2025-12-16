@@ -1,3 +1,4 @@
+from jupyter_tikz import TexFragment
 from numpyarray_to_latex.jupyter import to_jup
 from numpyarray_to_latex import to_ltx
 from IPython.display import display, Image, SVG, Latex, Markdown, Math 
@@ -43,9 +44,11 @@ def truncate_and_pad(value, n_decimal_places):
     def truncate_float(value, n_digits):
         if n_digits < 0:
             raise ValueError("n_digits must be non-negative.")
-        multiplier = 10**n_digits
-        truncated_value = math.trunc(value * multiplier) / multiplier
-        return int(truncated_value) if n_digits == 0 else truncated_value
+        #multiplier = 10**n_digits
+        #truncated_value = math.trunc(value * multiplier) / multiplier
+        rounded_value = round(value, n_digits)
+        return int(rounded_value) if n_digits == 0 else rounded_value
+        #return int(truncated_value) if n_digits == 0 else truncated_value
 
     if isinstance(value, str):
         value = float(value)
@@ -578,7 +581,7 @@ class ProjectGraph:
             resultado = pd.Series(
                 {key: ", ".join(sorted(value)) for key, value in resultado.items()},
                 name="predecessors",
-            ).replace("", "----")
+            ).replace("", "----").to_frame()
         return resultado
 
     @property
@@ -1026,7 +1029,7 @@ class ProjectGraph:
     def roy(
         self,
         filename=None,
-        duraciones=False,
+        durations=False,
         size=None,
         orientation="landscape",
         rankdir="LR",
@@ -1036,9 +1039,7 @@ class ProjectGraph:
         rotate=0,
         **kwargs,
     ):
-        # precedentes = (self.data.precedentes
-        #               .drop([actividad for actividad in self.data.index if actividad[0] == 'f'])
-        #               )
+        durations = durations.copy() if durations is not None else durations
         df = PredecessorTable.from_project(self).immediate_linkage_matrix
         rows_to_keep = ~df.index.str.startswith("@")
         columns_to_keep = ~df.columns.str.startswith("@")
@@ -1049,20 +1050,20 @@ class ProjectGraph:
         if filename is None:
             filename = "output_roy_figure.png"
 
-        if duraciones is None:
-            duraciones = self.data["duracion"].copy()
+        if durations is None:
+            durations = False
 
-        if duraciones is not False:
-            calendario = self.calendar()
+        if durations is not False:
+            calendario = self.calendar(durations)
             inicio_mas_temprano = calendario["inicio_mas_temprano"]
             inicio_mas_tardio = calendario["inicio_mas_tardio"]
-            duraciones["inicio"] = 0
-            duraciones["fin"] = 0
-            inicio_mas_temprano["inicio"] = 0
-            inicio_mas_tardio["inicio"] = 0
+            durations["start"] = 0
+            durations["finish"] = 0
+            inicio_mas_temprano["start"] = 0
+            inicio_mas_tardio["start"] = 0
 
-            inicio_mas_temprano["fin"] = self.duration()
-            inicio_mas_tardio["fin"] = inicio_mas_temprano["fin"]
+            inicio_mas_temprano["finish"] = calendario['fin_mas_temprano'].max()
+            inicio_mas_tardio["finish"] = inicio_mas_temprano["finish"] 
 
         dot_graph = pgv.AGraph(
             size=size,
@@ -1081,11 +1082,11 @@ class ProjectGraph:
 
         for nodo in dot_graph.nodes():
             current_node = dot_graph.get_node(nodo)
-            if duraciones is not False:
+            if durations is not False:
                 current_node.attr["label"] = (
                     f"{nodo} | {{ "
                     f"<min> {inicio_mas_temprano[str(nodo)]} |"
-                    f"<dur> {duraciones[str(nodo)]}          | "
+                    f"<dur> {durations[str(nodo)]}          | "
                     f"<max> {inicio_mas_tardio[str(nodo)]}   }}"
                 )
             else:
@@ -2052,3 +2053,10 @@ def make_gantt_tikz(
 
     text += "\n" + r"\end{tikzpicture}"
     return text
+
+
+def pinta_tikz(dibujo, filename=None):
+    if filename is not None:
+        display(TexFragment(dibujo, tikz_libraries='patterns').run_latex(save_pdf=filename+'.pdf', save_svg=filename+'.svg'))
+    else:
+        display(TexFragment(dibujo, tikz_libraries='patterns').run_latex())
