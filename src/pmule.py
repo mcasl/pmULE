@@ -1037,9 +1037,11 @@ class ProjectGraph:
         ranksep=0.5,
         nodesep=0.5,
         rotate=0,
+        dpi=300,
         **kwargs,
     ):
-        durations = durations.copy() if durations is not None else durations
+        if isinstance(durations, (pd.Series, pd.DataFrame)):
+            durations = durations.copy()
         df = PredecessorTable.from_project(self).immediate_linkage_matrix
         rows_to_keep = ~df.index.str.startswith("@")
         columns_to_keep = ~df.columns.str.startswith("@")
@@ -1064,6 +1066,8 @@ class ProjectGraph:
 
             inicio_mas_temprano["finish"] = calendario['fin_mas_temprano'].max()
             inicio_mas_tardio["finish"] = inicio_mas_temprano["finish"] 
+            critical_nodes = ["start", "finish"] + [activity for activity in self.actual_activities if calendario.loc[activity, "H_total"] == 0]
+
 
         dot_graph = pgv.AGraph(
             size=size,
@@ -1089,11 +1093,36 @@ class ProjectGraph:
                     f"<dur> {durations[str(nodo)]}          | "
                     f"<max> {inicio_mas_tardio[str(nodo)]}   }}"
                 )
+                if str(nodo) in critical_nodes:
+                    current_node.attr["color"] = "red:red"
+                    current_node.attr["fontcolor"] = "red"
+                    current_node.attr["style"] = "bold"
             else:
                 current_node.attr["label"] = f"{nodo} | {{ <min>  | <dur>  | <max>   }}"
 
-        dot_graph.draw(filename, prog="dot")
+        # --- 2. Style Edges in NetworkX ---
+        if durations is not False:
+            for u, v in dot_graph.edges():
+                u_name = str(u)
+                v_name = str(v)
+                
+                if u_name in critical_nodes and v_name in critical_nodes:
+                    current_edge = dot_graph.get_edge(u, v)
+                    current_edge.attr["color"] = "red"
+                    current_edge.attr["penwidth"] = 2.0
+                else:
+                    # OPTIONAL: Set non-critical edge attributes (defaults)
+                    current_edge = dot_graph.get_edge(u, v)
+                    current_edge.attr["color"] = "black"
+                    current_edge.attr["penwidth"] = 1.0 # Standard width
+
+        dot_graph.graph_attr['dpi'] = str(dpi)
+        dot_graph.draw(filename, prog="dot", format="png")
         return Image(filename)
+
+
+
+
 
     def gantt_cargas(
         self, data, duration_label, resource_label, report=True, tikz=False, params=None
