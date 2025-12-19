@@ -5,6 +5,7 @@
 [Ejercicio 03](Ejercicio_03.html)  
 [Ejercicio 04](Ejercicio_04.html)  
 [Ejercicio 05](Ejercicio_05.html)  
+[Ejercicio 06](Ejercicio_06.html)  
 [Ejercicio 12](Ejercicio_12.html)  
 [Ejercicio 14](Ejercicio_14.html)  
 [Ejercicio 20](Ejercicio_20.html)  
