@@ -15,6 +15,24 @@ import pandas as pd
 
 pd.set_option("future.no_silent_downcasting", True)
 
+def highlight_first_minimum(row):
+    styles = pd.Series('', index=row.index)
+    
+    # 2. Find the index (column label) of the first minimum value
+    # idxmin() returns the index label of the first occurrence of the minimum value
+    first_min_col_label = row.idxmin()
+    
+    # 3. Use the found index label to apply the highlight style to only that position
+    highlight = "background-color: yellow"
+    styles[first_min_col_label] = highlight
+    
+    # 4. Return the styles as a list
+    return styles.tolist()
+
+
+def colorea_minimo_fila(df):
+    return df.style.apply(highlight_first_minimum, axis=1).format('{:.0f}', na_rep='')
+
 
 def highlight_maximum(column):
     highlight = "background-color: greenyellow;"
@@ -707,10 +725,8 @@ class ProjectGraph:
 
     def display_critical_path(self, durations):
         critical_path = self.critical_path(durations)
-        result = ""
-        for ruta, actividades in critical_path.items():
-            result += f"{ruta}:\t" + ", ".join(actividades) + " <br> "
-        display(Markdown(result))
+        for ruta,actividades in critical_path.items():
+            display(Markdown(f"- {ruta} :\t" + ", ".join(actividades) + " <br> "))
 
     def zaderenko(self, durations: Dict[str, float]):
         duraciones = {key: 0 for key in self.activities}
@@ -1057,8 +1073,8 @@ class ProjectGraph:
 
         if durations is not False:
             calendario = self.calendar(durations)
-            inicio_mas_temprano = calendario["inicio_mas_temprano"]
-            inicio_mas_tardio = calendario["inicio_mas_tardio"]
+            inicio_mas_temprano = calendario["inicio_mas_temprano"].copy()
+            inicio_mas_tardio = calendario["inicio_mas_tardio"].copy()
             durations["start"] = 0
             durations["finish"] = 0
             inicio_mas_temprano["start"] = 0
@@ -1289,7 +1305,7 @@ class ProjectGraph:
             suma_cuadrados.loc[slide, "Suma_de_cuadrados"] = carga2
         return suma_cuadrados, dibujo
 
-    def nivelar(self, data, duration_label, resource_label):
+    def nivelar(self, data, duration_label, resource_label, report=False):
         calendario = self.calendar(data[duration_label])
         calendario = calendario.loc[calendario["H_total"] > 0, :]
         actividades = calendario.sort_values(by=["fin_mas_temprano", 'H_total'], ascending=[True,False])
@@ -1313,7 +1329,8 @@ class ProjectGraph:
             desplazamientos[actividad] = suma_de_cuadrados["Suma_de_cuadrados"].idxmin()
             #print(f"Actividad: {actividad}. Desplazamiento óptimo: {desplazamientos[actividad]}")
             if desplazamientos[actividad] > 0:
-                print(f"Actividad: {actividad}. Desplazamiento óptimo: {desplazamientos[actividad]} dentro de bloque if")
+                if report:
+                    print(f"Actividad: {actividad}. Desplazamiento óptimo: {desplazamientos[actividad]}")
                 my_data, gantt_df, dibujo = self.desplazar(
                     data=my_data,
                     duration_label=duration_label,
@@ -1326,7 +1343,8 @@ class ProjectGraph:
         gantt_df, dibujo = self.gantt_cargas(my_data, duration_label, resource_label,
                                               report=False, tikz=True)
         desplazamientos = pd.Series(desplazamientos).to_frame(name="desplazamientos")
-        return desplazamientos, cuadrados.T, my_data, gantt_df, dibujo
+        cuadrados = colorea_minimo_fila(cuadrados.T)
+        return desplazamientos, cuadrados, my_data, gantt_df, dibujo
 
 
     def asignar(self, data, duration_label='duration', resource_label='resources', maximo=None, report=True, params=None):
@@ -1423,7 +1441,7 @@ class ProjectGraph:
                                     extra_rows=maximo.T)
         return gantt_df, dibujo
 
-    def standard_deviation(self, durations, variances):
+    def standard_deviation(self, durations, variances, report=False):
         varianza = {key: 0 for key in self.activities}
         varianza.update(variances)
         caminos = self.critical_path(durations=durations)
@@ -1431,17 +1449,25 @@ class ProjectGraph:
             key: sum(varianza[activity] for activity in path)
             for key, path in caminos.items()
         }
-        [
-            print("Variance path:", key, ":", value)
-            for key, value in varianza_caminos.items()
-        ]
+        if report:
+            [print("Variance path:", key, ":", round(value,2)) for key, value in varianza_caminos.items()]
         varianza_proyecto = max(varianza_caminos.values())
-        std_deviation = varianza_proyecto**0.5
-        print("Project duration variance:", varianza_proyecto)
-        print("Project duration standard deviation:", std_deviation)
-        return std_deviation
+        #ruta_max = varianza_caminos.values().argmax()
 
-    def ackoff(self, durations, min_durations, costs, reduction=100):
+        std_deviation = varianza_proyecto**0.5
+        if report:
+            print("Project duration variance:", varianza_proyecto)
+            print("Project duration standard deviation:", std_deviation)
+
+        varianza_caminos = pd.Series(varianza_caminos).to_frame(name='Variance').round(2)
+        varianza_caminos = (pd.concat([pd.Series(caminos).to_frame(name='Activities').map(lambda x: ", ".join(x)),
+                                      varianza_caminos], axis=1)
+                            .style.apply(highlight_maximum, axis=0, subset=['Variance'])
+                            .format('{:.2f}', na_rep='', subset=['Variance'])
+                            )
+        return std_deviation, varianza_caminos
+
+    def ackoff(self, durations, min_durations, costs, reduction=100, report=False):
         def calculate_reduction_cost(activities, costs):
             return sum([costs[name] for name in set(activities)])
 
@@ -1510,10 +1536,9 @@ class ProjectGraph:
                 for key in product(*mini_path_matrix_filtered.values)
             }
             best_option[step] = list(set(min(costes, key=costes.get)))
-            print(f"Step: {step},\t Critical paths: {list(critical_paths.keys())}")
-            print(
-                f"\t\t Best option: {best_option[step]}, \t Cost: {calculate_reduction_cost(best_option[step], costs)}"
-            )
+            if report:
+                print(f"Step: {step},\t Critical paths: {list(critical_paths.keys())}")
+                print(f"\t\t Best option: {best_option[step]}, \t Cost: {calculate_reduction_cost(best_option[step], costs)}")
             for activity in best_option[step]:
                 periods_available[activity] -= 1
                 durations[activity] -= 1
@@ -1554,7 +1579,8 @@ class ProjectGraph:
                     axis=1,
                     subset=recortadas,
                 )
-        print("\n" + 80 * "-")
+        if report:
+            print("\n" + 80 * "-")
         return result, best_option, durations, periods_available
 
     def incidence_matrix(self):
