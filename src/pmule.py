@@ -1528,7 +1528,8 @@ class ProjectGraph:
                 mini_path_matrix_filtered.apply(len) == 0
             )
             if mini_path_matrix_filtered_has_empty_rows:
-                print("No more paths to reduce.\n\n")
+                if report:
+                    print("No more paths can be reduced.")
                 break
 
             costes = {
