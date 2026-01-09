@@ -1683,7 +1683,7 @@ class EarnedValue:
         if params is None:
             params = dict()
         params["critical_background_color"] = params.get(
-            "regular_background_color", "white!80!green"
+            "regular_background_color", "white!90!green"
         )
         params["critical_text_color"] = params.get("regular_text_color", "black")
         gantt_AC, dibujo_AC = self.pert.gantt(
