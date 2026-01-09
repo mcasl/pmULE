@@ -1397,7 +1397,9 @@ class ProjectGraph:
             elegibles = df.index.to_list()
             
             if total > current_max:
+                """
                 acumulada = df[periodo].cumsum()
+                display(Markdown(f"Acumulada: {acumulada}"))
                 se_programan = set(df.loc[acumulada <= current_max,:].index)
                 if report:
                     display(Markdown(f"Periodo: {periodo}. Total: {total}. Se programan: {list(se_programan)}"))
@@ -1405,6 +1407,26 @@ class ProjectGraph:
                 if report:
                     display(Markdown(f"Periodo: {periodo}. Se desplazan: {list(se_retrasan)}"))
                 empezadas.loc[list(se_programan), 'Empezadas'] = True
+                """
+                acumulada = 0
+                se_programan = set()
+                se_retrasan = set()
+                for actividad in elegibles:
+                    if acumulada + df.loc[actividad, periodo] <= current_max:
+                        acumulada += df.loc[actividad, periodo]
+                        se_programan.add(actividad)
+                        empezadas.loc[actividad, 'Empezadas'] = True
+                    else:
+                        se_retrasan.add(actividad)
+                if report:
+                    display(Markdown(f"Periodo: {periodo}. Total: {total}. Se programan: {list(se_programan)}"))
+                    display(Markdown(f"Periodo: {periodo}. Se desplazan: {list(se_retrasan)}"))
+                if se_programan == set():
+                    if report:
+                        display(Markdown(f"¡Atención! No se puede programar ninguna actividad en el periodo {periodo} con el máximo de recursos disponible ({current_max}). El proyecto no es factible con estos recursos."))
+                    break
+
+
                 my_data, gantt_df, dibujo = self.desplazar(
                                             data = my_data, 
                                             duration_label = duration_label,
@@ -1439,7 +1461,7 @@ class ProjectGraph:
                                     tikz=True,
                                     params=params,
                                     extra_rows=maximo.T)
-        return gantt_df, dibujo
+        return my_data, gantt_df, dibujo
 
     def standard_deviation(self, durations, variances, report=False):
         varianza = {key: 0 for key in self.activities}
