@@ -2138,3 +2138,12 @@ def pinta_tikz(dibujo, filename=None):
         display(TexFragment(dibujo, tikz_libraries='patterns').run_latex(save_pdf=filename+'.pdf', save_svg=filename+'.svg'))
     else:
         display(TexFragment(dibujo, tikz_libraries='patterns').run_latex())
+
+def plot_cargas(gantt_df, limite_maximo_recursos):
+    from matplotlib import pyplot as plt
+    ax = gantt_df.data.loc['Total'].drop('H_total').plot(kind='bar')
+    plt.axhline(y=limite_maximo_recursos, color='red', linestyle='--', alpha=0.7,
+                label=f'límite maximo = {limite_maximo_recursos}');
+    ax.legend()
+    plt.show()
+    
