@@ -8,6 +8,7 @@
 [Ejercicio 06](Ejercicio_06.html)  
 [Ejercicio 07](Ejercicio_07.html)  
 [Ejercicio 09](Ejercicio_09.html)  
+[Ejercicio 10](Ejercicio_10.html)  
 [Ejercicio 12](Ejercicio_12.html)  
 [Ejercicio 14](Ejercicio_14.html)  
 [Ejercicio 20](Ejercicio_20.html)  
