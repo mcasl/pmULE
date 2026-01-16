@@ -16,5 +16,6 @@
 [Ejercicio 20](Ejercicio_20.html)  
 [Ejercicio 21](Ejercicio_21.html)  
 [Ejercicio 22](Ejercicio_22.html)  
+[Ejercicio 23](Ejercicio_23.html)  
 [Ejercicio 25](Ejercicio_25.html)  
 
