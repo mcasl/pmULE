@@ -6,8 +6,11 @@ Examenes
 .DS_Store
 **/.DS_Store
 
+.virtual_documents
+
 pmULE
 **/pmULE
+
 
 # Python
 __pycache__/
