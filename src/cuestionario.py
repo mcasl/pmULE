@@ -27,8 +27,9 @@ class ProjectQuestionMaker():
 		self.text += ('\n\n' + question + f'{{ ={self.project.duration(data[durations_label])} }}')
 	
 	def standard_deviation(self, data, durations_label, variances_label,  question=None, dec=2):
-		result = self.project.standard_deviation(durations=data[durations_label],
-		                                         variances=data[variances_label]).round(dec)
+		result, varianza_caminos = self.project.standard_deviation(durations=data[durations_label],
+		                                         variances=data[variances_label])
+		result = round(result, dec)
 		if question is None:
 			question = '¿Cuál es la desviación estándar de la duración del proyecto?'
 		self.text += ('\n\n' + question + f'{{ ={result} }}')
@@ -37,7 +38,7 @@ class ProjectQuestionMaker():
 	def distant_predecessor(self, question=None):
 		if question is None:
 			question = "¿Cuáles son sus los predecesores distantes? (Escribir los nombres de las actividades en orden alfabético separados por un espacio como, por ejemplo, A B C D E)"
-		predecessor_dataframe = self.project.distant_predecessor(format='DataFrame').replace('----', np.nan).dropna().to_frame()
+		predecessor_dataframe = self.project.distant_predecessor(format='DataFrame').replace('----', np.nan).dropna()
 		for activity in predecessor_dataframe.index:
 			self.text += f"\n\nPara la actividad {activity}, {question} {{ ={predecessor_dataframe.loc[activity, 'predecessors']} ={predecessor_dataframe.loc[activity, 'predecessors'].replace(', ','-')} ={predecessor_dataframe.loc[activity, 'predecessors'].replace(', ',' ')} }}"
 	
@@ -59,8 +60,9 @@ class ProjectQuestionMaker():
 	
 	def date_for_probability(self, data, duration_label, variance_label, probability, question=None, dec=0):
 		duracion_proyecto = self.project.duration(data[duration_label])
-		desviacion_tipica = self.project.standard_deviation(durations=data[duration_label],
-		                                                    variances=data[variance_label]).round(dec)
+		desviacion_tipica, varianza_caminos = self.project.standard_deviation(durations=data[duration_label],
+		                                                    variances=data[variance_label])
+		desviacion_tipica = round(desviacion_tipica, dec)
 		if question is None:
 			question = f"\n\n¿Cuál es la fecha para una probabilidad del {probability}% de terminar el proyecto??"
 		result = round(norm.ppf(probability, duracion_proyecto, desviacion_tipica))
@@ -68,7 +70,7 @@ class ProjectQuestionMaker():
 		
 	def probability_for_interval(self, data, duration_label, variance_label, lower_bound, upper_bound, question=None, dec=0):
 		duracion_proyecto = self.project.duration(data[duration_label])
-		desviacion_tipica = self.project.standard_deviation(durations=data[duration_label],
+		desviacion_tipica, varianza_caminos = self.project.standard_deviation(durations=data[duration_label],
 		                                                    variances=data[variance_label])
 		if question is None:
 			question = f"\n\n¿Cuál es la probabilidad, en tanto por ciento con {dec} decimales, de terminar el proyecto entre {lower_bound} y {upper_bound}?"
