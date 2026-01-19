@@ -2183,3 +2183,16 @@ def plot_cargas(gantt_df, limite_maximo_recursos=None):
 
     plt.tight_layout()
     plt.show()
+
+
+def plot_curvas_valor_ganado(gantts):
+    from matplotlib import pyplot as plt
+    acumulados = gantts['acumulados']
+    acumulados.plot(
+        color=['blue', 'green', 'red'],
+        title='Curvas S del Valor Ganado (Acumuladas)',
+        ylabel='Costo',
+        xlabel='Período de Tiempo'
+    )
+    plt.show()
+    
