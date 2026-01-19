@@ -2139,11 +2139,47 @@ def pinta_tikz(dibujo, filename=None):
     else:
         display(TexFragment(dibujo, tikz_libraries='patterns').run_latex())
 
-def plot_cargas(gantt_df, limite_maximo_recursos):
+def plot_cargas(gantt_df, limite_maximo_recursos=None):
     from matplotlib import pyplot as plt
-    ax = gantt_df.data.loc['Total'].drop('H_total').plot(kind='bar')
-    plt.axhline(y=limite_maximo_recursos, color='red', linestyle='--', alpha=0.7,
-                label=f'límite maximo = {limite_maximo_recursos}');
-    ax.legend()
-    plt.show()
+    import numpy as np
+
+    # 1. Prepare the data
+    series_data = gantt_df.data.loc['Total'].drop('H_total')
+    num_periods = len(series_data)
     
+    # Define bar width
+    bar_width = 0.8 
+    ax = series_data.plot(kind='bar', width=bar_width, color='skyblue', alpha=0.8)
+
+    # 2. Logic for the limit line (only executes if not None)
+    if limite_maximo_recursos is not None:
+        if isinstance(limite_maximo_recursos, (list, np.ndarray)):
+            limits = list(limite_maximo_recursos)
+            
+            # Padding logic: extend with the last value if list is short
+            if len(limits) < num_periods:
+                limits.extend([limits[-1]] * (num_periods - len(limits)))
+            
+            # Ensure it's not longer than the data
+            limits = limits[:num_periods]
+
+            # Coordinate calculation for step line starting at left margin
+            x_steps = np.arange(num_periods) - (bar_width / 2)
+            
+            # Add extra point to cover the full width of the last bar
+            x_steps = np.append(x_steps, x_steps[-1] + bar_width)
+            limits = np.append(limits, limits[-1])
+
+            plt.step(x_steps, limits, where='post', color='red', 
+                     linestyle='--', linewidth=2, label='Límite variable')
+            
+        else:
+            # Single value logic (float/int)
+            plt.axhline(y=float(limite_maximo_recursos), color='red', linestyle='--', 
+                        alpha=0.7, label=f'Límite máximo = {limite_maximo_recursos}')
+        
+        # Only show legend if a limit line was actually drawn
+        ax.legend()
+
+    plt.tight_layout()
+    plt.show()
