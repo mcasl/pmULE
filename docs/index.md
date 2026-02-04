@@ -22,4 +22,5 @@
 [Ejercicio 23](Ejercicio_23.html)  
 [Ejercicio 24](Ejercicio_24.html)  
 [Ejercicio 25](Ejercicio_25.html)  
+[Ejercicio 30](Ejercicio_30.html)  
 
