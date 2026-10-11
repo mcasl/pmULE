@@ -33,3 +33,7 @@ pip-delete-this-directory.txt
 
 /.quarto/
 **/*.quarto_ipynb
+
+# Instrucciones locales para Claude (contienen datos privados)
+CLAUDE.md
+.claude/
