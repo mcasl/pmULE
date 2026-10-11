@@ -101,6 +101,39 @@ class TestNormalizeDurations(unittest.TestCase):
                 fn(bad)
 
 
+class TestCalendarOrderAndDeterminism(unittest.TestCase):
+
+    def test_calendar_keeps_series_order(self):
+        pg = project()
+        s = pd.Series(DUR)[["H", "A", "D", "B", "C", "E", "F", "G"]]
+        self.assertEqual(list(pg.calendar(s).index), ["H", "A", "D", "B", "C", "E", "F", "G"])
+
+    def test_calendar_dict_sorted(self):
+        self.assertEqual(list(project().calendar(DUR).index), sorted(DUR))
+
+    def test_calendar_keeps_index_name(self):
+        s = pd.Series(DUR); s.index.name = "actividad"
+        self.assertEqual(project().calendar(s).index.name, "actividad")
+
+    def test_ackoff_best_option_sorted(self):
+        """Orden estable entre procesos (antes list(set(...)))."""
+        pg = project()
+        cost = {k: 10 for k in DUR}; mind = {k: 1 for k in DUR}
+        _, best, _, _ = pg.ackoff(DUR, mind, cost, reduction=3)
+        for acts in best.values():
+            self.assertEqual(acts, sorted(acts))
+
+    def test_asignar_wait_rows_sorted(self):
+        """Las filas 💤X que añade asignar van en orden alfabético estable."""
+        pg = project()
+        data = pd.DataFrame({"duration": DUR, "resources": {"A": 3, "B": 3, "C": 3, "D": 3,
+                                                             "E": 3, "F": 3, "G": 3, "H": 3}})
+        out = pg.asignar(data, "duration", "resources", maximo=3, report=False)
+        waits = [i for i in out[0].index if str(i).startswith("💤")]
+        # cronológico por periodo; dentro de cada periodo, alfabético
+        self.assertEqual(waits, ["💤B", "💤C", "💤E", "💤G", "💤F"])
+
+
 class TestFreeAndIndependentFloat(unittest.TestCase):
 
     def setUp(self):

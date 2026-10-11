@@ -1,0 +1,2375 @@
+{
+ "cells": [
+  {
+   "index": 4,
+   "source": "pregunta_1 = \"1. Dibujar el diagrama PERT del proyecto y caracteríce su duración mediante una distri",
+   "vars": {
+    "pregunta_1": "1. Dibujar el diagrama PERT del proyecto y caracteríce su duración mediante una distribución aleatoria Normal.  ",
+    "pregunta_2": "2. Como no está conforme con la duración del proyecto que resulta, desea reducir la duración del proyecto en 1 mes con el mínimo incremento de coste posible. ¿Qué tareas deben ser reducidas?.  ",
+    "pregunta_3": "3. Debido al racionamiento de combustible diesel que sufre la isla, durante el proyecto sólo será posible disponer de 250 litros de gasoil cada semana; y debido a la falta de previsión de los responsables del proyecto, que no solicitaron permiso para el almacenamiento de combustible, no es posible guardar el sobrante de una semana para consumirlo la siguiente. Por otro lado las necesidades de consumo de gasoil que usted planifica son las que se muestran en la tabla.  \n- ¿Se encuentra bien nivelado el consumo de gasoil?.  \n- ¿Se encuentra bien asignado?.  \n- Si no es así ¿qué recomienda hacer para asignar correctamente el consumo de combustible?.  \n- ¿Qué consecuencias traerá la asignación correcta del combustible en este proyecto en concreto?.  "
+   }
+  },
+  {
+   "index": 6,
+   "source": "#| tbl-cap: \"Cuadro de datos del enunciado del ejercicio\"",
+   "vars": {
+    "datos_enunciado": {
+     "__type__": "DataFrame",
+     "columns": [
+      "precedentes",
+      "duracion",
+      "varianza",
+      "coste",
+      "litros",
+      "duracion_tope"
+     ],
+     "data": [
+      [
+       "---  ",
+       5,
+       2,
+       "600-60t",
+       210,
+       2
+      ],
+      [
+       "---  ",
+       5,
+       1,
+       "300-20t",
+       150,
+       2
+      ],
+      [
+       "B    ",
+       1,
+       1,
+       "100-30t",
+       50,
+       1
+      ],
+      [
+       "B    ",
+       5,
+       1,
+       "300-25t",
+       75,
+       1
+      ],
+      [
+       "B    ",
+       2,
+       1,
+       "200-30t",
+       25,
+       1
+      ],
+      [
+       "C,D,E",
+       1,
+       1,
+       "100-10t",
+       75,
+       1
+      ],
+      [
+       "D,E  ",
+       2,
+       1,
+       "200-10t",
+       75,
+       2
+      ],
+      [
+       "E    ",
+       2,
+       1,
+       "150-50t",
+       0,
+       1
+      ],
+      [
+       "K    ",
+       4,
+       1,
+       "500-50t",
+       100,
+       3
+      ],
+      [
+       "A    ",
+       1,
+       0,
+       null,
+       0,
+       1
+      ],
+      [
+       "💤J   ",
+       2,
+       1,
+       "100-10t",
+       50,
+       1
+      ],
+      [
+       "A    ",
+       3,
+       1,
+       "300-10t",
+       50,
+       3
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K"
+     ]
+    }
+   }
+  },
+  {
+   "index": 10,
+   "source": "#| tbl-cap: \"Cuadro de prelaciones expandido\"",
+   "vars": {
+    "prelaciones": {
+     "__type__": "PredecessorTable",
+     "immediate": {
+      "A": [],
+      "B": [],
+      "C": [
+       "B"
+      ],
+      "D": [
+       "B"
+      ],
+      "E": [
+       "B"
+      ],
+      "F": [
+       "C",
+       "D",
+       "E"
+      ],
+      "G": [
+       "D",
+       "E"
+      ],
+      "H": [
+       "E"
+      ],
+      "I": [
+       "K"
+      ],
+      "J": [
+       "💤J"
+      ],
+      "K": [
+       "A"
+      ],
+      "💤J": [
+       "A"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "index": 12,
+   "source": "#| fig-cap: \"Grafo Pert con indicación de los números de nodos\"",
+   "vars": {
+    "datos_proyecto": {
+     "__type__": "DataFrame",
+     "columns": [
+      "precedentes",
+      "duracion",
+      "varianza",
+      "coste",
+      "litros",
+      "duracion_tope"
+     ],
+     "data": [
+      [
+       "---  ",
+       5,
+       2,
+       "600-60t",
+       210,
+       2
+      ],
+      [
+       "---  ",
+       5,
+       1,
+       "300-20t",
+       150,
+       2
+      ],
+      [
+       "B    ",
+       1,
+       1,
+       "100-30t",
+       50,
+       1
+      ],
+      [
+       "B    ",
+       5,
+       1,
+       "300-25t",
+       75,
+       1
+      ],
+      [
+       "B    ",
+       2,
+       1,
+       "200-30t",
+       25,
+       1
+      ],
+      [
+       "C,D,E",
+       1,
+       1,
+       "100-10t",
+       75,
+       1
+      ],
+      [
+       "D,E  ",
+       2,
+       1,
+       "200-10t",
+       75,
+       2
+      ],
+      [
+       "E    ",
+       2,
+       1,
+       "150-50t",
+       0,
+       1
+      ],
+      [
+       "K    ",
+       4,
+       1,
+       "500-50t",
+       100,
+       3
+      ],
+      [
+       "A    ",
+       1,
+       0,
+       null,
+       0,
+       1
+      ],
+      [
+       "💤J   ",
+       2,
+       1,
+       "100-10t",
+       50,
+       1
+      ],
+      [
+       "A    ",
+       3,
+       1,
+       "300-10t",
+       50,
+       3
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K"
+     ]
+    },
+    "proyecto": {
+     "__type__": "ProjectGraph",
+     "edges": [
+      [
+       "1",
+       "2",
+       "B"
+      ],
+      [
+       "1",
+       "3",
+       "A"
+      ],
+      [
+       "2",
+       "4",
+       "E"
+      ],
+      [
+       "2",
+       "7",
+       "D"
+      ],
+      [
+       "2",
+       "8",
+       "C"
+      ],
+      [
+       "3",
+       "5",
+       "💤J"
+      ],
+      [
+       "3",
+       "6",
+       "K"
+      ],
+      [
+       "4",
+       "7",
+       "@4→7"
+      ],
+      [
+       "4",
+       "9",
+       "H"
+      ],
+      [
+       "5",
+       "9",
+       "J"
+      ],
+      [
+       "6",
+       "9",
+       "I"
+      ],
+      [
+       "7",
+       "8",
+       "@7→8"
+      ],
+      [
+       "7",
+       "9",
+       "G"
+      ],
+      [
+       "8",
+       "9",
+       "F"
+      ]
+     ],
+     "nodes": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9"
+     ]
+    }
+   }
+  },
+  {
+   "index": 16,
+   "source": "#| tbl-cap: \"Valores de los tiempos tempranos y tardíos de los nodos\"",
+   "vars": {
+    "resultados_pert": {
+     "__type__": "dict",
+     "items": [
+      [
+       "nodes",
+       {
+        "__type__": "DataFrame",
+        "columns": [
+         "early",
+         "late"
+        ],
+        "data": [
+         [
+          0,
+          0
+         ],
+         [
+          5,
+          5
+         ],
+         [
+          5,
+          5
+         ],
+         [
+          7,
+          10
+         ],
+         [
+          6,
+          10
+         ],
+         [
+          8,
+          8
+         ],
+         [
+          10,
+          10
+         ],
+         [
+          10,
+          11
+         ],
+         [
+          12,
+          12
+         ]
+        ],
+        "index": [
+         "1",
+         "2",
+         "3",
+         "4",
+         "5",
+         "6",
+         "7",
+         "8",
+         "9"
+        ]
+       }
+      ],
+      [
+       "activities",
+       {
+        "__type__": "DataFrame",
+        "columns": [
+         "H_total"
+        ],
+        "data": [
+         [
+          3
+         ],
+         [
+          1
+         ],
+         [
+          0
+         ],
+         [
+          0
+         ],
+         [
+          5
+         ],
+         [
+          0
+         ],
+         [
+          3
+         ],
+         [
+          1
+         ],
+         [
+          0
+         ],
+         [
+          3
+         ],
+         [
+          0
+         ],
+         [
+          4
+         ],
+         [
+          0
+         ],
+         [
+          4
+         ]
+        ],
+        "index": [
+         "@4→7",
+         "@7→8",
+         "A",
+         "B",
+         "C",
+         "D",
+         "E",
+         "F",
+         "G",
+         "H",
+         "I",
+         "J",
+         "K",
+         "💤J"
+        ]
+       }
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "index": 17,
+   "source": "duracion_media_proyecto = int(proyecto.duration(durations=datos_proyecto['duracion']))",
+   "vars": {
+    "duracion_media_proyecto": 12
+   }
+  },
+  {
+   "index": 22,
+   "source": "camino_critico = proyecto.critical_path(durations=datos_proyecto['duracion'])",
+   "vars": {
+    "camino_critico": {
+     "__type__": "dict",
+     "items": [
+      [
+       "Route_1",
+       {
+        "__type__": "list",
+        "data": [
+         "A",
+         "I",
+         "K"
+        ]
+       }
+      ],
+      [
+       "Route_5",
+       {
+        "__type__": "list",
+        "data": [
+         "B",
+         "D",
+         "G"
+        ]
+       }
+      ]
+     ]
+    },
+    "key": "Route_5",
+    "value": {
+     "__type__": "list",
+     "data": [
+      "B",
+      "D",
+      "G"
+     ]
+    }
+   }
+  },
+  {
+   "index": 24,
+   "source": "#| tbl-cap: \"Calendario del proyecto\"",
+   "vars": {
+    "calendario": {
+     "__type__": "DataFrame",
+     "columns": [
+      "inicio_mas_temprano",
+      "inicio_mas_tardio",
+      "fin_mas_temprano",
+      "fin_mas_tardio",
+      "H_libre",
+      "H_independiente",
+      "H_total",
+      "duracion"
+     ],
+     "data": [
+      [
+       0,
+       0,
+       5,
+       5,
+       0,
+       0,
+       0,
+       5
+      ],
+      [
+       0,
+       0,
+       5,
+       5,
+       0,
+       0,
+       0,
+       5
+      ],
+      [
+       5,
+       10,
+       6,
+       11,
+       4,
+       4,
+       5,
+       1
+      ],
+      [
+       5,
+       5,
+       10,
+       10,
+       0,
+       0,
+       0,
+       5
+      ],
+      [
+       5,
+       8,
+       7,
+       10,
+       0,
+       0,
+       3,
+       2
+      ],
+      [
+       10,
+       11,
+       11,
+       12,
+       1,
+       0,
+       1,
+       1
+      ],
+      [
+       10,
+       10,
+       12,
+       12,
+       0,
+       0,
+       0,
+       2
+      ],
+      [
+       7,
+       10,
+       9,
+       12,
+       3,
+       0,
+       3,
+       2
+      ],
+      [
+       8,
+       8,
+       12,
+       12,
+       0,
+       0,
+       0,
+       4
+      ],
+      [
+       5,
+       9,
+       6,
+       10,
+       0,
+       0,
+       4,
+       1
+      ],
+      [
+       6,
+       10,
+       8,
+       12,
+       4,
+       0,
+       4,
+       2
+      ],
+      [
+       5,
+       5,
+       8,
+       8,
+       0,
+       0,
+       0,
+       3
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K"
+     ]
+    }
+   }
+  },
+  {
+   "index": 31,
+   "source": "desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(durations=datos_proyecto['duracion",
+   "vars": {
+    "desviacion_proyecto": 2.0,
+    "varianza_rutas": {
+     "__type__": "Styler",
+     "columns": [
+      "Activities",
+      "Variance"
+     ],
+     "data": [
+      [
+       "A, I, K",
+       4
+      ],
+      [
+       "B, D, G",
+       3
+      ]
+     ],
+     "index": [
+      "Route_1",
+      "Route_5"
+     ]
+    }
+   }
+  },
+  {
+   "index": 39,
+   "source": "datos_proyecto['cur'] = ( datos_proyecto.loc[:, 'coste']",
+   "vars": {
+    "datos_proyecto": {
+     "__type__": "DataFrame",
+     "columns": [
+      "precedentes",
+      "duracion",
+      "varianza",
+      "coste",
+      "litros",
+      "duracion_tope",
+      "cur"
+     ],
+     "data": [
+      [
+       "---  ",
+       5,
+       2,
+       "600-60t",
+       210,
+       2,
+       60.0
+      ],
+      [
+       "---  ",
+       5,
+       1,
+       "300-20t",
+       150,
+       2,
+       20.0
+      ],
+      [
+       "B    ",
+       1,
+       1,
+       "100-30t",
+       50,
+       1,
+       30.0
+      ],
+      [
+       "B    ",
+       5,
+       1,
+       "300-25t",
+       75,
+       1,
+       25.0
+      ],
+      [
+       "B    ",
+       2,
+       1,
+       "200-30t",
+       25,
+       1,
+       30.0
+      ],
+      [
+       "C,D,E",
+       1,
+       1,
+       "100-10t",
+       75,
+       1,
+       10.0
+      ],
+      [
+       "D,E  ",
+       2,
+       1,
+       "200-10t",
+       75,
+       2,
+       10.0
+      ],
+      [
+       "E    ",
+       2,
+       1,
+       "150-50t",
+       0,
+       1,
+       50.0
+      ],
+      [
+       "K    ",
+       4,
+       1,
+       "500-50t",
+       100,
+       3,
+       50.0
+      ],
+      [
+       "A    ",
+       1,
+       0,
+       null,
+       0,
+       1,
+       {
+        "__nan__": true
+       }
+      ],
+      [
+       "💤J   ",
+       2,
+       1,
+       "100-10t",
+       50,
+       1,
+       10.0
+      ],
+      [
+       "A    ",
+       3,
+       1,
+       "300-10t",
+       50,
+       3,
+       10.0
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K"
+     ]
+    }
+   }
+  },
+  {
+   "index": 41,
+   "source": "ackoff, best_option, duration, available = proyecto.ackoff(durations=datos_proyecto['duracion'],",
+   "vars": {
+    "ackoff": {
+     "__type__": "Styler",
+     "columns": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "💤J",
+      "0",
+      "1"
+     ],
+     "data": [
+      [
+       60.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       50.0,
+       {
+        "__nan__": true
+       },
+       10.0,
+       {
+        "__nan__": true
+       },
+       12.0,
+       11.0
+      ],
+      [
+       60.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       10.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       8.0,
+       8.0
+      ],
+      [
+       {
+        "__nan__": true
+       },
+       20.0,
+       30.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       10.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       7.0,
+       6.0
+      ],
+      [
+       {
+        "__nan__": true
+       },
+       20.0,
+       {
+        "__nan__": true
+       },
+       25.0,
+       {
+        "__nan__": true
+       },
+       10.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       11.0,
+       10.0
+      ],
+      [
+       {
+        "__nan__": true
+       },
+       20.0,
+       {
+        "__nan__": true
+       },
+       25.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       10.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       12.0,
+       11.0
+      ],
+      [
+       {
+        "__nan__": true
+       },
+       20.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       30.0,
+       10.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       8.0,
+       7.0
+      ],
+      [
+       {
+        "__nan__": true
+       },
+       20.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       30.0,
+       {
+        "__nan__": true
+       },
+       10.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       9.0,
+       8.0
+      ],
+      [
+       {
+        "__nan__": true
+       },
+       20.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       30.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       50.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       },
+       9.0,
+       8.0
+      ],
+      [
+       3.0,
+       3.0,
+       0.0,
+       4.0,
+       1.0,
+       0.0,
+       0.0,
+       1.0,
+       1.0,
+       1.0,
+       0.0,
+       0.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       }
+      ],
+      [
+       3.0,
+       2.0,
+       0.0,
+       4.0,
+       1.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       {
+        "__nan__": true
+       },
+       {
+        "__nan__": true
+       }
+      ]
+     ],
+     "index": [
+      "Route_1",
+      "Route_2",
+      "Route_3",
+      "Route_4",
+      "Route_5",
+      "Route_6",
+      "Route_7",
+      "Route_8",
+      "0",
+      "1"
+     ]
+    },
+    "available": {
+     "__type__": "Series",
+     "data": [
+      3,
+      2,
+      0,
+      4,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K"
+     ],
+     "name": null
+    },
+    "best_option": {
+     "__type__": "dict",
+     "items": [
+      [
+       "0",
+       {
+        "__type__": "list",
+        "data": [
+         "B",
+         "I"
+        ]
+       }
+      ]
+     ]
+    },
+    "duration": {
+     "__type__": "Series",
+     "data": [
+      5,
+      4,
+      1,
+      5,
+      2,
+      1,
+      2,
+      2,
+      3,
+      1,
+      2,
+      3
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K"
+     ],
+     "name": "duracion"
+    }
+   }
+  },
+  {
+   "index": 47,
+   "source": "#| tbl-cap: \"Cuadro de coste mensual del combustible\"",
+   "vars": {
+    "datos_proyecto": {
+     "__type__": "DataFrame",
+     "columns": [
+      "precedentes",
+      "duracion",
+      "varianza",
+      "coste",
+      "litros",
+      "duracion_tope",
+      "cur",
+      "litros_por_mes"
+     ],
+     "data": [
+      [
+       "---  ",
+       5,
+       2,
+       "600-60t",
+       210,
+       2,
+       60.0,
+       840
+      ],
+      [
+       "---  ",
+       5,
+       1,
+       "300-20t",
+       150,
+       2,
+       20.0,
+       600
+      ],
+      [
+       "B    ",
+       1,
+       1,
+       "100-30t",
+       50,
+       1,
+       30.0,
+       200
+      ],
+      [
+       "B    ",
+       5,
+       1,
+       "300-25t",
+       75,
+       1,
+       25.0,
+       300
+      ],
+      [
+       "B    ",
+       2,
+       1,
+       "200-30t",
+       25,
+       1,
+       30.0,
+       100
+      ],
+      [
+       "C,D,E",
+       1,
+       1,
+       "100-10t",
+       75,
+       1,
+       10.0,
+       300
+      ],
+      [
+       "D,E  ",
+       2,
+       1,
+       "200-10t",
+       75,
+       2,
+       10.0,
+       300
+      ],
+      [
+       "E    ",
+       2,
+       1,
+       "150-50t",
+       0,
+       1,
+       50.0,
+       0
+      ],
+      [
+       "K    ",
+       4,
+       1,
+       "500-50t",
+       100,
+       3,
+       50.0,
+       400
+      ],
+      [
+       "A    ",
+       1,
+       0,
+       null,
+       0,
+       1,
+       {
+        "__nan__": true
+       },
+       0
+      ],
+      [
+       "💤J   ",
+       2,
+       1,
+       "100-10t",
+       50,
+       1,
+       10.0,
+       200
+      ],
+      [
+       "A    ",
+       3,
+       1,
+       "300-10t",
+       50,
+       3,
+       10.0,
+       200
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K"
+     ]
+    }
+   }
+  },
+  {
+   "index": 48,
+   "source": "gantt_recursos, dibujo = proyecto.gantt(datos_proyecto,",
+   "vars": {
+    "dibujo": "\n\\begin{tikzpicture}[>= latex, scale=1]\n% Cuadrícula\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 1cm, 0.8cm) rectangle ++(1cm,-9.600000000000001cm);\n\\fill[color=white!90!cyan] ( 3cm, 0.8cm) rectangle ++(1cm,-9.600000000000001cm);\n\\fill[color=white!90!cyan] ( 5cm, 0.8cm) rectangle ++(1cm,-9.600000000000001cm);\n\\fill[color=white!90!cyan] ( 7cm, 0.8cm) rectangle ++(1cm,-9.600000000000001cm);\n\\fill[color=white!90!cyan] ( 9cm, 0.8cm) rectangle ++(1cm,-9.600000000000001cm);\n\\fill[color=white!90!cyan] ( 11cm, 0.8cm) rectangle ++(1cm,-9.600000000000001cm);\n%Recuadro exterior\n\\draw (0,0) rectangle ++(12cm,  0.8cm);\n\\draw (0,0) rectangle ++(12cm, -8.8cm);\n%Columna de actividades\n\\draw (-2,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] {Actividad};\n\\draw (-2,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {A};\n  \\draw[white!80!blue,very thin] (0, -0.8) -- (12, -0.8);\n\\draw (-2,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {B};\n  \\draw[white!80!blue,very thin] (0, -1.6) -- (12, -1.6);\n\\draw (-2,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {C};\n  \\draw[white!80!blue,very thin] (0, -2.4000000000000004) -- (12, -2.4000000000000004);\n\\draw (-2,-3.2cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {D};\n  \\draw[white!80!blue,very thin] (0, -3.2) -- (12, -3.2);\n\\draw (-2,-4.0cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {E};\n  \\draw[white!80!blue,very thin] (0, -4.0) -- (12, -4.0);\n\\draw (-2,-4.800000000000001cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {F};\n  \\draw[white!80!blue,very thin] (0, -4.800000000000001) -- (12, -4.800000000000001);\n\\draw (-2,-5.6000000000000005cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {G};\n  \\draw[white!80!blue,very thin] (0, -5.6000000000000005) -- (12, -5.6000000000000005);\n\\draw (-2,-6.4cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {H};\n  \\draw[white!80!blue,very thin] (0, -6.4) -- (12, -6.4);\n\\draw (-2,-7.2cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {I};\n  \\draw[white!80!blue,very thin] (0, -7.2) -- (12, -7.2);\n\\draw (-2,-8.0cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {J};\n  \\draw[white!80!blue,very thin] (0, -8.0) -- (12, -8.0);\n\\draw (-2,-8.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {K};\n  \\draw[white!80!blue,very thin] (0, -8.8) -- (12, -8.8);\n%Columnas extra\n\\draw (12,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] { Htotal };\n\\draw (12,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {0};\n\\draw (12,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {0};\n\\draw (12,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {5};\n\\draw (12,-3.2cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {0};\n\\draw (12,-4.0cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {3};\n\\draw (12,-4.800000000000001cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {1};\n\\draw (12,-5.6000000000000005cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {0};\n\\draw (12,-6.4cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {3};\n\\draw (12,-7.2cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {0};\n\\draw (12,-8.0cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {4};\n\\draw (12,-8.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {0};\n%Fila de periodos\n\\draw (0.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {1}; \n\\draw (1.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {2}; \n\\draw (2.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {3}; \n\\draw (3.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {4}; \n\\draw (4.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {5}; \n\\draw (5.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {6}; \n\\draw (6.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {7}; \n\\draw (7.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {8}; \n\\draw (8.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {9}; \n\\draw (9.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {10}; \n\\draw (10.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {11}; \n\\draw (11.5,0.4) node[transform shape, minimum width=1, minimum height=0.8] {12}; \n% Fin de la cuadrícula principal\n%Filas extra\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 1cm, -8.8cm ) rectangle ++(1cm, -0.8cm);\n\\fill[color=white!90!cyan] ( 3cm, -8.8cm ) rectangle ++(1cm, -0.8cm);\n\\fill[color=white!90!cyan] ( 5cm, -8.8cm ) rectangle ++(1cm, -0.8cm);\n\\fill[color=white!90!cyan] ( 7cm, -8.8cm ) rectangle ++(1cm, -0.8cm);\n\\fill[color=white!90!cyan] ( 9cm, -8.8cm ) rectangle ++(1cm, -0.8cm);\n\\fill[color=white!90!cyan] ( 11cm, -8.8cm ) rectangle ++(1cm, -0.8cm);\n%Casilla del nombre de la fila\n\\draw (-2,-9.600000000000001) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] { Total };\n\\draw (0,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {1440};\n\\draw (1,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {1440};\n\\draw (2,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {1440};\n\\draw (3,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {1440};\n\\draw (4,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {1440};\n\\draw (5,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {800};\n\\draw (6,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {800};\n\\draw (7,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {700};\n\\draw (8,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {700};\n\\draw (9,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {700};\n\\draw (10,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (11,-9.600000000000001) rectangle ++(1,0.8) node[pos=0.5, transform shape, minimum width=1cm, minimum height=0.8cm, anchor=center]  {700};\n%Fin retícula adicional inferior%Dibujo de las actividades\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( A ) at ( 0, -0.68 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 0.5, -0.4 ) { 840 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 1.5, -0.4 ) { 840 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 2.5, -0.4 ) { 840 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 3.5, -0.4 ) { 840 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 4.5, -0.4 ) { 840 };\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( B ) at ( 0, -1.4800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 0.5, -1.2000000000000002 ) { 600 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 1.5, -1.2000000000000002 ) { 600 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 2.5, -1.2000000000000002 ) { 600 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 3.5, -1.2000000000000002 ) { 600 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 4.5, -1.2000000000000002 ) { 600 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( C ) at ( 5, -2.2800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.5, -2.0 ) { 200 };\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( D ) at ( 5, -3.08 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.5, -2.8000000000000003 ) { 300 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 6.5, -2.8000000000000003 ) { 300 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 7.5, -2.8000000000000003 ) { 300 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 8.5, -2.8000000000000003 ) { 300 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 9.5, -2.8000000000000003 ) { 300 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( E ) at ( 5, -3.88 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.5, -3.6 ) { 100 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 6.5, -3.6 ) { 100 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( F ) at ( 10, -4.68 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 10.5, -4.4 ) { 300 };\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( G ) at ( 10, -5.48 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 10.5, -5.2 ) { 300 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 11.5, -5.2 ) { 300 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( H ) at ( 7, -6.28 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 7.5, -6.0 ) { 0 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 8.5, -6.0 ) { 0 };\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=4cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( I ) at ( 8, -7.08 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 8.5, -6.800000000000001 ) { 400 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 9.5, -6.800000000000001 ) { 400 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 10.5, -6.800000000000001 ) { 400 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 11.5, -6.800000000000001 ) { 400 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( J ) at ( 6, -7.88 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 6.5, -7.6000000000000005 ) { 200 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 7.5, -7.6000000000000005 ) { 200 };\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=3cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( K ) at ( 5, -8.68 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.5, -8.4 ) { 200 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 6.5, -8.4 ) { 200 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 7.5, -8.4 ) { 200 };%Dibujo de los desplazamientos\n\\node[draw=black, fill=white!90!green, pattern=north east lines,inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=1cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( 💤J ) at ( 5, -7.88 ) {  \\strut };\n\\end{tikzpicture}",
+    "gantt_recursos": {
+     "__type__": "Styler",
+     "columns": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12",
+      "H_total"
+     ],
+     "data": [
+      [
+       840,
+       840,
+       840,
+       840,
+       840,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       0.0
+      ],
+      [
+       600,
+       600,
+       600,
+       600,
+       600,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       200,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       5.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       300,
+       300,
+       300,
+       300,
+       300,
+       "",
+       "",
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       100,
+       100,
+       "",
+       "",
+       "",
+       "",
+       "",
+       3.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       300,
+       "",
+       1.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       300,
+       300,
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       0,
+       0,
+       "",
+       "",
+       "",
+       3.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       400,
+       400,
+       400,
+       400,
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       200,
+       200,
+       "",
+       "",
+       "",
+       "",
+       4.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       200,
+       200,
+       200,
+       "",
+       "",
+       "",
+       "",
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       0,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       4.0
+      ],
+      [
+       1440,
+       1440,
+       1440,
+       1440,
+       1440,
+       800,
+       800,
+       700,
+       700,
+       700,
+       1000,
+       700,
+       {
+        "__nan__": true
+       }
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "💤J",
+      "Total"
+     ]
+    }
+   }
+  },
+  {
+   "index": 57,
+   "source": "proyecto_asignacion = proyecto.copy()",
+   "vars": {
+    "datos_proyecto_tras_asignar": {
+     "__type__": "DataFrame",
+     "columns": [
+      "duracion",
+      "litros_por_mes"
+     ],
+     "data": [
+      [
+       5,
+       840
+      ],
+      [
+       5,
+       600
+      ],
+      [
+       1,
+       200
+      ],
+      [
+       5,
+       300
+      ],
+      [
+       2,
+       100
+      ],
+      [
+       1,
+       300
+      ],
+      [
+       2,
+       300
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       4,
+       400
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       200
+      ],
+      [
+       3,
+       200
+      ],
+      [
+       5,
+       0
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K",
+      "💤B"
+     ]
+    },
+    "dibujo": {
+     "__hash__": "2741acaeee1b2d696f14f8d69d1d5b90d5203a50",
+     "len": 20469
+    },
+    "duracion_y_recursos": {
+     "__type__": "DataFrame",
+     "columns": [
+      "duracion",
+      "litros_por_mes"
+     ],
+     "data": [
+      [
+       5,
+       840
+      ],
+      [
+       5,
+       600
+      ],
+      [
+       1,
+       200
+      ],
+      [
+       5,
+       300
+      ],
+      [
+       2,
+       100
+      ],
+      [
+       1,
+       300
+      ],
+      [
+       2,
+       300
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       4,
+       400
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       200
+      ],
+      [
+       3,
+       200
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "💤J",
+      "J",
+      "K"
+     ]
+    },
+    "gantt_df": {
+     "__type__": "Styler",
+     "columns": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12",
+      "13",
+      "14",
+      "15",
+      "16",
+      "17",
+      "H_total"
+     ],
+     "data": [
+      [
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       {
+        "__nan__": true
+       }
+      ],
+      [
+       840,
+       840,
+       840,
+       840,
+       840,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       5.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       600,
+       600,
+       600,
+       600,
+       600,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       200,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       5.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       300,
+       300,
+       300,
+       300,
+       300,
+       "",
+       "",
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       100,
+       100,
+       "",
+       "",
+       "",
+       "",
+       "",
+       3.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       300,
+       "",
+       1.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       300,
+       300,
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       0,
+       0,
+       "",
+       "",
+       "",
+       3.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       400,
+       400,
+       400,
+       400,
+       "",
+       "",
+       "",
+       "",
+       "",
+       5.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       200,
+       200,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       9.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       200,
+       200,
+       200,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       5.0
+      ],
+      [
+       0,
+       0,
+       0,
+       0,
+       0,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       0.0
+      ],
+      [
+       "",
+       "",
+       "",
+       "",
+       "",
+       0,
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       "",
+       9.0
+      ],
+      [
+       840,
+       840,
+       840,
+       840,
+       840,
+       800,
+       1000,
+       1000,
+       1000,
+       1000,
+       1000,
+       800,
+       300,
+       300,
+       300,
+       600,
+       300,
+       {
+        "__nan__": true
+       }
+      ]
+     ],
+     "index": [
+      "Máximo",
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "💤B",
+      "💤J",
+      "Total"
+     ]
+    },
+    "proyecto_asignacion": {
+     "__type__": "ProjectGraph",
+     "edges": [
+      [
+       "1",
+       "10",
+       "💤B"
+      ],
+      [
+       "1",
+       "3",
+       "A"
+      ],
+      [
+       "10",
+       "2",
+       "B"
+      ],
+      [
+       "2",
+       "4",
+       "E"
+      ],
+      [
+       "2",
+       "7",
+       "D"
+      ],
+      [
+       "2",
+       "8",
+       "C"
+      ],
+      [
+       "3",
+       "5",
+       "💤J"
+      ],
+      [
+       "3",
+       "6",
+       "K"
+      ],
+      [
+       "4",
+       "7",
+       "@4→7"
+      ],
+      [
+       "4",
+       "9",
+       "H"
+      ],
+      [
+       "5",
+       "9",
+       "J"
+      ],
+      [
+       "6",
+       "9",
+       "I"
+      ],
+      [
+       "7",
+       "8",
+       "@7→8"
+      ],
+      [
+       "7",
+       "9",
+       "G"
+      ],
+      [
+       "8",
+       "9",
+       "F"
+      ]
+     ],
+     "nodes": [
+      "1",
+      "3",
+      "10",
+      "5",
+      "6",
+      "2",
+      "4",
+      "7",
+      "8",
+      "9"
+     ]
+    }
+   }
+  },
+  {
+   "index": 63,
+   "source": "camino_critico = proyecto_asignacion.critical_path(durations=datos_proyecto_tras_asignar['duracion']",
+   "vars": {
+    "camino_critico": {
+     "__type__": "dict",
+     "items": [
+      [
+       "Route_5",
+       {
+        "__type__": "list",
+        "data": [
+         "B",
+         "D",
+         "G",
+         "💤B"
+        ]
+       }
+      ]
+     ]
+    },
+    "value": {
+     "__type__": "list",
+     "data": [
+      "B",
+      "D",
+      "G",
+      "💤B"
+     ]
+    }
+   }
+  }
+ ],
+ "error": null,
+ "notebook": "Ejercicio_10"
+}

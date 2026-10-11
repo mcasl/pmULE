@@ -975,7 +975,12 @@ class ProjectGraph:
             for v in values
         )
         dtype = int if all_int else float
-        return pd.Series(values, index=index, dtype=dtype)
+        result = pd.Series(values, index=index, dtype=dtype)
+        # Conservar el nombre del índice de entrada (p. ej. 'activity'): se
+        # propaga a calendar() y a las tablas que derivan de él.
+        if isinstance(durations, pd.Series) and durations.index.name is not None:
+            result.index.name = durations.index.name
+        return result
 
     def calculate_pert(self, durations: Dict[str, float]):
         dur_series = self._normalize_durations(durations, dummies=True)
@@ -1017,7 +1022,14 @@ class ProjectGraph:
         ``duraciones`` puede ser dict o Series; las actividades ausentes se
         toman con duración 0.
         """
+        orden_entrada = list(duraciones.index) if isinstance(duraciones, pd.Series) else None
         duraciones = self._normalize_durations(duraciones, dummies=False)
+        if orden_entrada is not None:
+            # Respetar el orden de las actividades tal como las dio el usuario
+            # (las que falten se añaden al final)
+            orden = [a for a in orden_entrada if a in duraciones.index]
+            orden += [a for a in duraciones.index if a not in orden]
+            duraciones = duraciones.reindex(orden)
         calendario = pd.DataFrame(
             0,
             index=duraciones.index,
@@ -1848,7 +1860,7 @@ class ProjectGraph:
                                             resource_label = resource_label,
                                             tikz = False,
                                             report=False,
-                                            **{actividad: 1 for actividad in se_retrasan}
+                                            **{actividad: 1 for actividad in sorted(se_retrasan)}
                 )
                 
             else:
@@ -1977,7 +1989,8 @@ class ProjectGraph:
                 key: calculate_reduction_cost(key, costs)
                 for key in product(*mini_path_matrix_filtered.values)
             }
-            best_option[step] = list(set(min(costes, key=costes.get)))
+            # sorted(): el orden de un set de strings varía entre procesos
+            best_option[step] = sorted(set(min(costes, key=costes.get)))
             if report:
                 print(f"Step: {step},\t Critical paths: {list(critical_paths.keys())}")
                 print(f"\t\t Best option: {best_option[step]}, \t Cost: {calculate_reduction_cost(best_option[step], costs)}")
@@ -2683,9 +2696,12 @@ class EarnedValue:
             params=params,
         )
 
-        # Curvas S acumuladas sobre un horizonte común: si la ejecución real
-        # dura más que la planificada, PV se mantiene plana en el BAC (y
-        # viceversa para EV/AC), en lugar de aparecer NaN o truncarse.
+        # Curvas S acumuladas. El horizonte es el de la ejecución real (las
+        # duraciones reales describen el trabajo hasta la fecha de estado), de
+        # modo que la última fila de `acumulados` es el punto de control y
+        # PV/EV/AC en ella son los que se usan para CPI y SPI.  Si la ejecución
+        # real sobrepasa el fin planificado, PV se prolonga plana en el BAC
+        # (antes aparecía NaN).
         def _cumulative(gantt):
             total = gantt.data.loc["Total", :].drop("Total", errors="ignore")
             total = pd.to_numeric(total, errors="coerce").fillna(0.0)
@@ -2693,12 +2709,12 @@ class EarnedValue:
             return total.cumsum()
 
         pv, ev, ac = _cumulative(gantt_PV), _cumulative(gantt_EV), _cumulative(gantt_AC)
-        horizon = range(1, int(max(pv.index.max(), ev.index.max(), ac.index.max())) + 1)
-        acumulados = (
-            pd.DataFrame(dict(PV=pv, EV=ev, AC=ac))
-            .reindex(horizon)
-            .ffill()
-        )
+        horizon = ev.index                      # periodos hasta la fecha de estado
+        acumulados = pd.DataFrame(dict(
+            PV=pv.reindex(horizon).ffill(),
+            EV=ev,
+            AC=ac.reindex(horizon),
+        ))
 
         return dict(
             Gantt_PV=gantt_PV,

@@ -1,0 +1,606 @@
+{
+ "cells": [
+  {
+   "index": 4,
+   "source": "# Alargamos el ancho de las celdas al 100%",
+   "vars": {
+    "datos_enunciado": {
+     "__type__": "DataFrame",
+     "columns": [
+      "precedentes",
+      "duracion",
+      "coste_planificado",
+      "coste_real",
+      "duracion_real",
+      "realizado"
+     ],
+     "data": [
+      [
+       "---      ",
+       2,
+       2000,
+       2000,
+       2,
+       100
+      ],
+      [
+       "Fachada·1",
+       2,
+       2000,
+       2400,
+       3,
+       100
+      ],
+      [
+       "Fachada·2",
+       2,
+       2000,
+       1200,
+       1,
+       50
+      ],
+      [
+       "Fachada·3",
+       2,
+       2000,
+       0,
+       0,
+       0
+      ]
+     ],
+     "index": [
+      "Fachada·1",
+      "Fachada·2",
+      "Fachada·3",
+      "Fachada·4"
+     ]
+    }
+   }
+  },
+  {
+   "index": 6,
+   "source": "datos_proyecto=datos_enunciado.copy()",
+   "vars": {
+    "datos_proyecto": {
+     "__type__": "DataFrame",
+     "columns": [
+      "precedentes",
+      "duracion",
+      "coste_planificado",
+      "coste_real",
+      "duracion_real",
+      "realizado"
+     ],
+     "data": [
+      [
+       "---      ",
+       2,
+       2000,
+       2000,
+       2,
+       100
+      ],
+      [
+       "Fachada·1",
+       2,
+       2000,
+       2400,
+       3,
+       100
+      ],
+      [
+       "Fachada·2",
+       2,
+       2000,
+       1200,
+       1,
+       50
+      ],
+      [
+       "Fachada·3",
+       2,
+       2000,
+       0,
+       0,
+       0
+      ]
+     ],
+     "index": [
+      "Fachada·1",
+      "Fachada·2",
+      "Fachada·3",
+      "Fachada·4"
+     ]
+    },
+    "prelaciones": {
+     "__type__": "PredecessorTable",
+     "immediate": {
+      "Fachada·1": [],
+      "Fachada·2": [
+       "Fachada·1"
+      ],
+      "Fachada·3": [
+       "Fachada·2"
+      ],
+      "Fachada·4": [
+       "Fachada·3"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "index": 7,
+   "source": "proyecto = prelaciones.create_project()",
+   "vars": {
+    "proyecto": {
+     "__type__": "ProjectGraph",
+     "edges": [
+      [
+       "1",
+       "2",
+       "Fachada·1"
+      ],
+      [
+       "2",
+       "3",
+       "Fachada·2"
+      ],
+      [
+       "3",
+       "4",
+       "Fachada·3"
+      ],
+      [
+       "4",
+       "5",
+       "Fachada·4"
+      ]
+     ],
+     "nodes": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ]
+    }
+   }
+  },
+  {
+   "index": 10,
+   "source": "datos_proyecto['duracion'] = datos_proyecto['duracion'].astype(float)",
+   "vars": {
+    "datos_proyecto": {
+     "__type__": "DataFrame",
+     "columns": [
+      "precedentes",
+      "duracion",
+      "coste_planificado",
+      "coste_real",
+      "duracion_real",
+      "realizado"
+     ],
+     "data": [
+      [
+       "---      ",
+       2.0,
+       2000,
+       2000,
+       2,
+       100
+      ],
+      [
+       "Fachada·1",
+       2.0,
+       2000,
+       2400,
+       3,
+       100
+      ],
+      [
+       "Fachada·2",
+       2.0,
+       2000,
+       1200,
+       1,
+       50
+      ],
+      [
+       "Fachada·3",
+       2.0,
+       2000,
+       0,
+       0,
+       0
+      ]
+     ],
+     "index": [
+      "Fachada·1",
+      "Fachada·2",
+      "Fachada·3",
+      "Fachada·4"
+     ]
+    },
+    "gantts": {
+     "__type__": "dict",
+     "items": [
+      [
+       "Gantt_PV",
+       {
+        "__type__": "Styler",
+        "columns": [
+         "1",
+         "2",
+         "3",
+         "4",
+         "5",
+         "6",
+         "7",
+         "8",
+         "Total"
+        ],
+        "data": [
+         [
+          1000.0,
+          1000.0,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          2000.0
+         ],
+         [
+          "",
+          "",
+          1000.0,
+          1000.0,
+          "",
+          "",
+          "",
+          "",
+          2000.0
+         ],
+         [
+          "",
+          "",
+          "",
+          "",
+          1000.0,
+          1000.0,
+          "",
+          "",
+          2000.0
+         ],
+         [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          1000.0,
+          1000.0,
+          2000.0
+         ],
+         [
+          1000.0,
+          1000.0,
+          1000.0,
+          1000.0,
+          1000.0,
+          1000.0,
+          1000.0,
+          1000.0,
+          8000.0
+         ],
+         [
+          1000.0,
+          2000.0,
+          3000.0,
+          4000.0,
+          5000.0,
+          6000.0,
+          7000.0,
+          8000.0,
+          ""
+         ]
+        ],
+        "index": [
+         "Fachada·1",
+         "Fachada·2",
+         "Fachada·3",
+         "Fachada·4",
+         "Total",
+         "Acumulado"
+        ]
+       }
+      ],
+      [
+       "Gantt_AC",
+       {
+        "__type__": "Styler",
+        "columns": [
+         "1",
+         "2",
+         "3",
+         "4",
+         "5",
+         "6",
+         "Total"
+        ],
+        "data": [
+         [
+          1000.0,
+          1000.0,
+          "",
+          "",
+          "",
+          "",
+          2000.0
+         ],
+         [
+          "",
+          "",
+          800.0,
+          800.0,
+          800.0,
+          "",
+          2400.0
+         ],
+         [
+          "",
+          "",
+          "",
+          "",
+          "",
+          1200.0,
+          1200.0
+         ],
+         [
+          1000.0,
+          1000.0,
+          800.0,
+          800.0,
+          800.0,
+          1200.0,
+          5600.0
+         ],
+         [
+          1000.0,
+          2000.0,
+          2800.0,
+          3600.0,
+          4400.0,
+          5600.0,
+          ""
+         ]
+        ],
+        "index": [
+         "Fachada·1",
+         "Fachada·2",
+         "Fachada·3",
+         "Total",
+         "Acumulado"
+        ]
+       }
+      ],
+      [
+       "Gantt_EV",
+       {
+        "__type__": "Styler",
+        "columns": [
+         "1",
+         "2",
+         "3",
+         "4",
+         "5",
+         "6",
+         "Total"
+        ],
+        "data": [
+         [
+          1000.0,
+          1000.0,
+          "",
+          "",
+          "",
+          "",
+          2000.0
+         ],
+         [
+          "",
+          "",
+          666.6666666666666,
+          666.6666666666666,
+          666.6666666666666,
+          "",
+          2000.0
+         ],
+         [
+          "",
+          "",
+          "",
+          "",
+          "",
+          1000.0,
+          1000.0
+         ],
+         [
+          1000.0,
+          1000.0,
+          666.6666666666666,
+          666.6666666666666,
+          666.6666666666666,
+          1000.0,
+          5000.0
+         ],
+         [
+          1000.0,
+          2000.0,
+          2666.6666666666665,
+          3333.333333333333,
+          3999.9999999999995,
+          5000.0,
+          ""
+         ]
+        ],
+        "index": [
+         "Fachada·1",
+         "Fachada·2",
+         "Fachada·3",
+         "Total",
+         "Acumulado"
+        ]
+       }
+      ],
+      [
+       "acumulados",
+       {
+        "__type__": "DataFrame",
+        "columns": [
+         "PV",
+         "EV",
+         "AC"
+        ],
+        "data": [
+         [
+          1000.0,
+          1000.0,
+          1000.0
+         ],
+         [
+          2000.0,
+          2000.0,
+          2000.0
+         ],
+         [
+          3000.0,
+          2666.6666666666665,
+          2800.0
+         ],
+         [
+          4000.0,
+          3333.333333333333,
+          3600.0
+         ],
+         [
+          5000.0,
+          3999.9999999999995,
+          4400.0
+         ],
+         [
+          6000.0,
+          5000.0,
+          5600.0
+         ]
+        ],
+        "index": [
+         "1",
+         "2",
+         "3",
+         "4",
+         "5",
+         "6"
+        ]
+       }
+      ],
+      [
+       "gantt_PV",
+       "\n\\begin{tikzpicture}[>= latex, scale=1]\n% Cuadrícula\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 2cm, 0.8cm) rectangle ++(2cm,-4.0cm);\n\\fill[color=white!90!cyan] ( 6cm, 0.8cm) rectangle ++(2cm,-4.0cm);\n\\fill[color=white!90!cyan] ( 10cm, 0.8cm) rectangle ++(2cm,-4.0cm);\n\\fill[color=white!90!cyan] ( 14cm, 0.8cm) rectangle ++(2cm,-4.0cm);\n%Recuadro exterior\n\\draw (0,0) rectangle ++(16cm,  0.8cm);\n\\draw (0,0) rectangle ++(16cm, -3.2cm);\n%Columna de actividades\n\\draw (-2,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] {Actividad};\n\\draw (-2,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·1};\n  \\draw[white!80!blue,very thin] (0, -0.8) -- (16, -0.8);\n\\draw (-2,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·2};\n  \\draw[white!80!blue,very thin] (0, -1.6) -- (16, -1.6);\n\\draw (-2,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·3};\n  \\draw[white!80!blue,very thin] (0, -2.4000000000000004) -- (16, -2.4000000000000004);\n\\draw (-2,-3.2cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·4};\n  \\draw[white!80!blue,very thin] (0, -3.2) -- (16, -3.2);\n%Columnas extra\n\\draw (16,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] { Total };\n\\draw (16,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {2000};\n\\draw (16,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {2000};\n\\draw (16,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {2000};\n\\draw (16,-3.2cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {2000};\n%Fila de periodos\n\\draw (1.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {1}; \n\\draw (3.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {2}; \n\\draw (5.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {3}; \n\\draw (7.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {4}; \n\\draw (9.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {5}; \n\\draw (11.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {6}; \n\\draw (13.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {7}; \n\\draw (15.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {8}; \n% Fin de la cuadrícula principal\n%Filas extra\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 2cm, -3.2cm ) rectangle ++(2cm, -1.6cm);\n\\fill[color=white!90!cyan] ( 6cm, -3.2cm ) rectangle ++(2cm, -1.6cm);\n\\fill[color=white!90!cyan] ( 10cm, -3.2cm ) rectangle ++(2cm, -1.6cm);\n\\fill[color=white!90!cyan] ( 14cm, -3.2cm ) rectangle ++(2cm, -1.6cm);\n%Casilla del nombre de la fila\n\\draw (-2,-4.0) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] { Total };\n\\draw (0,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (2,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (4,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (6,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (8,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (10,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (12,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (14,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n%Casilla del nombre de la fila\n\\draw (-2,-4.800000000000001) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] { Acumulado };\n\\draw (0,-4.800000000000001) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (2,-4.800000000000001) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {2000};\n\\draw (4,-4.800000000000001) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {3000};\n\\draw (6,-4.800000000000001) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {4000};\n\\draw (8,-4.800000000000001) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {5000};\n\\draw (10,-4.800000000000001) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {6000};\n\\draw (12,-4.800000000000001) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {7000};\n\\draw (14,-4.800000000000001) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {8000};\n%Fin retícula adicional inferior%Dibujo de las actividades\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=4cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·1 ) at ( 0, -0.68 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 1.0, -0.4 ) { 1000 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 3.0, -0.4 ) { 1000 };\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=4cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·2 ) at ( 4, -1.4800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.0, -1.2000000000000002 ) { 1000 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 7.0, -1.2000000000000002 ) { 1000 };\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=4cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·3 ) at ( 8, -2.2800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 9.0, -2.0 ) { 1000 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 11.0, -2.0 ) { 1000 };\n\\node[draw=black, fill=white!90!red, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=4cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·4 ) at ( 12, -3.08 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 13.0, -2.8000000000000003 ) { 1000 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 15.0, -2.8000000000000003 ) { 1000 };%Dibujo de los desplazamientos\n\\end{tikzpicture}"
+      ],
+      [
+       "gantt_AC",
+       "\n\\begin{tikzpicture}[>= latex, scale=1]\n% Cuadrícula\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 2cm, 0.8cm) rectangle ++(2cm,-3.2cm);\n\\fill[color=white!90!cyan] ( 6cm, 0.8cm) rectangle ++(2cm,-3.2cm);\n\\fill[color=white!90!cyan] ( 10cm, 0.8cm) rectangle ++(2cm,-3.2cm);\n%Recuadro exterior\n\\draw (0,0) rectangle ++(12cm,  0.8cm);\n\\draw (0,0) rectangle ++(12cm, -2.4000000000000004cm);\n%Columna de actividades\n\\draw (-2,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] {Actividad};\n\\draw (-2,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·1};\n  \\draw[white!80!blue,very thin] (0, -0.8) -- (12, -0.8);\n\\draw (-2,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·2};\n  \\draw[white!80!blue,very thin] (0, -1.6) -- (12, -1.6);\n\\draw (-2,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·3};\n  \\draw[white!80!blue,very thin] (0, -2.4000000000000004) -- (12, -2.4000000000000004);\n%Columnas extra\n\\draw (12,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] { Total };\n\\draw (12,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {2000};\n\\draw (12,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {2400};\n\\draw (12,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {1200};\n%Fila de periodos\n\\draw (1.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {1}; \n\\draw (3.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {2}; \n\\draw (5.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {3}; \n\\draw (7.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {4}; \n\\draw (9.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {5}; \n\\draw (11.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {6}; \n% Fin de la cuadrícula principal\n%Filas extra\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 2cm, -2.4000000000000004cm ) rectangle ++(2cm, -1.6cm);\n\\fill[color=white!90!cyan] ( 6cm, -2.4000000000000004cm ) rectangle ++(2cm, -1.6cm);\n\\fill[color=white!90!cyan] ( 10cm, -2.4000000000000004cm ) rectangle ++(2cm, -1.6cm);\n%Casilla del nombre de la fila\n\\draw (-2,-3.2) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] { Total };\n\\draw (0,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (2,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (4,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {800};\n\\draw (6,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {800};\n\\draw (8,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {800};\n\\draw (10,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1200};\n%Casilla del nombre de la fila\n\\draw (-2,-4.0) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] { Acumulado };\n\\draw (0,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (2,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {2000};\n\\draw (4,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {2800};\n\\draw (6,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {3600};\n\\draw (8,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {4400};\n\\draw (10,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {5600};\n%Fin retícula adicional inferior%Dibujo de las actividades\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=4cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·1 ) at ( 0, -0.68 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 1.0, -0.4 ) { 1000 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 3.0, -0.4 ) { 1000 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=6cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·2 ) at ( 4, -1.4800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.0, -1.2000000000000002 ) { 800 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 7.0, -1.2000000000000002 ) { 800 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 9.0, -1.2000000000000002 ) { 800 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·3 ) at ( 10, -2.2800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 11.0, -2.0 ) { 1200 };%Dibujo de los desplazamientos\n\\end{tikzpicture}"
+      ],
+      [
+       "gantt_EV",
+       "\n\\begin{tikzpicture}[>= latex, scale=1]\n% Cuadrícula\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 2cm, 0.8cm) rectangle ++(2cm,-3.2cm);\n\\fill[color=white!90!cyan] ( 6cm, 0.8cm) rectangle ++(2cm,-3.2cm);\n\\fill[color=white!90!cyan] ( 10cm, 0.8cm) rectangle ++(2cm,-3.2cm);\n%Recuadro exterior\n\\draw (0,0) rectangle ++(12cm,  0.8cm);\n\\draw (0,0) rectangle ++(12cm, -2.4000000000000004cm);\n%Columna de actividades\n\\draw (-2,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] {Actividad};\n\\draw (-2,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·1};\n  \\draw[white!80!blue,very thin] (0, -0.8) -- (12, -0.8);\n\\draw (-2,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·2};\n  \\draw[white!80!blue,very thin] (0, -1.6) -- (12, -1.6);\n\\draw (-2,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {Fachada·3};\n  \\draw[white!80!blue,very thin] (0, -2.4000000000000004) -- (12, -2.4000000000000004);\n%Columnas extra\n\\draw (12,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] { Total };\n\\draw (12,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {2000};\n\\draw (12,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {2000};\n\\draw (12,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {1000};\n%Fila de periodos\n\\draw (1.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {1}; \n\\draw (3.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {2}; \n\\draw (5.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {3}; \n\\draw (7.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {4}; \n\\draw (9.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {5}; \n\\draw (11.0,0.4) node[transform shape, minimum width=2, minimum height=0.8] {6}; \n% Fin de la cuadrícula principal\n%Filas extra\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 2cm, -2.4000000000000004cm ) rectangle ++(2cm, -1.6cm);\n\\fill[color=white!90!cyan] ( 6cm, -2.4000000000000004cm ) rectangle ++(2cm, -1.6cm);\n\\fill[color=white!90!cyan] ( 10cm, -2.4000000000000004cm ) rectangle ++(2cm, -1.6cm);\n%Casilla del nombre de la fila\n\\draw (-2,-3.2) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] { Total };\n\\draw (0,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (2,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (4,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {667};\n\\draw (6,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {667};\n\\draw (8,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {667};\n\\draw (10,-3.2) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n%Casilla del nombre de la fila\n\\draw (-2,-4.0) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] { Acumulado };\n\\draw (0,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {1000};\n\\draw (2,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {2000};\n\\draw (4,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {2667};\n\\draw (6,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {3333};\n\\draw (8,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {4000};\n\\draw (10,-4.0) rectangle ++(2,0.8) node[pos=0.5, transform shape, minimum width=2cm, minimum height=0.8cm, anchor=center]  {5000};\n%Fin retícula adicional inferior%Dibujo de las actividades\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=4cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·1 ) at ( 0, -0.68 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 1.0, -0.4 ) { 1000 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 3.0, -0.4 ) { 1000 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=6cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·2 ) at ( 4, -1.4800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.0, -1.2000000000000002 ) { 667 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 7.0, -1.2000000000000002 ) { 667 };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 9.0, -1.2000000000000002 ) { 667 };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( Fachada·3 ) at ( 10, -2.2800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=2cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 11.0, -2.0 ) { 1000 };%Dibujo de los desplazamientos\n\\end{tikzpicture}"
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "index": 16,
+   "source": "acumulados = gantts['acumulados']",
+   "vars": {
+    "acumulados": {
+     "__type__": "DataFrame",
+     "columns": [
+      "PV",
+      "EV",
+      "AC"
+     ],
+     "data": [
+      [
+       1000.0,
+       1000.0,
+       1000.0
+      ],
+      [
+       2000.0,
+       2000.0,
+       2000.0
+      ],
+      [
+       3000.0,
+       2666.6666666666665,
+       2800.0
+      ],
+      [
+       4000.0,
+       3333.333333333333,
+       3600.0
+      ],
+      [
+       5000.0,
+       3999.9999999999995,
+       4400.0
+      ],
+      [
+       6000.0,
+       5000.0,
+       5600.0
+      ]
+     ],
+     "index": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+     ]
+    }
+   }
+  },
+  {
+   "index": 19,
+   "source": "EV = acumulados.tail(1)['EV'].iloc[0]",
+   "vars": {
+    "AC": 5600.0,
+    "EV": 5000.0,
+    "PV": 6000.0
+   }
+  },
+  {
+   "index": 20,
+   "source": "BAC = int(datos_enunciado.loc[:, 'coste_planificado'].sum())",
+   "vars": {
+    "BAC": 8000
+   }
+  },
+  {
+   "index": 23,
+   "source": "from handcalcs.decorator import handcalc",
+   "vars": {
+    "latex_code": "$$\n\\begin{aligned}\n\\mathrm{CPI} &= \\frac{ \\mathrm{EV} }{ \\mathrm{AC} }  = \\frac{ 5000.000 }{ 5600.000 } &= 0.893  \n\\\\\n\\mathrm{SPI} &= \\frac{ \\mathrm{EV} }{ \\mathrm{PV} }  = \\frac{ 5000.000 }{ 6000.000 } &= 0.833  \n\\\\\n\\mathrm{EAC} &= \\frac{ \\mathrm{BAC} }{ \\mathrm{CPI} }  = \\frac{ 8000 }{ 0.893 } &= 8960.000  \n\\\\\n\\mathrm{CV} &= \\mathrm{EV} - \\mathrm{AC}  = 5000.000 - 5600.000 &= -600.000  \n\\\\\n\\mathrm{CV}_{relativo} &= \\frac{ \\mathrm{CV} }{ \\mathrm{EV} } \\cdot 100  = \\frac{ -600.000 }{ 5000.000 } \\cdot 100 &= -12.000  \n\\\\\n\\mathrm{SV} &= \\mathrm{EV} - \\mathrm{PV}  = 5000.000 - 6000.000 &= -1000.000  \n\\\\\n\\mathrm{SV}_{relativo} &= \\frac{ \\mathrm{SV} }{ \\mathrm{PV} } \\cdot 100  = \\frac{ -1000.000 }{ 6000.000 } \\cdot 100 &= -16.667  \n\\\\\n\\mathrm{VAC} &= \\mathrm{BAC} - \\mathrm{EAC}  = 8000 - 8960.000 &= -960.000  \n\\\\\n\\mathrm{PC} &= \\frac{ \\mathrm{EV} }{ \\mathrm{BAC} }  = \\frac{ 5000.000 }{ 8000 } &= 0.625  \n\\\\\n\\mathrm{PS} &= \\frac{ \\mathrm{AC} }{ \\mathrm{BAC} }  = \\frac{ 5600.000 }{ 8000 } &= 0.700  \n\\\\\n\\mathrm{PP} &= \\frac{ \\mathrm{PV} }{ \\mathrm{BAC} }  = \\frac{ 6000.000 }{ 8000 } &= 0.750  \n\\\\\n\\mathrm{TCPI}_{BAC} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{BAC} - \\mathrm{AC} }  = \\frac{ 8000 - 5000.000 }{ 8000 - 5600.000 } &= 1.250  \n\\\\\n\\mathrm{TCPI}_{EAC} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{EAC} - \\mathrm{AC} }  = \\frac{ 8000 - 5000.000 }{ 8960.000 - 5600.000 } &= 0.893  \n\\\\\n\\mathrm{LRE} &= 8200 \\; \n\\\\\n\\mathrm{TCPI}_{LRE} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{LRE} - \\mathrm{AC} }  = \\frac{ 8000 - 5000.000 }{ 8200 - 5600.000 } &= 1.154  \n\\end{aligned}\n$$"
+   }
+  }
+ ],
+ "error": null,
+ "notebook": "Ejercicio_21"
+}
