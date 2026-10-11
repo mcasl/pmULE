@@ -134,7 +134,15 @@ def run_notebook(num: str, stop_on_error: bool = True) -> dict:
     result = {"notebook": f"Ejercicio_{num}", "cells": [], "error": None}
 
     cwd = os.getcwd()
-    os.chdir(NOTEBOOKS)           # rutas relativas del cuaderno (csv_files/…)
+    # Los cuadernos leen datos con rutas relativas (csv_files/…) y algunos
+    # escriben ficheros (savefig, PDFs). Se ejecutan en un directorio temporal
+    # con enlaces a los subdirectorios de datos, para no ensuciar notebooks/.
+    import shutil, tempfile
+    workdir = Path(tempfile.mkdtemp(prefix="pmule_nb_"))
+    for entry in NOTEBOOKS.iterdir():
+        if entry.is_dir() and not entry.name.startswith((".", "_", "scratch", "Ejercicio_")):
+            (workdir / entry.name).symlink_to(entry, target_is_directory=True)
+    os.chdir(workdir)
     # Algunos cuadernos hacen os.chdir a un directorio temporal del autor.
     # Si no existe (otra máquina), se redirige a un temporal local.
     _patch_chdir(ns)
@@ -172,6 +180,7 @@ def run_notebook(num: str, stop_on_error: bool = True) -> dict:
                                         "vars": changed})
     finally:
         os.chdir(cwd)
+        shutil.rmtree(workdir, ignore_errors=True)
     return result
 
 

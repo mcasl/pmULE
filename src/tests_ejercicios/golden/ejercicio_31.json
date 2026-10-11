@@ -6364,13 +6364,6 @@
    }
   },
   {
-   "index": 110,
-   "source": "@handcalc(jupyter_display=False)",
-   "vars": {
-    "latex_code": "$$\n\\begin{aligned}\n\\mathrm{CPI} &= \\frac{ \\mathrm{EV} }{ \\mathrm{AC} }  = \\frac{ 114.500 }{ 131.000 } &= 0.874  \n\\\\\n\\mathrm{SPI} &= \\frac{ \\mathrm{EV} }{ \\mathrm{PV} }  = \\frac{ 114.500 }{ 139.000 } &= 0.824  \n\\\\\n\\mathrm{CV} &= \\mathrm{EV} - \\mathrm{AC}  = 114.500 - 131.000 &= -16.500  \n\\\\\n\\mathrm{SV} &= \\mathrm{EV} - \\mathrm{PV}  = 114.500 - 139.000 &= -24.500  \n\\\\\n\\mathrm{EAC} &= \\frac{ \\mathrm{BAC} }{ \\mathrm{CPI} }  = \\frac{ 240.000 }{ 0.874 } &= 274.585  \n\\\\\n\\mathrm{VAC} &= \\mathrm{BAC} - \\mathrm{EAC}  = 240.000 - 274.585 &= -34.585  \n\\end{aligned}\n$$"
-   }
-  },
-  {
    "index": 111,
    "source": "CPI, SPI = EV / AC, EV / PV",
    "vars": {
@@ -6388,7 +6381,6 @@
     "PD": 22,
     "PV_C": 112.5,
     "PV_C1": 130.0,
-    "latex_code": "$$\n\\begin{aligned}\n\\mathrm{ES} &= C + \\frac{ \\mathrm{EV} - \\mathrm{PV}_{C} }{ \\mathrm{PV}_{C1} - \\mathrm{PV}_{C} }  = 9 + \\frac{ 114.500 - 112.500 }{ 130.000 - 112.500 } &= 9.114  \n\\\\\n\\mathrm{SPI}_{t} &= \\frac{ \\mathrm{ES} }{ \\mathrm{AT} }  = \\frac{ 9.114 }{ 11 } &= 0.829  \n\\\\\n\\mathrm{IEAC}_{t} &= \\frac{ \\mathrm{PD} }{ \\mathrm{SPI}_{t} }  = \\frac{ 22 }{ 0.829 } &= 26.552  \n\\end{aligned}\n$$",
     "pv_acumulado": {
      "__type__": "Series",
      "data": [

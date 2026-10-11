@@ -592,13 +592,6 @@
    "vars": {
     "BAC": 8000
    }
-  },
-  {
-   "index": 23,
-   "source": "from handcalcs.decorator import handcalc",
-   "vars": {
-    "latex_code": "$$\n\\begin{aligned}\n\\mathrm{CPI} &= \\frac{ \\mathrm{EV} }{ \\mathrm{AC} }  = \\frac{ 5000.000 }{ 5600.000 } &= 0.893  \n\\\\\n\\mathrm{SPI} &= \\frac{ \\mathrm{EV} }{ \\mathrm{PV} }  = \\frac{ 5000.000 }{ 6000.000 } &= 0.833  \n\\\\\n\\mathrm{EAC} &= \\frac{ \\mathrm{BAC} }{ \\mathrm{CPI} }  = \\frac{ 8000 }{ 0.893 } &= 8960.000  \n\\\\\n\\mathrm{CV} &= \\mathrm{EV} - \\mathrm{AC}  = 5000.000 - 5600.000 &= -600.000  \n\\\\\n\\mathrm{CV}_{relativo} &= \\frac{ \\mathrm{CV} }{ \\mathrm{EV} } \\cdot 100  = \\frac{ -600.000 }{ 5000.000 } \\cdot 100 &= -12.000  \n\\\\\n\\mathrm{SV} &= \\mathrm{EV} - \\mathrm{PV}  = 5000.000 - 6000.000 &= -1000.000  \n\\\\\n\\mathrm{SV}_{relativo} &= \\frac{ \\mathrm{SV} }{ \\mathrm{PV} } \\cdot 100  = \\frac{ -1000.000 }{ 6000.000 } \\cdot 100 &= -16.667  \n\\\\\n\\mathrm{VAC} &= \\mathrm{BAC} - \\mathrm{EAC}  = 8000 - 8960.000 &= -960.000  \n\\\\\n\\mathrm{PC} &= \\frac{ \\mathrm{EV} }{ \\mathrm{BAC} }  = \\frac{ 5000.000 }{ 8000 } &= 0.625  \n\\\\\n\\mathrm{PS} &= \\frac{ \\mathrm{AC} }{ \\mathrm{BAC} }  = \\frac{ 5600.000 }{ 8000 } &= 0.700  \n\\\\\n\\mathrm{PP} &= \\frac{ \\mathrm{PV} }{ \\mathrm{BAC} }  = \\frac{ 6000.000 }{ 8000 } &= 0.750  \n\\\\\n\\mathrm{TCPI}_{BAC} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{BAC} - \\mathrm{AC} }  = \\frac{ 8000 - 5000.000 }{ 8000 - 5600.000 } &= 1.250  \n\\\\\n\\mathrm{TCPI}_{EAC} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{EAC} - \\mathrm{AC} }  = \\frac{ 8000 - 5000.000 }{ 8960.000 - 5600.000 } &= 0.893  \n\\\\\n\\mathrm{LRE} &= 8200 \\; \n\\\\\n\\mathrm{TCPI}_{LRE} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{LRE} - \\mathrm{AC} }  = \\frac{ 8000 - 5000.000 }{ 8200 - 5600.000 } &= 1.154  \n\\end{aligned}\n$$"
-   }
   }
  ],
  "error": null,

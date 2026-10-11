@@ -4504,13 +4504,6 @@
    }
   },
   {
-   "index": 111,
-   "source": "from handcalcs.decorator import handcalc",
-   "vars": {
-    "latex_code": "$$\n\\begin{aligned}\n\\mathrm{CPI} &= \\frac{ \\mathrm{EV} }{ \\mathrm{AC} }  = \\frac{ 7600.000 }{ 7540.000 } &= 1.008  \n\\\\\n\\mathrm{SPI} &= \\frac{ \\mathrm{EV} }{ \\mathrm{PV} }  = \\frac{ 7600.000 }{ 9580.000 } &= 0.793  \n\\\\\n\\mathrm{EAC} &= \\frac{ \\mathrm{BAC} }{ \\mathrm{CPI} }  = \\frac{ 17100.000 }{ 1.008 } &= 16965.000  \n\\\\\n\\mathrm{CV} &= \\mathrm{EV} - \\mathrm{AC}  = 7600.000 - 7540.000 &= 60.000  \n\\\\\n\\mathrm{CV}_{relativo} &= \\frac{ \\mathrm{CV} }{ \\mathrm{EV} } \\cdot 100  = \\frac{ 60.000 }{ 7600.000 } \\cdot 100 &= 0.789  \n\\\\\n\\mathrm{SV} &= \\mathrm{EV} - \\mathrm{PV}  = 7600.000 - 9580.000 &= -1980.000  \n\\\\\n\\mathrm{SV}_{relativo} &= \\frac{ \\mathrm{SV} }{ \\mathrm{PV} } \\cdot 100  = \\frac{ -1980.000 }{ 9580.000 } \\cdot 100 &= -20.668  \n\\\\\n\\mathrm{VAC} &= \\mathrm{BAC} - \\mathrm{EAC}  = 17100.000 - 16965.000 &= 135.000  \n\\\\\n\\mathrm{PC} &= \\frac{ \\mathrm{EV} }{ \\mathrm{BAC} }  = \\frac{ 7600.000 }{ 17100.000 } &= 0.444  \n\\\\\n\\mathrm{PS} &= \\frac{ \\mathrm{AC} }{ \\mathrm{BAC} }  = \\frac{ 7540.000 }{ 17100.000 } &= 0.441  \n\\\\\n\\mathrm{PP} &= \\frac{ \\mathrm{PV} }{ \\mathrm{BAC} }  = \\frac{ 9580.000 }{ 17100.000 } &= 0.560  \n\\\\\n\\mathrm{TCPI}_{BAC} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{BAC} - \\mathrm{AC} }  = \\frac{ 17100.000 - 7600.000 }{ 17100.000 - 7540.000 } &= 0.994  \n\\\\\n\\mathrm{TCPI}_{EAC} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{EAC} - \\mathrm{AC} }  = \\frac{ 17100.000 - 7600.000 }{ 16965.000 - 7540.000 } &= 1.008  \n\\\\\n\\mathrm{LRE} &= 35000 \\; \n\\\\\n\\mathrm{TCPI}_{LRE} &= \\frac{ \\mathrm{BAC} - \\mathrm{EV} }{ \\mathrm{LRE} - \\mathrm{AC} }  = \\frac{ 17100.000 - 7600.000 }{ 35000 - 7540.000 } &= 0.346  \n\\end{aligned}\n$$"
-   }
-  },
-  {
    "index": 113,
    "source": "#| echo: false",
    "vars": {
