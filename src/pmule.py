@@ -2,7 +2,6 @@ from jupyter_tikz import TexFragment
 from numpyarray_to_latex.jupyter import to_jup
 from numpyarray_to_latex import to_ltx
 from IPython.display import display, Image, SVG, Latex, Markdown, Math 
-import pygraphviz as pgv
 from functools import reduce
 from itertools import chain, product
 import math
@@ -366,6 +365,7 @@ class PredecessorTable:
 
     def __init__(self, data, simplify=True):
         self.immediate_predecessor = dict(sorted(data.items()))
+        self._check_acyclic()
         # distant_predecessor MUST be calculated before immediate_predecessor. It is used by calculate_immediate_predecessor_of
         self.distant_predecessor = {
             key: self.calculate_distant_predecessor_of(key)
@@ -381,6 +381,24 @@ class PredecessorTable:
                 sorted(self.immediate_predecessor.items())
             )
 
+    def _check_acyclic(self) -> None:
+        """Lanza ValueError si la tabla de precedencias contiene un ciclo
+        (incluida una actividad predecesora de sí misma)."""
+        g = nx.DiGraph()
+        g.add_nodes_from(self.immediate_predecessor.keys())
+        for activity, predecessors in self.immediate_predecessor.items():
+            for ancestor in predecessors:
+                g.add_edge(ancestor, activity)
+        try:
+            cycle = nx.find_cycle(g)
+        except nx.NetworkXNoCycle:
+            return
+        chain_str = " → ".join([cycle[0][0]] + [t for _, t in cycle])
+        raise ValueError(
+            f"La tabla de precedencias contiene un ciclo: {chain_str}. "
+            "Revisa las prelaciones: ninguna actividad puede preceder(se) a sí misma."
+        )
+
     @property
     def activity_names(self) -> Set[str]:
         return sorted(
@@ -392,8 +410,6 @@ class PredecessorTable:
 
     def calculate_distant_predecessor_of(self, name: str) -> Set[str]:
         predecessors = self.immediate_predecessor[name].copy()
-        if predecessors == ():
-            return set()
         result = predecessors.copy()
         for ancestor in predecessors:
             result.update(self.calculate_distant_predecessor_of(ancestor))
@@ -577,12 +593,20 @@ class PredecessorTable:
 
     @property
     def distant_linkage_matrix(self):
-        def highlight_true(value):
-            if value:
-                return "background-color: cyan;  border: 1px solid black;"
-            else:
-                return "background-color: white;  border:1px solid black;"
+        """Matriz de enlace de predecesoras *distantes* (clausura transitiva).
 
+        .. note::
+           Por compatibilidad con notebooks existentes devuelve un ``Styler``
+           (coloreado), no un DataFrame como ``immediate_linkage_matrix``.
+           Para operar con los datos usa ``.data`` o
+           ``distant_linkage_dataframe``. Para mostrarla coloreada de forma
+           explícita usa ``display_distant_linkage_matrix()``.
+        """
+        return self.display_distant_linkage_matrix()
+
+    @property
+    def distant_linkage_dataframe(self) -> pd.DataFrame:
+        """Matriz booleana de predecesoras distantes como DataFrame."""
         activities_name = sorted(list(self.activity_names))
         linkage_matrix = pd.DataFrame(
             data=False, columns=activities_name, index=activities_name, dtype=bool
@@ -591,7 +615,17 @@ class PredecessorTable:
         for activity, predecessors in self.distant_predecessor.items():
             for ancestor in predecessors:
                 linkage_matrix.loc[activity, ancestor] = True
-        return linkage_matrix.replace(False, "").style.map(highlight_true)
+        return linkage_matrix
+
+    def display_distant_linkage_matrix(self):
+        def highlight_true(value):
+            if value:
+                return "background-color: cyan;  border: 1px solid black;"
+            else:
+                return "background-color: white;  border:1px solid black;"
+
+        data = self.distant_linkage_dataframe
+        return data.replace(False, "").style.map(highlight_true)
 
     def display_immediate_linkage_matrix(self):
         def highlight_true(value):
@@ -613,6 +647,28 @@ class ProjectGraph:
 
     def copy(self):
         return ProjectGraph(self.pert_graph)
+
+    def __repr__(self) -> str:
+        return (f"ProjectGraph(activities={len(self.actual_activities)}, "
+                f"dummies={len(self.dummies)}, nodes={self.pert_graph.number_of_nodes()})")
+
+    def __len__(self) -> int:
+        """Número de actividades reales (sin ficticias)."""
+        return len(self.actual_activities)
+
+    def __contains__(self, activity) -> bool:
+        return activity in self.nodes_from_edges
+
+    def __eq__(self, other) -> bool:
+        """Dos proyectos son iguales si tienen las mismas actividades reales y
+        la misma estructura de precedencias (independientemente de la
+        numeración de nodos o de las ficticias concretas)."""
+        if not isinstance(other, ProjectGraph):
+            return NotImplemented
+        return (self.actual_activities == other.actual_activities
+                and self.distant_predecessor() == other.distant_predecessor())
+
+    __hash__ = None  # mutable; la igualdad es estructural
 
     @staticmethod
     def from_dict_of_strings(data: Dict[str, str], simplify=True):
@@ -690,18 +746,37 @@ class ProjectGraph:
         return data.replace(False, "").style.map(highlight_true)
 
     @staticmethod
+    def _is_single_source_sink(project) -> bool:
+        """True si el grafo PERT tiene exactamente un nodo origen y un sumidero."""
+        G = project.pert_graph
+        n_sources = sum(1 for n in G if G.in_degree(n) == 0)
+        n_sinks = sum(1 for n in G if G.out_degree(n) == 0)
+        return n_sources == 1 and n_sinks == 1
+
+    @staticmethod
     def assess_dummy(name, project):
+        """Decide si la ficticia ``name`` puede contraerse o eliminarse sin
+        alterar el proyecto.
+
+        Una ficticia es prescindible si, tras contraerla (o eliminarla), (a) el
+        conjunto de predecesoras distantes de cada actividad real no cambia y
+        (b) el grafo sigue teniendo un único origen y un único sumidero.  La
+        condición (b) evita eliminar el conector al sumidero de una actividad
+        final que comparte nodo de partida con otra (p. ej. I y J con las
+        mismas predecesoras): esa ficticia es la que impide que ambas sean
+        arcos paralelos entre los mismos dos nodos.
+        """
         original_copy = project.copy()
+        reference = project.distant_predecessor(dummies=False)
+
         other_project = project.contract_activities([name])
-        if project.distant_predecessor(
-            dummies=False
-        ) == other_project.distant_predecessor(dummies=False):
+        if (other_project.distant_predecessor(dummies=False) == reference
+                and ProjectGraph._is_single_source_sink(other_project)):
             return (True, other_project)
 
         other_project = project.remove_activities([name])
-        if project.distant_predecessor(
-            dummies=False
-        ) == other_project.distant_predecessor(dummies=False):
+        if (other_project.distant_predecessor(dummies=False) == reference
+                and ProjectGraph._is_single_source_sink(other_project)):
             return (True, other_project)
 
         return (False, original_copy)
@@ -795,17 +870,30 @@ class ProjectGraph:
         return set(result)
 
     def calculate_immediate_predecessor_of(self, activity, dummies=False):
-        source, target = self.nodes_from_edges[activity]
-        edges_dict = self.edges_from_nodes
-        predecessors = self.pert_graph.in_edges(source, target)
-        result = (
-            predecessors
-            if dummies
-            else set(filter(lambda x: x[0] != "@", predecessors))
-        )
-        result = {edges_dict[(s, t)] for s, t, a in result}
-        return set(result)
+        """Predecesoras inmediatas de ``activity``.
 
+        dummies=True  → nombres de los arcos que entran en el nodo origen
+                        (pueden ser ficticias ``@…``).
+        dummies=False → se resuelven las cadenas de ficticias hasta llegar a
+                        actividades reales.
+        """
+        source, _ = self.nodes_from_edges[activity]
+        edges_dict = self.edges_from_nodes
+        G = self.pert_graph
+        if dummies:
+            return {edges_dict[(f"{s}", f"{t}")] for s, t in G.in_edges(source)}
+        result, stack, seen = set(), [source], set()
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            for s, t in G.in_edges(node):
+                name = edges_dict[(f"{s}", f"{t}")]
+                if name.startswith("@"):
+                    stack.append(s)
+                else:
+                    result.add(name)
         return result
 
     def distant_predecessor(self, dummies=False, format=None):
@@ -842,16 +930,63 @@ class ProjectGraph:
     def actual_activities(self):
         return sorted([name for name in self.activities if name[0] != "@"])
 
+    def _normalize_durations(self, durations, dummies: bool = True,
+                             warn_unknown: bool = True) -> pd.Series:
+        """Normaliza duraciones a una Series indexada por las actividades.
+
+        - Acepta dict, Series o cualquier Mapping.
+        - Las actividades ausentes reciben duración 0 (las ficticias siempre).
+        - dtype ``int`` si todos los valores son enteros, ``float`` en otro caso
+          (evita el FutureWarning de pandas por asignación de dtype incompatible).
+        - Duraciones negativas → ``ValueError``.
+        - Claves que no son actividades del proyecto → ``UserWarning``
+          (probable error tipográfico), salvo ``warn_unknown=False``.
+
+        Parameters
+        ----------
+        dummies : bool
+            True → índice = ``self.activities`` (con ficticias);
+            False → índice = ``self.actual_activities``.
+        """
+        if isinstance(durations, pd.Series):
+            provided = durations.to_dict()
+        elif isinstance(durations, pd.DataFrame):
+            raise TypeError("durations debe ser dict o Series, no DataFrame; "
+                            "selecciona la columna (p.ej. data['duration']).")
+        else:
+            provided = dict(durations) if durations is not None else {}
+
+        index = self.activities if dummies else self.actual_activities
+        known = set(self.activities)
+        unknown = [k for k in provided if k not in known]
+        if unknown and warn_unknown:
+            import warnings
+            warnings.warn(
+                f"Duraciones para actividades que no están en el proyecto: "
+                f"{sorted(map(str, unknown))}. Se ignoran.", UserWarning, stacklevel=3)
+        values = [provided.get(a, 0) for a in index]
+        values = [0 if (v is None or (isinstance(v, float) and np.isnan(v))) else v
+                  for v in values]
+        negative = [a for a, v in zip(index, values) if v < 0]
+        if negative:
+            raise ValueError(f"Duraciones negativas no permitidas: {negative}")
+        all_int = all(
+            isinstance(v, (int, np.integer)) and not isinstance(v, bool)
+            for v in values
+        )
+        dtype = int if all_int else float
+        return pd.Series(values, index=index, dtype=dtype)
+
     def calculate_pert(self, durations: Dict[str, float]):
-        duraciones = {key: 0 for key in self.activities}
-        duraciones.update(durations)
-        dtype = next(type(item) for item in duraciones.values())
+        dur_series = self._normalize_durations(durations, dummies=True)
+        duraciones = dur_series.to_dict()
+        dtype = dur_series.dtype.type if dur_series.dtype != object else float
         nodos = self.nodes
         indice_dataframe = sorted(nodos, key=int)
         edges_from_nodes = self.edges_from_nodes
-        tempranos = pd.Series(0, index=indice_dataframe).apply(dtype)
-        tardios = pd.Series(0, index=indice_dataframe).apply(dtype)
-        H_total = pd.Series(0, index=self.activities).apply(dtype)
+        tempranos = pd.Series(0, index=indice_dataframe, dtype=dtype)
+        tardios = pd.Series(0, index=indice_dataframe, dtype=dtype)
+        H_total = pd.Series(0, index=self.activities, dtype=dtype)
         for nodo_id in nodos[1:]:
             tempranos[nodo_id] = max(
                 tempranos[source] + duraciones.get(edges_from_nodes[(source, target)])
@@ -876,6 +1011,13 @@ class ProjectGraph:
         )
 
     def calendar(self, duraciones):
+        """Calendario de cada actividad real: inicios/fines más tempranos y
+        tardíos, holgura total y duración.
+
+        ``duraciones`` puede ser dict o Series; las actividades ausentes se
+        toman con duración 0.
+        """
+        duraciones = self._normalize_durations(duraciones, dummies=False)
         calendario = pd.DataFrame(
             0,
             index=duraciones.index,
@@ -884,7 +1026,10 @@ class ProjectGraph:
                 "inicio_mas_tardio",
                 "fin_mas_temprano",
                 "fin_mas_tardio",
+                "H_libre",
+                "H_independiente",
             ],
+            dtype=duraciones.dtype,
         )
 
         resultados_pert = self.calculate_pert(duraciones)
@@ -908,13 +1053,21 @@ class ProjectGraph:
                 nodo_inicial
             ] + duraciones.get(activity_name)
             calendario.loc[activity_name, "fin_mas_tardio"] = tardios[nodo_final]
+            # Holgura libre: margen sin retrasar el inicio más temprano de
+            # las sucesoras.  Holgura independiente: margen garantizado aunque
+            # las predecesoras acaben lo más tarde posible.
+            d = duraciones.get(activity_name)
+            calendario.loc[activity_name, "H_libre"] = (
+                tempranos[nodo_final] - tempranos[nodo_inicial] - d
+            )
+            calendario.loc[activity_name, "H_independiente"] = max(
+                0, tempranos[nodo_final] - tardios[nodo_inicial] - d
+            )
 
         return calendario
 
     def duration(self, durations):
-        duraciones = {key: 0 for key in self.activities}
-        duraciones.update(durations)
-        resultados_pert = self.calculate_pert(duraciones)
+        resultados_pert = self.calculate_pert(durations)
         duraciones = resultados_pert["nodes"]["early"].max()
         return duraciones
 
@@ -933,7 +1086,10 @@ class ProjectGraph:
         ) if calculate_path_float(path, total_floats) == 0}
         """
         rutas = self.path_matrix(dummies=False)
-        duraciones_rutas = rutas.dot(pd.Series(durations))
+        dur = self._normalize_durations(durations, dummies=False)
+        duraciones_rutas = pd.Series(
+            rutas.values @ dur.reindex(rutas.columns).values, index=rutas.index
+        )
         duracion_proyecto = duraciones_rutas.max()
         result = {
             name: list(rutas.columns[rutas.loc[name] == 1])
@@ -948,8 +1104,7 @@ class ProjectGraph:
             display(Markdown(f"- {ruta} :\t" + ", ".join(actividades) + " <br> "))
 
     def zaderenko(self, durations: Dict[str, float]):
-        duraciones = {key: 0 for key in self.activities}
-        duraciones.update(durations)
+        duraciones = self._normalize_durations(durations, dummies=True).to_dict()
         resultados_pert = self.calculate_pert(duraciones)["nodes"]
         lista_de_nodos_ordenada = sorted(self.nodes, key=int)
         z = pd.DataFrame(
@@ -987,6 +1142,13 @@ class ProjectGraph:
             tardios = resultados_pert["nodes"]["late"]
             H_total = resultados_pert["activities"]["H_total"]
 
+        try:
+            import pygraphviz as pgv
+        except ImportError as exc:
+            raise ImportError(
+                "plot_pert() requiere pygraphviz. "
+                "Instálalo con: conda install -c conda-forge pygraphviz"
+            ) from exc
         dot_graph = pgv.AGraph(
             size=size,
             orientation=orientation,
@@ -1304,6 +1466,13 @@ class ProjectGraph:
             critical_nodes = ["start", "finish"] + [activity for activity in self.actual_activities if calendario.loc[activity, "H_total"] == 0]
 
 
+        try:
+            import pygraphviz as pgv
+        except ImportError as exc:
+            raise ImportError(
+                "plot_roy() requiere pygraphviz. "
+                "Instálalo con: conda install -c conda-forge pygraphviz"
+            ) from exc
         dot_graph = pgv.AGraph(
             size=size,
             orientation=orientation,
@@ -1394,6 +1563,19 @@ class ProjectGraph:
         params=None,
         **activity_shifts,
     ):
+        """Desplaza el inicio de una o varias actividades (``**activity_shifts``
+        = {actividad: periodos}) insertando una actividad de espera ``💤X``.
+
+        .. warning::
+           Este método **muta** ``self.pert_graph`` in place: añade un nodo
+           auxiliar y el arco ``💤X`` por cada actividad desplazada. Si
+           necesitas conservar el proyecto original, trabaja sobre
+           ``self.copy()`` (como hace ``evaluar_desplazamiento``).
+
+        Returns
+        -------
+        (data_modificada, gantt_df, dibujo_tikz)
+        """
         if resource_label not in data.columns:
             raise ValueError("Resource label not in data columns")
 
@@ -1525,10 +1707,24 @@ class ProjectGraph:
         return suma_cuadrados, dibujo
 
     def nivelar(self, data, duration_label, resource_label, report=False):
+        """Nivelación de recursos por mínimos cuadrados: para cada actividad
+        no crítica (ordenadas por fin más temprano) prueba todos los
+        desplazamientos dentro de su holgura y aplica el que minimiza la suma
+        de cuadrados de las cargas.
+
+        .. warning::
+           Este método **muta** ``self.pert_graph`` (llama a ``desplazar``
+           sobre ``self``). Usa ``self.copy().nivelar(...)`` para preservar
+           el proyecto original.
+
+        Returns
+        -------
+        (desplazamientos, cuadrados_styler, data_final, gantt_df, dibujo)
+        """
         calendario = self.calendar(data[duration_label])
         calendario = calendario.loc[calendario["H_total"] > 0, :]
         actividades = calendario.sort_values(by=["fin_mas_temprano", 'H_total'], ascending=[True,False])
-        maxima_holgura = calendario["H_total"].max()
+        maxima_holgura = int(calendario["H_total"].max()) if len(calendario) else 0
         cuadrados = pd.DataFrame(0, columns=actividades.index, index=range(maxima_holgura + 1) )
         desplazamientos = dict()
         gantt_df, dibujo = self.gantt_cargas(data, duration_label, resource_label,
@@ -1761,6 +1957,10 @@ class ProjectGraph:
             # print(80*"-")
             # print("Mini path matrix:")
             # print(mini_path_matrix)
+            if mini_path_matrix.shape[1] == 0:
+                if report:
+                    print("No more paths can be reduced.")
+                break
             mini_path_matrix_filtered = mini_path_matrix.apply(
                 lambda x: mini_path_matrix.columns[x.notna()], axis=1
             )
@@ -1826,7 +2026,7 @@ class ProjectGraph:
         return result, best_option, durations, periods_available
 
     def incidence_matrix(self):
-        nodos_ordenados = sorted(self.pert_graph.nodes)
+        nodos_ordenados = self.nodes  # orden topológico (no lexicográfico)
         aristas_sin_ordenar = self.pert_graph.edges
         nombres_sin_ordenar = [
             self.pert_graph.edges[edge]["activity"] for edge in self.pert_graph.edges
@@ -1852,10 +2052,561 @@ class ProjectGraph:
         return H
 
     def nullspace(self):
-        nodos_ordenados = sorted(self.pert_graph.nodes)
+        """Matriz de incidencia sin las columnas del nodo origen y del sumidero."""
+        nodos_ordenados = self.nodes
         H = self.incidence_matrix()
         nullspace = H.drop(columns=[nodos_ordenados[0], nodos_ordenados[-1]])
         return nullspace
+
+    # ── Serialización ──────────────────────────────────────────────────────
+
+    def to_graphml(self, path) -> None:
+        """Guarda el grafo PERT en un fichero GraphML (portable, legible).
+
+        Los atributos de tipo dict se serializan a JSON string para
+        compatibilidad con GraphML. Las claves tupla se convierten a str
+        para que json.dumps las acepte.
+        """
+        import json as _json
+
+        def _make_serializable(obj):
+            """Convierte recursivamente claves tupla a str."""
+            if isinstance(obj, dict):
+                return {str(k) if isinstance(k, tuple) else k: _make_serializable(v)
+                        for k, v in obj.items()}
+            return obj
+
+        G = self.pert_graph.copy()
+        for _, data in G.nodes(data=True):
+            for k, v in list(data.items()):
+                if isinstance(v, dict):
+                    data[k] = _json.dumps(_make_serializable(v))
+        for _, _, data in G.edges(data=True):
+            for k, v in list(data.items()):
+                if isinstance(v, dict):
+                    data[k] = _json.dumps(_make_serializable(v))
+        nx.write_graphml(G, str(path))
+
+    @classmethod
+    def from_graphml(cls, path) -> "ProjectGraph":
+        """Reconstruye un ProjectGraph desde un fichero GraphML."""
+        G = nx.read_graphml(str(path))
+        return cls(G)
+
+    @staticmethod
+    def save_route_matrix(R, path) -> None:
+        """Guarda la matriz de rutas como sparse .npz + .json con los nombres de actividades."""
+        import json as _json, pathlib as _pl
+        import scipy.sparse as _sp
+        _sp.save_npz(str(path), _sp.csr_matrix(R.values.astype(np.uint8)))
+        meta_path = _pl.Path(str(path)).with_suffix(".json")
+        meta_path.write_text(_json.dumps({"activities": list(R.columns), "n_paths": len(R)}))
+
+    @staticmethod
+    def load_route_matrix(path):
+        """Carga la matriz de rutas desde .npz + .json; devuelve un DataFrame."""
+        import json as _json, pathlib as _pl
+        import scipy.sparse as _sp
+        meta = _json.loads(_pl.Path(str(path)).with_suffix(".json").read_text())
+        R = _sp.load_npz(str(path)).toarray()
+        return pd.DataFrame(R, columns=meta["activities"])
+
+    # ------------------------------------------------------------------
+    # Analítica: tau, tau_sensitivity, svd_approximation_error
+    # ------------------------------------------------------------------
+
+    def tau(self, durations: dict) -> float:
+        """‖R·t‖∞ — completion-time formula (Pasos 1-2 del paper).
+
+        Parameters
+        ----------
+        durations : dict
+            {nombre_actividad: duración} para actividades no-dummy.
+
+        Returns
+        -------
+        float  τ = max_{rutas p} Σ_{i∈p} t_i
+        """
+        R = self.path_matrix(dummies=False)   # (n_paths, n_activities)
+        t = np.array([durations.get(a, 0.0) for a in R.columns])
+        return float(np.max(R.values @ t))
+
+    def tau_sensitivity(self, durations: dict) -> "pd.Series":
+        """∂τ/∂t_i — peso de cada actividad en el tiempo de compleción.
+
+        Si hay una sola ruta crítica los pesos son 0/1.
+        Con k rutas críticas de igual longitud se distribuyen
+        proporcionalmente (media de sus vectores indicadores).
+
+        Returns
+        -------
+        pd.Series indexada por actividad, orden descendente.
+        """
+        R = self.path_matrix(dummies=False)
+        t = np.array([durations.get(a, 0.0) for a in R.columns])
+        lengths = R.values @ t
+        tau_val = float(np.max(lengths))
+        critical_mask = np.isclose(lengths, tau_val)
+        n_critical = int(critical_mask.sum())
+        gradient = R.values[critical_mask].sum(axis=0) / n_critical
+        return pd.Series(gradient, index=R.columns).sort_values(ascending=False)
+
+    def svd_approximation_error(self, durations: dict) -> dict:
+        """Error de la aproximación de rango 1 SVD respecto al τ exacto.
+
+        Aproximación: τ_svd = σ₁ · (Σ u₁ᵢ) · (v₁ᵀ · t)
+
+        Returns
+        -------
+        dict con claves: tau_exact, tau_svd, abs_error, rel_error, sigma_ratio.
+        """
+        R = self.path_matrix(dummies=False)
+        t = np.array([durations.get(a, 0.0) for a in R.columns])
+        tau_exact = float(np.max(R.values @ t))
+        U, s, Vt = np.linalg.svd(R.values, full_matrices=False)
+        tau_svd = float(s[0] * U[:, 0].sum() * (Vt[0] @ t))
+        abs_error = abs(tau_exact - tau_svd)
+        rel_error = abs_error / tau_exact if tau_exact != 0.0 else 0.0
+        sigma_ratio = float(s[0] / s[1]) if len(s) > 1 and s[1] > 0 else float("inf")
+        return {
+            "tau_exact": tau_exact,
+            "tau_svd": tau_svd,
+            "abs_error": abs_error,
+            "rel_error": rel_error,
+            "sigma_ratio": sigma_ratio,
+        }
+
+    # ------------------------------------------------------------------
+    # Lectura nativa de .sm (PSPLIB)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_sm(cls, path) -> "ProjectGraph":
+        """Construye un ProjectGraph desde un fichero .sm de PSPLIB.
+
+        Sin dependencias externas (solo ``re`` y ``pathlib``).
+        Los metadatos horizon, mpm_time, n_jobs y resource_availabilities
+        se guardan en ``project.pert_graph.graph``.
+        """
+        instance = PSPLIBInstance.read(path)
+        project = cls.from_dict_of_sets(instance.predecessors, simplify=True)
+        project.pert_graph.graph.update({
+            "horizon": instance.horizon,
+            "mpm_time": instance.mpm_time,
+            "n_jobs": instance.n_jobs,
+            "resource_availabilities": instance.resource_availabilities,
+        })
+        return project
+
+    # ------------------------------------------------------------------
+    # Visualización TikZ (sin graphviz)
+    # ------------------------------------------------------------------
+
+    def _pert_layout(self, durations: dict = None) -> dict:
+        """Calcula posiciones (x, y) en cm para TikZ.
+
+        x = tiempo early del evento (CPM, calculado con durations) * x_scale
+        y = posición vertical dentro de la capa (centrada)
+
+        Parameters
+        ----------
+        durations : dict | None
+            {nombre_actividad: float}. Las ficticias se ignoran (duración 0).
+        """
+        from collections import defaultdict
+        G = self.pert_graph
+        dur_map = durations or {}
+        source = self.nodes[0]
+        early: dict = {source: 0}
+        for node in nx.topological_sort(G):
+            for pred in G.predecessors(node):
+                act = G.edges[pred, node].get("activity", "")
+                is_dummy = (not act) or act.startswith("@")
+                d = 0.0 if is_dummy else float(dur_map.get(act, 0))
+                early[node] = max(early.get(node, 0), early.get(pred, 0) + d)
+        layers: dict = defaultdict(list)
+        for node, t in early.items():
+            layers[t].append(node)
+        x_scale, y_scale = 2.0, 1.5
+        pos: dict = {}
+        for t, layer_nodes in sorted(layers.items()):
+            n = len(layer_nodes)
+            for i, node in enumerate(sorted(layer_nodes)):
+                pos[node] = (t * x_scale, (i - (n - 1) / 2.0) * y_scale)
+        return pos
+
+    def plot_tikz(self, durations: dict = None, svd: bool = False, path=None) -> str:
+        """Genera código TikZ del grafo PERT. Sin dependencia de graphviz.
+
+        Layout: coordenada X = tiempo early del evento (CPM); Y = rank
+        dentro de la capa. El resultado es semánticamente correcto:
+        cada nodo queda en el instante exacto en que ocurre su evento.
+
+        Parameters
+        ----------
+        durations : dict | None
+            {nombre_actividad: float}. Necesario para el layout CPM y las
+            etiquetas de arco. Las ficticias reciben duración 0 automáticamente.
+        svd : bool
+            Si True, el grosor de los arcos es proporcional al peso v₁.
+        path : str | pathlib.Path | None
+            Si se pasa, compila con jupyter_tikz y guarda el PDF.
+
+        Returns
+        -------
+        str   Código TikZ listo para usar en LaTeX/jupyter_tikz.
+        """
+        G = self.pert_graph
+        dur_map = durations or {}
+        pos = self._pert_layout(dur_map)
+
+        act_weight: dict = {}
+        if svd:
+            R = self.path_matrix(dummies=False)
+            if R.shape[0] > 0 and R.shape[1] > 0:
+                _, _s, Vt = np.linalg.svd(R.values, full_matrices=False)
+                v1 = np.abs(Vt[0])
+                if v1.max() > 0:
+                    v1 = v1 / v1.max()
+                act_weight = dict(zip(R.columns, v1))
+
+        lines = [r"\begin{tikzpicture}[>=stealth, font=\small]", ""]
+
+        for node, (x, y) in sorted(pos.items(), key=lambda kv: kv[1][0]):
+            label = str(node)
+            lines.append(
+                rf"  \node[draw, circle, inner sep=3pt] ({label})"
+                rf" at ({x:.2f}cm, {y:.2f}cm) {{{label}}};"
+            )
+
+        lines.append("")
+        for u, v, data in G.edges(data=True):
+            act = data.get("activity", "")
+            is_dummy = (not act) or act.startswith("@")
+            lw_str = ""
+            if svd and not is_dummy and act in act_weight:
+                w = act_weight[act]
+                lw_str = f"line width={0.4 + 2.6 * w:.2f}pt, "
+            if is_dummy:
+                edge_label = ""
+                style = f"dashed, {lw_str}"
+            else:
+                d_val = dur_map.get(act, "")
+                edge_label = str(act) + (f" ({d_val})" if d_val != "" else "")
+                style = lw_str
+            lines.append(
+                rf"  \draw[->, {style}] ({u}) -- ({v})"
+                rf" node[midway, above, font=\tiny] {{{edge_label}}};"
+            )
+
+        lines.append("")
+        lines.append(r"\end{tikzpicture}")
+        result = "\n".join(lines)
+
+        if path is not None:
+            tex = TexFragment(result, tikz_libraries="arrows.meta").run_latex(
+                save_pdf=str(path)
+            )
+            display(tex)
+
+        return result
+
+
+    # ------------------------------------------------------------------
+    # Monte Carlo
+    # ------------------------------------------------------------------
+
+    def monte_carlo(
+        self,
+        distributions: dict,
+        n_samples: int = 10_000,
+        seed: int = None,
+    ) -> "MonteCarloResult":
+        """Simulación Monte Carlo sobre las duraciones del proyecto.
+
+        Parameters
+        ----------
+        distributions : dict
+            {nombre_actividad: callable | (str, *params)}
+            Acepta:
+            - Callable ``f() -> float`` (o ``f(size=N) -> array``).
+            - Tupla ``("normal", mu, sigma)``, ``("uniform", a, b)``,
+              ``("triangular", low, mode, high)``, ``("lognormal", mu, sigma)``,
+              ``("pert", a, m, b)`` — equivalente PERT beta aproximado.
+            Las actividades ficticias (``"@…"``) se ignoran automáticamente.
+        n_samples : int
+            Número de réplicas. Por defecto 10 000.
+        seed : int | None
+            Semilla para reproducibilidad.
+
+        Returns
+        -------
+        MonteCarloResult
+        """
+        rng = np.random.default_rng(seed)
+
+        # ── Construir samplers ──────────────────────────────────────
+        def make_sampler(spec):
+            if callable(spec):
+                import inspect
+                sig = inspect.signature(spec)
+                if "size" in sig.parameters:
+                    return lambda n, _spec=spec: _spec(size=n)
+                else:
+                    return lambda n, _spec=spec: np.array([_spec() for _ in range(n)])
+            kind, *args = spec
+            kind = kind.lower()
+            if kind == "normal":
+                mu, sigma = args
+                return lambda n: rng.normal(mu, sigma, n)
+            elif kind == "uniform":
+                a, b = args
+                return lambda n: rng.uniform(a, b, n)
+            elif kind == "triangular":
+                low, mode, high = args
+                return lambda n: rng.triangular(low, mode, high, n)
+            elif kind == "lognormal":
+                mu, sigma = args
+                return lambda n: rng.lognormal(mu, sigma, n)
+            elif kind == "pert":
+                # PERT beta: mean = (a + 4m + b) / 6, std = (b - a) / 6
+                a, m, b = args
+                mu_pert = (a + 4 * m + b) / 6.0
+                sigma_pert = (b - a) / 6.0
+                # clip to [a, b]
+                return lambda n: np.clip(rng.normal(mu_pert, sigma_pert, n), a, b)
+            else:
+                raise ValueError(f"Distribución desconocida: {kind!r}")
+
+        # ── Simular (vectorizado) ──────────────────────────────────
+        # T: (n_samples × n_act) muestras; R: (n_paths × n_act) rutas.
+        # Longitudes de ruta P = T @ Rᵀ → (n_samples × n_paths); τ = max fila.
+        R_df = self.path_matrix(dummies=False)
+        R = R_df.values.astype(float)
+        acts = list(R_df.columns)
+        unknown = sorted(set(distributions) - set(acts) - set(self.dummies))
+        if unknown:
+            import warnings
+            warnings.warn(f"Distribuciones para actividades desconocidas: {unknown}. "
+                          "Se ignoran.", UserWarning, stacklevel=2)
+        T = np.zeros((n_samples, len(acts)))
+        for j, a in enumerate(acts):
+            if a in distributions:
+                T[:, j] = make_sampler(distributions[a])(n_samples)
+
+        P = T @ R.T
+        tau_samples = P.max(axis=1)
+        # Sensibilidad empírica: media sobre réplicas de la fracción de rutas
+        # críticas que contienen cada actividad (misma definición que
+        # tau_sensitivity, calculada en bloque).
+        critical = np.isclose(P, tau_samples[:, None])          # (n_samples × n_paths)
+        n_crit = critical.sum(axis=1, keepdims=True)             # ≥ 1 siempre
+        grad = (critical.astype(float) @ R) / n_crit             # (n_samples × n_act)
+        sens_mean = pd.Series(grad.mean(axis=0), index=acts,
+                              name="empirical_sensitivity").sort_values(ascending=False)
+
+        return MonteCarloResult(
+            tau_samples=tau_samples,
+            sensitivity_mean=sens_mean,
+            n_samples=n_samples,
+            seed=seed,
+        )
+
+
+# ---------------------------------------------------------------------------
+# MonteCarloResult
+# ---------------------------------------------------------------------------
+
+class MonteCarloResult:
+    """Resultado de una simulación Monte Carlo sobre un ProjectGraph.
+
+    Atributos
+    ---------
+    tau_samples : np.ndarray  shape (n_samples,)
+        Valores de τ simulados.
+    sensitivity_mean : pd.Series
+        Sensibilidad empírica media (∂τ/∂tᵢ promediado sobre réplicas).
+    n_samples : int
+    seed : int | None
+
+    Propiedades convenientes
+    ------------------------
+    tau_mean, tau_std, tau_q05, tau_q50, tau_q95 : float
+    summary() : pd.DataFrame  con estadísticos de τ
+    """
+
+    def __init__(
+        self,
+        tau_samples: "np.ndarray",
+        sensitivity_mean: "pd.Series",
+        n_samples: int,
+        seed,
+    ):
+        self.tau_samples = np.asarray(tau_samples, dtype=float)
+        self.sensitivity_mean = sensitivity_mean
+        self.n_samples = n_samples
+        self.seed = seed
+
+    # ── Estadísticos de τ ───────────────────────────────────────────
+
+    @property
+    def tau_mean(self) -> float:
+        return float(np.mean(self.tau_samples))
+
+    @property
+    def tau_std(self) -> float:
+        return float(np.std(self.tau_samples, ddof=1))
+
+    @property
+    def tau_q05(self) -> float:
+        return float(np.quantile(self.tau_samples, 0.05))
+
+    @property
+    def tau_q50(self) -> float:
+        return float(np.quantile(self.tau_samples, 0.50))
+
+    @property
+    def tau_q95(self) -> float:
+        return float(np.quantile(self.tau_samples, 0.95))
+
+    def summary(self) -> "pd.DataFrame":
+        """DataFrame con estadísticos básicos de τ."""
+        data = {
+            "mean": self.tau_mean,
+            "std":  self.tau_std,
+            "q05":  self.tau_q05,
+            "q50":  self.tau_q50,
+            "q95":  self.tau_q95,
+            "min":  float(self.tau_samples.min()),
+            "max":  float(self.tau_samples.max()),
+        }
+        return pd.DataFrame(data, index=["τ"])
+
+    def __repr__(self) -> str:
+        return (
+            f"MonteCarloResult(n={self.n_samples}, "
+            f"τ̄={self.tau_mean:.3f}, σ={self.tau_std:.3f}, "
+            f"[{self.tau_q05:.3f}, {self.tau_q95:.3f}])"
+        )
+
+
+class PSPLIBInstance:
+    """Instancia PSPLIB leída desde un fichero .sm.
+
+    Atributos
+    ---------
+    n_jobs : int           incluyendo source (1) y sink (n_jobs)
+    horizon : int          cota superior del makespan (≠ duración proyecto)
+    mpm_time : int         τ CPM (campo MPM-Time del fichero .sm)
+    predecessors : dict    {str(jobnr): set of str(jobnr)}
+    durations : dict       {str(jobnr): int}
+    resources : dict       {str(jobnr): list[int]}
+    resource_availabilities : list[int]
+    """
+
+    def __init__(self, n_jobs, horizon, mpm_time, predecessors,
+                 durations, resources, resource_availabilities):
+        self.n_jobs = n_jobs
+        self.horizon = horizon
+        self.mpm_time = mpm_time
+        self.predecessors = predecessors
+        self.durations = durations
+        self.resources = resources
+        self.resource_availabilities = resource_availabilities
+
+    @classmethod
+    def read(cls, path) -> "PSPLIBInstance":
+        """Parsea un fichero .sm de PSPLIB sin dependencias externas."""
+        import re as _re, pathlib as _pl
+        text = _pl.Path(path).read_text(encoding="utf-8", errors="replace")
+        sections = [s.strip() for s in _re.split(r"\*{3,}", text) if s.strip()]
+
+        # Buscar secciones por nombre (robusto a variaciones de índice)
+        def _find_section(keyword):
+            for s in sections:
+                if keyword.lower() in s.lower()[:80]:
+                    return s
+            return ""
+
+        sec_header   = _find_section("jobs (incl")          # n_jobs, horizon
+        sec_projinfo = _find_section("project information")  # MPM-Time
+        sec_prec     = _find_section("precedence relations")
+        sec_req      = _find_section("requests/durations")
+        sec_res_av   = _find_section("resourceavailabilities")
+
+        # n_jobs, horizon
+        n_jobs = int(_re.search(
+            r"jobs\s*\(incl[^)]+\)\s*:\s*(\d+)", sec_header).group(1))
+        horizon = int(_re.search(r"horizon\s*:\s*(\d+)", sec_header).group(1))
+
+        # mpm_time (último campo de la fila de datos, omitiendo la cabecera "pronr")
+        proj_data = [l for l in sec_projinfo.splitlines()
+                     if l.strip() and not l.strip().lower().startswith("pronr")
+                     and not l.strip().lower().startswith("project")]
+        mpm_time = int(proj_data[0].split()[-1]) if proj_data else 0
+
+        # PRECEDENCE RELATIONS
+        successors: dict = {}
+        reading = False
+        for line in sec_prec.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.lower().startswith("jobnr"):
+                reading = True
+                continue
+            if not reading:
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            try:
+                jobnr = int(parts[0])
+            except ValueError:
+                continue
+            n_succ = int(parts[2])
+            successors[jobnr] = [int(x) for x in parts[3: 3 + n_succ]]
+
+        predecessors: dict = {str(j): set() for j in successors}
+        for j, succs in successors.items():
+            for s_job in succs:
+                predecessors.setdefault(str(s_job), set()).add(str(j))
+
+        # REQUESTS/DURATIONS
+        durations: dict = {}
+        resources: dict = {}
+        reading = False
+        for line in sec_req.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("-") or line.lower().startswith("jobnr"):
+                reading = True
+                continue
+            if not reading:
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            try:
+                jobnr = int(parts[0])
+            except ValueError:
+                continue
+            durations[str(jobnr)] = int(parts[2])
+            resources[str(jobnr)] = [int(x) for x in parts[3:]]
+
+        # RESOURCEAVAILABILITIES
+        resource_availabilities: list = []
+        for line in sec_res_av.splitlines():
+            line = line.strip()
+            if _re.match(r"^[\d\s]+$", line) and line:
+                resource_availabilities = [int(x) for x in line.split()]
+                break
+
+        return cls(n_jobs=n_jobs, horizon=horizon, mpm_time=mpm_time,
+                   predecessors=predecessors, durations=durations,
+                   resources=resources,
+                   resource_availabilities=resource_availabilities)
 
 
 class EarnedValue:
@@ -1932,14 +2683,22 @@ class EarnedValue:
             params=params,
         )
 
-        acumulados = pd.DataFrame(
-            dict(
-                PV=gantt_PV.data.loc["Total", :].cumsum(),
-                EV=gantt_EV.data.loc["Total", :].cumsum(),
-                AC=gantt_AC.data.loc["Total", :].cumsum(),
-            ),
-            index=gantt_EV.data.columns,
-        ).drop("Total")
+        # Curvas S acumuladas sobre un horizonte común: si la ejecución real
+        # dura más que la planificada, PV se mantiene plana en el BAC (y
+        # viceversa para EV/AC), en lugar de aparecer NaN o truncarse.
+        def _cumulative(gantt):
+            total = gantt.data.loc["Total", :].drop("Total", errors="ignore")
+            total = pd.to_numeric(total, errors="coerce").fillna(0.0)
+            total.index = total.index.astype(int)
+            return total.cumsum()
+
+        pv, ev, ac = _cumulative(gantt_PV), _cumulative(gantt_EV), _cumulative(gantt_AC)
+        horizon = range(1, int(max(pv.index.max(), ev.index.max(), ac.index.max())) + 1)
+        acumulados = (
+            pd.DataFrame(dict(PV=pv, EV=ev, AC=ac))
+            .reindex(horizon)
+            .ffill()
+        )
 
         return dict(
             Gantt_PV=gantt_PV,
@@ -2057,6 +2816,54 @@ def beautify(*args):
 
 def tanto_por_uno(x):
     return np.abs(x) / np.abs(x).sum()
+
+
+# ── Serialización de instancias (funciones de módulo) ──────────────────────
+
+def build_and_save(instance_name: str, predecessors_dict: dict, out_dir) -> "ProjectGraph":
+    """Construye el grafo PERT y guarda GraphML + path matrix (parquet).
+
+    Parameters
+    ----------
+    instance_name : str
+        Nombre base del fichero (sin extensión).
+    predecessors_dict : dict
+        Diccionario {actividad: set_de_predecesoras} o {actividad: str_predecesoras}.
+    out_dir : str | Path
+        Directorio de salida.
+
+    Returns
+    -------
+    ProjectGraph con el grafo ya construido.
+    """
+    import pathlib as _pl
+    out_dir = _pl.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # Acepta dict de sets, listas o strings como valores de predecesores
+    first_val = next(iter(predecessors_dict.values()), None)
+    if isinstance(first_val, str):
+        project = ProjectGraph.from_dict_of_strings(predecessors_dict)
+    else:
+        # Normalizar a sets por si llegan como listas
+        preds_sets = {k: set(v) for k, v in predecessors_dict.items()}
+        project = PredecessorTable.from_dict_of_sets(preds_sets).create_project()
+    project.to_graphml(out_dir / f"{instance_name}.graphml")
+    project.path_matrix().to_parquet(out_dir / f"{instance_name}_paths.parquet")
+    return project
+
+
+def load_instance(instance_name: str, out_dir) -> tuple:
+    """Carga un ProjectGraph y su path matrix desde disco.
+
+    Returns
+    -------
+    (ProjectGraph, pd.DataFrame con la path matrix)
+    """
+    import pathlib as _pl
+    out_dir = _pl.Path(out_dir)
+    graph = ProjectGraph(nx.read_graphml(out_dir / f"{instance_name}.graphml"))
+    paths = pd.read_parquet(out_dir / f"{instance_name}_paths.parquet")
+    return graph, paths
 
 
 def ordena_rutas(rutas, importancia_actividades, importancia_rutas):
