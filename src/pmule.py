@@ -188,6 +188,144 @@ def significant_values(values, threshold):
     return int(np.argmax(percents > threshold))
 
 
+# ---------------------------------------------------------------------------
+# Fondahl/Elmaghraby direct AoA construction
+# ---------------------------------------------------------------------------
+
+from collections import defaultdict as _defaultdict
+
+
+def fondahl_construct(immediate_predecessors: dict) -> tuple:
+    """Build an Activity-on-Arrow PERT network using the Fondahl (1961) / Elmaghraby (1977)
+    direct construction algorithm.
+
+    Unlike the Roy/augmented approach (one dummy per predecessor link followed by
+    simplification), Fondahl builds the minimum-dummy network directly in a single
+    topological forward pass:
+
+    * Activities with a single predecessor are attached directly to that predecessor's
+      head node (no dummy needed) whenever that node has not yet been used by another
+      activity as its tail — Rule 1 (direct attachment).
+    * Activities whose predecessor set has already been seen get the *same* convergence
+      node, sharing it without an extra dummy — Rule 2 (convergence node reuse).
+    * Otherwise a fresh convergence node is created and one dummy per predecessor is
+      added (the minimum necessary to represent the convergence).
+
+    Parameters
+    ----------
+    immediate_predecessors : dict[str, set[str]]
+        Mapping of activity name → set of its *immediate* (direct) predecessors.
+        Activities with no predecessors map to the empty set.
+        The dict need not be pre-sorted; topological order is computed internally
+        using Kahn's algorithm in O(V + E).
+
+    Returns
+    -------
+    nodes : set
+        Integer node ids used in the graph (SOURCE = 0, SINK = 1, others ≥ 2).
+    real_arcs : list of (tail_node, head_node, activity_name)
+        One entry per actual activity.
+    dummy_arcs : list of (tail_node, head_node)
+        One entry per dummy arrow (including source/sink connectors).
+    """
+    # --- Kahn's topological sort (O(V + E)) ---------------------------------
+    successors: dict = _defaultdict(list)
+    for act, preds in immediate_predecessors.items():
+        for p in preds:
+            successors[p].append(act)
+    in_degree = {a: len(p) for a, p in immediate_predecessors.items()}
+    queue = [a for a, d in in_degree.items() if d == 0]
+    topo = []
+    while queue:
+        a = queue.pop()
+        topo.append(a)
+        for b in successors[a]:
+            in_degree[b] -= 1
+            if in_degree[b] == 0:
+                queue.append(b)
+
+    # --- node counter --------------------------------------------------------
+    _next_node = iter(range(10_000))
+    SOURCE = next(_next_node)   # node 0
+    SINK = next(_next_node)     # node 1
+
+    head: dict = {}             # activity  → its head node
+    tail: dict = {}             # activity  → its tail node
+    real_arcs: list = []
+    dummy_arcs: list = []
+    convergence_node: dict = {} # frozenset(preds) → shared convergence node
+    head_users: dict = _defaultdict(set)  # node → set of activities using it as tail
+
+    def get_tail(preds: frozenset) -> int:
+        """Return the tail node for an activity with the given predecessor set."""
+        if not preds:
+            return SOURCE
+
+        # Reuse an existing convergence node for this exact predecessor set
+        if preds in convergence_node:
+            return convergence_node[preds]
+
+        # Rule 1 – single predecessor: reuse its head node if still free
+        if len(preds) == 1:
+            (p,) = preds
+            candidate = head[p]
+            if not head_users[candidate]:   # node not yet used as a tail
+                convergence_node[preds] = candidate
+                return candidate
+
+        # Rule 2 – create a fresh convergence node + one dummy per predecessor
+        node = next(_next_node)
+        convergence_node[preds] = node
+        for p in preds:
+            dummy_arcs.append((head[p], node))
+        return node
+
+    for act in topo:
+        preds = frozenset(immediate_predecessors[act])
+        t = get_tail(preds)
+        h = next(_next_node)
+        tail[act] = t
+        head[act] = h
+        head_users[t].add(act)
+        real_arcs.append((t, h, act))
+
+    # Connect dangling head nodes to SINK
+    all_tails = set(tail.values()) | {n for n, _ in dummy_arcs}
+    for act in topo:
+        if head[act] not in all_tails:
+            dummy_arcs.append((head[act], SINK))
+
+    nodes = {SOURCE, SINK}
+    for t, h, _ in real_arcs:
+        nodes |= {t, h}
+    for t, h in dummy_arcs:
+        nodes |= {t, h}
+
+    return nodes, real_arcs, dummy_arcs
+
+
+def _simplify_sweep(project: "ProjectGraph") -> tuple:
+    """Single non-resetting pass over all dummies.
+
+    Unlike ProjectGraph.simplify() which resets the dummy list on every
+    successful removal (O(D²) total dummy work), this function iterates
+    the snapshot dummy list exactly once and returns the updated project
+    together with the number of dummies removed.
+
+    Run in a loop until the count is 0 (usually 1-2 passes after Fondahl).
+
+    Returns
+    -------
+    (updated_project, n_removed)
+    """
+    removed = 0
+    for dummy in list(project.dummies):   # snapshot — no reset
+        updated, project = ProjectGraph.assess_dummy(dummy, project)
+        if updated:
+            removed += 1
+    return project, removed
+
+
 class PredecessorTable:
     @staticmethod
     def from_dict_of_strings(data: Dict[str, str], simplify=True):
@@ -322,7 +460,21 @@ class PredecessorTable:
     def copy(self):
         return PredecessorTable(data=self.immediate_predecessor.copy())
 
-    def create_project(self, simplify=True):
+    def create_project_roy(self, simplify=True):
+        """Build a PERT graph using Roy's augmented-predecessor method + simplify.
+
+        Each predecessor link becomes a dummy activity; SOURCE and SINK
+        connectors are added; then simplify() contracts or removes safe
+        dummies.  Produces correct results for most inputs but generates a
+        directed cycle (incorrectly) when two activities share an identical
+        non-empty predecessor set.  Use create_project_fondahl (or the
+        default create_project) to avoid that bug.
+
+        Parameters
+        ----------
+        simplify : bool, default True
+            Apply simplify() to remove redundant dummies after construction.
+        """
         def create_edge_info_for_dummy(name):
             return name.replace("@", "").split("⤑") + [{"activity": name}]
 
@@ -343,6 +495,73 @@ class PredecessorTable:
         if not simplify:
             return ProjectGraph(pert_graph)
         return ProjectGraph(pert_graph).simplify()
+
+    def create_project(self, simplify=True):
+        """Build a PERT graph — delegates to create_project_fondahl (default).
+
+        Fondahl's direct construction never creates redundant dummies in the
+        first place and avoids the cycle bug present in the original Roy method.
+        The Roy method is still available as create_project_roy.
+
+        Parameters
+        ----------
+        simplify : bool, default True
+            Run _simplify_sweep passes until no further dummies can be removed.
+        """
+        return self.create_project_fondahl(simplify=simplify)
+
+    def create_project_fondahl(self, simplify=True):
+        """Build a PERT graph using the Fondahl/Elmaghraby direct construction.
+
+        Unlike the Roy+simplify approach this method never creates redundant
+        dummies in the first place, avoiding the cycle-creation bug that
+        affects ``create_project`` when two activities share all predecessors.
+
+        Post-construction simplification (optional) uses single-pass sweeps
+        (``_simplify_sweep``) rather than the reset-based ``simplify()``, so
+        the sweep is O(D·n²) per pass instead of O(D²·n⁴).
+
+        Parameters
+        ----------
+        simplify : bool, default True
+            Run ``_simplify_sweep`` passes until no further dummies can be removed.
+        """
+        nodes, real_arcs, dummy_arcs = fondahl_construct(self.immediate_predecessor)
+
+        G = nx.DiGraph()
+        G.add_nodes_from(nodes)
+        for tail, head, act_name in real_arcs:
+            G.add_edge(tail, head, activity=act_name)
+        for tail, head in dummy_arcs:
+            dummy_name = f"@{tail}→{head}"   # e.g. "@3→7"
+            G.add_edge(tail, head, activity=dummy_name)
+
+        # Relabel integer nodes to strings immediately so that
+        # nodes_from_edges (which f-strings node IDs) and contract_activities
+        # work correctly during simplification.
+        G = nx.relabel_nodes(
+            G,
+            {node: str(i + 1)
+             for i, node in enumerate(nx.topological_sort(G))},
+        )
+        project = ProjectGraph(G)
+
+        if simplify:
+            removed = 1
+            while removed:
+                project, removed = _simplify_sweep(project)
+
+        # Final relabeling to get clean sequential node labels after simplification.
+        new_graph = nx.relabel_nodes(
+            project.pert_graph,
+            {node: str(i + 1)
+             for i, node in enumerate(nx.topological_sort(project.pert_graph))},
+        )
+        # Rename dummy edges to reflect final node IDs after relabeling.
+        for source, target, data in new_graph.edges(data=True):
+            if data['activity'].startswith('@'):
+                data['activity'] = f'@{source}→{target}'
+        return ProjectGraph(new_graph)
 
     @property
     def immediate_linkage_matrix(self):
