@@ -1,4 +1,4 @@
-.PHONY: sync dev lsp lab kernel clean
+.PHONY: sync dev lsp lab kernel clean hooks
 sync:
 	uv sync --frozen
 
@@ -18,3 +18,6 @@ clean:
 	rm -rf .venv
 	uv cache clean
 
+hooks:
+	ln -sf ../../scripts/pre-commit-jupytext.sh .git/hooks/pre-commit
+	@echo "hook pre-commit instalado (sincroniza pares jupytext de notebooks/)"
