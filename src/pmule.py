@@ -747,11 +747,13 @@ class ProjectGraph:
 
     @staticmethod
     def _is_single_source_sink(project) -> bool:
-        """True si el grafo PERT tiene exactamente un nodo origen y un sumidero."""
+        """True si el grafo PERT es acíclico y tiene exactamente un nodo
+        origen y un sumidero (invariantes que toda simplificación debe
+        preservar)."""
         G = project.pert_graph
         n_sources = sum(1 for n in G if G.in_degree(n) == 0)
         n_sinks = sum(1 for n in G if G.out_degree(n) == 0)
-        return n_sources == 1 and n_sinks == 1
+        return n_sources == 1 and n_sinks == 1 and nx.is_directed_acyclic_graph(G)
 
     @staticmethod
     def assess_dummy(name, project):
@@ -764,7 +766,10 @@ class ProjectGraph:
         condición (b) evita eliminar el conector al sumidero de una actividad
         final que comparte nodo de partida con otra (p. ej. I y J con las
         mismas predecesoras): esa ficticia es la que impide que ambas sean
-        arcos paralelos entre los mismos dos nodos.
+        arcos paralelos entre los mismos dos nodos.  (c) El grafo sigue siendo
+        acíclico: contraer una ficticia de convergencia cuando dos actividades
+        comparten el mismo conjunto de predecesoras redirigía la cola de la
+        otra y creaba un ciclo (bug histórico del método de Roy).
         """
         original_copy = project.copy()
         reference = project.distant_predecessor(dummies=False)

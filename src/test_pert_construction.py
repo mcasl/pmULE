@@ -194,7 +194,10 @@ CASES = {
 }
 
 # Cases where Roy+simplify has a known cycle-creation bug.
-ROY_BROKEN_CASES = {"shared_predecessor_set", "shared_preds_with_sink"}
+# Antes: {"shared_predecessor_set", "shared_preds_with_sink"} — el método de Roy
+# creaba un ciclo al simplificar. Corregido (assess_dummy exige grafo acíclico);
+# se deja el conjunto vacío para que todos los casos se verifiquen también en Roy.
+ROY_BROKEN_CASES: set = set()
 
 # Working cases for Roy (excludes the broken ones).
 ROY_WORKING = {k: v for k, v in CASES.items() if k not in ROY_BROKEN_CASES}
@@ -869,11 +872,11 @@ class TestPertConstructionRoy(unittest.TestCase):
 
     The Roy method creates one dummy per predecessor link (plus SOURCE/SINK
     connectors), then iterates _simplify_sweep until no more dummies can be
-    removed.  It has a known bug for the two cases in ROY_BROKEN_CASES.
+    removed.  The two cases in ROY_BROKEN_CASES used to create a cycle (fixed).
 
     Structure of the class:
         * Individual correctness tests (one per CASE)
-        * @expectedFailure tests documenting the known bug
+        * Regression tests for the former shared-predecessor-set cycle bug
         * Structural property tests (DAG, dummy count, etc.)
     """
 
@@ -929,21 +932,23 @@ class TestPertConstructionRoy(unittest.TestCase):
     # Known-bug cases (documented as expected failures)
     # ------------------------------------------------------------------
 
-    @unittest.expectedFailure
-    def test_shared_predecessor_set_bug(self):
-        """KNOWN BUG: Roy+simplify creates a directed cycle for shared pred sets.
+    def test_shared_predecessor_set(self):
+        """Roy+simplify used to create a directed cycle for shared pred sets.
 
         When C and D both have exactly the same predecessor set {A, B},
-        simplify() contracts one convergence dummy, which redirects the other
-        dummy's tail, creating a cycle.  nx.topological_sort raises
-        NetworkXUnfeasible and the test fails — which is *expected*.
+        simplify() contracted one convergence dummy, which redirected the
+        other dummy's tail and created a cycle.  Fixed (2026-10): assess_dummy
+        now also requires the graph to stay acyclic, so the convergence dummy
+        is kept and the network is the minimal correct one (5 nodes, 2 dummies).
         """
-        self._verify("shared_predecessor_set")
+        _, project = self._verify("shared_predecessor_set")
+        self.assertEqual(len(project.nodes), 5)
+        self.assertEqual(len(project.dummies), 2)
 
-    @unittest.expectedFailure
-    def test_shared_preds_with_sink_bug(self):
-        """KNOWN BUG: same cycle issue with a downstream sink activity."""
-        self._verify("shared_preds_with_sink")
+    def test_shared_preds_with_sink(self):
+        """Same case with a downstream sink activity (was a known bug, fixed)."""
+        _, project = self._verify("shared_preds_with_sink")
+        self.assertEqual(len(project.dummies), 2)
 
     # ------------------------------------------------------------------
     # Structural properties (working cases only)
