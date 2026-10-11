@@ -130,17 +130,32 @@ def to_json(v, depth=0):
 
 def _summary(v):
     """Resumen estadístico de objetos grandes (p. ej. muestras Monte Carlo):
-    forma + media, desviación, mín, máx y cuartiles por columna."""
+    forma, estadísticos globales y media/desviación a lo largo del eje corto
+    (por columna si hay ≤ 64 columnas, por fila si hay ≤ 64 filas)."""
     if isinstance(v, np.ndarray):
         v = pd.DataFrame(v.reshape(v.shape[0], -1) if v.ndim > 1 else v)
     if isinstance(v, pd.Series):
         v = v.to_frame()
     num = v.select_dtypes("number")
-    desc = num.describe().T if not num.empty else pd.DataFrame()
-    return {"__type__": "summary", "shape": list(v.shape),
-            "columns": [_label(c) for c in v.columns],
-            "stats": {_label(c): {k: _scalar(float(x)) for k, x in row.items()}
-                      for c, row in desc.iterrows()}}
+    arr = num.to_numpy(dtype=float)
+    out = {"__type__": "summary", "shape": list(v.shape),
+           "columns": [_label(c) for c in v.columns][:64]}
+    if arr.size:
+        flat = arr[np.isfinite(arr)]
+        q = np.quantile(flat, [0.25, 0.5, 0.75]) if flat.size else [math.nan] * 3
+        out["global"] = {"mean": _scalar(float(flat.mean())), "std": _scalar(float(flat.std(ddof=1)) if flat.size > 1 else 0.0),
+                         "min": _scalar(float(flat.min())), "q25": _scalar(float(q[0])),
+                         "q50": _scalar(float(q[1])), "q75": _scalar(float(q[2])),
+                         "max": _scalar(float(flat.max())), "n": int(flat.size)}
+        if arr.shape[1] <= 64:
+            out["per_column"] = {_label(c): {"mean": _scalar(float(np.nanmean(arr[:, j]))),
+                                             "std": _scalar(float(np.nanstd(arr[:, j], ddof=1)))}
+                                 for j, c in enumerate(num.columns)}
+        elif arr.shape[0] <= 64:
+            out["per_row"] = {_label(i): {"mean": _scalar(float(np.nanmean(arr[k]))),
+                                          "std": _scalar(float(np.nanstd(arr[k], ddof=1)))}
+                              for k, i in enumerate(num.index)}
+    return out
 
 
 # ---------------------------------------------------------------------------
