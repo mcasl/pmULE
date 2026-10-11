@@ -271,9 +271,9 @@ class TestBug8_MutationDocumented(unittest.TestCase):
 
 
 class TestBug12_EarnedValueHorizon(unittest.TestCase):
-    """EarnedValue.calcula_gantts indexaba los acumulados por las columnas del
-    Gantt EV: si la ejecución real era más larga que la planificada, PV
-    acumulado terminaba en NaN; si era más corta, EV/AC se truncaban."""
+    """EarnedValue.calcula_gantts: si la ejecución real era más larga que la
+    planificada, PV acumulado terminaba en NaN. El horizonte sigue siendo el
+    de la ejecución real (= fecha de estado); PV se prolonga plana en el BAC."""
 
     def _data(self, actual):
         return pd.DataFrame({
@@ -294,16 +294,20 @@ class TestBug12_EarnedValueHorizon(unittest.TestCase):
         self.assertAlmostEqual(float(acc["PV"].iloc[-1]), 2900.0)
         self.assertAlmostEqual(float(acc["PV"].loc[18]), float(acc["PV"].loc[19]))
 
-    def test_actual_shorter_than_planned_not_truncated(self):
+    def test_actual_shorter_than_planned_is_status_date(self):
+        """Las duraciones reales describen el trabajo hasta la fecha de estado:
+        `acumulados` termina ahí y PV es el planificado *hasta esa fecha*
+        (no el BAC). Es lo que los cuadernos usan para CPI/SPI."""
         from pmule import EarnedValue
         shorter = {"A": 2, "B": 2, "C": 4, "D": 4, "E": 3, "F": 2, "G": 5, "H": 3}  # 14
         out = EarnedValue(project()).calcula_gantts(
             self._data(shorter), "planned", "actual", "PV", "AC", "pct")
         acc = out["acumulados"]
-        self.assertEqual(len(acc), 18)
+        self.assertEqual(len(acc), 14)
         self.assertFalse(acc.isna().any().any())
-        self.assertAlmostEqual(float(acc["PV"].iloc[-1]), 2900.0)
-        self.assertAlmostEqual(float(acc["AC"].loc[14]), float(acc["AC"].loc[18]))
+        pv_planned_14 = float(out["Gantt_PV"].data.loc["Total", list(range(1, 15))].sum())
+        self.assertAlmostEqual(float(acc["PV"].iloc[-1]), pv_planned_14)
+        self.assertLess(float(acc["PV"].iloc[-1]), 2900.0)
 
     def test_same_horizon_unchanged(self):
         from pmule import EarnedValue

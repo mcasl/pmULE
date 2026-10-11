@@ -1,0 +1,656 @@
+{
+ "cells": [
+  {
+   "index": 3,
+   "source": "# bmatrix esta sacada de: https://stackoverflow.com/questions/17129290/numpy-2d-and-1d-array-to-late",
+   "vars": {
+    "proyecto": {
+     "__type__": "ProjectGraph",
+     "edges": [
+      [
+       "1",
+       "2",
+       "B"
+      ],
+      [
+       "1",
+       "4",
+       "A"
+      ],
+      [
+       "1",
+       "7",
+       "D"
+      ],
+      [
+       "10",
+       "12",
+       "K"
+      ],
+      [
+       "11",
+       "13",
+       "J"
+      ],
+      [
+       "12",
+       "14",
+       "N"
+      ],
+      [
+       "13",
+       "14",
+       "M"
+      ],
+      [
+       "2",
+       "3",
+       "C"
+      ],
+      [
+       "2",
+       "4",
+       "@2→4"
+      ],
+      [
+       "3",
+       "11",
+       "G"
+      ],
+      [
+       "3",
+       "6",
+       "F"
+      ],
+      [
+       "4",
+       "5",
+       "E"
+      ],
+      [
+       "5",
+       "6",
+       "@5→6"
+      ],
+      [
+       "5",
+       "7",
+       "@5→7"
+      ],
+      [
+       "6",
+       "8",
+       "I"
+      ],
+      [
+       "7",
+       "9",
+       "H"
+      ],
+      [
+       "8",
+       "10",
+       "@8→10"
+      ],
+      [
+       "8",
+       "14",
+       "L"
+      ],
+      [
+       "9",
+       "10",
+       "@9→10"
+      ],
+      [
+       "9",
+       "11",
+       "@9→11"
+      ]
+     ],
+     "nodes": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12",
+      "13",
+      "14"
+     ]
+    }
+   }
+  },
+  {
+   "index": 4,
+   "source": "duraciones = {",
+   "vars": {
+    "duraciones": {
+     "__type__": "dict",
+     "items": [
+      [
+       "A",
+       4
+      ],
+      [
+       "B",
+       6
+      ],
+      [
+       "C",
+       9
+      ],
+      [
+       "D",
+       6
+      ],
+      [
+       "E",
+       11
+      ],
+      [
+       "F",
+       4
+      ],
+      [
+       "G",
+       15
+      ],
+      [
+       "H",
+       24
+      ],
+      [
+       "I",
+       6
+      ],
+      [
+       "J",
+       13
+      ],
+      [
+       "K",
+       6
+      ],
+      [
+       "L",
+       11
+      ],
+      [
+       "M",
+       13
+      ],
+      [
+       "N",
+       6
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "index": 5,
+   "source": "rutas = pd.Series({key: ', '.join(value) for key, value in proyecto.paths(dummies=False).items()}).t",
+   "vars": {
+    "rutas": {
+     "__type__": "DataFrame",
+     "columns": [
+      "Activities"
+     ],
+     "data": [
+      [
+       "A, E, H, J, M"
+      ],
+      [
+       "A, E, H, K, N"
+      ],
+      [
+       "A, E, I, K, N"
+      ],
+      [
+       "A, E, I, L"
+      ],
+      [
+       "B, C, F, I, K, N"
+      ],
+      [
+       "B, C, F, I, L"
+      ],
+      [
+       "B, C, G, J, M"
+      ],
+      [
+       "B, E, H, J, M"
+      ],
+      [
+       "B, E, H, K, N"
+      ],
+      [
+       "B, E, I, K, N"
+      ],
+      [
+       "B, E, I, L"
+      ],
+      [
+       "D, H, J, M"
+      ],
+      [
+       "D, H, K, N"
+      ]
+     ],
+     "index": [
+      "Route_1",
+      "Route_2",
+      "Route_3",
+      "Route_4",
+      "Route_5",
+      "Route_6",
+      "Route_7",
+      "Route_8",
+      "Route_9",
+      "Route_10",
+      "Route_11",
+      "Route_12",
+      "Route_13"
+     ]
+    }
+   }
+  },
+  {
+   "index": 10,
+   "source": "pregunta_1 = \"1. Determinar la matriz de caminos del proyecto  \"",
+   "vars": {
+    "pregunta_1": "1. Determinar la matriz de caminos del proyecto  ",
+    "pregunta_2": "2. Utilizar la matriz de caminos del proyecto para calcular su duración  ",
+    "pregunta_3": "3. Calcular utilizando el método de Zaderenko los tiempos tempranos y tardíos  ",
+    "pregunta_4": "4. Cuadro de prelaciones transitivas (ancestros)  "
+   }
+  },
+  {
+   "index": 21,
+   "source": "D = pd.Series(duraciones).to_frame()",
+   "vars": {
+    "D": {
+     "__type__": "DataFrame",
+     "columns": [
+      "0"
+     ],
+     "data": [
+      [
+       4
+      ],
+      [
+       6
+      ],
+      [
+       9
+      ],
+      [
+       6
+      ],
+      [
+       11
+      ],
+      [
+       4
+      ],
+      [
+       15
+      ],
+      [
+       24
+      ],
+      [
+       6
+      ],
+      [
+       13
+      ],
+      [
+       6
+      ],
+      [
+       11
+      ],
+      [
+       13
+      ],
+      [
+       6
+      ]
+     ],
+     "index": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+      "M",
+      "N"
+     ]
+    },
+    "duraciones_caminos": {
+     "__type__": "DataFrame",
+     "columns": [
+      "0"
+     ],
+     "data": [
+      [
+       65
+      ],
+      [
+       51
+      ],
+      [
+       33
+      ],
+      [
+       32
+      ],
+      [
+       37
+      ],
+      [
+       36
+      ],
+      [
+       56
+      ],
+      [
+       67
+      ],
+      [
+       53
+      ],
+      [
+       35
+      ],
+      [
+       34
+      ],
+      [
+       56
+      ],
+      [
+       42
+      ]
+     ],
+     "index": [
+      "Route_1",
+      "Route_2",
+      "Route_3",
+      "Route_4",
+      "Route_5",
+      "Route_6",
+      "Route_7",
+      "Route_8",
+      "Route_9",
+      "Route_10",
+      "Route_11",
+      "Route_12",
+      "Route_13"
+     ]
+    },
+    "path_matrix": {
+     "__type__": "DataFrame",
+     "columns": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+      "M",
+      "N"
+     ],
+     "data": [
+      [
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0
+      ],
+      [
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1
+      ],
+      [
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0,
+       1
+      ],
+      [
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0,
+       1
+      ],
+      [
+       0,
+       1,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1
+      ],
+      [
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0,
+       1
+      ],
+      [
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1
+      ]
+     ],
+     "index": [
+      "Route_1",
+      "Route_2",
+      "Route_3",
+      "Route_4",
+      "Route_5",
+      "Route_6",
+      "Route_7",
+      "Route_8",
+      "Route_9",
+      "Route_10",
+      "Route_11",
+      "Route_12",
+      "Route_13"
+     ]
+    }
+   }
+  }
+ ],
+ "error": null,
+ "notebook": "Ejercicio_24"
+}
