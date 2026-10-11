@@ -12,7 +12,7 @@ if [ -z "$JT" ]; then
     exit 0
 fi
 
-staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^notebooks/[^/]+\.(ipynb|py)$' || true)
+staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^notebooks/.*\.(ipynb|py)$' || true)
 [ -z "$staged" ] && exit 0
 
 synced=0
