@@ -39,6 +39,14 @@ def _scalar(v):
             return {"__inf__": 1 if f > 0 else -1}
         return f
     if isinstance(v, str):
+        # LaTeX generado por handcalcs (@handcalc): es presentación y su
+        # formato cambia entre versiones ($$, \\[10pt]…). No se fotografía;
+        # los valores numéricos que calcula se capturan como variables aparte.
+        t = v.strip()
+        if t.startswith("$$"):
+            t = t[2:].lstrip()
+        if t.startswith("\\begin{aligned}"):
+            raise NotSerializable("handcalcs latex")
         if len(v) > MAX_STR:
             return {"__hash__": hashlib.sha1(v.encode()).hexdigest(), "len": len(v)}
         return v
