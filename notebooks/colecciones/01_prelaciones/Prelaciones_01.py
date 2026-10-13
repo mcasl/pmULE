@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -73,7 +75,7 @@ for item in sorted(dir()):
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor
     ('A'     , '---'      ),
-    ('J'     , 'E,I'      ),
+    ('J'     , 'G,I'      ),
     ('H'     , 'E,G'      ),
     ('C'     , '---'      ),
     ('B'     , '---'      ),
@@ -81,7 +83,7 @@ datos_enunciado = pd.DataFrame([
     ('D'     , 'A'        ),
     ('E'     , 'B,D'      ),
     ('G'     , 'D'        ),
-    ('I'     , 'C,F,G'    ),
+    ('I'     , 'B,F,G'    ),
 ], columns=['activity', 'predecessor']).set_index('activity')
 datos_enunciado
 

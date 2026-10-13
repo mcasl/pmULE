@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -126,7 +128,7 @@ proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 #| fig-cap: "Diagrama de Gantt con las cargas de operarios (inicios más tempranos)"
 #| label: fig-ganttInicial
 proyecto_inicial = proyecto.copy()
-gantt_inicial, dibujo = proyecto_inicial.gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True)
+gantt_inicial, dibujo = proyecto_inicial.gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)
 pinta_tikz(dibujo)
 
 # %%
@@ -185,6 +187,7 @@ display(Markdown(pregunta_4))
 # %%
 #| fig-cap: "Diagrama de Gantt tras la nivelación"
 #| label: fig-ganttNivelado
+gantt_nivelado, dibujo = proyecto_nivelado.gantt_cargas(datos_nivelados, 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)
 pinta_tikz(dibujo)
 
 # %%

@@ -126,7 +126,7 @@ def _base(k, rng):
                        "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
     celdas.append(code('#| fig-cap: "Diagrama de Gantt con las cargas de operarios (inicios más tempranos)"\n#| label: fig-ganttInicial\n'
                        "proyecto_inicial = proyecto.copy()\n"
-                       "gantt_inicial, dibujo = proyecto_inicial.gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True)\n"
+                       "gantt_inicial, dibujo = proyecto_inicial.gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)\n"
                        "pinta_tikz(dibujo)"))
     if variante == 2:
         lim, tramo, lim2 = estado["limite"], estado["tramo"], estado["lim2"]
@@ -146,7 +146,7 @@ def _base(k, rng):
                            "         f'La media es {cargas.mean():.2f} operarios/semana.')"))
     if variante == 3:
         celdas.append(code('#| fig-cap: "Diagrama de Gantt con las cargas de máquinas"\n#| label: fig-ganttMaquinas\n'
-                           "gantt_maquinas, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'machines', report=False, tikz=True)\n"
+                           "gantt_maquinas, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'machines', report=False, tikz=True, params=GANTT_PARAMS)\n"
                            "pinta_tikz(dibujo)"))
         celdas.append(code("cargas_maquinas = gantt_maquinas.data.loc['Total'].drop('H_total').astype(float)\n"
                            "Markdown(f'Hacen falta como máximo {int(cargas_maquinas.max())} máquina(s).')"))
@@ -171,6 +171,7 @@ def _base(k, rng):
                            "desplazamientos[desplazamientos['desplazamientos'] > 0]"))
         celdas += apartado(ap); ap += 1
         celdas.append(code('#| fig-cap: "Diagrama de Gantt tras la nivelación"\n#| label: fig-ganttNivelado\n'
+                           "gantt_nivelado, dibujo = proyecto_nivelado.gantt_cargas(datos_nivelados, 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)\n"
                            "pinta_tikz(dibujo)"))
         celdas.append(code('#| fig-cap: "Diagrama de cargas tras la nivelación"\n#| label: fig-cargasNivelado\n'
                            "plot_cargas(gantt_df=gantt_nivelado, limite_maximo_recursos=None)"))
@@ -189,7 +190,7 @@ def _base(k, rng):
                            "proyecto_asignado = proyecto.copy()\n"
                            "datos_asignados, gantt_asignado, dibujo = proyecto_asignado.asignar(\n"
                            "    data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',\n"
-                           "    maximo=limite_maximo_recursos, report=False, params=dict(period_width=1))\n"
+                           "    maximo=limite_maximo_recursos, report=False, params=dict(period_width=1, **GANTT_PARAMS))\n"
                            "pinta_tikz(dibujo)"))
         celdas.append(code('#| fig-cap: "Diagrama de cargas tras la asignación"\n#| label: fig-cargasAsignado\n'
                            "plot_cargas(gantt_df=gantt_asignado, limite_maximo_recursos=limite_maximo_recursos)"))
@@ -204,7 +205,7 @@ def _base(k, rng):
                            "proyecto_fijo = proyecto.copy()\n"
                            "datos_fijo, gantt_fijo, dibujo = proyecto_fijo.asignar(\n"
                            "    data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',\n"
-                           "    maximo=limite_fijo, report=False, params=dict(period_width=1))\n"
+                           "    maximo=limite_fijo, report=False, params=dict(period_width=1, **GANTT_PARAMS))\n"
                            "pinta_tikz(dibujo)"))
         celdas.append(code("duracion_fija = len(gantt_fijo.data.columns.drop('H_total'))\n"
                            f"Markdown(f'Con {lim} operarios durante todo el proyecto la duración sería de {{duracion_fija}} semanas, frente a {{duracion_asignada}} con el refuerzo a partir de la semana {tramo}.')"))
@@ -222,8 +223,10 @@ def _base(k, rng):
         celdas.append(code('#| fig-cap: "Diagrama de Gantt con la propuesta del jefe de obra"\n#| label: fig-ganttPropuesta\n'
                            "suma_cuadrados_inicial = float((cargas ** 2).sum())\n"
                            "proyecto_propuesta = proyecto.copy()\n"
-                           "suma_cuadrados_propuesta, dibujo = proyecto_propuesta.evaluar_desplazamiento(\n"
-                           "    datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, **propuesta)\n"
+                           "suma_cuadrados_propuesta, _ = proyecto_propuesta.evaluar_desplazamiento(\n"
+                           "    datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=False, **propuesta)\n"
+                           "_, _, dibujo = proyecto.copy().desplazar(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True,\n"
+                           "                                         params=GANTT_PARAMS, **propuesta)\n"
                            "pinta_tikz(dibujo)"))
         celdas.append(code("Markdown(f'La propuesta respeta las holguras (cada desplazamiento es menor o igual que la holgura total) y la suma de cuadrados '\n"
                            "         f'pasa de {suma_cuadrados_inicial:.0f} a {suma_cuadrados_propuesta:.0f}: '\n"
@@ -247,7 +250,7 @@ def _base(k, rng):
         celdas.append(code('#| fig-cap: "Cargas de máquinas tras la nivelación de operarios"\n#| label: fig-maquinasNivelado\n'
                            "datos_maquinas = datos_nivelados.copy()\n"
                            "datos_maquinas['machines'] = datos_proyecto['machines'].reindex(datos_maquinas.index).fillna(0).astype(int)\n"
-                           "gantt_maquinas_niv, dibujo = proyecto_nivelado.copy().gantt_cargas(datos_maquinas, 'duration', 'machines', report=False, tikz=True)\n"
+                           "gantt_maquinas_niv, dibujo = proyecto_nivelado.copy().gantt_cargas(datos_maquinas, 'duration', 'machines', report=False, tikz=True, params=GANTT_PARAMS)\n"
                            "pinta_tikz(dibujo)"))
         celdas.append(code("cargas_maquinas_niv = gantt_maquinas_niv.data.loc['Total'].drop('H_total').astype(float)\n"
                            "pd.DataFrame({'antes': [cargas_maquinas.max(), (cargas_maquinas ** 2).sum()],\n"
@@ -310,7 +313,7 @@ def _consumible(rng):
                        f"suministro = {lim}"))
     celdas += apartado(1)
     celdas.append(code('#| fig-cap: "Diagrama de Gantt con el consumo semanal"\n#| label: fig-ganttInicial\n'
-                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True)\n"
+                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)\n"
                        "pinta_tikz(dibujo)"))
     celdas.append(code('#| fig-cap: "Consumo semanal frente al suministro"\n#| label: fig-cargasInicial\n'
                        "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[suministro])"))
@@ -322,7 +325,7 @@ def _consumible(rng):
                        "proyecto_asignado = proyecto.copy()\n"
                        "datos_asignados, gantt_asignado, dibujo = proyecto_asignado.asignar(\n"
                        "    data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',\n"
-                       "    maximo=[suministro], report=False, params=dict(period_width=1))\n"
+                       "    maximo=[suministro], report=False, params=dict(period_width=1, **GANTT_PARAMS))\n"
                        "pinta_tikz(dibujo)"))
     celdas.append(code("duracion_inicial = proyecto.duration(datos_proyecto['duration'])\n"
                        "duracion_asignada = len(gantt_asignado.data.columns.drop('H_total'))\n"
@@ -394,7 +397,7 @@ def _limite_insuficiente(rng):
                        "         'y una actividad no puede ejecutarse con menos operarios de los que requiere (no se admite alargarla). El mínimo factible es el máximo requerido por una actividad.')"))
     celdas += apartado(2)
     celdas.append(code('#| fig-cap: "Cargas con las actividades en su inicio más temprano"\n#| label: fig-cargasInicial\n'
-                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True)\n"
+                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)\n"
                        "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=None)"))
     celdas.append(code("cargas = gantt_inicial.data.loc['Total'].drop('H_total').astype(float)\n"
                        "proyecto_nivelado = proyecto.copy()\n"

@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -61,7 +63,7 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
 pregunta_1 = "1. Dibuje el grafo PERT y numere sus nodos.  "
 pregunta_2 = "2. Construya la matriz de Zaderenko y calcule con ella los tiempos más tempranos y más tardíos de cada nodo. ¿Cuál es la duración del proyecto?  "
 pregunta_3 = "3. Calcule el calendario del proyecto: inicio y fin más tempranos y más tardíos de cada actividad.  "
-pregunta_4 = "4. Dibuje el diagrama de Gantt con las actividades en su inicio más temprano e indique sobre él las holguras.  "
+pregunta_4 = "4. Dibuje el diagrama de Gantt con las actividades en su inicio más temprano, con las flechas de prelación entre barras, e indique sobre él las holguras.  "
 pregunta_5 = "5. La actividad F va a durar 17 días más de lo previsto. Recalcule la duración del proyecto y explique el resultado a partir de la holgura de F.  "
 
 for item in sorted(dir()):
@@ -178,10 +180,13 @@ proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Las flechas unen el final de cada predecesora con el inicio de su sucesora; en rojo, las prelaciones críticas (sin hueco entre barras críticas).
+
 # %%
-#| fig-cap: "Diagrama de Gantt (inicios más tempranos) con indicación de las holguras"
+#| fig-cap: "Diagrama de Gantt (inicios más tempranos) con flechas de prelación y holguras"
 #| label: fig-gantt
-gantt_df, dibujo = proyecto.gantt(datos_proyecto, 'duration', holguras=True, tikz=True)
+gantt_df, dibujo = proyecto.gantt(datos_proyecto, 'duration', holguras=True, tikz=True, params=GANTT_PARAMS)
 pinta_tikz(dibujo)
 
 # %% [markdown]

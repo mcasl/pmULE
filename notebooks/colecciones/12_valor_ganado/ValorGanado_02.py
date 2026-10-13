@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -150,7 +152,7 @@ vg = EarnedValue(proyecto)
 gantts = vg.calcula_gantts(datos_valor_ganado, planned_durations_label='duration',
                            actual_durations_label='actual_duration', PV_label='BAC', AC_label='AC',
                            percentage_complete_label='performed', tikz=True,
-                           params=dict(period_width=1, row_height=0.7, activity_relative_height=0.6,
+                           params=dict(period_width=1, row_height=0.7, activity_relative_height=0.6, **GANTT_PARAMS,
                                        critical_background_color='white!90!green', regular_background_color='white!90!green',
                                        regular_text_color='black', critical_text_color='black'))
 

@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -106,7 +108,7 @@ proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 #| fig-cap: "Diagrama de Gantt con las cargas de operarios (inicios más tempranos)"
 #| label: fig-ganttInicial
 proyecto_inicial = proyecto.copy()
-gantt_inicial, dibujo = proyecto_inicial.gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True)
+gantt_inicial, dibujo = proyecto_inicial.gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)
 pinta_tikz(dibujo)
 
 # %%
@@ -123,7 +125,7 @@ Markdown(f'El máximo de operarios es {int(cargas.max())}, en las semanas {", ".
 # %%
 #| fig-cap: "Diagrama de Gantt con las cargas de máquinas"
 #| label: fig-ganttMaquinas
-gantt_maquinas, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'machines', report=False, tikz=True)
+gantt_maquinas, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'machines', report=False, tikz=True, params=GANTT_PARAMS)
 pinta_tikz(dibujo)
 
 # %%
@@ -146,8 +148,10 @@ pd.DataFrame({'desplazamiento propuesto': pd.Series(propuesta), 'holgura total':
 #| label: fig-ganttPropuesta
 suma_cuadrados_inicial = float((cargas ** 2).sum())
 proyecto_propuesta = proyecto.copy()
-suma_cuadrados_propuesta, dibujo = proyecto_propuesta.evaluar_desplazamiento(
-    datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, **propuesta)
+suma_cuadrados_propuesta, _ = proyecto_propuesta.evaluar_desplazamiento(
+    datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=False, **propuesta)
+_, _, dibujo = proyecto.copy().desplazar(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True,
+                                         params=GANTT_PARAMS, **propuesta)
 pinta_tikz(dibujo)
 
 # %%
@@ -196,7 +200,7 @@ display(Markdown(pregunta_4))
 #| label: fig-maquinasNivelado
 datos_maquinas = datos_nivelados.copy()
 datos_maquinas['machines'] = datos_proyecto['machines'].reindex(datos_maquinas.index).fillna(0).astype(int)
-gantt_maquinas_niv, dibujo = proyecto_nivelado.copy().gantt_cargas(datos_maquinas, 'duration', 'machines', report=False, tikz=True)
+gantt_maquinas_niv, dibujo = proyecto_nivelado.copy().gantt_cargas(datos_maquinas, 'duration', 'machines', report=False, tikz=True, params=GANTT_PARAMS)
 pinta_tikz(dibujo)
 
 # %%

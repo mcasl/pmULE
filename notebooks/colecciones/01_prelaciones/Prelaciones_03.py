@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -75,12 +77,12 @@ datos_enunciado = pd.DataFrame([
 #  activity, predecessor
     ('F'     , 'C,D'      ),
     ('G'     , 'F'        ),
-    ('C'     , 'A,B,G'    ),
+    ('C'     , 'A,B,I'    ),
     ('E'     , 'D'        ),
     ('H'     , 'G'        ),
-    ('J'     , 'C,I'      ),
+    ('J'     , 'B,I'      ),
     ('D'     , 'B'        ),
-    ('I'     , 'E,F,H'    ),
+    ('I'     , 'E,G,H'    ),
     ('A'     , '---'      ),
     ('B'     , '---'      ),
 ], columns=['activity', 'predecessor']).set_index('activity')
@@ -117,11 +119,11 @@ ciclos = list(nx.simple_cycles(G))
 ciclos
 
 # %% [markdown]
-# En el ciclo participa la prelación «G precede a C». Como G es, por el resto del cuadro, descendiente de C, esa anotación es la errata: eliminándola el cuadro vuelve a ser acíclico.
+# En el ciclo participa la prelación «I precede a C». Como I es, por el resto del cuadro, descendiente de C, esa anotación es la errata: eliminándola el cuadro vuelve a ser acíclico.
 
 # %%
-prelaciones_dadas['C'].discard('G')
-G.remove_edge('G', 'C')
+prelaciones_dadas['C'].discard('I')
+G.remove_edge('I', 'C')
 print('Ciclos restantes:', list(nx.simple_cycles(G)))
 
 # %% [markdown]

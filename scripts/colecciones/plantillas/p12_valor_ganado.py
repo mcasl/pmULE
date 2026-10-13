@@ -120,7 +120,7 @@ def _base(k, rng):
     celdas.append(code('#| fig-cap: "Grafo PERT de la planificación"\n#| label: fig-pert\n'
                        "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
     ap = 1
-    params = ("params=dict(period_width=1, row_height=0.7, activity_relative_height=0.6,\n"
+    params = ("params=dict(period_width=1, row_height=0.7, activity_relative_height=0.6, **GANTT_PARAMS,\n"
               "                                       critical_background_color='white!90!green', regular_background_color='white!90!green',\n"
               "                                       regular_text_color='black', critical_text_color='black')")
     if variante in (1, 2):
@@ -340,7 +340,7 @@ def _situacion(rng, modo):
                        "datos_valor_ganado = pd.concat([datos_proyecto, seguimiento], axis=1)\n"
                        "gantts = EarnedValue(proyecto).calcula_gantts(datos_valor_ganado, planned_durations_label='duration',\n"
                        "                                             actual_durations_label='actual_duration', PV_label='BAC', AC_label='AC',\n"
-                       "                                             percentage_complete_label='performed', tikz=True)"))
+                       "                                             percentage_complete_label='performed', tikz=True, params=dict(GANTT_PARAMS))"))
     celdas += apartado(1)
     celdas.append(code('#| fig-cap: "PV: valor planificado"\n#| label: fig-ganttPV\npinta_tikz(gantts[\'gantt_PV\'])'))
     celdas.append(code('#| fig-cap: "EV: valor ganado"\n#| label: fig-ganttEV\npinta_tikz(gantts[\'gantt_EV\'])'))
