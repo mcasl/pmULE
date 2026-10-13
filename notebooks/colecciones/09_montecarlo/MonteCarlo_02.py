@@ -1,6 +1,9 @@
 # ---
 # title: MonteCarlo 02
 # subtitle: "9 actividades, 6 rutas, distribución triangular"
+# coleccion: 09_montecarlo
+# variante: triangular
+# nivel: 2
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -32,8 +35,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -77,6 +83,25 @@ datos_enunciado = pd.DataFrame([
     ('I'     , 'H'        , 4, 5, 9),
 ], columns=['activity', 'predecessor', 'a', 'm', 'b']).set_index('activity')
 datos_enunciado
+
+# %% [markdown]
+# El proyecto corresponde a la organización de un congreso científico; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+
+# %%
+#| tbl-cap: "Descripción de las actividades"
+#| label: tbl-descripciones
+descripciones = pd.Series({
+    'A': 'Definición del programa y fechas',
+    'B': 'Reserva de la sede',
+    'C': 'Convocatoria de comunicaciones',
+    'D': 'Página web e inscripciones',
+    'E': 'Contratación de ponentes invitados',
+    'F': 'Revisión de los trabajos recibidos',
+    'G': 'Elaboración del programa definitivo',
+    'H': 'Contratación de catering y viajes',
+    'I': 'Edición del libro de actas',
+}, name='Descripción')
+descripciones.to_frame()
 
 # %% [markdown]
 # # Resolución

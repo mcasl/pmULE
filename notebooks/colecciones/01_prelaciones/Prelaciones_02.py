@@ -1,6 +1,9 @@
 # ---
 # title: Prelaciones 02
 # subtitle: "10 actividades, 2 prelaciones redundantes"
+# coleccion: 01_prelaciones
+# variante: redundancias-b
+# nivel: 1
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -32,8 +35,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -68,16 +74,36 @@ datos_enunciado = pd.DataFrame([
 #  activity, predecessor
     ('G'     , 'F'        ),
     ('I'     , 'D,F,H'    ),
-    ('J'     , 'H,I'      ),
+    ('J'     , 'B,I'      ),
     ('F'     , 'E'        ),
     ('A'     , '---'      ),
-    ('H'     , 'C,E'      ),
+    ('H'     , 'B,E'      ),
     ('D'     , 'C'        ),
     ('E'     , 'A,B,C'    ),
     ('B'     , '---'      ),
     ('C'     , '---'      ),
 ], columns=['activity', 'predecessor']).set_index('activity')
 datos_enunciado
+
+# %% [markdown]
+# El proyecto corresponde a la rehabilitación de una nave industrial para un taller; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+
+# %%
+#| tbl-cap: "Descripción de las actividades"
+#| label: tbl-descripciones
+descripciones = pd.Series({
+    'G': 'Levantamiento topográfico y mediciones',
+    'I': 'Proyecto de ejecución y licencia',
+    'J': 'Desmontaje de instalaciones antiguas',
+    'F': 'Demolición de tabiquería interior',
+    'A': 'Refuerzo de la estructura metálica',
+    'H': 'Reparación de la cubierta',
+    'D': 'Solera y canalizaciones',
+    'E': 'Cerramientos y carpintería exterior',
+    'B': 'Instalación eléctrica',
+    'C': 'Instalación de aire comprimido',
+}, name='Descripción')
+descripciones.to_frame()
 
 # %% [markdown]
 # # Resolución

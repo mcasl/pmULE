@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 
 from .. import proyectos as P
-from ..cuaderno import md, code, preguntas, apartado, literal_dataframe
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+                        literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="10_reduccion", prefijo="Reduccion",
             titulo="Reducción de la duración con mínimo coste",
@@ -23,7 +24,7 @@ def _pasos_ackoff(info, D, tope, ucr, reduction):
     return pasos, dur
 
 
-def generar(k, rng):
+def _base(k, rng):
     variante = (k - 1) % 3 + 1
     n = int(rng.choice([8, 9]))
     estado = {}
@@ -228,3 +229,201 @@ def generar(k, rng):
     sub = {1: f"{n} actividades, reducción de {3} semanas", 2: f"{n} actividades, costes indirectos de {estado.get('c_ind')} k€/semana",
            3: f"{n} actividades, plazo {estado.get('T_lim')} con penalización"}[variante]
     return celdas, sub
+
+
+# ---------------------------------------------------------------------------
+# Variantes adicionales
+# ---------------------------------------------------------------------------
+def _barata_no_optima(rng):
+    """Con dos rutas críticas, la actividad crítica más barata no sirve si no es común a las dos."""
+    n = int(rng.choice([8, 9]))
+    estado = {}
+
+    def acepta(i):
+        if not (1 <= i["n_dummies"] <= 4 and i["n_criticas"] == 2 and i["T"] >= 12 and (i["D"] >= 2).all()):
+            return False
+        Pm, rc = i["P"], i["rutas_criticas"]
+        comunes = set(Pm.columns[(Pm.loc[rc[0]] == 1) & (Pm.loc[rc[1]] == 1)])
+        solo1 = set(Pm.columns[(Pm.loc[rc[0]] == 1) & (Pm.loc[rc[1]] == 0)])
+        solo2 = set(Pm.columns[(Pm.loc[rc[1]] == 1) & (Pm.loc[rc[0]] == 0)])
+        if not comunes or not solo1 or not solo2:
+            return False
+        tope, cn, ct, ucr = P.costes_reduccion(rng, i["D"])
+        ucr = ucr.replace(0.0, np.inf)
+        # forzar: la más barata de todas las críticas está sólo en una ruta; y la pareja barata cuesta menos que la común más barata o más
+        barata = sorted(solo1 | solo2, key=lambda a: ucr[a])[0]
+        if np.isinf(ucr[barata]):
+            return False
+        ucr[barata] = 1.0
+        tope[barata] = min(tope[barata], int(i["D"][barata]) - 1)
+        if tope[barata] < 1:
+            return False
+        for a in comunes:
+            if not np.isinf(ucr[a]):
+                ucr[a] = max(ucr[a], 4.0)
+        try:
+            pasos, _ = _pasos_ackoff(i, i["D"], tope, ucr, reduction=2)
+        except Exception:
+            return False
+        if len(pasos) < 2:
+            return False
+        estado.update(tope=tope, ucr=ucr, barata=barata, comunes=comunes, pasos=pasos, rc=rc)
+        return True
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, T = info["D"], int(info["T"])
+    tope, ucr, barata, comunes, pasos = estado["tope"], estado["ucr"], estado["barata"], estado["comunes"], estado["pasos"]
+    df = P.tabla_base(info, duration=D, cap_duration=tope, ucr=ucr)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duraciones normal y tope (semanas) y coste unitario "
+                 "de reducción (k€/semana) se adjunta. Las actividades con CUR infinito no pueden acelerarse.")]
+    celdas.append(preguntas([
+        "Determine la duración del proyecto y sus rutas críticas. ¿Qué actividades son comunes a todas ellas?",
+        f"La actividad crítica más barata de acelerar es {barata}. Un compañero propone acortarla una semana para "
+        "reducir el proyecto una semana. Prediga, sin calcular, si funcionará.",
+        f"Compruébelo: acorte {barata} una semana y recalcule la duración.",
+        "Aplique el algoritmo de Ackoff-Sasieni para reducir el proyecto dos semanas con mínimo coste y explique "
+        "por qué en cada paso elige lo que elige (actividad común frente a pareja de actividades)."]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "R = proyecto.path_matrix(dummies=False)"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones normales y las rutas críticas"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code("duracion_normal = proyecto.duration(datos_proyecto['duration'])\n"
+                       "rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])\n"
+                       "for nombre, acts in rutas_criticas.items():\n"
+                       "    print(f'{nombre}: {\" - \".join(acts)}')\n"
+                       "comunes = set.intersection(*[set(a) for a in rutas_criticas.values()])\n"
+                       "Markdown(f'Duración {duracion_normal} semanas con {len(rutas_criticas)} rutas críticas; actividades comunes a todas: {\", \".join(sorted(comunes)) or \"ninguna\"}.')"))
+    celdas += apartado(2)
+    celdas.append(md(f"No funcionará: {barata} está en una sola de las rutas críticas. Al acortarla, esa ruta se "
+                     "acorta, pero la otra sigue midiendo lo mismo y el proyecto también. Para reducir el proyecto "
+                     "hay que acortar *todas* las rutas críticas a la vez: una actividad común, o una actividad de "
+                     "cada ruta."))
+    celdas += apartado(3)
+    celdas.append(code(f"barata = '{barata}'\n"
+                       "d1 = datos_proyecto['duration'].copy(); d1[barata] -= 1\n"
+                       "Markdown(f'Acortando {barata} una semana la duración del proyecto es {proyecto.duration(d1)} semanas (antes {duracion_normal}): '\n"
+                       "         f'se han gastado {datos_proyecto.loc[barata, \"ucr\"]:.0f} k€ para nada; la ruta {[r for r, a in rutas_criticas.items() if barata not in a][0]} sigue siendo crítica.')"))
+    celdas += apartado(4)
+    celdas.append(code('#| tbl-cap: "Algoritmo de Ackoff-Sasieni"\n#| label: tbl-ackoff\n'
+                       "tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(\n"
+                       "    durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],\n"
+                       "    costs=datos_proyecto['ucr'], reduction=2, report=False)\n"
+                       "tabla_ackoff"))
+    celdas.append(code("resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos.values()],\n"
+                       "                        'coste del paso': [sum(datos_proyecto.loc[acts, 'ucr']) for acts in pasos.values()]},\n"
+                       "                       index=pd.Index(range(1, len(pasos) + 1), name='paso'))\n"
+                       "resumen"))
+    celdas.append(code("mas_barata_comun = min(comunes, key=lambda a: datos_proyecto.loc[a, 'ucr']) if comunes else None\n"
+                       "pareja = sorted(set(a for r, acts in rutas_criticas.items() for a in acts) - comunes, key=lambda a: datos_proyecto.loc[a, 'ucr'])\n"
+                       "Markdown(f'''En cada paso el algoritmo compara el coste de la actividad común más barata ({mas_barata_comun}: {datos_proyecto.loc[mas_barata_comun, \"ucr\"]:.0f} k€) "
+                       "con el de la pareja más barata que cubre las dos rutas, y elige la opción de menor coste *que reduzca todas las rutas críticas*. "
+                       "{barata} sola nunca es candidata, por barata que sea, salvo emparejada con una actividad de la otra ruta.''')"))
+    celdas.append(code("Markdown(f'Duración final {proyecto.duration(duraciones_reducidas)} semanas, sobrecoste total {resumen[\"coste del paso\"].sum():.0f} k€.')"))
+    return celdas, f"{n} actividades, dos rutas críticas; {barata} es la más barata pero no es común"
+
+
+def _desaceleracion(rng):
+    """Reducido el proyecto, el plazo se relaja una semana: qué reducción deshacer (la del paso más caro)."""
+    n = int(rng.choice([8, 9]))
+    estado = {}
+
+    def acepta(i):
+        if not (1 <= i["n_dummies"] <= 4 and 5 <= i["n_rutas"] <= 9 and i["T"] >= 12 and (i["D"] >= 2).all()):
+            return False
+        tope, cn, ct, ucr = P.costes_reduccion(rng, i["D"])
+        ucr = ucr.replace(0.0, np.inf)
+        try:
+            pasos, dur = _pasos_ackoff(i, i["D"], tope, ucr, reduction=4)
+        except Exception:
+            return False
+        if len(pasos) < 4:
+            return False
+        costes = [c for _, c in pasos]
+        if costes.index(max(costes)) == 0 or len(set(costes)) < 3:
+            return False
+        estado.update(tope=tope, ucr=ucr, pasos=pasos, dur=dur)
+        return True
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, T = info["D"], int(info["T"])
+    tope, ucr, pasos = estado["tope"], estado["ucr"], estado["pasos"]
+    df = P.tabla_base(info, duration=D, cap_duration=tope, ucr=ucr)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duraciones normal y tope (semanas) y coste unitario "
+                 "de reducción (k€/semana) se adjunta. El proyecto se había reducido cuatro semanas con el algoritmo "
+                 "de Ackoff-Sasieni cuando el cliente comunica que acepta la entrega una semana más tarde.")]
+    celdas.append(preguntas([
+        "Reduzca el proyecto cuatro semanas con el algoritmo de Ackoff-Sasieni y anote el sobrecoste de cada paso.",
+        "Hay que devolver una semana. Un compañero propone deshacer el primer paso («fue el primero, es el más fácil "
+        "de anular»). Otro propone deshacer el último. ¿Da lo mismo? Razónelo antes de calcular.",
+        "Compruebe ambas opciones: duración resultante y dinero recuperado en cada caso. ¿Puede deshacerse un paso "
+        "intermedio? ¿Qué regla general se deduce?",
+        "¿Por qué el sobrecoste marginal de cada semana de reducción es creciente (o al menos no decreciente) en "
+        "Ackoff-Sasieni? ¿Qué forma tiene la curva coste-duración?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "duracion_normal = proyecto.duration(datos_proyecto['duration'])"))
+    celdas += apartado(1)
+    celdas.append(code('#| tbl-cap: "Algoritmo de Ackoff-Sasieni"\n#| label: tbl-ackoff\n'
+                       "tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(\n"
+                       "    durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],\n"
+                       "    costs=datos_proyecto['ucr'], reduction=4, report=False)\n"
+                       "tabla_ackoff"))
+    celdas.append(code("resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos.values()],\n"
+                       "                        'coste del paso': [sum(datos_proyecto.loc[acts, 'ucr']) for acts in pasos.values()]},\n"
+                       "                       index=pd.Index(range(1, len(pasos) + 1), name='paso'))\n"
+                       "sobrecoste = float(resumen['coste del paso'].sum())\n"
+                       "display(resumen)\n"
+                       "Markdown(f'Duración {duracion_normal} → {proyecto.duration(duraciones_reducidas)} semanas con un sobrecoste de {sobrecoste:.0f} k€.')"))
+    celdas += apartado(2)
+    celdas.append(md("No da lo mismo. Deshacer un paso es devolver una semana a las actividades que se acortaron en "
+                     "él; cualquiera de los pasos devuelve una semana al proyecto (todas las rutas críticas se alargan "
+                     "una semana), pero el dinero recuperado es el coste de ese paso. Como los pasos de Ackoff-Sasieni "
+                     "son cada vez más caros, deshacer el último recupera más dinero que deshacer el primero."))
+    celdas += apartado(3)
+    celdas.append(code("filas = {}\n"
+                       "for paso, acts in pasos.items():\n"
+                       "    d2 = duraciones_reducidas.copy()\n"
+                       "    for a in acts:\n"
+                       "        d2[a] += 1\n"
+                       "    filas[paso + 1] = {'actividades devueltas': ', '.join(acts), 'duración resultante': proyecto.duration(d2),\n"
+                       "                       'dinero recuperado': float(sum(datos_proyecto.loc[acts, 'ucr']))}\n"
+                       "pd.DataFrame(filas).T"))
+    celdas.append(code("costes_pasos = {p: float(sum(datos_proyecto.loc[acts, 'ucr'])) for p, acts in pasos.items()}\n"
+                       "mejor = max(costes_pasos, key=costes_pasos.get)\n"
+                       "Markdown(f'''Todos los pasos devuelven el proyecto a {proyecto.duration(duraciones_reducidas) + 1} semanas, pero el que más dinero recupera es el paso {mejor + 1} "
+                       "({costes_pasos[mejor]:.0f} k€). Un paso intermedio también puede deshacerse: lo que importa no es el orden en que se dieron "
+                       "sino su coste. Regla: para relajar el plazo se deshacen las reducciones de mayor coste primero (recorrer la tabla de Ackoff-Sasieni hacia atrás).''')"))
+    celdas += apartado(4)
+    celdas.append(md("En cada paso el algoritmo elige la opción más barata disponible; las opciones baratas se agotan "
+                     "(las actividades llegan a su tope) o dejan de bastar (aparecen nuevas rutas críticas que exigen "
+                     "acortar varias actividades a la vez), así que el coste del paso siguiente nunca es menor. La "
+                     "curva coste-duración es por tanto convexa: cada semana adicional de reducción cuesta más que la "
+                     "anterior, y por eso la decisión de hasta dónde reducir se toma comparando el coste marginal con "
+                     "lo que vale cada semana (penalización, coste indirecto, prima)."))
+    return celdas, f"{n} actividades; deshacer la reducción más cara al relajar el plazo"
+
+
+VARIANTES = [
+    Variante("cur-y-ackoff", 1, "CUR a partir de costes normal y tope; Ackoff-Sasieni tres semanas con un paso de dos actividades",
+             lambda rng: _base(1, rng)),
+    Variante("costes-indirectos", 2, "curva coste-duración con costes indirectos y duración de coste mínimo", lambda rng: _base(2, rng)),
+    Variante("penalizacion", 2, "reducir frente a pagar penalización; actividades no acelerables", lambda rng: _base(3, rng)),
+    Variante("barata-no-optima", 2, "dos rutas críticas: la crítica más barata no sirve si no es común a ambas", _barata_no_optima),
+    Variante("desaceleracion", 2, "reducido el proyecto, el plazo se relaja: qué paso deshacer (el más caro) y por qué la curva coste-duración es convexa", _desaceleracion),
+]
+
+
+def generar(k, rng):
+    return despachar(VARIANTES, k, rng)

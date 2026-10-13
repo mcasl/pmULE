@@ -1,0 +1,672 @@
+[
+ {
+  "nombre": "Prelaciones_01",
+  "coleccion": "01_prelaciones",
+  "variante": "redundancias",
+  "nivel": 1,
+  "subtitulo": "10 actividades, 2 prelaciones redundantes",
+  "ruta": "notebooks/colecciones/01_prelaciones/Prelaciones_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Cuadro de prelaciones"
+ },
+ {
+  "nombre": "Prelaciones_02",
+  "coleccion": "01_prelaciones",
+  "variante": "redundancias-b",
+  "nivel": 1,
+  "subtitulo": "10 actividades, 2 prelaciones redundantes",
+  "ruta": "notebooks/colecciones/01_prelaciones/Prelaciones_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Cuadro de prelaciones"
+ },
+ {
+  "nombre": "Prelaciones_03",
+  "coleccion": "01_prelaciones",
+  "variante": "ciclo",
+  "nivel": 2,
+  "subtitulo": "10 actividades, 2 prelaciones redundantes, una errata con ciclo",
+  "ruta": "notebooks/colecciones/01_prelaciones/Prelaciones_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Cuadro de prelaciones"
+ },
+ {
+  "nombre": "Prelaciones_04",
+  "coleccion": "01_prelaciones",
+  "variante": "texto",
+  "nivel": 2,
+  "subtitulo": "9 actividades descritas en texto (la organización de un congreso científico)",
+  "ruta": "notebooks/colecciones/01_prelaciones/Prelaciones_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Cuadro de prelaciones"
+ },
+ {
+  "nombre": "Prelaciones_05",
+  "coleccion": "01_prelaciones",
+  "variante": "grafo-erroneo",
+  "nivel": 3,
+  "subtitulo": "8 actividades, grafo con una prelación de más y otra de menos",
+  "ruta": "notebooks/colecciones/01_prelaciones/Prelaciones_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Cuadro de prelaciones"
+ },
+ {
+  "nombre": "PERT_01",
+  "coleccion": "02_pert",
+  "variante": "minimo-ficticias",
+  "nivel": 1,
+  "subtitulo": "8 actividades, 2 ficticias, 6 rutas",
+  "ruta": "notebooks/colecciones/02_pert/PERT_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo PERT y actividades ficticias"
+ },
+ {
+  "nombre": "PERT_02",
+  "coleccion": "02_pert",
+  "variante": "paralelas",
+  "nivel": 2,
+  "subtitulo": "9 actividades, 3 ficticias, 7 rutas",
+  "ruta": "notebooks/colecciones/02_pert/PERT_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo PERT y actividades ficticias"
+ },
+ {
+  "nombre": "PERT_03",
+  "coleccion": "02_pert",
+  "variante": "mas-ficticias",
+  "nivel": 2,
+  "subtitulo": "10 actividades, 3 ficticias, 5 rutas",
+  "ruta": "notebooks/colecciones/02_pert/PERT_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo PERT y actividades ficticias"
+ },
+ {
+  "nombre": "PERT_04",
+  "coleccion": "02_pert",
+  "variante": "compartir-nodos",
+  "nivel": 2,
+  "subtitulo": "9 actividades, 1 pareja(s) con mismas predecesoras y 3 con mismas sucesoras",
+  "ruta": "notebooks/colecciones/02_pert/PERT_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo PERT y actividades ficticias"
+ },
+ {
+  "nombre": "PERT_05",
+  "coleccion": "02_pert",
+  "variante": "ficticias-sobrantes",
+  "nivel": 3,
+  "subtitulo": "9 actividades, 7 ficticias sin simplificar frente a 2",
+  "ruta": "notebooks/colecciones/02_pert/PERT_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo PERT y actividades ficticias"
+ },
+ {
+  "nombre": "Roy_01",
+  "coleccion": "03_roy",
+  "variante": "roy-vs-pert",
+  "nivel": 1,
+  "subtitulo": "8 actividades, 2 ficticias en PERT",
+  "ruta": "notebooks/colecciones/03_roy/Roy_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo Roy"
+ },
+ {
+  "nombre": "Roy_02",
+  "coleccion": "03_roy",
+  "variante": "roy-vs-pert-b",
+  "nivel": 1,
+  "subtitulo": "8 actividades, 2 ficticias en PERT",
+  "ruta": "notebooks/colecciones/03_roy/Roy_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo Roy"
+ },
+ {
+  "nombre": "Roy_03",
+  "coleccion": "03_roy",
+  "variante": "esperas-y-solapes",
+  "nivel": 3,
+  "subtitulo": "8 actividades, 3 ficticias en PERT, con espera y solape",
+  "ruta": "notebooks/colecciones/03_roy/Roy_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo Roy"
+ },
+ {
+  "nombre": "Roy_04",
+  "coleccion": "03_roy",
+  "variante": "predecesora-dominante",
+  "nivel": 2,
+  "subtitulo": "8 actividades, cálculo manual sobre Roy; predecesora dominante de E",
+  "ruta": "notebooks/colecciones/03_roy/Roy_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Grafo Roy"
+ },
+ {
+  "nombre": "Zaderenko_01",
+  "coleccion": "04_zaderenko",
+  "variante": "zaderenko",
+  "nivel": 1,
+  "subtitulo": "8 actividades, 8 nodos, 2 ficticias",
+  "ruta": "notebooks/colecciones/04_zaderenko/Zaderenko_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Zaderenko y calendario"
+ },
+ {
+  "nombre": "Zaderenko_02",
+  "coleccion": "04_zaderenko",
+  "variante": "zaderenko-b",
+  "nivel": 1,
+  "subtitulo": "9 actividades, 9 nodos, 1 ficticias",
+  "ruta": "notebooks/colecciones/04_zaderenko/Zaderenko_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Zaderenko y calendario"
+ },
+ {
+  "nombre": "Zaderenko_03",
+  "coleccion": "04_zaderenko",
+  "variante": "zaderenko-c",
+  "nivel": 2,
+  "subtitulo": "10 actividades, 9 nodos, 1 ficticias",
+  "ruta": "notebooks/colecciones/04_zaderenko/Zaderenko_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Zaderenko y calendario"
+ },
+ {
+  "nombre": "Zaderenko_04",
+  "coleccion": "04_zaderenko",
+  "variante": "matriz-dada",
+  "nivel": 3,
+  "subtitulo": "8 actividades, 8 nodos; reconstrucción desde la matriz",
+  "ruta": "notebooks/colecciones/04_zaderenko/Zaderenko_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Zaderenko y calendario"
+ },
+ {
+  "nombre": "Zaderenko_05",
+  "coleccion": "04_zaderenko",
+  "variante": "prediccion",
+  "nivel": 2,
+  "subtitulo": "9 actividades; predicción cualitativa sobre H, C y I",
+  "ruta": "notebooks/colecciones/04_zaderenko/Zaderenko_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Zaderenko y calendario"
+ },
+ {
+  "nombre": "Holguras_01",
+  "coleccion": "05_holguras",
+  "variante": "tres-holguras",
+  "nivel": 1,
+  "subtitulo": "9 actividades, 1 ruta(s) crítica(s)",
+  "ruta": "notebooks/colecciones/05_holguras/Holguras_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Holguras y camino crítico"
+ },
+ {
+  "nombre": "Holguras_02",
+  "coleccion": "05_holguras",
+  "variante": "tres-holguras-b",
+  "nivel": 2,
+  "subtitulo": "10 actividades, 1 ruta(s) crítica(s)",
+  "ruta": "notebooks/colecciones/05_holguras/Holguras_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Holguras y camino crítico"
+ },
+ {
+  "nombre": "Holguras_03",
+  "coleccion": "05_holguras",
+  "variante": "varias-criticas",
+  "nivel": 2,
+  "subtitulo": "10 actividades, 2 ruta(s) crítica(s)",
+  "ruta": "notebooks/colecciones/05_holguras/Holguras_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Holguras y camino crítico"
+ },
+ {
+  "nombre": "Holguras_04",
+  "coleccion": "05_holguras",
+  "variante": "holgura-compartida",
+  "nivel": 2,
+  "subtitulo": "10 actividades; D y G comparten 13 semanas de holgura",
+  "ruta": "notebooks/colecciones/05_holguras/Holguras_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Holguras y camino crítico"
+ },
+ {
+  "nombre": "Holguras_05",
+  "coleccion": "05_holguras",
+  "variante": "vigilancia",
+  "nivel": 2,
+  "subtitulo": "9 actividades; ordenación por vigilancia y actividades sin margen",
+  "ruta": "notebooks/colecciones/05_holguras/Holguras_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Holguras y camino crítico"
+ },
+ {
+  "nombre": "Holguras_06",
+  "coleccion": "05_holguras",
+  "variante": "diagnostico",
+  "nivel": 3,
+  "subtitulo": "8 actividades; calendario con errores en B y C",
+  "ruta": "notebooks/colecciones/05_holguras/Holguras_06.py",
+  "semilla": null,
+  "titulo_coleccion": "Holguras y camino crítico"
+ },
+ {
+  "nombre": "Caminos_01",
+  "coleccion": "06_matriz_caminos",
+  "variante": "matriz-y-duracion",
+  "nivel": 1,
+  "subtitulo": "8 actividades, 6 rutas",
+  "ruta": "notebooks/colecciones/06_matriz_caminos/Caminos_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Matriz de caminos"
+ },
+ {
+  "nombre": "Caminos_02",
+  "coleccion": "06_matriz_caminos",
+  "variante": "matriz-y-duracion-b",
+  "nivel": 1,
+  "subtitulo": "8 actividades, 6 rutas",
+  "ruta": "notebooks/colecciones/06_matriz_caminos/Caminos_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Matriz de caminos"
+ },
+ {
+  "nombre": "Caminos_03",
+  "coleccion": "06_matriz_caminos",
+  "variante": "rutas-a-grafo-svd",
+  "nivel": 3,
+  "subtitulo": "9 actividades, 8 rutas, reconstrucción desde las rutas y SVD",
+  "ruta": "notebooks/colecciones/06_matriz_caminos/Caminos_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Matriz de caminos"
+ },
+ {
+  "nombre": "Caminos_04",
+  "coleccion": "06_matriz_caminos",
+  "variante": "escenarios",
+  "nivel": 2,
+  "subtitulo": "8 actividades, 4 rutas, tres escenarios",
+  "ruta": "notebooks/colecciones/06_matriz_caminos/Caminos_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Matriz de caminos"
+ },
+ {
+  "nombre": "Estimaciones_01",
+  "coleccion": "07_estimaciones",
+  "variante": "tres-estimaciones",
+  "nivel": 1,
+  "subtitulo": "7 actividades, 0 con estimaciones asimétricas",
+  "ruta": "notebooks/colecciones/07_estimaciones/Estimaciones_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Estimaciones de duración (a, m, b)"
+ },
+ {
+  "nombre": "Estimaciones_02",
+  "coleccion": "07_estimaciones",
+  "variante": "tres-estimaciones-b",
+  "nivel": 1,
+  "subtitulo": "7 actividades, 2 con estimaciones asimétricas",
+  "ruta": "notebooks/colecciones/07_estimaciones/Estimaciones_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Estimaciones de duración (a, m, b)"
+ },
+ {
+  "nombre": "Estimaciones_03",
+  "coleccion": "07_estimaciones",
+  "variante": "tres-estimaciones-c",
+  "nivel": 1,
+  "subtitulo": "8 actividades, 2 con estimaciones asimétricas",
+  "ruta": "notebooks/colecciones/07_estimaciones/Estimaciones_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Estimaciones de duración (a, m, b)"
+ },
+ {
+  "nombre": "Estimaciones_04",
+  "coleccion": "07_estimaciones",
+  "variante": "deterministas",
+  "nivel": 2,
+  "subtitulo": "8 actividades, 2 de duración fija",
+  "ruta": "notebooks/colecciones/07_estimaciones/Estimaciones_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Estimaciones de duración (a, m, b)"
+ },
+ {
+  "nombre": "Probabilidad_01",
+  "coleccion": "08_probabilidad",
+  "variante": "normal",
+  "nivel": 1,
+  "subtitulo": "9 actividades, 1 ruta(s) crítica(s), σ = 1.18",
+  "ruta": "notebooks/colecciones/08_probabilidad/Probabilidad_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Probabilidad de cumplir el plazo (aproximación normal)"
+ },
+ {
+  "nombre": "Probabilidad_02",
+  "coleccion": "08_probabilidad",
+  "variante": "dos-rutas-criticas",
+  "nivel": 2,
+  "subtitulo": "9 actividades, 2 ruta(s) crítica(s), σ = 1.25",
+  "ruta": "notebooks/colecciones/08_probabilidad/Probabilidad_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Probabilidad de cumplir el plazo (aproximación normal)"
+ },
+ {
+  "nombre": "Probabilidad_03",
+  "coleccion": "08_probabilidad",
+  "variante": "dos-rutas-criticas-b",
+  "nivel": 2,
+  "subtitulo": "10 actividades, 2 ruta(s) crítica(s), σ = 1.57",
+  "ruta": "notebooks/colecciones/08_probabilidad/Probabilidad_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Probabilidad de cumplir el plazo (aproximación normal)"
+ },
+ {
+  "nombre": "Probabilidad_04",
+  "coleccion": "08_probabilidad",
+  "variante": "casi-critica-variable",
+  "nivel": 3,
+  "subtitulo": "9 actividades; segunda ruta a 1 semana(s) de la crítica y mucho más variable",
+  "ruta": "notebooks/colecciones/08_probabilidad/Probabilidad_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Probabilidad de cumplir el plazo (aproximación normal)"
+ },
+ {
+  "nombre": "Probabilidad_05",
+  "coleccion": "08_probabilidad",
+  "variante": "varianza-maxima",
+  "nivel": 3,
+  "subtitulo": "10 actividades; σ máxima admisible de I para P ≥ 90 % en 37 semanas",
+  "ruta": "notebooks/colecciones/08_probabilidad/Probabilidad_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Probabilidad de cumplir el plazo (aproximación normal)"
+ },
+ {
+  "nombre": "Probabilidad_06",
+  "coleccion": "08_probabilidad",
+  "variante": "diagnostico",
+  "nivel": 2,
+  "subtitulo": "9 actividades; resolución con σ sumadas y con la ruta equivocada",
+  "ruta": "notebooks/colecciones/08_probabilidad/Probabilidad_06.py",
+  "semilla": null,
+  "titulo_coleccion": "Probabilidad de cumplir el plazo (aproximación normal)"
+ },
+ {
+  "nombre": "MonteCarlo_01",
+  "coleccion": "09_montecarlo",
+  "variante": "normal",
+  "nivel": 1,
+  "subtitulo": "8 actividades, 5 rutas, distribución normal",
+  "ruta": "notebooks/colecciones/09_montecarlo/MonteCarlo_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Monte Carlo"
+ },
+ {
+  "nombre": "MonteCarlo_02",
+  "coleccion": "09_montecarlo",
+  "variante": "triangular",
+  "nivel": 2,
+  "subtitulo": "9 actividades, 6 rutas, distribución triangular",
+  "ruta": "notebooks/colecciones/09_montecarlo/MonteCarlo_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Monte Carlo"
+ },
+ {
+  "nombre": "MonteCarlo_03",
+  "coleccion": "09_montecarlo",
+  "variante": "beta-pert",
+  "nivel": 2,
+  "subtitulo": "9 actividades, 6 rutas, distribución Beta-PERT",
+  "ruta": "notebooks/colecciones/09_montecarlo/MonteCarlo_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Monte Carlo"
+ },
+ {
+  "nombre": "MonteCarlo_04",
+  "coleccion": "09_montecarlo",
+  "variante": "a-mano",
+  "nivel": 1,
+  "subtitulo": "7 actividades, 5 rutas, 5 réplicas calculadas a mano",
+  "ruta": "notebooks/colecciones/09_montecarlo/MonteCarlo_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Monte Carlo"
+ },
+ {
+  "nombre": "MonteCarlo_05",
+  "coleccion": "09_montecarlo",
+  "variante": "mixtas",
+  "nivel": 2,
+  "subtitulo": "8 actividades con distribuciones mixtas (1 fijas)",
+  "ruta": "notebooks/colecciones/09_montecarlo/MonteCarlo_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Monte Carlo"
+ },
+ {
+  "nombre": "MonteCarlo_06",
+  "coleccion": "09_montecarlo",
+  "variante": "convergencia",
+  "nivel": 3,
+  "subtitulo": "9 actividades; convergencia de la media y del percentil 90 con N",
+  "ruta": "notebooks/colecciones/09_montecarlo/MonteCarlo_06.py",
+  "semilla": null,
+  "titulo_coleccion": "Método de Monte Carlo"
+ },
+ {
+  "nombre": "Reduccion_01",
+  "coleccion": "10_reduccion",
+  "variante": "cur-y-ackoff",
+  "nivel": 1,
+  "subtitulo": "8 actividades, reducción de 3 semanas",
+  "ruta": "notebooks/colecciones/10_reduccion/Reduccion_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Reducción de la duración con mínimo coste"
+ },
+ {
+  "nombre": "Reduccion_02",
+  "coleccion": "10_reduccion",
+  "variante": "costes-indirectos",
+  "nivel": 2,
+  "subtitulo": "8 actividades, costes indirectos de 9 k€/semana",
+  "ruta": "notebooks/colecciones/10_reduccion/Reduccion_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Reducción de la duración con mínimo coste"
+ },
+ {
+  "nombre": "Reduccion_03",
+  "coleccion": "10_reduccion",
+  "variante": "penalizacion",
+  "nivel": 2,
+  "subtitulo": "9 actividades, plazo 27 con penalización",
+  "ruta": "notebooks/colecciones/10_reduccion/Reduccion_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Reducción de la duración con mínimo coste"
+ },
+ {
+  "nombre": "Reduccion_04",
+  "coleccion": "10_reduccion",
+  "variante": "barata-no-optima",
+  "nivel": 2,
+  "subtitulo": "8 actividades, dos rutas críticas; A es la más barata pero no es común",
+  "ruta": "notebooks/colecciones/10_reduccion/Reduccion_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Reducción de la duración con mínimo coste"
+ },
+ {
+  "nombre": "Reduccion_05",
+  "coleccion": "10_reduccion",
+  "variante": "desaceleracion",
+  "nivel": 2,
+  "subtitulo": "8 actividades; deshacer la reducción más cara al relajar el plazo",
+  "ruta": "notebooks/colecciones/10_reduccion/Reduccion_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Reducción de la duración con mínimo coste"
+ },
+ {
+  "nombre": "Recursos_01",
+  "coleccion": "11_recursos",
+  "variante": "nivelacion",
+  "nivel": 1,
+  "subtitulo": "9 actividades, nivelación",
+  "ruta": "notebooks/colecciones/11_recursos/Recursos_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Nivelación y asignación de recursos"
+ },
+ {
+  "nombre": "Recursos_02",
+  "coleccion": "11_recursos",
+  "variante": "asignacion",
+  "nivel": 2,
+  "subtitulo": "8 actividades, asignación con límite 6→8",
+  "ruta": "notebooks/colecciones/11_recursos/Recursos_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Nivelación y asignación de recursos"
+ },
+ {
+  "nombre": "Recursos_03",
+  "coleccion": "11_recursos",
+  "variante": "dos-recursos",
+  "nivel": 3,
+  "subtitulo": "8 actividades, dos recursos y propuesta de desplazamiento",
+  "ruta": "notebooks/colecciones/11_recursos/Recursos_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Nivelación y asignación de recursos"
+ },
+ {
+  "nombre": "Recursos_04",
+  "coleccion": "11_recursos",
+  "variante": "consumible",
+  "nivel": 2,
+  "subtitulo": "9 actividades; combustible con suministro de 70 l/semana",
+  "ruta": "notebooks/colecciones/11_recursos/Recursos_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Nivelación y asignación de recursos"
+ },
+ {
+  "nombre": "Recursos_05",
+  "coleccion": "11_recursos",
+  "variante": "limite-insuficiente",
+  "nivel": 2,
+  "subtitulo": "8 actividades; factibilidad y duración en función de los operarios",
+  "ruta": "notebooks/colecciones/11_recursos/Recursos_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Nivelación y asignación de recursos"
+ },
+ {
+  "nombre": "ValorGanado_01",
+  "coleccion": "12_valor_ganado",
+  "variante": "indicadores-eac",
+  "nivel": 1,
+  "subtitulo": "9 actividades, un punto de control (semana 10), EAC/VAC/TCPI",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
+  "nombre": "ValorGanado_02",
+  "coleccion": "12_valor_ganado",
+  "variante": "earned-schedule",
+  "nivel": 2,
+  "subtitulo": "8 actividades, un punto de control (semana 6), programación ganada",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
+  "nombre": "ValorGanado_03",
+  "coleccion": "12_valor_ganado",
+  "variante": "tendencia",
+  "nivel": 2,
+  "subtitulo": "9 actividades, tres puntos de control (semanas 5, 10, 14)",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
+  "nombre": "ValorGanado_04",
+  "coleccion": "12_valor_ganado",
+  "variante": "coste-bien-plazo-mal",
+  "nivel": 2,
+  "subtitulo": "9 actividades; punto de control en la semana 11: coste bien plazo mal",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
+  "nombre": "ValorGanado_05",
+  "coleccion": "12_valor_ganado",
+  "variante": "plazo-bien-coste-mal",
+  "nivel": 2,
+  "subtitulo": "9 actividades; punto de control en la semana 10: plazo bien coste mal",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
+  "nombre": "ValorGanado_06",
+  "coleccion": "12_valor_ganado",
+  "variante": "diagnostico",
+  "nivel": 2,
+  "subtitulo": "8 actividades; resolución con CPI y SPI intercambiados",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_06.py",
+  "semilla": null,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
+  "nombre": "Formula_01",
+  "coleccion": "13_formula_compleccion",
+  "variante": "tau-norma-infinito",
+  "nivel": 1,
+  "subtitulo": "7 actividades, 4 rutas; τ como norma infinito",
+  "ruta": "notebooks/colecciones/13_formula_compleccion/Formula_01.py",
+  "semilla": null,
+  "titulo_coleccion": "La fórmula del tiempo de compleción τ = ‖R·t‖∞"
+ },
+ {
+  "nombre": "Formula_02",
+  "coleccion": "13_formula_compleccion",
+  "variante": "gradiente",
+  "nivel": 2,
+  "subtitulo": "9 actividades, 2 rutas críticas; gradiente con empates",
+  "ruta": "notebooks/colecciones/13_formula_compleccion/Formula_02.py",
+  "semilla": null,
+  "titulo_coleccion": "La fórmula del tiempo de compleción τ = ‖R·t‖∞"
+ },
+ {
+  "nombre": "Formula_03",
+  "coleccion": "13_formula_compleccion",
+  "variante": "svd-rango-1",
+  "nivel": 3,
+  "subtitulo": "10 actividades, 6 rutas; SVD de R y ranking frente al conjunto crítico",
+  "ruta": "notebooks/colecciones/13_formula_compleccion/Formula_03.py",
+  "semilla": null,
+  "titulo_coleccion": "La fórmula del tiempo de compleción τ = ‖R·t‖∞"
+ },
+ {
+  "nombre": "Formula_04",
+  "coleccion": "13_formula_compleccion",
+  "variante": "nucleo-incidencia",
+  "nivel": 3,
+  "subtitulo": "8 actividades, 9 nodos; incidencia y núcleo",
+  "ruta": "notebooks/colecciones/13_formula_compleccion/Formula_04.py",
+  "semilla": null,
+  "titulo_coleccion": "La fórmula del tiempo de compleción τ = ‖R·t‖∞"
+ },
+ {
+  "nombre": "Formula_05",
+  "coleccion": "13_formula_compleccion",
+  "variante": "patterson",
+  "nivel": 2,
+  "subtitulo": "instancia pat1 de Patterson (14 actividades)",
+  "ruta": "notebooks/colecciones/13_formula_compleccion/Formula_05.py",
+  "semilla": null,
+  "titulo_coleccion": "La fórmula del tiempo de compleción τ = ‖R·t‖∞"
+ },
+ {
+  "nombre": "Formula_06",
+  "coleccion": "13_formula_compleccion",
+  "variante": "svd-vs-montecarlo",
+  "nivel": 3,
+  "subtitulo": "10 actividades, 7 rutas; criticidad Monte Carlo frente a |v₁|",
+  "ruta": "notebooks/colecciones/13_formula_compleccion/Formula_06.py",
+  "semilla": null,
+  "titulo_coleccion": "La fórmula del tiempo de compleción τ = ‖R·t‖∞"
+ }
+]

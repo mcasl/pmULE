@@ -1,6 +1,9 @@
 # ---
 # title: ValorGanado 02
 # subtitle: "8 actividades, un punto de control (semana 6), programación ganada"
+# coleccion: 12_valor_ganado
+# variante: earned-schedule
+# nivel: 2
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -32,8 +35,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -66,6 +72,24 @@ datos_enunciado = pd.DataFrame([
     ('H'     , 'F,G'      , 1       , 50 ),
 ], columns=['activity', 'predecessor', 'duration', 'BAC']).set_index('activity')
 datos_enunciado
+
+# %% [markdown]
+# El proyecto corresponde a la puesta en marcha de una línea de envasado; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+
+# %%
+#| tbl-cap: "Descripción de las actividades"
+#| label: tbl-descripciones
+descripciones = pd.Series({
+    'A': 'Especificación de la línea',
+    'B': 'Adjudicación de los equipos',
+    'C': 'Obra civil y bancadas',
+    'D': 'Recepción de la llenadora',
+    'E': 'Recepción de la etiquetadora',
+    'F': 'Montaje mecánico',
+    'G': 'Instalación neumática',
+    'H': 'Cableado y armarios de control',
+}, name='Descripción')
+descripciones.to_frame()
 
 # %% [markdown]
 # Al final de la semana 6 se realiza un punto de control. Para cada actividad se anotan las semanas trabajadas hasta ese momento, el coste real incurrido (k€) y el porcentaje realizado.

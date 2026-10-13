@@ -1,4 +1,4 @@
-.PHONY: sync dev lsp lab kernel clean hooks test test-fast golden
+.PHONY: sync dev lsp lab kernel clean hooks test test-fast golden test-colecciones colecciones
 sync:
 	uv sync --frozen
 
@@ -33,3 +33,10 @@ test-fast: dev
 # Regenera los golden de los cuadernos (tras un cambio deliberado de comportamiento)
 golden: dev
 	cd src && ../.venv/bin/python -m tests_ejercicios.make_golden --all
+
+# Colecciones de ejercicios cortos (scripts/colecciones): comprobación de todas las variantes (sin ejecutar cuadernos)
+test-colecciones: dev
+	.venv/bin/python -m pytest scripts/colecciones/test_plantillas.py -q -p no:cacheprovider
+
+colecciones: dev
+	.venv/bin/python -m scripts.colecciones.generador

@@ -15,6 +15,9 @@ CABECERA = """\
 # ---
 # title: {titulo}
 # subtitle: "{subtitulo}"
+# coleccion: {coleccion}
+# variante: {variante}
+# nivel: {nivel}
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -47,8 +50,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -149,11 +155,40 @@ def _celda_code(texto: str) -> str:
     return "# %%\n" + texto
 
 
-def render(celdas: list[tuple], titulo: str, subtitulo: str) -> str:
+class Variante:
+    """Una variante de una plantilla: nombre corto (slug), nivel 1-3, descripción y
+    función generadora ``fn(rng) -> (celdas, subtitulo)``."""
+
+    def __init__(self, nombre: str, nivel: int, descripcion: str, fn):
+        self.nombre, self.nivel, self.descripcion, self.fn = nombre, nivel, descripcion, fn
+
+
+def elegir(variantes: list, k: int):
+    return variantes[(k - 1) % len(variantes)]
+
+
+def partir_enunciado(celdas: list[tuple]) -> tuple[list, list]:
+    """Separa (enunciado, resolución) en la celda markdown '# Resolución'."""
+    for i, (tipo, texto) in enumerate(celdas):
+        if tipo == "md" and texto.strip().startswith("# Resolución"):
+            return celdas[:i], celdas[i:]
+    return celdas, []
+
+
+def render(celdas: list[tuple], titulo: str, subtitulo: str, coleccion: str = "",
+           variante: str = "", nivel: int = 0) -> str:
     """Devuelve el texto completo del cuaderno en formato py:percent."""
-    partes = [CABECERA.format(titulo=titulo, subtitulo=subtitulo).rstrip("\n")]
+    partes = [CABECERA.format(titulo=titulo, subtitulo=subtitulo, coleccion=coleccion,
+                              variante=variante, nivel=nivel).rstrip("\n")]
     partes.append(_celda_code(PREAMBULO))
     partes.append(_celda_code(TEMP))
     for tipo, texto in celdas:
         partes.append(_celda_md(texto) if tipo == "md" else _celda_code(texto))
     return "\n\n".join(partes) + "\n"
+
+
+def despachar(variantes: list, k: int, rng):
+    """Ejecuta la variante k (cíclica) y devuelve (celdas, subtitulo, variante)."""
+    v = elegir(variantes, k)
+    celdas, sub = v.fn(rng)
+    return celdas, sub, v
