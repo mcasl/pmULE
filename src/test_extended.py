@@ -132,6 +132,88 @@ class TestGanttVariants(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# gantt: flechas de prelación (params={"arrows": True})
+# ---------------------------------------------------------------------------
+
+# Predecesoras inmediatas del proyecto de referencia → 10 pares
+PRECEDENCES = [("A", "C"), ("A", "D"), ("B", "D"), ("B", "E"), ("C", "F"),
+               ("D", "F"), ("D", "G"), ("E", "G"), ("F", "H"), ("G", "H")]
+
+
+class TestGanttArrows(unittest.TestCase):
+
+    def setUp(self):
+        self.pg = project()
+        self.data = data_df()
+
+    def _tikz(self, pg=None, data=None, **params):
+        _, dibujo = (pg or self.pg).gantt(data if data is not None else self.data,
+                                          "duration", "resources", tikz=True,
+                                          total="fila", holguras=True, params=params)
+        return dibujo
+
+    def test_default_has_no_arrows(self):
+        self.assertEqual(self._tikz().count("\\draw[->"), 0)
+
+    def test_default_output_unchanged_by_feature(self):
+        """Sin el parámetro, el TikZ es byte a byte el mismo que con arrows=False."""
+        self.assertEqual(self._tikz(), self._tikz(arrows=False))
+
+    def test_one_arrow_per_precedence(self):
+        tikz = self._tikz(arrows=True)
+        self.assertEqual(tikz.count("\\draw[->"), len(PRECEDENCES))
+
+    def test_precedences_helper(self):
+        self.assertEqual(self.pg._gantt_precedences(set(DUR)), PRECEDENCES)
+
+    def test_critical_arrows_colored(self):
+        """A→D, D→G, G→H: ambas críticas y sin hueco → color crítico."""
+        tikz = self._tikz(arrows=True)
+        self.assertEqual(tikz.count("red!70!black"), 3)
+
+    def test_gap_arrows_have_elbow_and_adjacent_enter_from_edge(self):
+        tikz = self._tikz(arrows=True)
+        arrows = [l for l in tikz.splitlines() if "\\draw[->" in l]
+        # con hueco: 4 puntos (sale, codo, codo, entra); sin hueco: 3 puntos
+        n_pts = [l.count("--") + 1 for l in arrows]
+        self.assertEqual(sorted(set(n_pts)), [3, 4])
+
+    def test_arrows_drawn_before_bars(self):
+        tikz = self._tikz(arrows=True)
+        self.assertLess(tikz.index("%Flechas de prelaci"), tikz.index("%Dibujo de las actividades"))
+
+    def test_style_params(self):
+        tikz = self._tikz(arrows=True, arrow_width="2pt", arrow_color="blue", arrow_corner="0pt")
+        self.assertIn("line width=2pt", tikz)
+        self.assertIn("->, blue,", tikz)
+        self.assertIn("rounded corners=0pt", tikz)
+
+    def test_zero_duration_predecessor_is_bridged(self):
+        """C con duración 0 no tiene barra: F hereda la flecha desde A (predecesora de C)."""
+        d = self.data.copy(); d.loc["C", "duration"] = 0
+        present = set(d.index[d["duration"] > 0])
+        pairs = self.pg._gantt_precedences(present)
+        self.assertNotIn(("C", "F"), pairs)
+        self.assertIn(("A", "F"), pairs)
+        self.assertEqual(len(pairs), len(PRECEDENCES) - 1)     # A→C y C→F → A→F
+        self.assertEqual(self._tikz(data=d, arrows=True).count("\\draw[->"), len(pairs))
+
+    def test_after_desplazar_wait_bar_receives_arrow_and_no_same_row_arrow(self):
+        pg = project()
+        new_data, _, _ = pg.desplazar(self.data, "duration", "resources", report=False, C=1)
+        _, tikz = pg.gantt(new_data, "duration", "resources", tikz=True, params={"arrows": True})
+        pairs = pg._gantt_precedences(set(new_data.index))
+        self.assertIn(("A", "💤C"), pairs)
+        self.assertIn(("💤C", "C"), pairs)                 # existe como prelación…
+        self.assertEqual(tikz.count("\\draw[->"), len(pairs) - 1)   # …pero no se dibuja (misma fila)
+
+    def test_gantt_cargas_and_nivelar_propagate_params(self):
+        _, tikz = self.pg.gantt_cargas(self.data, "duration", "resources", report=False,
+                                       tikz=True, params={"arrows": True})
+        self.assertGreater(tikz.count("\\draw[->"), 0)
+
+
+# ---------------------------------------------------------------------------
 # desplazar / evaluar_* / nivelar
 # ---------------------------------------------------------------------------
 
