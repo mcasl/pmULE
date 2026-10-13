@@ -29,8 +29,8 @@ def _base(k, rng):
              "Construya la matriz de Zaderenko y calcule con ella los tiempos más tempranos y más tardíos "
              "de cada nodo. ¿Cuál es la duración del proyecto?",
              "Calcule el calendario del proyecto: inicio y fin más tempranos y más tardíos de cada actividad.",
-             "Dibuje el diagrama de Gantt con las actividades en su inicio más temprano e indique sobre él "
-             "las holguras.",
+             "Dibuje el diagrama de Gantt con las actividades en su inicio más temprano, con las flechas de "
+             "prelación entre barras, e indique sobre él las holguras.",
              f"La actividad {cambio} va a durar {extra} días más de lo previsto. Recalcule la duración del "
              f"proyecto y explique el resultado a partir de la holgura de {cambio}."]
     celdas.append(preguntas(pregs))
@@ -70,8 +70,10 @@ def _base(k, rng):
     celdas.append(code('#| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"\n#| label: fig-pertTiempos\n'
                        "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
     celdas += apartado(ap); ap += 1
-    celdas.append(code('#| fig-cap: "Diagrama de Gantt (inicios más tempranos) con indicación de las holguras"\n#| label: fig-gantt\n'
-                       "gantt_df, dibujo = proyecto.gantt(datos_proyecto, 'duration', holguras=True, tikz=True)\n"
+    celdas.append(md("Las flechas unen el final de cada predecesora con el inicio de su sucesora; en rojo, las "
+                     "prelaciones críticas (sin hueco entre barras críticas)."))
+    celdas.append(code('#| fig-cap: "Diagrama de Gantt (inicios más tempranos) con flechas de prelación y holguras"\n#| label: fig-gantt\n'
+                       "gantt_df, dibujo = proyecto.gantt(datos_proyecto, 'duration', holguras=True, tikz=True, params=GANTT_PARAMS)\n"
                        "pinta_tikz(dibujo)"))
     celdas += apartado(ap); ap += 1
     celdas.append(code(f"holgura = int(calendario.loc['{cambio}', 'H_total'])\n"

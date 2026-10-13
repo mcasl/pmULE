@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -113,7 +115,7 @@ display(Markdown(pregunta_2))
 # %%
 #| fig-cap: "Cargas con las actividades en su inicio más temprano"
 #| label: fig-cargasInicial
-gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True)
+gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)
 plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=None)
 
 # %%

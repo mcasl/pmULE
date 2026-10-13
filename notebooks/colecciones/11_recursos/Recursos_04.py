@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -102,7 +104,7 @@ display(Markdown(pregunta_1))
 # %%
 #| fig-cap: "Diagrama de Gantt con el consumo semanal"
 #| label: fig-ganttInicial
-gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True)
+gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)
 pinta_tikz(dibujo)
 
 # %%
@@ -127,7 +129,7 @@ display(Markdown(pregunta_2))
 proyecto_asignado = proyecto.copy()
 datos_asignados, gantt_asignado, dibujo = proyecto_asignado.asignar(
     data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',
-    maximo=[suministro], report=False, params=dict(period_width=1))
+    maximo=[suministro], report=False, params=dict(period_width=1, **GANTT_PARAMS))
 pinta_tikz(dibujo)
 
 # %%

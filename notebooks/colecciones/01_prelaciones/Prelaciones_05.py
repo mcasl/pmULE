@@ -44,6 +44,8 @@ from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
 
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
 
 # %%
 # %%capture
@@ -101,8 +103,8 @@ prelaciones_del_grafo = {
     'D': 'A,B,C',
     'E': 'D',
     'F': 'D',
-    'G': 'F',
-    'H': 'E,G',
+    'G': 'E',
+    'H': 'F,G',
 }
 proyecto_dibujado = ProjectGraph.from_dict_of_strings(prelaciones_del_grafo)
 proyecto_dibujado.pert(durations=False, ranksep=1)
@@ -165,7 +167,7 @@ print('Faltan en el grafo:', faltan)
 print('Sobran en el grafo:', sobran)
 
 # %% [markdown]
-# Las discrepancias son: falta la prelación E → G y sobra la prelación E → H (si la comparación muestra alguna más, es consecuencia de estas dos: al añadir o quitar una prelación cambian las que son redundantes).
+# Las discrepancias son: falta la prelación F → G y sobra la prelación F → H (si la comparación muestra alguna más, es consecuencia de estas dos: al añadir o quitar una prelación cambian las que son redundantes).
 
 # %% [markdown]
 # ## Apartado 3
