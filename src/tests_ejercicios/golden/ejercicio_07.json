@@ -776,8 +776,8 @@
    "source": "proyecto_asignacion = proyecto.copy()",
    "vars": {
     "dibujo": {
-     "__hash__": "352679a307e1c292ffc15513863274e1e8760d51",
-     "len": 30289
+     "__hash__": "21e582e2ce91775c8603c920690373d37b317856",
+     "len": 32650
     },
     "gantt_df": {
      "__type__": "Styler",
@@ -1447,8 +1447,8 @@
    "source": "duracion_y_recursos = datos_proyecto[['duration', 'resources']]",
    "vars": {
     "dibujo": {
-     "__hash__": "91ae12026dcde9644f0662f6972f56f787d7599c",
-     "len": 35076
+     "__hash__": "1bf9f5d715e6b1084481a8c29c1f05dc482c74e9",
+     "len": 37447
     },
     "duracion_y_recursos": {
      "__type__": "DataFrame",
@@ -5722,8 +5722,8 @@
    "source": "gantt_df, dibujo = proyecto_modificado.gantt(duracion_modificado.to_frame(),",
    "vars": {
     "dibujo": {
-     "__hash__": "2ea62c85e6badd341c87759ea46cb1de278921b1",
-     "len": 24877
+     "__hash__": "e7963e60aab1626208a31b2f54faa2ce8426f0d6",
+     "len": 27368
     },
     "gantt_df": {
      "__type__": "Styler",
