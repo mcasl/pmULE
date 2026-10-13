@@ -132,7 +132,7 @@ class TestGanttVariants(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# gantt: flechas de prelación (params={"arrows": True})
+# gantt: flechas de prelación (por defecto; params={"arrows": False} las quita)
 # ---------------------------------------------------------------------------
 
 # Predecesoras inmediatas del proyecto de referencia → 10 pares
@@ -152,12 +152,14 @@ class TestGanttArrows(unittest.TestCase):
                                           total="fila", holguras=True, params=params)
         return dibujo
 
-    def test_default_has_no_arrows(self):
-        self.assertEqual(self._tikz().count("\\draw[->"), 0)
+    def test_default_has_arrows(self):
+        """Las flechas se dibujan por defecto: sin el parámetro, el TikZ es el de arrows=True."""
+        self.assertEqual(self._tikz(), self._tikz(arrows=True))
+        self.assertEqual(self._tikz().count("\\draw[->"), len(PRECEDENCES))
 
-    def test_default_output_unchanged_by_feature(self):
-        """Sin el parámetro, el TikZ es byte a byte el mismo que con arrows=False."""
-        self.assertEqual(self._tikz(), self._tikz(arrows=False))
+    def test_arrows_can_be_switched_off(self):
+        self.assertEqual(self._tikz(arrows=False).count("\\draw[->"), 0)
+        self.assertNotIn("%Flechas de prelaci", self._tikz(arrows=False))
 
     def test_one_arrow_per_precedence(self):
         tikz = self._tikz(arrows=True)

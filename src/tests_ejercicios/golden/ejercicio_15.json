@@ -992,8 +992,8 @@
    "source": "#| fig-cap: \"Gantt de la planificación inicial\"",
    "vars": {
     "dibujo": {
-     "__hash__": "661ef5e4c965c87f323c5480805dda787c084e04",
-     "len": 34635
+     "__hash__": "af48d562d27c99fd20cfc472f4ac1e5829da20cb",
+     "len": 38909
     },
     "gantt_df": {
      "__type__": "Styler",
@@ -1858,8 +1858,8 @@
    "source": "#| out-height: 80%",
    "vars": {
     "dibujo": {
-     "__hash__": "8bebb2933d6e6db95cf20af89959b6261ae2368c",
-     "len": 40813
+     "__hash__": "bec0363190316513d0a63cff3a14f0c2a7008393",
+     "len": 45087
     },
     "gantt_recursos": {
      "__type__": "Styler",
@@ -2758,8 +2758,8 @@
    "source": "#| out-height: 80%",
    "vars": {
     "dibujo": {
-     "__hash__": "9bff394ccd1db4dbf4cd755df4133ebadd3090cd",
-     "len": 23333
+     "__hash__": "3c1a6cb98dd5580ab4d01aba4348ee19bf652d75",
+     "len": 26118
     }
    }
   },
@@ -4776,22 +4776,22 @@
       [
        "gantt_PV",
        {
-        "__hash__": "3be56518d3d37ce33f7307f76d4fb2cd54d86323",
-        "len": 48580
+        "__hash__": "42015fcfeafae27d4db23f082ab60e690dff307b",
+        "len": 52888
        }
       ],
       [
        "gantt_AC",
        {
-        "__hash__": "56085f77e4f38b5e62e85c81ee73180be419b9fb",
-        "len": 32731
+        "__hash__": "be6f7e1ab2db904359580458632726a00ebbd3ba",
+        "len": 35533
        }
       ],
       [
        "gantt_EV",
        {
-        "__hash__": "2152b8e7967b8a1cc5f929e027d8cf4738a043e5",
-        "len": 32709
+        "__hash__": "e341d1696a1bb80938a6dcb8a639d3ae399eb843",
+        "len": 35511
        }
       ]
      ]
@@ -5015,8 +5015,8 @@
    "source": "#| out-width: 100%",
    "vars": {
     "dibujo": {
-     "__hash__": "8c341a9bdbdf40bd2c281ec74edbe1ba22aa30a7",
-     "len": 35363
+     "__hash__": "f2816e0f1b248bf0f31f16523d70fec589b43fc1",
+     "len": 39661
     }
    }
   },

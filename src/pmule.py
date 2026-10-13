@@ -1434,7 +1434,7 @@ class ProjectGraph:
                 extra_rows = pd.concat([user_rows, extra_rows], axis=0) 
             precedences = (
                 self._gantt_precedences(set(gantt_data.index))
-                if params.get("arrows", False) else None
+                if params.get("arrows", True) else None
             )
             dibujo = make_gantt_tikz(
                 gantt_data=gantt_data,
@@ -2977,7 +2977,7 @@ def make_gantt_tikz(
     """Código TikZ de un diagrama de Gantt.
 
     precedences : lista de pares (predecesora, sucesora) entre actividades de
-        ``gantt_data``. Solo se dibujan si ``params["arrows"]`` es True.
+        ``gantt_data``. Se dibujan por defecto; ``params["arrows"] = False`` las omite.
         Parámetros de estilo: ``arrow_width`` (1pt), ``arrow_color``
         (black!60), ``critical_arrow_color`` (red!70!black, para pares críticos
         sin hueco), ``arrow_corner`` (radio de las esquinas, 1.5pt).
@@ -3010,7 +3010,7 @@ def make_gantt_tikz(
         "activity_inner_text_style", r"\bfseries\large"
     )
     arrow_width = params.get("arrow_width", "1pt")
-    arrows = params.get("arrows", False)
+    arrows = params.get("arrows", True)
     arrow_color = params.get("arrow_color", "black!60")
     critical_arrow_color = params.get("critical_arrow_color", "red!70!black")
     arrow_corner = params.get("arrow_corner", "1.5pt")
