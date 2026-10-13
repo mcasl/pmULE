@@ -1,6 +1,9 @@
 # ---
 # title: Roy 03
 # subtitle: "8 actividades, 3 ficticias en PERT, con espera y solape"
+# coleccion: 03_roy
+# variante: esperas-y-solapes
+# nivel: 3
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -32,8 +35,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -76,6 +82,24 @@ datos_enunciado = pd.DataFrame([
     ('H'     , 'E,F,G'    , 8       ),
 ], columns=['activity', 'predecessor', 'duration']).set_index('activity')
 datos_enunciado
+
+# %% [markdown]
+# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes (las duraciones del cuadro están en días).
+
+# %%
+#| tbl-cap: "Descripción de las actividades"
+#| label: tbl-descripciones
+descripciones = pd.Series({
+    'A': 'Guion definitivo',
+    'B': 'Casting',
+    'C': 'Localizaciones y permisos',
+    'D': 'Diseño de vestuario y atrezo',
+    'E': 'Plan de rodaje',
+    'F': 'Ensayos con los actores',
+    'G': 'Rodaje de exteriores',
+    'H': 'Rodaje en plató',
+}, name='Descripción')
+descripciones.to_frame()
 
 # %% [markdown]
 # # Resolución

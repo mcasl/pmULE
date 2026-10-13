@@ -1,6 +1,9 @@
 # ---
 # title: PERT 03
 # subtitle: "10 actividades, 3 ficticias, 5 rutas"
+# coleccion: 02_pert
+# variante: mas-ficticias
+# nivel: 2
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -32,8 +35,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -78,6 +84,26 @@ datos_enunciado = pd.DataFrame([
     ('J'     , 'H,I'      ),
 ], columns=['activity', 'predecessor']).set_index('activity')
 datos_enunciado
+
+# %% [markdown]
+# El proyecto corresponde a el lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+
+# %%
+#| tbl-cap: "Descripción de las actividades"
+#| label: tbl-descripciones
+descripciones = pd.Series({
+    'A': 'Estudio de requisitos',
+    'B': 'Diseño de la arquitectura',
+    'C': 'Diseño de interfaz y prototipo',
+    'D': 'Base de datos y modelo',
+    'E': 'API del servidor',
+    'F': 'Pantallas principales',
+    'G': 'Módulo de pagos',
+    'H': 'Notificaciones y sincronización',
+    'I': 'Pruebas de integración',
+    'J': 'Pruebas con usuarios',
+}, name='Descripción')
+descripciones.to_frame()
 
 # %% [markdown]
 # # Resolución

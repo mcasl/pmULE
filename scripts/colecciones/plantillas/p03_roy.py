@@ -3,7 +3,8 @@ compararlo con el PERT y modelar relaciones con desfase (esperas y solapes)."""
 import numpy as np
 
 from .. import proyectos as P
-from ..cuaderno import md, code, preguntas, apartado, literal_dataframe, literal_dict
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+                        literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="03_roy", prefijo="Roy",
             titulo="Grafo Roy",
@@ -12,7 +13,7 @@ META = dict(slug="03_roy", prefijo="Roy",
             n_defecto=3)
 
 
-def generar(k, rng):
+def _base(k, rng):
     con_desfases = (k % 3 == 0)
     n = int(rng.choice([8, 9]))
 
@@ -140,3 +141,117 @@ def generar(k, rng):
                            "de {duracion_mod - duracion_proyecto:+d} semanas.')"))
     sub = f"{n} actividades, {info['n_dummies']} ficticias en PERT" + (", con espera y solape" if con_desfases else "")
     return celdas, sub
+
+
+# ---------------------------------------------------------------------------
+# Variantes adicionales
+# ---------------------------------------------------------------------------
+def _predecesora_dominante(rng):
+    """Cálculo hacia delante y hacia atrás sobre el grafo Roy, actividad a actividad, y la
+    predecesora que fija el inicio de cada una."""
+    n = int(rng.choice([8, 9]))
+
+    def acepta(i):
+        if not (1 <= i["n_dummies"] <= 4 and 5 <= i["n_rutas"] <= 9 and i["n_criticas"] == 1):
+            return False
+        # al menos dos actividades con varias predecesoras cuyo máximo no empata
+        cal, preds = i["calendario"], i["preds"]
+        buenas = 0
+        for a, ps in preds.items():
+            if len(ps) >= 2:
+                fines = sorted(cal.loc[list(ps), "fin_mas_temprano"])
+                if fines[-1] > fines[-2]:
+                    buenas += 1
+        return buenas >= 2
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, cal, preds = info["D"], info["calendario"], info["preds"]
+    df = P.tabla_base(info, duration=D)
+    multi = [a for a, ps in preds.items() if len(ps) >= 2]
+    objetivo = multi[int(rng.integers(0, len(multi)))]
+    dominante = cal.loc[sorted(preds[objetivo]), "fin_mas_temprano"].idxmax()
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones y duraciones (en días) se adjunta.")]
+    celdas.append(preguntas([
+        "Dibuje el grafo Roy y calcule sobre él, actividad a actividad y en orden topológico, el inicio y el fin "
+        "más tempranos: el inicio más temprano es el mayor de los fines más tempranos de las predecesoras.",
+        "Calcule del mismo modo, de atrás hacia delante, los fines e inicios más tardíos.",
+        f"Para cada actividad con varias predecesoras indique cuál de ellas fija su inicio más temprano "
+        f"(la *predecesora dominante*). En particular, ¿qué predecesora de {objetivo} manda?",
+        f"Si se quisiera adelantar el inicio de {objetivo} un día, ¿qué actividad habría que acortar? ¿Serviría de algo "
+        f"acortar sus otras predecesoras?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "predecesoras = prelaciones.immediate_predecessor\n"
+                       "sucesoras = {a: sorted(s for s, ps in predecesoras.items() if a in ps) for a in datos_proyecto.index}\n"
+                       "duracion = datos_proyecto['duration']"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo Roy del proyecto"\n#| label: fig-roy\n'
+                       "proyecto.roy(ranksep=1.2, nodesep=1.2)"))
+    celdas.append(md("Recorriendo las actividades en un orden en que cada una aparece después de sus "
+                     "predecesoras (orden topológico):"))
+    celdas.append(code("G = nx.DiGraph([(p, a) for a, ps in predecesoras.items() for p in ps])\n"
+                       "G.add_nodes_from(datos_proyecto.index)\n"
+                       "orden = list(nx.topological_sort(G))\n"
+                       "ES, EF, filas = {}, {}, []\n"
+                       "for a in orden:\n"
+                       "    ps = sorted(predecesoras[a])\n"
+                       "    ES[a] = max((EF[p] for p in ps), default=0)\n"
+                       "    EF[a] = ES[a] + int(duracion[a])\n"
+                       "    filas.append({'actividad': a, 'predecesoras (EF)': ', '.join(f'{p} ({EF[p]})' for p in ps) or '—',\n"
+                       "                  'ES = máx': ES[a], 'duración': int(duracion[a]), 'EF = ES + d': EF[a]})\n"
+                       "pd.DataFrame(filas).set_index('actividad')"))
+    celdas += apartado(2)
+    celdas.append(code("duracion_proyecto = max(EF.values())\n"
+                       "LS, LF, filas = {}, {}, []\n"
+                       "for a in reversed(orden):\n"
+                       "    ss = sucesoras[a]\n"
+                       "    LF[a] = min((LS[s] for s in ss), default=duracion_proyecto)\n"
+                       "    LS[a] = LF[a] - int(duracion[a])\n"
+                       "    filas.append({'actividad': a, 'sucesoras (LS)': ', '.join(f'{s} ({LS[s]})' for s in ss) or '—',\n"
+                       "                  'LF = mín': LF[a], 'duración': int(duracion[a]), 'LS = LF − d': LS[a]})\n"
+                       "pd.DataFrame(filas).set_index('actividad')"))
+    celdas.append(code("calendario = proyecto.calendar(duracion)\n"
+                       "coincide = all(calendario.loc[a, 'inicio_mas_temprano'] == ES[a] and calendario.loc[a, 'inicio_mas_tardio'] == LS[a] for a in orden)\n"
+                       "Markdown(f'La duración del proyecto es {duracion_proyecto} días. El cálculo coincide con el de la librería: {coincide}.')"))
+    celdas += apartado(3)
+    celdas.append(code("dominantes = {}\n"
+                       "for a in datos_proyecto.index:\n"
+                       "    ps = sorted(predecesoras[a])\n"
+                       "    if len(ps) >= 2:\n"
+                       "        maximo = max(EF[p] for p in ps)\n"
+                       "        dominantes[a] = ', '.join(p for p in ps if EF[p] == maximo)\n"
+                       "pd.Series(dominantes).to_frame('predecesora dominante')"))
+    celdas.append(md(f"La predecesora dominante de {objetivo} es {dominante}: su fin más temprano es el mayor de "
+                     f"entre las predecesoras y por tanto el que fija el inicio de {objetivo}. Las demás "
+                     f"predecesoras terminan antes y tienen margen (holgura libre) respecto a {objetivo}."))
+    celdas += apartado(4)
+    celdas.append(code(f"objetivo, dominante = '{objetivo}', '{dominante}'\n"
+                       "otras = [p for p in sorted(predecesoras[objetivo]) if p != dominante]\n"
+                       "margen = {p: EF[dominante] - EF[p] for p in otras}\n"
+                       "d2 = duracion.copy(); d2[dominante] -= 1\n"
+                       "ES_nuevo = int(proyecto.calendar(d2).loc[objetivo, 'inicio_mas_temprano'])\n"
+                       "Markdown(f'''Para adelantar {objetivo} hay que acortar {dominante} (o alguna de sus antecesoras en la cadena que la "
+                       "hace llegar la última): acortándola un día, {objetivo} empieza en {ES_nuevo} en vez de {ES[objetivo]}. "
+                       "Acortar {\", \".join(otras)} no sirve: terminan {\", \".join(f\"{p} {m} día(s)\" for p, m in margen.items())} antes que {dominante} y "
+                       "su holgura sólo aumentaría. Sólo cuando {dominante} se acorte tanto que otra predecesora pase a ser la última cambiará la dominante.''')"))
+    return celdas, f"{n} actividades, cálculo manual sobre Roy; predecesora dominante de {objetivo}"
+
+
+VARIANTES = [
+    Variante("roy-vs-pert", 1, "grafo Roy, PERT equivalente, comparación de nodos y arcos, calendario y camino crítico",
+             lambda rng: _base(1, rng)),
+    Variante("roy-vs-pert-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng)),
+    Variante("esperas-y-solapes", 3, "espera entre dos actividades y solape comienzo-comienzo modelados con actividades auxiliares",
+             lambda rng: _base(3, rng)),
+    Variante("predecesora-dominante", 2, "cálculo hacia delante y hacia atrás a mano sobre Roy; qué predecesora fija cada inicio",
+             _predecesora_dominante),
+]
+
+
+def generar(k, rng):
+    return despachar(VARIANTES, k, rng)

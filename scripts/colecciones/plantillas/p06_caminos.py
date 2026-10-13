@@ -1,8 +1,12 @@
 """Colección 06 — Matriz de caminos: enumerar rutas, construir la matriz,
 calcular la duración como máximo de P·d, sensibilidad, reconstruir el grafo
 a partir de las rutas y rutas dominantes vía SVD."""
+import numpy as np
+import pandas as pd
+
 from .. import proyectos as P
-from ..cuaderno import md, code, preguntas, apartado, literal_dataframe, BMATRIX
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+                        literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="06_matriz_caminos", prefijo="Caminos",
             titulo="Matriz de caminos",
@@ -12,7 +16,7 @@ META = dict(slug="06_matriz_caminos", prefijo="Caminos",
             n_defecto=3)
 
 
-def generar(k, rng):
+def _base(k, rng):
     inverso = (k % 3 == 0)
     n = int(rng.choice([8, 9]))
     info = P.buscar(rng, lambda i: 5 <= i["n_rutas"] <= 8 and 1 <= i["n_dummies"] <= 4 and i["n_criticas"] == 1,
@@ -159,3 +163,77 @@ def generar(k, rng):
                            "         f'{int(path_matrix[importancia_actividades.idxmax()].sum())} de las {len(path_matrix)} rutas.')"))
     sub = f"{n} actividades, {info['n_rutas']} rutas" + (", reconstrucción desde las rutas y SVD" if inverso else "")
     return celdas, sub
+
+
+# ---------------------------------------------------------------------------
+# Variantes adicionales
+# ---------------------------------------------------------------------------
+def _escenarios(rng):
+    """Varios escenarios de duraciones a la vez: R·T con T de varias columnas."""
+    n = int(rng.choice([7, 8]))
+    info = P.buscar(rng, lambda i: 4 <= i["n_rutas"] <= 7 and 1 <= i["n_dummies"] <= 3 and i["n_criticas"] == 1,
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D = info["D"]
+    nombres = ["optimista", "normal", "pesimista"]
+    T = pd.DataFrame({"optimista": (D - rng.integers(0, 3, size=len(D))).clip(lower=1),
+                      "normal": D,
+                      "pesimista": D + rng.integers(0, 4, size=len(D))}, index=D.index)
+    df = P.tabla_base(info)
+    celdas = [md("# Enunciado"),
+              md("Para el proyecto cuyo cuadro de prelaciones se adjunta se manejan tres escenarios de duración "
+                 "de las actividades (en días): optimista, normal y pesimista. Se quiere conocer la duración del "
+                 "proyecto en los tres sin repetir tres veces el cálculo de tiempos.")]
+    celdas.append(preguntas([
+        "Dibuje el grafo PERT y construya la matriz de caminos R.",
+        "Disponga los tres escenarios como columnas de una matriz T (una fila por actividad) y calcule el "
+        "producto R·T. ¿Qué representa cada columna del resultado?",
+        "Obtenga la duración del proyecto en cada escenario como el máximo de cada columna, e indique la ruta "
+        "crítica de cada uno. ¿Es siempre la misma?",
+        "¿Por qué este procedimiento es el mismo que se usa en el método de Monte Carlo?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de prelaciones"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(code('#| tbl-cap: "Escenarios de duración (días)"\n#| label: tbl-escenarios\n'
+                       + literal_dataframe(T, nombre="escenarios")))
+    celdas.append(md("# Resolución"))
+    celdas.append(code(BMATRIX))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas.append(code('#| tbl-cap: "Matriz de caminos"\n#| label: tbl-matrizCaminos\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "proyecto.display_path_matrix(dummies=False)"))
+    celdas += apartado(2)
+    celdas.append(code("T = escenarios.loc[R.columns]\n"
+                       "duraciones_rutas = R @ T\n"
+                       "Math(bmatrix(R) + r' \\times ' + bmatrix(T) + ' = ' + bmatrix(duraciones_rutas))"))
+    celdas.append(code('#| tbl-cap: "Duración de cada ruta en cada escenario"\n#| label: tbl-duracionesRutas\n'
+                       "duraciones_rutas"))
+    celdas.append(md("Cada columna de R·T es el vector de duraciones de las rutas para un escenario: la fila r, "
+                     "columna s, es la suma de las duraciones (en el escenario s) de las actividades de la ruta r."))
+    celdas += apartado(3)
+    celdas.append(code("resumen = pd.DataFrame({'duración del proyecto': duraciones_rutas.max(), 'ruta crítica': duraciones_rutas.idxmax()})\n"
+                       "resumen['actividades'] = [' - '.join(R.columns[R.loc[r] == 1]) for r in resumen['ruta crítica']]\n"
+                       "resumen"))
+    celdas.append(code("Markdown('La ruta crítica ' + ('es la misma en los tres escenarios.' if resumen['ruta crítica'].nunique() == 1 else 'cambia de un escenario a otro: la ruta más larga depende de las duraciones, no sólo de la forma del grafo.'))"))
+    celdas += apartado(4)
+    celdas.append(md("En Monte Carlo cada réplica es un escenario: la matriz T tiene una columna por réplica (miles "
+                     "de columnas) y R·T da de una vez la duración de todas las rutas en todas las réplicas; el "
+                     "máximo de cada columna es la duración del proyecto en esa réplica. Con tres columnas el "
+                     "cálculo se hace a mano; con diez mil lo hace el ordenador, pero la operación es idéntica."))
+    return celdas, f"{n} actividades, {info['n_rutas']} rutas, tres escenarios"
+
+
+VARIANTES = [
+    Variante("matriz-y-duracion", 1, "enumerar rutas, matriz de caminos, duración como máximo de R·d, sensibilidad",
+             lambda rng: _base(1, rng)),
+    Variante("matriz-y-duracion-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng)),
+    Variante("rutas-a-grafo-svd", 3, "reconstruir el grafo a partir de las rutas; rutas dominantes por SVD",
+             lambda rng: _base(3, rng)),
+    Variante("escenarios", 2, "tres escenarios de duración a la vez con R·T; puente con Monte Carlo", _escenarios),
+]
+
+
+def generar(k, rng):
+    return despachar(VARIANTES, k, rng)

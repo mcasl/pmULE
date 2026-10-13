@@ -1,6 +1,9 @@
 # ---
 # title: Estimaciones 03
 # subtitle: "8 actividades, 2 con estimaciones asimétricas"
+# coleccion: 07_estimaciones
+# variante: tres-estimaciones-c
+# nivel: 1
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -32,8 +35,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -76,6 +82,24 @@ datos_enunciado = pd.DataFrame([
     ('H'     , 'F,G'      , 2  , 4, 6 , '?'     ),
 ], columns=['activity', 'predecessor', 'a', 'm', 'b', 'duration']).set_index('activity')
 datos_enunciado
+
+# %% [markdown]
+# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en días).
+
+# %%
+#| tbl-cap: "Descripción de las actividades"
+#| label: tbl-descripciones
+descripciones = pd.Series({
+    'A': 'Estudio de sombras y producción',
+    'B': 'Cálculo estructural de la cubierta',
+    'C': 'Tramitación de permisos',
+    'D': 'Acopio de módulos e inversores',
+    'E': 'Montaje de la estructura soporte',
+    'F': 'Colocación de módulos',
+    'G': 'Cableado de corriente continua',
+    'H': 'Instalación de inversores',
+}, name='Descripción')
+descripciones.to_frame()
 
 # %% [markdown]
 # # Resolución

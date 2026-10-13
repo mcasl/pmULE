@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Renderiza a HTML los cuadernos de notebooks/colecciones/ (todos, o los que se
-# indiquen) y deja el resultado en docs/colecciones/<coleccion>/<nombre>.html.
+# indiquen; también sirve para notebooks/examenes/) y deja el resultado en
+# docs/<misma ruta relativa>/<nombre>.html.
 #
 # Uso:  ./render_colecciones.sh                                   # todos
 #       ./render_colecciones.sh notebooks/colecciones/05_holguras/Holguras_01.ipynb ...
+#       ./render_colecciones.sh notebooks/examenes/parcial1/*.ipynb
 #
 # Mismo flujo que render_ejercicio.sh: quarto ejecuta el cuaderno con el Python
 # del proyecto (.venv), el HTML va a docs/ y se sincroniza el par jupytext.
@@ -27,9 +29,9 @@ fi
 n=0
 for nb in $cuadernos; do
     [ -f "$nb" ] || { echo "No existe: $nb" >&2; exit 1; }
-    coleccion="$(basename "$(dirname "$nb")")"
     nombre="$(basename "$nb" .ipynb)"
-    destino="docs/colecciones/${coleccion}"
+    # docs/<ruta relativa a notebooks/>: notebooks/colecciones/05_x/A.ipynb -> docs/colecciones/05_x/A.html
+    destino="docs/$(dirname "${nb#notebooks/}")"
     mkdir -p "$destino"
     echo "→ Rendering ${nb}..."
     quarto render "$nb"

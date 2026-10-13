@@ -1,7 +1,8 @@
 """Colección 05 — Holguras total, libre e independiente, caminos críticos y
 su interpretación."""
 from .. import proyectos as P
-from ..cuaderno import md, code, preguntas, apartado, literal_dataframe
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+                        literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="05_holguras", prefijo="Holguras",
             titulo="Holguras y camino crítico",
@@ -17,7 +18,7 @@ def _rasgos(cal):
     return tl, li, lp
 
 
-def generar(k, rng):
+def _base(k, rng):
     nivel = (k - 1) % 3 + 1
     n = int(rng.choice([9, 10]))
 
@@ -128,3 +129,200 @@ def generar(k, rng):
                            f"Su holgura libre, {{int(fila[\"H_libre\"])}}, supone en cambio que las predecesoras acaban lo antes posible.''')"))
     sub = f"{n} actividades, {info['n_criticas']} ruta(s) crítica(s)"
     return celdas, sub
+
+
+# ---------------------------------------------------------------------------
+# Variantes adicionales
+# ---------------------------------------------------------------------------
+def _compartida(rng):
+    """Dos actividades en cadena con la misma holgura total: no pueden gastarla las dos."""
+    n = int(rng.choice([9, 10]))
+    estado = {}
+
+    def acepta(i):
+        cal, preds = i["calendario"], i["preds"]
+        if not (1 <= i["n_dummies"] <= 4 and i["n_criticas"] == 1):
+            return False
+        pares = [(p, a) for a, ps in preds.items() for p in ps
+                 if cal.loc[p, "H_total"] == cal.loc[a, "H_total"] > 0 and cal.loc[p, "H_libre"] == 0]
+        if not pares:
+            return False
+        estado["par"] = pares[int(rng.integers(0, len(pares)))]
+        return True
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, cal = info["D"], info["calendario"]
+    X, Y = estado["par"]
+    h = int(cal.loc[X, "H_total"])
+    conj = "e" if Y.startswith("I") else "y"
+    df = P.tabla_base(info, duration=D)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones y duraciones (en semanas) se adjunta.")]
+    celdas.append(preguntas([
+        "Calcule el calendario del proyecto con las holguras total, libre e independiente.",
+        f"{X} {conj} {Y} son consecutivas y tienen la misma holgura total. El responsable de {X} pide retrasarla "
+        f"{h} semanas y el de {Y} también. ¿Pueden concederse las dos peticiones sin alargar el proyecto? Razónelo "
+        "antes de calcular.",
+        f"Compruébelo: recalcule el calendario con {X} retrasada {h} semanas y después con las dos retrasadas.",
+        "¿Qué holgura expresa cuánto puede retrasarse cada una sin quitarle margen a la otra? ¿Cómo repartiría "
+        f"las {h} semanas entre {X} {conj} {Y}?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "duracion_proyecto = proyecto.duration(datos_proyecto['duration'])"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y camino crítico"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code('#| tbl-cap: "Calendario y holguras"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario"))
+    celdas += apartado(2)
+    celdas.append(md(f"No. La holgura total de {X} y la de {Y} son la *misma* holgura: la de la cadena en la que "
+                     f"están. {X} tiene holgura libre cero, así que cualquier retraso suyo mueve el inicio de {Y} y le "
+                     f"consume holgura. Si {X} gasta las {h} semanas, {Y} se queda sin ninguna; si además {Y} se "
+                     f"retrasa, el proyecto se alarga."))
+    celdas += apartado(3)
+    celdas.append(code(f"X, Y, h = '{X}', '{Y}', {h}\n"
+                       "d1 = datos_proyecto['duration'].copy(); d1[X] += h\n"
+                       "d2 = d1.copy(); d2[Y] += h\n"
+                       "cal1, cal2 = proyecto.calendar(d1), proyecto.calendar(d2)\n"
+                       "pd.DataFrame({'original': calendario.loc[[X, Y], 'H_total'], f'{X} retrasada {h}': cal1.loc[[X, Y], 'H_total'],\n"
+                       "              'las dos retrasadas': cal2.loc[[X, Y], 'H_total']})"))
+    celdas.append(code("Markdown(f'Duración del proyecto: {duracion_proyecto} semanas en la planificación original, {proyecto.duration(d1)} con {X} retrasada '\n"
+                       "         f'y **{proyecto.duration(d2)}** con las dos retrasadas: el segundo retraso ya no cabe en la holgura.')"))
+    celdas += apartado(4)
+    celdas.append(code("Markdown(f'''La holgura libre de {X} es {int(calendario.loc[X, \"H_libre\"])}: es lo que puede retrasarse sin mover a {Y}. "
+                       "La holgura independiente de {Y} es {int(calendario.loc[Y, \"H_independiente\"])}: lo que puede retrasarse {Y} aunque {X} acabe lo más tarde posible. "
+                       "Las {h} semanas son un recurso compartido de la cadena: cualquier reparto x + y ≤ {h} entre {X} " + conj + " {Y} respeta el plazo; "
+                       "lo que no es posible es que cada una disponga de {h} por su cuenta.''')"))
+    return celdas, f"{n} actividades; {X} {conj} {Y} comparten {h} semanas de holgura"
+
+
+def _vigilancia(rng):
+    """Ordenar las actividades por riesgo de retraso y la pregunta en negativo."""
+    n = int(rng.choice([9, 10]))
+
+    def acepta(i):
+        cal = i["calendario"]
+        return (1 <= i["n_dummies"] <= 4 and i["n_criticas"] >= 1
+                and ((cal["H_total"] > 0) & (cal["H_libre"] == 0)).sum() >= 1
+                and (cal["H_libre"] > 0).sum() >= 2 and cal["H_total"].nunique() >= 4)
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, cal = info["D"], info["calendario"]
+    df = P.tabla_base(info, duration=D)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones y duraciones (en semanas) se adjunta. El jefe "
+                 "de proyecto sólo puede hacer seguimiento estrecho de cuatro actividades.")]
+    celdas.append(preguntas([
+        "Calcule el calendario del proyecto con sus holguras.",
+        "Ordene las actividades de mayor a menor necesidad de vigilancia (primero las críticas; entre las demás, "
+        "menor holgura total primero y, a igualdad, menor holgura libre). ¿Cuáles son las cuatro elegidas?",
+        "¿Qué actividades *no críticas* no pueden retrasarse ni una semana sin obligar a mover alguna sucesora? "
+        "¿Por qué no son críticas si no admiten retraso?",
+        "¿Qué actividad puede retrasarse más semanas sin que nadie lo note? ¿Cuántas?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y camino crítico"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code('#| tbl-cap: "Calendario y holguras"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario"))
+    celdas += apartado(2)
+    celdas.append(code('#| tbl-cap: "Actividades ordenadas por necesidad de vigilancia"\n#| label: tbl-orden\n'
+                       "orden = calendario.sort_values(['H_total', 'H_libre', 'duracion'], ascending=[True, True, False])\n"
+                       "orden['prioridad'] = range(1, len(orden) + 1)\n"
+                       "orden[['prioridad', 'H_total', 'H_libre', 'H_independiente', 'duracion']]"))
+    celdas.append(code("Markdown(f'Las cuatro actividades a vigilar son **{\", \".join(orden.index[:4])}**. '\n"
+                       "         'Si hay más de cuatro críticas, el criterio de desempate es la duración (una actividad larga tiene más ocasiones de retrasarse).')"))
+    celdas += apartado(3)
+    celdas.append(code("sin_margen = calendario.index[(calendario['H_total'] > 0) & (calendario['H_libre'] == 0)].tolist()\n"
+                       "Markdown(f'''Las actividades {\", \".join(sin_margen)} tienen holgura libre cero pero holgura total positiva: cualquier retraso suyo "
+                       "mueve el inicio más temprano de una sucesora, pero esa sucesora tiene margen suficiente para absorberlo sin que el proyecto se alargue. "
+                       "No son críticas porque el plazo no depende de ellas; lo que no admiten es retrasarse sin molestar.''')"))
+    celdas += apartado(4)
+    celdas.append(code("mas_libre = calendario['H_libre'].idxmax()\n"
+                       "Markdown(f'{mas_libre} puede retrasarse hasta {int(calendario.loc[mas_libre, \"H_libre\"])} semanas sin mover a ninguna otra actividad ni al plazo (su holgura libre).')"))
+    return celdas, f"{n} actividades; ordenación por vigilancia y actividades sin margen"
+
+
+def _diagnostico(rng):
+    """Se da un calendario resuelto con dos errores; hay que detectarlos y corregirlos."""
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 1 <= i["n_dummies"] <= 4 and (i["calendario"]["H_total"] > 0).sum() >= 3,
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, cal = info["D"], info["calendario"]
+    df = P.tabla_base(info, duration=D)
+    tabla = cal[["inicio_mas_temprano", "fin_mas_temprano", "inicio_mas_tardio", "fin_mas_tardio", "H_total", "H_libre"]].copy()
+    no_crit = cal.index[cal["H_total"] > 0].tolist()
+    crit = cal.index[cal["H_total"] == 0].tolist()
+    e1 = no_crit[int(rng.integers(0, len(no_crit)))]
+    tabla.loc[e1, "H_libre"] = int(tabla.loc[e1, "H_total"]) + 1          # H_libre > H_total: imposible
+    resto = [a for a in crit if a != e1]
+    e2 = resto[int(rng.integers(0, len(resto)))]
+    tabla.loc[e2, "inicio_mas_tardio"] = int(tabla.loc[e2, "inicio_mas_tardio"]) + 2   # LS - ES ≠ H_total
+    celdas = [md("# Enunciado"),
+              md("Un alumno ha entregado el calendario que se adjunta para el proyecto cuyo cuadro de prelaciones y "
+                 "duraciones (semanas) también se da. Contiene dos errores.")]
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(code('#| tbl-cap: "Calendario entregado (con errores)"\n#| label: tbl-calendarioEntregado\n'
+                       + literal_dataframe(tabla.astype(int), nombre="calendario_entregado")))
+    celdas.append(preguntas([
+        "Sin recalcular todo el proyecto, localice los errores comprobando las relaciones que debe cumplir "
+        "cualquier calendario: EF = ES + d, LF = LS + d, H_total = LS − ES, 0 ≤ H_libre ≤ H_total, y ES de cada "
+        "actividad igual al máximo EF de sus predecesoras.",
+        "Explique qué significa cada error (qué se ha calculado mal).",
+        "Calcule el calendario correcto y compárelo."]))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "c = calendario_entregado.copy()\n"
+                       "d = datos_proyecto['duration']"))
+    celdas += apartado(1)
+    celdas.append(code("comprobaciones = pd.DataFrame({\n"
+                       "    'EF = ES + d': c['fin_mas_temprano'] == c['inicio_mas_temprano'] + d,\n"
+                       "    'LF = LS + d': c['fin_mas_tardio'] == c['inicio_mas_tardio'] + d,\n"
+                       "    'H_total = LS − ES': c['H_total'] == c['inicio_mas_tardio'] - c['inicio_mas_temprano'],\n"
+                       "    'H_libre ≤ H_total': c['H_libre'] <= c['H_total'],\n"
+                       "    'ES = máx EF pred.': [c.loc[a, 'inicio_mas_temprano'] == max((c.loc[p, 'fin_mas_temprano'] for p in prelaciones.immediate_predecessor[a]), default=0) for a in c.index]})\n"
+                       "comprobaciones[~comprobaciones.all(axis=1)]"))
+    celdas += apartado(2)
+    celdas.append(md(f"- En {e1} la holgura libre es mayor que la total, lo que es imposible: la holgura libre es "
+                     f"una parte de la total (la que no afecta a las sucesoras).\n"
+                     f"- En {e2} el inicio más tardío no cuadra con el fin más tardío menos la duración (ni con "
+                     f"H_total = LS − ES): se ha copiado mal o se ha calculado el tardío sin restar la duración."))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Calendario correcto"\n#| label: tbl-calendarioCorrecto\n'
+                       "calendario = proyecto.calendar(d)\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'H_libre']]"))
+    celdas.append(code("difieren = (calendario[c.columns] != c).any(axis=1)\n"
+                       "pd.concat({'entregado': c[difieren], 'correcto': calendario.loc[difieren, c.columns]}, axis=1)"))
+    return celdas, f"{n} actividades; calendario con errores en {e1} y {e2}"
+
+
+VARIANTES = [
+    Variante("tres-holguras", 1, "holguras total, libre e independiente; caminos críticos; retraso de una actividad",
+             lambda rng: _base(1, rng)),
+    Variante("tres-holguras-b", 2, "ídem con holgura independiente distinta de la libre", lambda rng: _base(2, rng)),
+    Variante("varias-criticas", 2, "ídem con dos o más rutas críticas", lambda rng: _base(3, rng)),
+    Variante("holgura-compartida", 2, "dos actividades consecutivas no pueden gastar las dos la misma holgura total",
+             _compartida),
+    Variante("vigilancia", 2, "ordenar por riesgo; no críticas sin margen; la que más puede retrasarse sin que se note",
+             _vigilancia),
+    Variante("diagnostico", 3, "calendario entregado con dos errores: localizarlos por las relaciones entre fechas y holguras",
+             _diagnostico),
+]
+
+
+def generar(k, rng):
+    return despachar(VARIANTES, k, rng)

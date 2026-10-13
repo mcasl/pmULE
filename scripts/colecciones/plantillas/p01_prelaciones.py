@@ -4,7 +4,8 @@ import networkx as nx
 import numpy as np
 
 from .. import proyectos as P
-from ..cuaderno import md, code, preguntas, apartado, literal_dataframe
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+                        literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="01_prelaciones", prefijo="Prelaciones",
             titulo="Cuadro de prelaciones",
@@ -13,7 +14,7 @@ META = dict(slug="01_prelaciones", prefijo="Prelaciones",
             n_defecto=3)
 
 
-def generar(k, rng):
+def _base(k, rng):
     con_ciclo = (k % 3 == 0)
     n = int(rng.choice([9, 10]))
     info = P.buscar(rng, lambda i: 2 <= i["n_dummies"] <= 4 and len(P.redundantes_posibles(i["preds"])) >= 3,
@@ -126,3 +127,173 @@ def generar(k, rng):
                        "proyecto.pert(durations=False, ranksep=1)"))
     sub = f"{n} actividades, {len(redundantes)} prelaciones redundantes" + (", una errata con ciclo" if con_ciclo else "")
     return celdas, sub
+
+
+# ---------------------------------------------------------------------------
+# Variantes adicionales
+# ---------------------------------------------------------------------------
+def _texto(rng):
+    """El cuadro de prelaciones llega como texto corrido, con un contexto narrativo."""
+    from .. import contextos as C
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 1 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10,
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])), con_duraciones=False)
+    preds = info["preds"]
+    ctx = C.elegir(rng, n)
+    desc = dict(zip(preds, ctx["actividades"]))
+    suc = P.sucesoras(preds)
+    frases = []
+    orden = list(preds)
+    rng.shuffle(orden)
+    plantillas_frase = [
+        "{a} ({A}) no puede empezar hasta que termine{n} {ps}.",
+        "Para empezar {a} ({A}) hace falta haber terminado {ps}.",
+        "{a} ({A}) sigue a {ps}.",
+        "Una vez terminada{s} {ps}, puede empezar {a} ({A}).",
+    ]
+    for a in orden:
+        ps = sorted(preds[a])
+        if not ps:
+            frases.append(f"{desc[a]} ({a}) puede empezar desde el principio.")
+            continue
+        nombres_ps = " y ".join(", ".join(f"{desc[p]} ({p})" for p in ps).rsplit(", ", 1)) if len(ps) > 1 else f"{desc[ps[0]]} ({ps[0]})"
+        f = plantillas_frase[int(rng.integers(0, len(plantillas_frase)))]
+        frases.append(f.format(a=desc[a], A=a, ps=nombres_ps, n="n" if len(ps) > 1 else "", s="s" if len(ps) > 1 else ""))
+    texto = " ".join(frases)
+    celdas = [md("# Enunciado"),
+              md(f"El responsable de {ctx['tema']} ha descrito así las actividades y sus dependencias:\n\n> {texto}")]
+    celdas.append(preguntas([
+        "Construya el cuadro de prelaciones inmediatas a partir del texto (una fila por actividad con sus predecesoras inmediatas).",
+        "Construya el cuadro de prelaciones expandido e indique las actividades iniciales y finales.",
+        "Construya el cuadro de ancestros y compruebe que ninguna prelación del texto es redundante.",
+        "Dibuje el grafo PERT con el mínimo número de ficticias."]))
+    celdas.append(md("# Resolución"))
+    celdas += apartado(1)
+    celdas.append(md("Se recorre el texto actividad por actividad anotando sólo las predecesoras que el texto "
+                     "nombra de forma explícita; las que se deducen por transitividad no se anotan."))
+    df = P.tabla_base(info)
+    celdas.append(code('#| tbl-cap: "Cuadro de prelaciones inmediatas"\n#| label: tbl-prelaciones\n'
+                       + literal_dataframe(df)))
+    celdas.append(code("descripciones = pd.Series({\n" + "".join(f"    {a!r}: {desc[a]!r},\n" for a in preds)
+                       + "}, name='Descripción')\n"
+                       "datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()"))
+    celdas += apartado(2)
+    celdas.append(code('#| tbl-cap: "Cuadro de prelaciones expandido"\n#| label: tbl-prelacionesExpandido\n'
+                       "prelaciones.display_immediate_linkage_matrix()"))
+    celdas.append(code("print('Actividades iniciales:', ', '.join(sorted(prelaciones.start_activities)))\n"
+                       "print('Actividades finales:  ', ', '.join(sorted(prelaciones.end_activities)))"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Cuadro de ancestros"\n#| label: tbl-ancestros\n'
+                       "proyecto.distant_predecessor(format='DataFrame')"))
+    celdas.append(code("G = nx.DiGraph([(p, a) for a, ps in prelaciones.immediate_predecessor.items() for p in ps])\n"
+                       "G.add_nodes_from(datos_proyecto.index)\n"
+                       "redundantes = sorted(set(G.edges) - set(nx.transitive_reduction(G).edges))\n"
+                       "print('Prelaciones redundantes:', redundantes or 'ninguna')"))
+    celdas += apartado(4)
+    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=False, ranksep=1)"))
+    return celdas, f"{n} actividades descritas en texto ({ctx['tema']})"
+
+
+def _grafo_erroneo(rng):
+    """Se da un grafo PERT dibujado con errores y el cuadro correcto: hay que encontrarlos."""
+    n = int(rng.choice([8, 9]))
+    estado = {}
+
+    def acepta(i):
+        preds = {a: set(ps) for a, ps in i["preds"].items()}
+        G = P.grafo(preds)
+        # quitar una prelación (que no deje a nadie sin predecesora) y añadir otra no redundante
+        quitables = [(p, a) for a, ps in preds.items() for p in ps if len(ps) > 1]
+        if not quitables:
+            return False
+        p_q, a_q = quitables[int(rng.integers(0, len(quitables)))]
+        err = {a: set(ps) for a, ps in preds.items()}
+        err[a_q].discard(p_q)
+        G2 = P.grafo(err)
+        nombres = list(preds)
+        cand = [(nombres[i_], nombres[j_]) for i_ in range(n) for j_ in range(i_ + 1, n)
+                if nombres[i_] not in err[nombres[j_]] and nombres[i_] not in nx.ancestors(G2, nombres[j_])
+                and (p_q, a_q) != (nombres[i_], nombres[j_])]
+        if not cand:
+            return False
+        p_a, a_a = cand[int(rng.integers(0, len(cand)))]
+        err[a_a].add(p_a)
+        err = P.reducir(err)
+        try:
+            info_err = P.analizar(err)
+        except Exception:
+            return False
+        if not (1 <= i["n_dummies"] <= 4 and 1 <= info_err["n_dummies"] <= 5):
+            return False
+        estado.update(err=err, quitada=(p_q, a_q), anadida=(p_a, a_a))
+        return True
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])), con_duraciones=False)
+    err, (p_q, a_q), (p_a, a_a) = estado["err"], estado["quitada"], estado["anadida"]
+    df = P.tabla_base(info)
+    celdas = [md("# Enunciado"),
+              md("Un compañero ha dibujado el grafo PERT que se muestra a continuación a partir del cuadro de "
+                 "prelaciones adjunto. Sospechamos que el grafo no refleja exactamente el cuadro.")]
+    celdas.append(code('#| tbl-cap: "Cuadro de prelaciones (correcto)"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(code('#| fig-cap: "Grafo PERT dibujado por el compañero"\n#| label: fig-pertErroneo\n'
+                       + literal_dict(P.a_strings(err), "prelaciones_del_grafo") + "\n"
+                       "proyecto_dibujado = ProjectGraph.from_dict_of_strings(prelaciones_del_grafo)\n"
+                       "proyecto_dibujado.pert(durations=False, ranksep=1)"))
+    celdas.append(preguntas([
+        "Construya el cuadro de ancestros a partir del cuadro de prelaciones y, por separado, a partir del grafo "
+        "dibujado (siguiendo los arcos hacia atrás).",
+        "Compare ambos cuadros e identifique qué prelaciones sobran y cuáles faltan en el grafo.",
+        "Dibuje el grafo PERT correcto. ¿Cambia el número de ficticias?"]))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()"))
+    celdas += apartado(1)
+    celdas.append(code('#| tbl-cap: "Cuadro de ancestros según el cuadro de prelaciones"\n#| label: tbl-ancestrosCuadro\n'
+                       "proyecto.distant_predecessor(format='DataFrame')"))
+    celdas.append(code('#| tbl-cap: "Cuadro de ancestros según el grafo dibujado"\n#| label: tbl-ancestrosGrafo\n'
+                       "proyecto_dibujado.distant_predecessor(format='DataFrame')"))
+    celdas += apartado(2)
+    celdas.append(md("Una prelación que está en el cuadro y no en el grafo se detecta porque alguna actividad "
+                     "tiene menos ancestros en el grafo; una que sobra, porque tiene más. Para localizar la "
+                     "prelación inmediata responsable se comparan las predecesoras inmediatas de las actividades "
+                     "cuyo conjunto de ancestros difiere."))
+    celdas.append(code("anc_cuadro = proyecto.distant_predecessor()\n"
+                       "anc_grafo = proyecto_dibujado.distant_predecessor()\n"
+                       "difieren = [a for a in datos_proyecto.index if anc_cuadro[a] != anc_grafo[a]]\n"
+                       "pd.DataFrame({'ancestros según el cuadro': {a: ', '.join(sorted(anc_cuadro[a])) for a in difieren},\n"
+                       "              'ancestros según el grafo': {a: ', '.join(sorted(anc_grafo[a])) for a in difieren}})"))
+    celdas.append(code("inm_cuadro = prelaciones.immediate_predecessor\n"
+                       "inm_grafo = PredecessorTable.from_dict_of_strings(prelaciones_del_grafo).immediate_predecessor\n"
+                       "faltan = sorted((p, a) for a in inm_cuadro for p in inm_cuadro[a] - inm_grafo.get(a, set()))\n"
+                       "sobran = sorted((p, a) for a in inm_grafo for p in inm_grafo[a] - inm_cuadro.get(a, set()))\n"
+                       "print('Faltan en el grafo:', faltan)\n"
+                       "print('Sobran en el grafo:', sobran)"))
+    celdas.append(md(f"Las discrepancias son: falta la prelación {p_q} → {a_q} y sobra la prelación {p_a} → {a_a} "
+                     "(si la comparación muestra alguna más, es consecuencia de estas dos: al añadir o quitar una "
+                     "prelación cambian las que son redundantes)."))
+    celdas += apartado(3)
+    celdas.append(code('#| fig-cap: "Grafo PERT correcto"\n#| label: fig-pertCorrecto\n'
+                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas.append(code("Markdown(f'El grafo correcto tiene {len(proyecto.dummies)} ficticia(s) frente a {len(proyecto_dibujado.dummies)} del dibujado.')"))
+    return celdas, f"{n} actividades, grafo con una prelación de más y otra de menos"
+
+
+VARIANTES = [
+    Variante("redundancias", 1, "cuadro con prelaciones redundantes: depurarlo, cuadro expandido y de ancestros",
+             lambda rng: _base(1, rng)),
+    Variante("redundancias-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng)),
+    Variante("ciclo", 2, "errata que crea un ciclo: detectarla con la librería y corregirla antes de depurar",
+             lambda rng: _base(3, rng)),
+    Variante("texto", 2, "las prelaciones llegan como texto corrido con contexto; hay que tabularlas", _texto),
+    Variante("grafo-erroneo", 3, "se da un grafo PERT con una prelación de más y otra de menos: encontrarlas "
+                                 "comparando cuadros de ancestros", _grafo_erroneo),
+]
+
+
+def generar(k, rng):
+    return despachar(VARIANTES, k, rng)

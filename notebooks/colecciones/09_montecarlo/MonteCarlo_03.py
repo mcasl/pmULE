@@ -1,6 +1,9 @@
 # ---
 # title: MonteCarlo 03
 # subtitle: "9 actividades, 6 rutas, distribución Beta-PERT"
+# coleccion: 09_montecarlo
+# variante: beta-pert
+# nivel: 2
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -32,8 +35,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -226,8 +232,12 @@ pd.DataFrame({'holgura total': calendario['H_total'], 'criticidad (%)': criticid
 # %% [markdown]
 # La librería hace el mismo cálculo de forma vectorizada: la sensibilidad empírica media de `monte_carlo` es precisamente el índice de criticidad de cada actividad.
 
+# %% [markdown]
+# La opción `('pert', a, m, b)` de `monte_carlo` es una normal recortada al intervalo $[a, b]$, no la Beta-PERT exacta; por eso se le pasa como función la misma Beta-PERT usada arriba (la función recibe `size` y devuelve un vector de muestras).
+
 # %%
-resultado = proyecto.monte_carlo({act: ('pert', fila['a'], fila['m'], fila['b']) for act, fila in datos_proyecto.iterrows()}, n_samples=N, seed=557)
+resultado = proyecto.monte_carlo({act: (lambda a_, m_, b_: (lambda size=None: muestras_beta_pert(a_, m_, b_, size)))(fila['a'], fila['m'], fila['b'])
+                                   for act, fila in datos_proyecto.iterrows()}, n_samples=N, seed=557)
 display(resultado.summary().round(2))
 (resultado.sensitivity_mean * 100).round(1).to_frame('criticidad (%) según monte_carlo').T
 

@@ -1,9 +1,11 @@
 """Colección 09 — Método de Monte Carlo: simulación con la matriz de caminos,
 comparación con la aproximación normal, índices de criticidad."""
 import numpy as np
+import pandas as pd
 
 from .. import proyectos as P
-from ..cuaderno import md, code, preguntas, apartado, literal_dataframe
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+                        literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="09_montecarlo", prefijo="MonteCarlo",
             titulo="Método de Monte Carlo",
@@ -14,7 +16,7 @@ META = dict(slug="09_montecarlo", prefijo="MonteCarlo",
 DISTRIBUCIONES = {1: "normal", 2: "triangular", 3: "pert"}
 
 
-def generar(k, rng):
+def _base(k, rng):
     dist = DISTRIBUCIONES[(k - 1) % 3 + 1]
     n = int(rng.choice([8, 9]))
     info = P.buscar(rng, lambda i: 5 <= i["n_rutas"] <= 8 and 1 <= i["n_dummies"] <= 4 and i["n_criticas"] == 1
@@ -182,7 +184,11 @@ def generar(k, rng):
     elif dist == "triangular":
         dists = "{act: ('triangular', fila['a'], fila['m'], fila['b']) for act, fila in datos_proyecto.iterrows()}"
     else:
-        dists = "{act: ('pert', fila['a'], fila['m'], fila['b']) for act, fila in datos_proyecto.iterrows()}"
+        dists = ("{act: (lambda a_, m_, b_: (lambda size=None: muestras_beta_pert(a_, m_, b_, size)))(fila['a'], fila['m'], fila['b'])\n"
+                 "                                   for act, fila in datos_proyecto.iterrows()}")
+        celdas.append(md("La opción `('pert', a, m, b)` de `monte_carlo` es una normal recortada al intervalo "
+                         "$[a, b]$, no la Beta-PERT exacta; por eso se le pasa como función la misma Beta-PERT "
+                         "usada arriba (la función recibe `size` y devuelve un vector de muestras)."))
     celdas.append(code(f"resultado = proyecto.monte_carlo({dists}, n_samples=N, seed={semilla})\n"
                        "display(resultado.summary().round(2))\n"
                        "(resultado.sensitivity_mean * 100).round(1).to_frame('criticidad (%) según monte_carlo').T"))
@@ -192,3 +198,270 @@ def generar(k, rng):
                        "El análisis determinista la da por holgada, pero un retraso pequeño la convierte en crítica: es la que conviene vigilar.''')"))
     sub = f"{n} actividades, {info['n_rutas']} rutas, distribución {nombre_dist}"
     return celdas, sub
+
+
+# ---------------------------------------------------------------------------
+# Variantes adicionales
+# ---------------------------------------------------------------------------
+def _a_mano(rng):
+    """Cinco réplicas a mano: R·T, máximo por columnas, media, desviación típica y criticidad."""
+    n = int(rng.choice([6, 7]))
+    info = P.buscar(rng, lambda i: 3 <= i["n_rutas"] <= 5 and 1 <= i["n_dummies"] <= 3 and (i["D"] >= 2).all() and i["T"] >= 8,
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, R = info["D"], info["P"]
+    N = 5
+    T = pd.DataFrame({f"r{j}": (D + rng.integers(-1, 2, size=len(D))).clip(lower=1) for j in range(1, N + 1)}, index=D.index)
+    df = P.tabla_base(info, duration=D)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones y duraciones medias (en días) se adjunta. Para "
+                 f"entender el método de Monte Carlo se han generado a mano sólo {N} réplicas de las duraciones "
+                 "(cada columna es una réplica: la duración que cada actividad ha tenido en esa simulación).")]
+    celdas.append(code('#| tbl-cap: "Cuadro de prelaciones y duraciones medias"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(code('#| tbl-cap: "Duraciones simuladas (una columna por réplica)"\n#| label: tbl-replicas\n'
+                       + literal_dataframe(T, nombre="replicas")))
+    celdas.append(preguntas([
+        "Dibuje el grafo PERT, enumere las rutas y escriba la matriz de rutas R (una fila por ruta, una columna por actividad).",
+        "Escriba la matriz de tiempos T con las réplicas como columnas y calcule a mano el producto R·T. "
+        "¿Qué es cada elemento del resultado?",
+        "Obtenga la duración del proyecto en cada réplica como el máximo de cada columna (τ = ‖R·t‖∞ para cada "
+        "columna t). Calcule la media y la desviación típica muestral de las cinco duraciones.",
+        "Para cada réplica, ¿qué ruta ha sido la crítica? Calcule el índice de criticidad de cada ruta y de cada "
+        "actividad con estas cinco réplicas. Compare con el camino crítico de las duraciones medias.",
+        "¿Qué cambia al pasar de 5 réplicas a 10 000? Compruébelo generando las réplicas con una distribución "
+        "normal de media la duración media y desviación típica 1."]))
+    celdas.append(md("# Resolución"))
+    celdas.append(code(BMATRIX))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones medias"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code('#| tbl-cap: "Matriz de rutas R"\n#| label: tbl-matrizRutas\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "rutas = proyecto.paths(dummies=False)\n"
+                       "proyecto.display_path_matrix(dummies=False)"))
+    celdas += apartado(2)
+    celdas.append(code("T = replicas.loc[R.columns]\n"
+                       "RT = R @ T\n"
+                       "Math(bmatrix(R) + r' \\times ' + bmatrix(T) + ' = ' + bmatrix(RT))"))
+    celdas.append(code('#| tbl-cap: "R·T: duración de cada ruta (filas) en cada réplica (columnas)"\n#| label: tbl-RT\n'
+                       "RT"))
+    celdas.append(md("El elemento (r, j) de R·T es la duración de la ruta r en la réplica j: la suma de las "
+                     "duraciones, en esa réplica, de las actividades que forman la ruta. Una fila de R selecciona "
+                     "las actividades de la ruta; una columna de T es un escenario completo."))
+    celdas += apartado(3)
+    celdas.append(code("tau = RT.max()\n"
+                       "pd.DataFrame({'τ = máximo de la columna': tau, 'ruta más larga': RT.idxmax()}).T"))
+    celdas.append(code("media = tau.mean(); desviacion = tau.std(ddof=1)\n"
+                       "Markdown(f'''Media = ({\" + \".join(str(int(x)) for x in tau)}) / {len(tau)} = {media:.2f} días. "
+                       "Desviación típica muestral = √(Σ(τ − media)² / (n − 1)) = {desviacion:.2f} días. "
+                       "Con las duraciones medias el proyecto duraría {proyecto.duration(datos_proyecto[\"duration\"])} días.''')"))
+    celdas += apartado(4)
+    celdas.append(code("ruta_critica = RT.idxmax()\n"
+                       "criticidad_rutas = ruta_critica.value_counts().reindex(R.index, fill_value=0)\n"
+                       "criticidad_actividades = R.loc[ruta_critica].sum()\n"
+                       "pd.DataFrame({'actividades': [' - '.join(R.columns[R.loc[r] == 1]) for r in R.index],\n"
+                       "              'veces crítica': criticidad_rutas, 'índice de criticidad': criticidad_rutas / len(tau)}, index=R.index)"))
+    celdas.append(code("pd.DataFrame({'veces en la ruta crítica': criticidad_actividades, 'índice de criticidad': criticidad_actividades / len(tau)}).T"))
+    celdas.append(code("camino_medio = proyecto.critical_path(datos_proyecto['duration'])\n"
+                       "Markdown(f'Con las duraciones medias la ruta crítica es {\", \".join(\" - \".join(a) for a in camino_medio.values())}; en las réplicas ha sido la más larga '\n"
+                       "         f'{int(criticidad_rutas.max())} de {len(tau)} veces. Con tan pocas réplicas los índices sólo pueden valer múltiplos de {1/len(tau):.1f}.')"))
+    celdas += apartado(5)
+    celdas.append(code("rng = np.random.default_rng(1)\n"
+                       "N = 10000\n"
+                       "T_grande = pd.DataFrame(np.clip(rng.normal(datos_proyecto.loc[R.columns, 'duration'].values[:, None], 1.0, (len(R.columns), N)), 0.5, None), index=R.columns)\n"
+                       "tau_grande = (R @ T_grande).max()\n"
+                       "criticidad_grande = R.loc[(R @ T_grande).idxmax()].mean()\n"
+                       "pd.DataFrame({'5 réplicas': [media, desviacion], '10 000 réplicas': [tau_grande.mean(), tau_grande.std(ddof=1)]}, index=['media', 'desviación típica']).round(2)"))
+    celdas.append(code("pd.DataFrame({'5 réplicas': criticidad_actividades / len(tau), '10 000 réplicas': criticidad_grande}).round(3).T"))
+    celdas.append(md("La operación es exactamente la misma (R·T y máximo por columnas); sólo cambia el número de "
+                     "columnas. Con muchas réplicas la media y la desviación típica se estabilizan (su error "
+                     "estadístico decrece como 1/√N) y los índices de criticidad dejan de ser múltiplos gruesos."))
+    return celdas, f"{n} actividades, {info['n_rutas']} rutas, {N} réplicas calculadas a mano"
+
+
+def _mixtas(rng):
+    """Distribuciones distintas por actividad, incluidas deterministas; uso de monte_carlo de la librería."""
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 5 <= i["n_rutas"] <= 8 and 1 <= i["n_dummies"] <= 4 and i["n_criticas"] == 1
+                    and i["segunda"] is not None and i["T"] - i["segunda"] <= 3 and (i["D"] >= 3).all(),
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D = info["D"]
+    tipos = rng.choice(["normal", "triangular", "uniforme", "fija"], size=len(D), p=[0.35, 0.3, 0.2, 0.15])
+    filas = []
+    for a, t in zip(D.index, tipos):
+        d = int(D[a])
+        if t == "normal":
+            filas.append((a, "normal", f"μ = {d}, σ = {float(rng.choice([0.5, 1.0, 1.5]))}"))
+        elif t == "triangular":
+            p = int(rng.integers(1, 3)); filas.append((a, "triangular", f"a = {max(1, d - p)}, m = {d}, b = {d + p}"))
+        elif t == "uniforme":
+            p = int(rng.integers(1, 3)); filas.append((a, "uniforme", f"a = {max(1, d - p)}, b = {d + p}"))
+        else:
+            filas.append((a, "fija", f"{d}"))
+    dist = pd.DataFrame(filas, columns=["activity", "distribucion", "parametros"]).set_index("activity")
+    df = P.tabla_base(info, duration=D)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones y duraciones medias (semanas) se adjunta. Cada "
+                 "actividad sigue una distribución distinta, según la información disponible sobre ella: normal "
+                 "(media y desviación típica), triangular (mínimo, moda, máximo), uniforme (mínimo, máximo) o "
+                 "fija (duración cierta).")]
+    celdas.append(code('#| tbl-cap: "Cuadro de prelaciones y duraciones medias"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(code('#| tbl-cap: "Distribución de la duración de cada actividad"\n#| label: tbl-distribuciones\n'
+                       + literal_dataframe(dist, nombre="distribuciones")))
+    celdas.append(preguntas([
+        "Calcule la media y la varianza de cada actividad según su distribución y compruebe que las medias "
+        "coinciden con las duraciones medias del cuadro.",
+        "Determine la ruta crítica con las medias y la probabilidad de terminar en la duración media más dos "
+        "semanas según la aproximación normal.",
+        "Simule el proyecto con 20 000 réplicas usando la distribución de cada actividad (las fijas no varían). "
+        "Compare media, desviación típica y la probabilidad anterior.",
+        "¿Qué actividad tiene mayor índice de criticidad sin ser crítica en media? ¿Influye en ello que alguna "
+        "actividad sea de duración fija?"]))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "import re\n"
+                       "def parametros(texto):\n"
+                       "    return [float(x) for x in re.findall(r'[-+]?\\d*\\.?\\d+', texto)]"))
+    celdas += apartado(1)
+    celdas.append(code("filas = {}\n"
+                       "for act, fila in distribuciones.iterrows():\n"
+                       "    p = parametros(fila['parametros'])\n"
+                       "    if fila['distribucion'] == 'normal':\n"
+                       "        media, var = p[0], p[1] ** 2\n"
+                       "    elif fila['distribucion'] == 'triangular':\n"
+                       "        a, m, b = p; media, var = (a + m + b) / 3, (a*a + m*m + b*b - a*b - a*m - b*m) / 18\n"
+                       "    elif fila['distribucion'] == 'uniforme':\n"
+                       "        a, b = p; media, var = (a + b) / 2, (b - a) ** 2 / 12\n"
+                       "    else:\n"
+                       "        media, var = p[0], 0.0\n"
+                       "    filas[act] = {'distribución': fila['distribucion'], 'media': media, 'varianza': var}\n"
+                       "resumen = pd.DataFrame(filas).T\n"
+                       "resumen['media del cuadro'] = datos_proyecto['duration']\n"
+                       "datos_proyecto['variance'] = resumen['varianza'].astype(float)\n"
+                       "resumen"))
+    celdas += apartado(2)
+    celdas.append(code('#| fig-cap: "Grafo PERT con duraciones medias y camino crítico"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code("duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
+                       "desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(datos_proyecto['duration'], datos_proyecto['variance'])\n"
+                       "plazo = duracion_media + 2\n"
+                       "p_normal = float(norm.cdf((plazo - duracion_media) / desviacion_proyecto)) if desviacion_proyecto > 0 else 1.0\n"
+                       "Markdown(f'Duración media {duracion_media}, σ = {desviacion_proyecto:.3f}; P(T ≤ {plazo}) = {p_normal:.3f} por la aproximación normal.')"))
+    celdas += apartado(3)
+    celdas.append(md("`monte_carlo` acepta una distribución por actividad: `('normal', μ, σ)`, "
+                     "`('triangular', a, m, b)`, `('uniform', a, b)` o una función; una duración fija es una "
+                     "función que siempre devuelve el mismo valor."))
+    celdas.append(code("dists = {}\n"
+                       "for act, fila in distribuciones.iterrows():\n"
+                       "    p = parametros(fila['parametros'])\n"
+                       "    if fila['distribucion'] == 'normal':\n"
+                       "        dists[act] = ('normal', p[0], p[1])\n"
+                       "    elif fila['distribucion'] == 'triangular':\n"
+                       "        dists[act] = ('triangular', p[0], p[1], p[2])\n"
+                       "    elif fila['distribucion'] == 'uniforme':\n"
+                       "        dists[act] = ('uniform', p[0], p[1])\n"
+                       "    else:\n"
+                       "        dists[act] = (lambda valor: (lambda size=None: np.full(size, valor) if size else valor))(p[0])\n"
+                       "resultado = proyecto.monte_carlo(dists, n_samples=20000, seed=11)\n"
+                       "p_mc = float((resultado.tau_samples <= plazo).mean())\n"
+                       "display(resultado.summary().round(2))\n"
+                       "pd.DataFrame({'aproximación normal': [duracion_media, desviacion_proyecto, p_normal], 'Monte Carlo': [resultado.tau_mean, resultado.tau_std, p_mc]},\n"
+                       "             index=['media', 'desviación típica', f'P(T ≤ {plazo})']).round(3)"))
+    celdas += apartado(4)
+    celdas.append(code("calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "crit = (resultado.sensitivity_mean * 100).round(1).rename('índice de criticidad (%)')\n"
+                       "tabla = pd.concat([crit, calendario['H_total'].rename('holgura'), resumen['distribución'], resumen['varianza'].astype(float).round(2)], axis=1).sort_values('índice de criticidad (%)', ascending=False)\n"
+                       "tabla"))
+    celdas.append(code("vigilar = tabla[tabla['holgura'] > 0]['índice de criticidad (%)'].idxmax()\n"
+                       "Markdown(f'''La actividad no crítica con mayor índice de criticidad es {vigilar} ({tabla.loc[vigilar, \"índice de criticidad (%)\"]} %). "
+                       "Las actividades de duración fija nunca cambian de ruta por sí mismas: su índice depende sólo de lo que hagan las demás; "
+                       "una ruta con muchas actividades fijas tiene poca varianza y rara vez «adelanta» a la crítica.''')"))
+    return celdas, f"{n} actividades con distribuciones mixtas ({int((tipos == 'fija').sum())} fijas)"
+
+
+def _convergencia(rng):
+    """Cuántas réplicas hacen falta: error de la estimación frente a N."""
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 5 <= i["n_rutas"] <= 8 and 1 <= i["n_dummies"] <= 4 and i["n_criticas"] == 1
+                    and i["segunda"] is not None and i["T"] - i["segunda"] <= 2 and i["T"] >= 12,
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D = info["D"]
+    sd = P.desviaciones(rng, list(D.index))
+    df = P.tabla_base(info, duration=D, standard_deviation=sd)
+    plazo = int(info["T"]) + 1
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duraciones medias y desviaciones típicas "
+                 "(semanas, distribución normal) se adjunta. Se quiere saber cuántas réplicas de Monte Carlo hacen "
+                 "falta para estimar con precisión la duración del proyecto.")]
+    celdas.append(preguntas([
+        "Construya la matriz de rutas y simule el proyecto con N = 20, 200, 2 000 y 20 000 réplicas. Anote en cada "
+        f"caso la media, la desviación típica, el percentil 90 y la probabilidad de terminar en {plazo} semanas.",
+        "Repita cada simulación 10 veces con semillas distintas y calcule la dispersión (desviación típica) de la "
+        "media estimada entre repeticiones. ¿Cómo decrece con N?",
+        "Compare esa dispersión con la fórmula del error típico de la media, σ/√N. ¿Cuántas réplicas hacen falta "
+        "para que el error de la media sea menor de 0,1 semanas?",
+        "¿Necesita el percentil 90 más o menos réplicas que la media para la misma precisión? ¿Por qué?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "mu = datos_proyecto.loc[R.columns, 'duration'].values[:, None]\n"
+                       "sigma = datos_proyecto.loc[R.columns, 'standard_deviation'].values[:, None]\n"
+                       f"plazo = {plazo}\n"
+                       "def simular(N, semilla):\n"
+                       "    rng = np.random.default_rng(semilla)\n"
+                       "    T = np.clip(rng.normal(mu, sigma, (len(R.columns), N)), 0, None)\n"
+                       "    return (R.values @ T).max(axis=0)"))
+    celdas += apartado(1)
+    celdas.append(code("tamanos = [20, 200, 2000, 20000]\n"
+                       "filas = {}\n"
+                       "for N in tamanos:\n"
+                       "    tau = simular(N, 0)\n"
+                       "    filas[N] = {'media': tau.mean(), 'desviación típica': tau.std(ddof=1), 'percentil 90': np.quantile(tau, 0.9), f'P(T ≤ {plazo})': (tau <= plazo).mean()}\n"
+                       "pd.DataFrame(filas).T.round(3)"))
+    celdas += apartado(2)
+    celdas.append(code("repeticiones = 10\n"
+                       "disp = {}\n"
+                       "for N in tamanos:\n"
+                       "    medias = [simular(N, s).mean() for s in range(1, repeticiones + 1)]\n"
+                       "    p90 = [np.quantile(simular(N, s), 0.9) for s in range(1, repeticiones + 1)]\n"
+                       "    disp[N] = {'dispersión de la media': np.std(medias, ddof=1), 'dispersión del percentil 90': np.std(p90, ddof=1)}\n"
+                       "dispersion = pd.DataFrame(disp).T\n"
+                       "dispersion.round(4)"))
+    celdas.append(md("Al multiplicar N por 10 la dispersión se divide aproximadamente por √10 ≈ 3,16."))
+    celdas += apartado(3)
+    celdas.append(code("sigma_tau = simular(20000, 0).std(ddof=1)\n"
+                       "dispersion['σ/√N'] = [sigma_tau / np.sqrt(N) for N in tamanos]\n"
+                       "N_necesario = int(np.ceil((sigma_tau / 0.1) ** 2))\n"
+                       "display(dispersion.round(4))\n"
+                       "Markdown(f'Con σ_τ ≈ {sigma_tau:.2f}, para un error típico de 0,1 semanas hacen falta N ≥ (σ/0,1)² ≈ {N_necesario} réplicas.')"))
+    celdas += apartado(4)
+    celdas.append(md("El percentil 90 se estima con las réplicas de la cola, que son pocas (el 10 % de N), y su "
+                     "error es mayor que el de la media para el mismo N; la tabla de dispersiones lo muestra. Por "
+                     "eso las decisiones basadas en percentiles altos (plazos comprometidos al 90–95 %) necesitan "
+                     "más réplicas que las basadas en la media."))
+    return celdas, f"{n} actividades; convergencia de la media y del percentil 90 con N"
+
+
+VARIANTES = [
+    Variante("normal", 1, "Monte Carlo con R·T, comparación con la aproximación normal, criticidad y sensibilidad (normal)",
+             lambda rng: _base(1, rng)),
+    Variante("triangular", 2, "ídem con duraciones triangulares (a, m, b)", lambda rng: _base(2, rng)),
+    Variante("beta-pert", 2, "ídem con duraciones Beta-PERT", lambda rng: _base(3, rng)),
+    Variante("a-mano", 1, "cinco réplicas a mano: R·T, máximo por columnas, media, desviación y criticidad", _a_mano),
+    Variante("mixtas", 2, "distribuciones distintas por actividad (incluidas fijas) con monte_carlo de la librería", _mixtas),
+    Variante("convergencia", 3, "cuántas réplicas hacen falta: error típico de la media y del percentil 90", _convergencia),
+]
+
+
+def generar(k, rng):
+    return despachar(VARIANTES, k, rng)

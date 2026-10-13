@@ -1,6 +1,9 @@
 # ---
 # title: Prelaciones 03
 # subtitle: "10 actividades, 2 prelaciones redundantes, una errata con ciclo"
+# coleccion: 01_prelaciones
+# variante: ciclo
+# nivel: 2
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -32,8 +35,11 @@ from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-# Versión local de la librería (notebooks/colecciones/<coleccion>/ -> ../../../src)
-sys.path.append(os.path.abspath('../../../src'))
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
                    tanto_por_uno, ordena_rutas)
@@ -69,12 +75,12 @@ datos_enunciado = pd.DataFrame([
 #  activity, predecessor
     ('F'     , 'C,D'      ),
     ('G'     , 'F'        ),
-    ('C'     , 'A,B,I'    ),
+    ('C'     , 'A,B,G'    ),
     ('E'     , 'D'        ),
     ('H'     , 'G'        ),
     ('J'     , 'C,I'      ),
     ('D'     , 'B'        ),
-    ('I'     , 'C,E,H'    ),
+    ('I'     , 'E,F,H'    ),
     ('A'     , '---'      ),
     ('B'     , '---'      ),
 ], columns=['activity', 'predecessor']).set_index('activity')
@@ -111,11 +117,11 @@ ciclos = list(nx.simple_cycles(G))
 ciclos
 
 # %% [markdown]
-# En el ciclo participa la prelación «I precede a C». Como I es, por el resto del cuadro, descendiente de C, esa anotación es la errata: eliminándola el cuadro vuelve a ser acíclico.
+# En el ciclo participa la prelación «G precede a C». Como G es, por el resto del cuadro, descendiente de C, esa anotación es la errata: eliminándola el cuadro vuelve a ser acíclico.
 
 # %%
-prelaciones_dadas['C'].discard('I')
-G.remove_edge('I', 'C')
+prelaciones_dadas['C'].discard('G')
+G.remove_edge('G', 'C')
 print('Ciclos restantes:', list(nx.simple_cycles(G)))
 
 # %% [markdown]

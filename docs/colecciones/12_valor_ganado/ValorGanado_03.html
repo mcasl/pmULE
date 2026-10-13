@@ -2224,8 +2224,8 @@ var requirejs,require,define;(function(global,setTimeout){var req,s,head,baseEle
 <section id="enunciado" class="level1">
 <h1>Enunciado</h1>
 <p>Considere el proyecto cuyo cuadro de prelaciones, duraciones planificadas (semanas) y presupuesto por actividad (BAC, en k€) se adjunta. El coste planificado de cada actividad se reparte uniformemente a lo largo de su duración.</p>
-<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.599928Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.599405Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.628457Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.626914Z&quot;}}" data-execution_count="3">
-<div id="tbl-datosenunciado" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.599928Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.599405Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.628457Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.626914Z&quot;}}" data-execution_count="3">
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.213428Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.213052Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.242020Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.240111Z&quot;}}" data-execution_count="3">
+<div id="tbl-datosenunciado" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="3" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.213428Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.213052Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.242020Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.240111Z&quot;}}">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-datosenunciado-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Tabla 1: Planificación del proyecto
@@ -2314,15 +2314,80 @@ Tabla 1: Planificación del proyecto
 </figure>
 </div>
 </div>
+<p>El proyecto corresponde a el lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).</p>
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.245165Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.244896Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.259042Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.255702Z&quot;}}" data-execution_count="4">
+<div id="tbl-descripciones" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="4" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.245165Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.244896Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.259042Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.255702Z&quot;}}">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-descripciones-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Tabla 2: Descripción de las actividades
+</figcaption>
+<div aria-describedby="tbl-descripciones-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div>
+
+
+<table class="dataframe do-not-create-environment cell caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">Descripción</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">A</th>
+<td>Estudio de requisitos</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">B</th>
+<td>Diseño de la arquitectura</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">C</th>
+<td>Diseño de interfaz y prototipo</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">D</th>
+<td>Base de datos y modelo</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">E</th>
+<td>API del servidor</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">F</th>
+<td>Pantallas principales</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">G</th>
+<td>Módulo de pagos</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">H</th>
+<td>Notificaciones y sincronización</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">I</th>
+<td>Pruebas de integración</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</figure>
+</div>
+</div>
 <p>Se han realizado tres puntos de control, al final de las semanas 5, 10 y 14. En cada uno se anotó, para cada actividad, las semanas trabajadas hasta ese momento, el coste real incurrido (k€) y el porcentaje realizado.</p>
-<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.632277Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.631802Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.646501Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.643459Z&quot;}}" data-execution_count="4">
-<div id="tbl-seguimiento1" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.632277Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.631802Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.646501Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.643459Z&quot;}}" data-execution_count="4">
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.263001Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.262544Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.287133Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.284272Z&quot;}}" data-execution_count="5">
+<div id="tbl-seguimiento1" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="5" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.263001Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.262544Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.287133Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.284272Z&quot;}}">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-seguimiento1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Tabla 2: Punto de control 1 (final de la semana 5)
+Tabla 3: Punto de control 1 (final de la semana 5)
 </figcaption>
 <div aria-describedby="tbl-seguimiento1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="4">
+<div class="cell-output cell-output-display" data-execution_count="5">
 <div>
 
 
@@ -2405,14 +2470,14 @@ Tabla 2: Punto de control 1 (final de la semana 5)
 </figure>
 </div>
 </div>
-<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.650520Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.650218Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.665180Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.663095Z&quot;}}" data-execution_count="5">
-<div id="tbl-seguimiento2" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.650520Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.650218Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.665180Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.663095Z&quot;}}" data-execution_count="5">
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.291436Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.291105Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.305992Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.303410Z&quot;}}" data-execution_count="6">
+<div id="tbl-seguimiento2" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="6" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.291436Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.291105Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.305992Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.303410Z&quot;}}">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-seguimiento2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Tabla 3: Punto de control 2 (final de la semana 10)
+Tabla 4: Punto de control 2 (final de la semana 10)
 </figcaption>
 <div aria-describedby="tbl-seguimiento2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="5">
+<div class="cell-output cell-output-display" data-execution_count="6">
 <div>
 
 
@@ -2495,14 +2560,14 @@ Tabla 3: Punto de control 2 (final de la semana 10)
 </figure>
 </div>
 </div>
-<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.668908Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.668570Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.682599Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.680130Z&quot;}}" data-execution_count="6">
-<div id="tbl-seguimiento3" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.668908Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.668570Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.682599Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.680130Z&quot;}}" data-execution_count="6">
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.309499Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.309160Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.326618Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.323662Z&quot;}}" data-execution_count="7">
+<div id="tbl-seguimiento3" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="7" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.309499Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.309160Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.326618Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.323662Z&quot;}}">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-seguimiento3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Tabla 4: Punto de control 3 (final de la semana 14)
+Tabla 5: Punto de control 3 (final de la semana 14)
 </figcaption>
 <div aria-describedby="tbl-seguimiento3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="6">
+<div class="cell-output cell-output-display" data-execution_count="7">
 <div>
 
 
@@ -2585,7 +2650,7 @@ Tabla 4: Punto de control 3 (final de la semana 14)
 </figure>
 </div>
 </div>
-<div id="5a9e1661" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.687655Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.687337Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.701462Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.699362Z&quot;}}" data-execution_count="7">
+<div id="ff4093d1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.330159Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.329703Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.345971Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.343376Z&quot;}}" data-execution_count="8">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol type="1">
 <li>Calcule PV, EV y AC en cada punto de control.<br>
@@ -2614,8 +2679,8 @@ Tabla 4: Punto de control 3 (final de la semana 14)
 </section>
 <section id="resolución" class="level1">
 <h1>Resolución</h1>
-<div id="cell-fig-pert" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.740268Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.739969Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.859089Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.856022Z&quot;}}" data-execution_count="9">
-<div class="cell-output cell-output-display" data-execution_count="9">
+<div id="cell-fig-pert" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.385419Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.385050Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.501117Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.498127Z&quot;}}" data-execution_count="10">
+<div class="cell-output cell-output-display" data-execution_count="10">
 <div id="fig-pert" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-pert-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -2630,7 +2695,7 @@ Figura 1: Grafo PERT de la planificación
 </div>
 <section id="apartado-1" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-1">Apartado 1</h2>
-<div id="fd8a0f64" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.863989Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.863485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:48.874473Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:48.871158Z&quot;}}" data-execution_count="10">
+<div id="16c70332" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.506268Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.505772Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:24.515379Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:24.511753Z&quot;}}" data-execution_count="11">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol type="1">
 <li>Calcule PV, EV y AC en cada punto de control.<br>
@@ -2638,8 +2703,8 @@ Figura 1: Grafo PERT de la planificación
 </ol>
 </div>
 </div>
-<div id="eb40e376" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:48.879547Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:48.879154Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:50.531661Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:50.528570Z&quot;}}" data-execution_count="11">
-<div class="cell-output cell-output-display" data-execution_count="11">
+<div id="f04c7a2d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:24.520403Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:24.520080Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:26.082515Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:26.080550Z&quot;}}" data-execution_count="12">
+<div class="cell-output cell-output-display" data-execution_count="12">
 <div>
 
 
@@ -2686,7 +2751,7 @@ Figura 1: Grafo PERT de la planificación
 </section>
 <section id="apartado-2" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-2">Apartado 2</h2>
-<div id="f9e7d51b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:50.535474Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:50.534882Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:50.541801Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:50.540156Z&quot;}}" data-execution_count="12">
+<div id="789f58cf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:26.087135Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:26.086485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:26.094006Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:26.091959Z&quot;}}" data-execution_count="13">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="2" type="1">
 <li>Calcule CV, SV, CPI y SPI en cada punto de control y represente su evolución.<br>
@@ -2694,8 +2759,8 @@ Figura 1: Grafo PERT de la planificación
 </ol>
 </div>
 </div>
-<div id="c0ccec9f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:50.545083Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:50.544682Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:50.561211Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:50.558744Z&quot;}}" data-execution_count="13">
-<div class="cell-output cell-output-display" data-execution_count="13">
+<div id="f19ff83a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:26.097590Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:26.097279Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:26.115114Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:26.112564Z&quot;}}" data-execution_count="14">
+<div class="cell-output cell-output-display" data-execution_count="14">
 <div>
 
 
@@ -2759,7 +2824,7 @@ Figura 1: Grafo PERT de la planificación
 </div>
 </div>
 </div>
-<div id="cell-fig-evolucion" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:50.564984Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:50.564545Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:50.808340Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:50.805033Z&quot;}}" data-execution_count="14">
+<div id="cell-fig-evolucion" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:26.118344Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:26.118041Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:26.345857Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:26.343423Z&quot;}}" data-execution_count="15">
 <div class="cell-output cell-output-display">
 <div id="fig-evolucion" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
@@ -2776,7 +2841,7 @@ Figura 2: Evolución de CPI y SPI
 </section>
 <section id="apartado-3" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-3">Apartado 3</h2>
-<div id="4011b2e4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:50.813249Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:50.812754Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:50.821627Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:50.819090Z&quot;}}" data-execution_count="15">
+<div id="e5045731" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:26.349753Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:26.349478Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:26.356748Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:26.354643Z&quot;}}" data-execution_count="16">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="3" type="1">
 <li>Calcule en cada punto la estimación del coste final EAC = BAC / CPI y comente la tendencia.<br>
@@ -2784,8 +2849,8 @@ Figura 2: Evolución de CPI y SPI
 </ol>
 </div>
 </div>
-<div id="fa9d1635" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:50.825466Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:50.825142Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:50.839335Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:50.837103Z&quot;}}" data-execution_count="16">
-<div class="cell-output cell-output-display" data-execution_count="16">
+<div id="0b8bcb7d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:26.360340Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:26.360053Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:26.374386Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:26.372103Z&quot;}}" data-execution_count="17">
+<div class="cell-output cell-output-display" data-execution_count="17">
 <div>
 
 
@@ -2832,7 +2897,7 @@ Figura 2: Evolución de CPI y SPI
 </section>
 <section id="apartado-4" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-4">Apartado 4</h2>
-<div id="8b7fe29b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:50.843569Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:50.843253Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:50.851580Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:50.849117Z&quot;}}" data-execution_count="17">
+<div id="22bc9ac6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:26.377757Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:26.377488Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:26.384192Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:26.382333Z&quot;}}" data-execution_count="18">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="4" type="1">
 <li>A la vista de la evolución, ¿el proyecto se está recuperando o deteriorando? ¿Qué decisiones tomaría tras el último punto de control?<br>
@@ -2840,8 +2905,8 @@ Figura 2: Evolución de CPI y SPI
 </ol>
 </div>
 </div>
-<div id="7286d4e5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T08:27:50.856380Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T08:27:50.855858Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T08:27:50.868601Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T08:27:50.864998Z&quot;}}" data-execution_count="18">
-<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="18">
+<div id="3ad29789" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T10:05:26.387677Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T10:05:26.387379Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T10:05:26.397409Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T10:05:26.395011Z&quot;}}" data-execution_count="19">
+<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="19">
 <p>Entre el primer y el último punto de control el CPI empeora (0.90 → 0.87) y el SPI empeora (0.81 → 0.77). La previsión de coste final pasa de 376 a 390 k€ frente a un presupuesto de 340. Conviene recordar que el SPI tiende a 1 al final del proyecto aunque haya retraso, así que su mejora en los últimos puntos puede ser aparente; para el plazo es preferible la programación ganada. Tras el último control procede revisar las actividades pendientes: acelerar las críticas (si el sobrecoste compensa la penalización o los costes indirectos) y revisar las causas del sobrecoste en las ya ejecutadas para que no se repitan.</p>
 </div>
 </div>
