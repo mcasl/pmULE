@@ -2191,7 +2191,6 @@ var requirejs,require,define;(function(global,setTimeout){var req,s,head,baseEle
   <li><a href="#problema-1" id="toc-problema-1" class="nav-link active" data-scroll-target="#problema-1">Problema 1</a></li>
   <li><a href="#problema-2" id="toc-problema-2" class="nav-link" data-scroll-target="#problema-2">Problema 2</a></li>
   <li><a href="#problema-3" id="toc-problema-3" class="nav-link" data-scroll-target="#problema-3">Problema 3</a></li>
-  <li><a href="#problema-4" id="toc-problema-4" class="nav-link" data-scroll-target="#problema-4">Problema 4</a></li>
   </ul>
 </nav>
 </div>
@@ -2200,7 +2199,7 @@ var requirejs,require,define;(function(global,setTimeout){var req,s,head,baseEle
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
 <h1 class="title">ejemplo_parcial — enunciado</h1>
-<p class="subtitle lead">P1: Holguras y camino crítico (holgura-compartida); P2: Probabilidad de cumplir el plazo (aproximación normal) (dos-rutas-criticas); P3: Reducción de la duración con mínimo coste (barata-no-optima); P4: Método del valor ganado (earned-schedule)</p>
+<p class="subtitle lead">P1: Holguras y camino crítico (holgura-compartida); P2: Probabilidad de cumplir el plazo (aproximación normal) (dos-rutas-criticas); P3: Método del valor ganado (tendencia)</p>
 </div>
 
 
@@ -2220,7 +2219,7 @@ var requirejs,require,define;(function(global,setTimeout){var req,s,head,baseEle
 <section id="problema-1" class="level1">
 <h1>Problema 1</h1>
 <p>Considere el proyecto cuyo cuadro de prelaciones y duraciones (en semanas) se adjunta.</p>
-<div id="52f6f1bf" class="cell" data-execution_count="4">
+<div id="1d62cee8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.186998Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.186800Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.200249Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.198899Z&quot;}}" data-execution_count="5">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol type="1">
 <li>Calcule el calendario del proyecto con las holguras total, libre e independiente.<br>
@@ -2229,31 +2228,31 @@ var requirejs,require,define;(function(global,setTimeout){var req,s,head,baseEle
 </div>
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="2" type="1">
-<li>A y C son consecutivas y tienen la misma holgura total. El responsable de A pide retrasarla 3 semanas y el de C también. ¿Pueden concederse las dos peticiones sin alargar el proyecto? Razónelo antes de calcular.<br>
+<li>F y H son consecutivas y tienen la misma holgura total. El responsable de F pide retrasarla 12 semanas y el de H también. ¿Pueden concederse las dos peticiones sin alargar el proyecto? Razónelo antes de calcular.<br>
 </li>
 </ol>
 </div>
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="3" type="1">
-<li>Compruébelo: recalcule el calendario con A retrasada 3 semanas y después con las dos retrasadas.<br>
+<li>Compruébelo: recalcule el calendario con F retrasada 12 semanas y después con las dos retrasadas.<br>
 </li>
 </ol>
 </div>
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="4" type="1">
-<li>¿Qué holgura expresa cuánto puede retrasarse cada una sin quitarle margen a la otra? ¿Cómo repartiría las 3 semanas entre A y C?<br>
+<li>¿Qué holgura expresa cuánto puede retrasarse cada una sin quitarle margen a la otra? ¿Cómo repartiría las 12 semanas entre F y H?<br>
 </li>
 </ol>
 </div>
 </div>
-<div class="cell" data-execution_count="5">
-<div id="tbl-datosenunciado-p1" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="5">
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.202683Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.202335Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.217293Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.214728Z&quot;}}" data-execution_count="6">
+<div id="tbl-datosenunciado-p1" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.202683Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.202335Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.217293Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.214728Z&quot;}}" data-execution_count="6">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-datosenunciado-p1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Tabla 1: Cuadro de datos del enunciado
 </figcaption>
 <div aria-describedby="tbl-datosenunciado-p1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="5">
+<div class="cell-output cell-output-display" data-execution_count="6">
 <div>
 
 
@@ -2274,52 +2273,185 @@ Tabla 1: Cuadro de datos del enunciado
 <tr class="odd">
 <th data-quarto-table-cell-role="th">A</th>
 <td>---</td>
-<td>1</td>
+<td>7</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">B</th>
 <td>---</td>
-<td>8</td>
+<td>3</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">C</th>
-<td>A</td>
+<td>---</td>
 <td>4</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">D</th>
-<td>A</td>
-<td>2</td>
+<td>A,C</td>
+<td>7</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">E</th>
-<td>B,C,D</td>
-<td>8</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">F</th>
 <td>D</td>
-<td>2</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">G</th>
-<td>C,F</td>
 <td>1</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">H</th>
+<th data-quarto-table-cell-role="th">F</th>
+<td>B</td>
+<td>4</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">G</th>
 <td>E</td>
-<td>2</td>
+<td>5</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">H</th>
+<td>F</td>
+<td>1</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">I</th>
-<td>F,H</td>
-<td>2</td>
+<td>G,H</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</figure>
+</div>
+</div>
+</section>
+<section id="problema-2" class="level1">
+<h1>Problema 2</h1>
+<p>Considere el proyecto cuyo cuadro de prelaciones, duraciones medias y desviaciones típicas (en semanas) se adjunta.</p>
+<div id="e937e5e7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.231519Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.231278Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.246744Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.245863Z&quot;}}" data-execution_count="8">
+<div class="cell-output cell-output-display cell-output-markdown">
+<ol type="1">
+<li>Determine la duración media del proyecto y su(s) camino(s) crítico(s).<br>
+</li>
+</ol>
+</div>
+<div class="cell-output cell-output-display cell-output-markdown">
+<ol start="2" type="1">
+<li>Calcule la varianza y la desviación típica de la duración del proyecto. ¿Qué ruta crítica debe usarse para ello? Razone la respuesta.<br>
+</li>
+</ol>
+</div>
+<div class="cell-output cell-output-display cell-output-markdown">
+<ol start="3" type="1">
+<li>¿Qué probabilidad hay de terminar el proyecto en 34 semanas o menos?<br>
+</li>
+</ol>
+</div>
+<div class="cell-output cell-output-display cell-output-markdown">
+<ol start="4" type="1">
+<li>¿Qué probabilidad hay de terminar entre las semanas 31 y 34?<br>
+</li>
+</ol>
+</div>
+<div class="cell-output cell-output-display cell-output-markdown">
+<ol start="5" type="1">
+<li>¿Qué duración puede comprometerse con el cliente con una probabilidad del 90% de cumplirla?<br>
+</li>
+</ol>
+</div>
+<div class="cell-output cell-output-display cell-output-markdown">
+<ol start="6" type="1">
+<li>¿Qué probabilidad hay de terminar en la duración media o antes? ¿Puede garantizarse esa duración con un 90% de probabilidad sin modificar el proyecto?<br>
+</li>
+</ol>
+</div>
+</div>
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.249040Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.248875Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.262649Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.261298Z&quot;}}" data-execution_count="9">
+<div id="tbl-datosenunciado-p2" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.249040Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.248875Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.262649Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.261298Z&quot;}}" data-execution_count="9">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-datosenunciado-p2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Tabla 2: Cuadro de datos del enunciado
+</figcaption>
+<div aria-describedby="tbl-datosenunciado-p2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="cell-output cell-output-display" data-execution_count="9">
+<div>
+
+
+<table class="dataframe do-not-create-environment cell caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">predecessor</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">standard_deviation</th>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">activity</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">A</th>
+<td>---</td>
+<td>7</td>
+<td>0.1</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">B</th>
+<td>---</td>
+<td>4</td>
+<td>0.8</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">C</th>
+<td>---</td>
+<td>7</td>
+<td>0.4</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">D</th>
+<td>A,B,C</td>
+<td>6</td>
+<td>0.1</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">E</th>
+<td>D</td>
+<td>3</td>
+<td>0.3</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">F</th>
+<td>E</td>
+<td>4</td>
+<td>0.8</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">G</th>
+<td>F</td>
+<td>3</td>
+<td>1.0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">H</th>
+<td>G</td>
+<td>6</td>
+<td>0.4</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">I</th>
+<td>H</td>
+<td>3</td>
+<td>0.3</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">J</th>
-<td>G,I</td>
-<td>7</td>
+<td>H</td>
+<td>2</td>
+<td>0.4</td>
 </tr>
 </tbody>
 </table>
@@ -2331,14 +2463,14 @@ Tabla 1: Cuadro de datos del enunciado
 </div>
 </div>
 <p>El proyecto corresponde a el lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).</p>
-<div class="cell" data-execution_count="6">
-<div id="tbl-descripciones-p1" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="6">
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.264382Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.264196Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.272424Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.271240Z&quot;}}" data-execution_count="10">
+<div id="tbl-descripciones-p2" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.264382Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.264196Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.272424Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.271240Z&quot;}}" data-execution_count="10">
 <figure class="quarto-float quarto-float-tbl figure">
-<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-descripciones-p1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Tabla 2: Descripción de las actividades
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-descripciones-p2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Tabla 3: Descripción de las actividades
 </figcaption>
-<div aria-describedby="tbl-descripciones-p1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="6">
+<div aria-describedby="tbl-descripciones-p2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="cell-output cell-output-display" data-execution_count="10">
 <div>
 
 
@@ -2400,280 +2532,17 @@ Tabla 2: Descripción de las actividades
 </div>
 </div>
 </section>
-<section id="problema-2" class="level1">
-<h1>Problema 2</h1>
-<p>Considere el proyecto cuyo cuadro de prelaciones, duraciones medias y desviaciones típicas (en semanas) se adjunta.</p>
-<div id="19f207f0" class="cell" data-execution_count="8">
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol type="1">
-<li>Determine la duración media del proyecto y su(s) camino(s) crítico(s).<br>
-</li>
-</ol>
-</div>
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol start="2" type="1">
-<li>Calcule la varianza y la desviación típica de la duración del proyecto. ¿Qué ruta crítica debe usarse para ello? Razone la respuesta.<br>
-</li>
-</ol>
-</div>
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol start="3" type="1">
-<li>¿Qué probabilidad hay de terminar el proyecto en 36 semanas o menos?<br>
-</li>
-</ol>
-</div>
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol start="4" type="1">
-<li>¿Qué probabilidad hay de terminar entre las semanas 33 y 36?<br>
-</li>
-</ol>
-</div>
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol start="5" type="1">
-<li>¿Qué duración puede comprometerse con el cliente con una probabilidad del 95% de cumplirla?<br>
-</li>
-</ol>
-</div>
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol start="6" type="1">
-<li>¿Qué probabilidad hay de terminar en la duración media o antes? ¿Puede garantizarse esa duración con un 95% de probabilidad sin modificar el proyecto?<br>
-</li>
-</ol>
-</div>
-</div>
-<div class="cell" data-execution_count="9">
-<div id="tbl-datosenunciado-p2" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="9">
-<figure class="quarto-float quarto-float-tbl figure">
-<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-datosenunciado-p2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Tabla 3: Cuadro de datos del enunciado
-</figcaption>
-<div aria-describedby="tbl-datosenunciado-p2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="9">
-<div>
-
-
-<table class="dataframe do-not-create-environment cell caption-top table table-sm table-striped small" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">predecessor</th>
-<th data-quarto-table-cell-role="th">duration</th>
-<th data-quarto-table-cell-role="th">standard_deviation</th>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">activity</th>
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th"></th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">A</th>
-<td>---</td>
-<td>5</td>
-<td>1.0</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">B</th>
-<td>---</td>
-<td>5</td>
-<td>0.8</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">C</th>
-<td>A,B</td>
-<td>4</td>
-<td>0.1</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">D</th>
-<td>A</td>
-<td>4</td>
-<td>1.0</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">E</th>
-<td>C</td>
-<td>8</td>
-<td>0.3</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">F</th>
-<td>E</td>
-<td>8</td>
-<td>0.8</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">G</th>
-<td>F</td>
-<td>3</td>
-<td>0.6</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">H</th>
-<td>F</td>
-<td>6</td>
-<td>0.2</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">I</th>
-<td>G,H</td>
-<td>3</td>
-<td>0.4</td>
-</tr>
-</tbody>
-</table>
-
-</div>
-</div>
-</div>
-</figure>
-</div>
-</div>
-</section>
 <section id="problema-3" class="level1">
 <h1>Problema 3</h1>
-<p>Considere el proyecto cuyo cuadro de prelaciones, duraciones normal y tope (semanas) y coste unitario de reducción (k€/semana) se adjunta. Las actividades con CUR infinito no pueden acelerarse.</p>
-<div id="3f8a7609" class="cell" data-execution_count="11">
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol type="1">
-<li>Determine la duración del proyecto y sus rutas críticas. ¿Qué actividades son comunes a todas ellas?<br>
-</li>
-</ol>
-</div>
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol start="2" type="1">
-<li>La actividad crítica más barata de acelerar es B. Un compañero propone acortarla una semana para reducir el proyecto una semana. Prediga, sin calcular, si funcionará.<br>
-</li>
-</ol>
-</div>
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol start="3" type="1">
-<li>Compruébelo: acorte B una semana y recalcule la duración.<br>
-</li>
-</ol>
-</div>
-<div class="cell-output cell-output-display cell-output-markdown">
-<ol start="4" type="1">
-<li>Aplique el algoritmo de Ackoff-Sasieni para reducir el proyecto dos semanas con mínimo coste y explique por qué en cada paso elige lo que elige (actividad común frente a pareja de actividades).<br>
-</li>
-</ol>
-</div>
-</div>
-<div class="cell" data-execution_count="12">
-<div id="tbl-datosenunciado-p3" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="12">
+<p>Considere el proyecto cuyo cuadro de prelaciones, duraciones planificadas (semanas) y presupuesto por actividad (BAC, en k€) se adjunta. El coste planificado de cada actividad se reparte uniformemente a lo largo de su duración.</p>
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.281715Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.281530Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.290467Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.289562Z&quot;}}" data-execution_count="12">
+<div id="tbl-datosenunciado-p3" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.281715Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.281530Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.290467Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.289562Z&quot;}}" data-execution_count="12">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-datosenunciado-p3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Tabla 4: Cuadro de datos del enunciado
+Tabla 4: Planificación del proyecto
 </figcaption>
 <div aria-describedby="tbl-datosenunciado-p3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output cell-output-display" data-execution_count="12">
-<div>
-
-
-<table class="dataframe do-not-create-environment cell caption-top table table-sm table-striped small" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">predecessor</th>
-<th data-quarto-table-cell-role="th">duration</th>
-<th data-quarto-table-cell-role="th">cap_duration</th>
-<th data-quarto-table-cell-role="th">ucr</th>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">activity</th>
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th"></th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">A</th>
-<td>---</td>
-<td>3</td>
-<td>3</td>
-<td>inf</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">B</th>
-<td>---</td>
-<td>3</td>
-<td>1</td>
-<td>1.0</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">C</th>
-<td>---</td>
-<td>2</td>
-<td>1</td>
-<td>1.0</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">D</th>
-<td>A,B,C</td>
-<td>8</td>
-<td>6</td>
-<td>9.0</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">E</th>
-<td>D</td>
-<td>3</td>
-<td>3</td>
-<td>inf</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">F</th>
-<td>B</td>
-<td>2</td>
-<td>2</td>
-<td>inf</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">G</th>
-<td>E,F</td>
-<td>6</td>
-<td>4</td>
-<td>9.0</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">H</th>
-<td>E</td>
-<td>6</td>
-<td>3</td>
-<td>2.0</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">I</th>
-<td>G</td>
-<td>7</td>
-<td>7</td>
-<td>inf</td>
-</tr>
-</tbody>
-</table>
-
-</div>
-</div>
-</div>
-</figure>
-</div>
-</div>
-</section>
-<section id="problema-4" class="level1">
-<h1>Problema 4</h1>
-<p>Considere el proyecto cuyo cuadro de prelaciones, duraciones planificadas (semanas) y presupuesto por actividad (BAC, en k€) se adjunta. El coste planificado de cada actividad se reparte uniformemente a lo largo de su duración.</p>
-<div class="cell" data-execution_count="14">
-<div id="tbl-datosenunciado-p4" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="14">
-<figure class="quarto-float quarto-float-tbl figure">
-<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-datosenunciado-p4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Tabla 5: Planificación del proyecto
-</figcaption>
-<div aria-describedby="tbl-datosenunciado-p4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="14">
 <div>
 
 
@@ -2696,56 +2565,50 @@ Tabla 5: Planificación del proyecto
 <tr class="odd">
 <th data-quarto-table-cell-role="th">A</th>
 <td>---</td>
-<td>7</td>
-<td>40</td>
+<td>3</td>
+<td>20</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">B</th>
 <td>---</td>
-<td>6</td>
-<td>20</td>
+<td>4</td>
+<td>50</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">C</th>
-<td>A,B</td>
-<td>2</td>
-<td>10</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">D</th>
-<td>A,B</td>
-<td>2</td>
-<td>40</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">E</th>
-<td>B</td>
-<td>8</td>
-<td>20</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">F</th>
-<td>C</td>
-<td>1</td>
-<td>30</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">G</th>
-<td>D,F</td>
+<td>---</td>
 <td>6</td>
 <td>40</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">H</th>
-<td>E,G</td>
+<th data-quarto-table-cell-role="th">D</th>
+<td>A,B,C</td>
 <td>4</td>
 <td>60</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">I</th>
-<td>H</td>
+<th data-quarto-table-cell-role="th">E</th>
+<td>B,C</td>
+<td>3</td>
+<td>60</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">F</th>
+<td>D,E</td>
 <td>2</td>
-<td>20</td>
+<td>10</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">G</th>
+<td>D</td>
+<td>2</td>
+<td>50</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">H</th>
+<td>F</td>
+<td>4</td>
+<td>30</td>
 </tr>
 </tbody>
 </table>
@@ -2756,14 +2619,182 @@ Tabla 5: Planificación del proyecto
 </figure>
 </div>
 </div>
-<p>Al final de la semana 11 se realiza un punto de control. Para cada actividad se anotan las semanas trabajadas hasta ese momento, el coste real incurrido (k€) y el porcentaje realizado.</p>
-<div class="cell" data-execution_count="15">
-<div id="tbl-seguimiento-p4" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="15">
+<p>Se han realizado tres puntos de control, al final de las semanas 5, 9 y 13. En cada uno se anotó, para cada actividad, las semanas trabajadas hasta ese momento, el coste real incurrido (k€) y el porcentaje realizado.</p>
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.292951Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.292791Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.301210Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.299264Z&quot;}}" data-execution_count="13">
+<div id="tbl-seguimiento1-p3" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.292951Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.292791Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.301210Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.299264Z&quot;}}" data-execution_count="13">
 <figure class="quarto-float quarto-float-tbl figure">
-<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-seguimiento-p4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Tabla 6: Datos del punto de control (final de la semana 11)
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-seguimiento1-p3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Tabla 5: Punto de control 1 (final de la semana 5)
 </figcaption>
-<div aria-describedby="tbl-seguimiento-p4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div aria-describedby="tbl-seguimiento1-p3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="cell-output cell-output-display" data-execution_count="13">
+<div>
+
+
+<table class="dataframe do-not-create-environment cell caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">actual_duration</th>
+<th data-quarto-table-cell-role="th">AC</th>
+<th data-quarto-table-cell-role="th">performed</th>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">activity</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">A</th>
+<td>4</td>
+<td>20</td>
+<td>100</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">B</th>
+<td>5</td>
+<td>41</td>
+<td>62</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">C</th>
+<td>5</td>
+<td>33</td>
+<td>83</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">D</th>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">E</th>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">F</th>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">G</th>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">H</th>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</figure>
+</div>
+</div>
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.303339Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.303159Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.313278Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.312009Z&quot;}}" data-execution_count="14">
+<div id="tbl-seguimiento2-p3" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.303339Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.303159Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.313278Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.312009Z&quot;}}" data-execution_count="14">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-seguimiento2-p3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Tabla 6: Punto de control 2 (final de la semana 9)
+</figcaption>
+<div aria-describedby="tbl-seguimiento2-p3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="cell-output cell-output-display" data-execution_count="14">
+<div>
+
+
+<table class="dataframe do-not-create-environment cell caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">actual_duration</th>
+<th data-quarto-table-cell-role="th">AC</th>
+<th data-quarto-table-cell-role="th">performed</th>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">activity</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">A</th>
+<td>4</td>
+<td>20</td>
+<td>100</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">B</th>
+<td>8</td>
+<td>65</td>
+<td>100</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">C</th>
+<td>6</td>
+<td>40</td>
+<td>100</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">D</th>
+<td>1</td>
+<td>11</td>
+<td>12</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">E</th>
+<td>1</td>
+<td>30</td>
+<td>33</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">F</th>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">G</th>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">H</th>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</figure>
+</div>
+</div>
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.315923Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.315536Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.327013Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.325766Z&quot;}}" data-execution_count="15">
+<div id="tbl-seguimiento3-p3" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.315923Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.315536Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.327013Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.325766Z&quot;}}" data-execution_count="15">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-seguimiento3-p3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Tabla 7: Punto de control 3 (final de la semana 13)
+</figcaption>
+<div aria-describedby="tbl-seguimiento3-p3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output cell-output-display" data-execution_count="15">
 <div>
 
@@ -2786,33 +2817,33 @@ Tabla 6: Datos del punto de control (final de la semana 11)
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">A</th>
-<td>10</td>
-<td>48</td>
+<td>4</td>
+<td>20</td>
 <td>100</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">B</th>
-<td>6</td>
-<td>22</td>
+<td>8</td>
+<td>65</td>
 <td>100</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">C</th>
-<td>1</td>
 <td>6</td>
-<td>50</td>
+<td>40</td>
+<td>100</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">D</th>
-<td>1</td>
-<td>10</td>
-<td>25</td>
+<td>5</td>
+<td>56</td>
+<td>62</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">E</th>
-<td>5</td>
-<td>12</td>
-<td>42</td>
+<td>3</td>
+<td>90</td>
+<td>100</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">F</th>
@@ -2832,12 +2863,6 @@ Tabla 6: Datos del punto de control (final de la semana 11)
 <td>0</td>
 <td>0</td>
 </tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">I</th>
-<td>0</td>
-<td>0</td>
-<td>0</td>
-</tr>
 </tbody>
 </table>
 
@@ -2847,28 +2872,28 @@ Tabla 6: Datos del punto de control (final de la semana 11)
 </figure>
 </div>
 </div>
-<div id="1c130ca9" class="cell" data-execution_count="16">
+<div id="dd196cbd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T15:36:49.329026Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T15:36:49.328847Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T15:36:49.339328Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T15:36:49.338356Z&quot;}}" data-execution_count="16">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol type="1">
-<li>Dibuje los diagramas de Gantt del valor planificado y del valor ganado y calcule PV, EV, AC, CPI y SPI en el punto de control.<br>
+<li>Calcule PV, EV y AC en cada punto de control.<br>
 </li>
 </ol>
 </div>
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="2" type="1">
-<li>Calcule la programación ganada (ES), el retraso en semanas y el índice SPI(t).<br>
+<li>Calcule CV, SV, CPI y SPI en cada punto de control y represente su evolución.<br>
 </li>
 </ol>
 </div>
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="3" type="1">
-<li>Estime la duración final del proyecto con SPI y con SPI(t). ¿Por qué difieren? ¿Cuál es más fiable?<br>
+<li>Calcule en cada punto la estimación del coste final EAC = BAC / CPI y comente la tendencia.<br>
 </li>
 </ol>
 </div>
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="4" type="1">
-<li>¿Qué valor tomará el SPI clásico cuando el proyecto termine, aunque acabe tarde? ¿Y el SPI(t)?<br>
+<li>A la vista de la evolución, ¿el proyecto se está recuperando o deteriorando? ¿Qué decisiones tomaría tras el último punto de control?<br>
 </li>
 </ol>
 </div>

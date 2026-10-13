@@ -73,6 +73,8 @@ def _base(k, rng):
         celdas.append(code("duraciones = datos_enunciado['duration'].reindex(actividades)\n"
                            "duraciones_rutas = path_matrix @ duraciones\n"
                            "Math(bmatrix(path_matrix) + r' \\times ' + bmatrix(duraciones) + ' = ' + bmatrix(duraciones_rutas))"))
+        celdas.append(code('#| tbl-cap: "Duración de cada ruta, sumando sus actividades"\n#| label: tbl-rutasPaso-a\n'
+                           "detalle_rutas(path_matrix, duraciones)"))
         celdas.append(code("duracion_proyecto = int(duraciones_rutas.max())\n"
                            "ruta_critica = duraciones_rutas.idxmax()\n"
                            "Markdown(f'La duración del proyecto es {duracion_proyecto} días, la de la ruta más larga, {ruta_critica}: '\n"
@@ -119,6 +121,8 @@ def _base(k, rng):
         celdas.append(code("duraciones = datos_proyecto['duration'][path_matrix.columns]\n"
                            "duraciones_rutas = path_matrix @ duraciones\n"
                            "Math(bmatrix(path_matrix) + r' \\times ' + bmatrix(duraciones) + ' = ' + bmatrix(duraciones_rutas))"))
+        celdas.append(code('#| tbl-cap: "Duración de cada ruta, sumando sus actividades"\n#| label: tbl-rutasPaso-b\n'
+                           "detalle_rutas(path_matrix, duraciones)"))
         celdas.append(code("duracion_proyecto = int(duraciones_rutas.max())\n"
                            "ruta_critica = duraciones_rutas.idxmax()\n"
                            "Markdown(f'La duración del proyecto es {duracion_proyecto} días, la de la ruta más larga, {ruta_critica}: '\n"

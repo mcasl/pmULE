@@ -5,16 +5,19 @@ docs/index.md, notebooks/colecciones/README.md y notebooks/colecciones/catalogo.
 
 Uso (desde la raíz del repositorio):
 
-    python -m scripts.colecciones.generador                 # todas las colecciones, una vez cada variante
+    python -m scripts.colecciones.generador                 # todas las colecciones, dos ejercicios por variante
     python -m scripts.colecciones.generador --listar        # colecciones y variantes disponibles
     python -m scripts.colecciones.generador --solo 05 09    # solo esas colecciones
-    python -m scripts.colecciones.generador --n 12          # 12 ejercicios por colección (las variantes se repiten cíclicamente)
+    python -m scripts.colecciones.generador --repeticiones 3   # tres ejercicios por variante (datos distintos)
+    python -m scripts.colecciones.generador --n 12          # exactamente 12 ejercicios por colección (las variantes se repiten cíclicamente)
     python -m scripts.colecciones.generador --ejecutar      # además ejecuta los .ipynb (nbconvert)
     python -m scripts.colecciones.generador --semilla 7     # otra familia de proyectos
     python -m scripts.colecciones.generador --forzar        # reescribir los que ya existen
 
 Cada colección tiene una lista de variantes (`VARIANTES` en su plantilla); el
-ejercicio k usa la variante ((k-1) mod número de variantes) + 1. Los cuadernos
+ejercicio k usa la variante ((k-1) mod número de variantes) + 1, de modo que con
+--repeticiones 2 (el valor por defecto) cada variante aparece dos veces con datos
+distintos. Los cuadernos
 son deterministas: la misma semilla produce los mismos datos. Un ejercicio ya
 existente no se reescribe salvo con --forzar.
 
@@ -218,7 +221,8 @@ def listar():
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--solo", nargs="*", default=None, help="prefijos numéricos de las colecciones (05 09 …)")
-    p.add_argument("--n", type=int, default=None, help="ejercicios por colección (por defecto, una vez cada variante)")
+    p.add_argument("--n", type=int, default=None, help="ejercicios por colección (por defecto, --repeticiones veces cada variante)")
+    p.add_argument("--repeticiones", type=int, default=2, help="ejercicios por variante cuando no se da --n (por defecto 2)")
     p.add_argument("--semilla", type=int, default=2026)
     p.add_argument("--forzar", action="store_true", help="regenerar los que ya existen")
     p.add_argument("--ejecutar", action="store_true", help="ejecutar los .ipynb con nbconvert")
@@ -238,7 +242,7 @@ def main(argv=None):
                 resumen.append((plantilla, [_entrada_desde_fichero(meta, r.stem, r) for r in existentes]))
             continue
         print(f"[{meta['slug']}] {meta['titulo']}")
-        n = args.n or len(plantilla.VARIANTES)
+        n = args.n or args.repeticiones * len(plantilla.VARIANTES)
         entradas = generar_coleccion(plantilla, n, args.semilla, args.forzar, args.ejecutar, indice)
         resumen.append((plantilla, entradas))
     if not args.sin_index:

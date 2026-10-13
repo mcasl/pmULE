@@ -2,6 +2,7 @@
 compararlo con el PERT y modelar relaciones con desfase (esperas y solapes)."""
 import numpy as np
 
+import pandas as pd
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
                         literal_dataframe, literal_dict, BMATRIX)
@@ -91,6 +92,11 @@ def _base(k, rng):
     celdas.append(code('#| tbl-cap: "Calendario del proyecto"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
+    celdas.append(md("Cómo sale cada fecha: para cada actividad, la tabla muestra los fines más tempranos de sus "
+                     "predecesoras que se comparan (el máximo es su inicio más temprano) y los inicios más tardíos "
+                     "de sus sucesoras (el mínimo es su fin más tardío)."))
+    celdas.append(code('#| tbl-cap: "Cálculo paso a paso de las fechas"\n#| label: tbl-fechasPaso\n'
+                       "detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d']]"))
     celdas.append(code("duracion_proyecto = proyecto.duration(datos_proyecto['duration'])\n"
                        "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
                        "Markdown(f'La duración del proyecto es {duracion_proyecto} semanas.')"))
@@ -242,6 +248,73 @@ def _predecesora_dominante(rng):
     return celdas, f"{n} actividades, cálculo manual sobre Roy; predecesora dominante de {objetivo}"
 
 
+
+def _desde_sucesoras(rng):
+    """El cuadro da las sucesoras inmediatas de cada actividad; hay que invertirlo antes de dibujar."""
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 1 <= i["n_dummies"] <= 3 and i["n_criticas"] == 1,
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, preds = info["D"], info["preds"]
+    suc = P.sucesoras(preds)
+    tabla = pd.DataFrame({"successor": {a: (",".join(sorted(s)) if s else "---") for a, s in suc.items()},
+                          "duration": D})
+    tabla.index.name = "activity"
+    celdas = [md("# Enunciado"),
+              md("En lugar del cuadro de prelaciones habitual, el responsable del proyecto ha anotado para "
+                 "cada actividad cuáles pueden empezar *inmediatamente después* de ella (sus sucesoras "
+                 "inmediatas) y su duración en semanas.")]
+    celdas.append(preguntas([
+        "Construya el cuadro de prelaciones (predecesoras inmediatas) a partir del de sucesoras. ¿Qué "
+        "actividades son iniciales y cuáles finales? ¿Cómo se reconocen en cada uno de los dos cuadros?",
+        "Dibuje el grafo Roy y el grafo PERT. ¿Cuántas ficticias necesita el PERT?",
+        "Calcule el calendario y el camino crítico.",
+        "Compruebe que el cuadro de sucesoras y el de predecesoras contienen la misma información: "
+        "reconstruya el de sucesoras a partir del de predecesoras."]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado (sucesoras inmediatas)"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(tabla)))
+    celdas.append(md("# Resolución"))
+    celdas += apartado(1)
+    celdas.append(md("Si $B$ aparece entre las sucesoras de $A$, entonces $A$ es predecesora de $B$. Se recorre "
+                     "el cuadro fila a fila anotando cada actividad como predecesora de las que figuran en su "
+                     "casilla. Las iniciales son las que no aparecen en ninguna casilla de sucesoras (ninguna "
+                     "las precede); las finales, las que tienen `---` en sucesoras."))
+    celdas.append(code("predecesoras = {a: [] for a in datos_enunciado.index}\n"
+                       "for a, s in datos_enunciado['successor'].items():\n"
+                       "    if s != '---':\n"
+                       "        for b in s.split(','):\n"
+                       "            predecesoras[b.strip()].append(a)\n"
+                       "datos_proyecto = pd.DataFrame({'predecessor': {a: (','.join(sorted(ps)) if ps else '---') for a, ps in predecesoras.items()},\n"
+                       "                              'duration': datos_enunciado['duration']})\n"
+                       "datos_proyecto.index.name = 'activity'\n"
+                       "datos_proyecto"))
+    celdas.append(code("prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "print('Iniciales (sin predecesoras):', ', '.join(sorted(prelaciones.start_activities)))\n"
+                       "print('Finales (sin sucesoras):     ', ', '.join(sorted(prelaciones.end_activities)))"))
+    celdas += apartado(2)
+    celdas.append(code('#| fig-cap: "Grafo Roy"\n#| label: fig-roy\n'
+                       "proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)"))
+    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code("Markdown(f'El PERT necesita {len(proyecto.dummies)} actividad(es) ficticia(s); el Roy, ninguna.')"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Calendario del proyecto"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario"))
+    celdas.append(code('#| tbl-cap: "Cálculo paso a paso de las fechas"\n#| label: tbl-fechasPaso\n'
+                       "detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d']]"))
+    celdas.append(code("duracion_proyecto = proyecto.duration(datos_proyecto['duration'])\n"
+                       "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
+                       "Markdown(f'La duración del proyecto es {duracion_proyecto} semanas.')"))
+    celdas += apartado(4)
+    celdas.append(code("sucesoras = {a: sorted(b for b, ps in prelaciones.immediate_predecessor.items() if a in ps) for a in datos_proyecto.index}\n"
+                       "reconstruido = pd.Series({a: (','.join(s) if s else '---') for a, s in sucesoras.items()}, name='successor')\n"
+                       "coincide = (reconstruido == datos_enunciado['successor'].map(lambda s: ','.join(sorted(s.split(','))) if s != '---' else s)).all()\n"
+                       "display(pd.concat({'enunciado': datos_enunciado['successor'], 'reconstruido': reconstruido}, axis=1))\n"
+                       "Markdown(f'Los dos cuadros coinciden: {coincide}. Son la misma relación leída en los dos sentidos.')"))
+    return celdas, f"{n} actividades; cuadro de sucesoras, {info['n_dummies']} ficticias en PERT"
+
+
 VARIANTES = [
     Variante("roy-vs-pert", 1, "grafo Roy, PERT equivalente, comparación de nodos y arcos, calendario y camino crítico",
              lambda rng: _base(1, rng)),
@@ -250,6 +323,8 @@ VARIANTES = [
              lambda rng: _base(3, rng)),
     Variante("predecesora-dominante", 2, "cálculo hacia delante y hacia atrás a mano sobre Roy; qué predecesora fija cada inicio",
              _predecesora_dominante),
+    Variante("desde-sucesoras", 1, "el cuadro da sucesoras en lugar de predecesoras: invertirlo, Roy, PERT y calendario",
+             _desde_sucesoras),
 ]
 
 

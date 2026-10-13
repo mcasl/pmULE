@@ -1,0 +1,321 @@
+# ---
+# title: ValorGanado 13
+# subtitle: "8 actividades; punto de control en la semana 10: coste bien plazo mal"
+# coleccion: 12_valor_ganado
+# variante: coste-bien-plazo-mal
+# nivel: 2
+# lang: es
+# documentclass: scrreprt
+# papersize: A4
+# classoption: []
+# execute:
+#     echo: False
+#     enabled: true
+#     freeze: false
+# toc: true
+# format:
+#     html:
+#         theme: cosmo
+#         embed-resources: true
+#         fig-responsive: true
+# warning: false
+# message: false
+# jupyter: python3
+# ---
+
+# %%
+import os, sys
+import warnings
+warnings.filterwarnings('ignore')
+from IPython.display import display, Markdown, Math
+import numpy as np
+import pandas as pd
+import networkx as nx
+from scipy.stats import norm
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
+from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
+                   pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
+                   tanto_por_uno, ordena_rutas)
+
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
+
+# %%
+# Funciones auxiliares para mostrar los cálculos intermedios paso a paso
+from itertools import combinations as _combinations
+
+
+def detalle_tiempos_nodos(proyecto, duraciones):
+    """Tiempos tempranos y tardíos de los nodos con los candidatos que se comparan en cada uno."""
+    G = proyecto.pert_graph
+    d = {data['activity']: (0 if data['activity'].startswith('@') else int(duraciones[data['activity']]))
+         for _, _, data in G.edges(data=True)}
+    nodos = list(proyecto.nodes)
+    early, filas = {}, []
+    for j in nodos:
+        entrantes = [(i, data['activity']) for i, _, data in G.in_edges(j, data=True)]
+        if not entrantes:
+            early[j] = 0
+            filas.append({'nodo': j, 'candidatos t_i + d_ij': 'nodo inicial', 'tiempo temprano = máx': 0})
+            continue
+        cand = {f'{a}: {early[i]} + {d[a]} = {early[i] + d[a]}': early[i] + d[a] for i, a in entrantes}
+        early[j] = max(cand.values())
+        filas.append({'nodo': j, 'candidatos t_i + d_ij': '; '.join(cand), 'tiempo temprano = máx': early[j]})
+    tempranos = pd.DataFrame(filas).set_index('nodo')
+    late, filas = {}, []
+    for i in reversed(nodos):
+        salientes = [(j, data['activity']) for _, j, data in G.out_edges(i, data=True)]
+        if not salientes:
+            late[i] = early[i]
+            filas.append({'nodo': i, 'candidatos t*_j − d_ij': 'nodo final (= su tiempo temprano)', 'tiempo tardío = mín': late[i]})
+            continue
+        cand = {f'{a}: {late[j]} − {d[a]} = {late[j] - d[a]}': late[j] - d[a] for j, a in salientes}
+        late[i] = min(cand.values())
+        filas.append({'nodo': i, 'candidatos t*_j − d_ij': '; '.join(cand), 'tiempo tardío = mín': late[i]})
+    tardios = pd.DataFrame(filas).set_index('nodo')
+    return tempranos, tardios
+
+
+def detalle_holguras(calendario, prelaciones):
+    """Cómo se obtiene cada fecha y cada holgura a partir de las vecinas."""
+    pred = prelaciones.immediate_predecessor
+    suc = {a: sorted(s for s, ps in pred.items() if a in ps) for a in calendario.index}
+    fin = int(calendario['fin_mas_temprano'].max())
+    filas = []
+    for a in calendario.index:
+        ES, EF = int(calendario.loc[a, 'inicio_mas_temprano']), int(calendario.loc[a, 'fin_mas_temprano'])
+        LS, LF = int(calendario.loc[a, 'inicio_mas_tardio']), int(calendario.loc[a, 'fin_mas_tardio'])
+        dur = int(calendario.loc[a, 'duracion'])
+        ps, ss = sorted(pred[a]), suc[a]
+        ef_pred = {p: int(calendario.loc[p, 'fin_mas_temprano']) for p in ps}
+        es_suc = {s: int(calendario.loc[s, 'inicio_mas_temprano']) for s in ss}
+        lf_pred = {p: int(calendario.loc[p, 'fin_mas_tardio']) for p in ps}
+        ls_suc = {s: int(calendario.loc[s, 'inicio_mas_tardio']) for s in ss}
+        min_es_suc = min(es_suc.values()) if es_suc else fin
+        max_lf_pred = max(lf_pred.values()) if lf_pred else 0
+        filas.append({
+            'actividad': a,
+            'ES = máx EF pred.': (f"máx({', '.join(f'{p}: {v}' for p, v in ef_pred.items())}) = {ES}" if ps else f'inicial → {ES}'),
+            'EF = ES + d': f'{ES} + {dur} = {EF}',
+            'LF = mín LS suc.': (f"mín({', '.join(f'{s}: {v}' for s, v in ls_suc.items())}) = {LF}" if ss else f'final → {LF}'),
+            'LS = LF − d': f'{LF} − {dur} = {LS}',
+            'H_total = LS − ES': f'{LS} − {ES} = {LS - ES}',
+            'H_libre = mín ES suc. − EF': f"{min_es_suc}{'' if ss else ' (fin)'} − {EF} = {min_es_suc - EF}",
+            'H_indep. = máx(0, mín ES suc. − máx LF pred. − d)': f'máx(0, {min_es_suc} − {max_lf_pred} − {dur}) = {max(0, min_es_suc - max_lf_pred - dur)}',
+        })
+    return pd.DataFrame(filas).set_index('actividad')
+
+
+def detalle_rutas(R, valores, nombre='duración', decimales=0):
+    """Suma término a término de un valor (duraciones, varianzas…) a lo largo de cada ruta."""
+    filas = {}
+    for r in R.index:
+        acts = list(R.columns[R.loc[r] == 1])
+        total = float(sum(valores[a] for a in acts))
+        filas[r] = {'actividades': ' - '.join(acts),
+                    f'{nombre} = suma': ' + '.join(f'{a}({valores[a]:.{decimales}f})' for a in acts) + f' = {total:.{decimales}f}',
+                    nombre: total}
+    return pd.DataFrame(filas).T
+
+
+def detalle_estimaciones(datos, a='a', m='m', b='b'):
+    """Media y varianza PERT de cada actividad con los números sustituidos."""
+    filas = {}
+    for act, fila in datos.iterrows():
+        A, M, B = float(fila[a]), float(fila[m]), float(fila[b])
+        filas[act] = {'D = (a + 4m + b)/6': f'({A:g} + 4·{M:g} + {B:g})/6 = {(A + 4 * M + B) / 6:.2f}',
+                      'σ² = ((b − a)/6)²': f'(({B:g} − {A:g})/6)² = {((B - A) / 6) ** 2:.3f}'}
+    return pd.DataFrame(filas).T
+
+
+def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
+    """En cada paso de Ackoff-Sasieni: rutas críticas, opciones consideradas (actividades comunes y parejas)
+    con su coste, y la elegida."""
+    R = proyecto.path_matrix(dummies=False)
+    d = duraciones.astype(float).copy()
+    filas = []
+    for paso, elegidas in sorted(pasos.items()):
+        L = R @ d[R.columns]
+        T = float(L.max())
+        criticas = [r for r in L.index if np.isclose(L[r], T)]
+        conjuntos = [set(R.columns[R.loc[r] == 1]) for r in criticas]
+        con_margen = {x for x in R.columns if d[x] > topes[x] and np.isfinite(cur[x])}
+        opciones = {x: float(cur[x]) for x in set.intersection(*conjuntos) & con_margen}
+        if len(conjuntos) > 1:
+            cand = sorted(set().union(*conjuntos) & con_margen)
+            for p, q in _combinations(cand, 2):
+                if all(p in s or q in s for s in conjuntos) and p not in opciones and q not in opciones:
+                    opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
+        orden = sorted(opciones.items(), key=lambda kv: kv[1])
+        filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
+                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
+        for x in elegidas:
+            d[x] -= 1
+    return pd.DataFrame(filas).set_index('paso')
+
+
+def detalle_valor_ganado(datos_vg, calendario, semana):
+    """PV, EV y AC actividad a actividad en el punto de control."""
+    filas = {}
+    for a, fila in datos_vg.iterrows():
+        es, dur = int(calendario.loc[a, 'inicio_mas_temprano']), int(calendario.loc[a, 'duracion'])
+        frac = min(max(semana - es, 0), dur) / dur
+        filas[a] = {'BAC': float(fila['BAC']), 'planificado hasta la semana': f'{min(max(semana - es, 0), dur)} de {dur}',
+                    'PV = BAC·fracción': f'{fila["BAC"]:.0f}·{frac:.2f} = {fila["BAC"] * frac:.1f}',
+                    'realizado (%)': int(fila['performed']),
+                    'EV = BAC·%': f'{fila["BAC"]:.0f}·{fila["performed"] / 100:.2f} = {fila["BAC"] * fila["performed"] / 100:.1f}',
+                    'AC': float(fila['AC']), 'PV_i': fila['BAC'] * frac, 'EV_i': fila['BAC'] * fila['performed'] / 100}
+    t = pd.DataFrame(filas).T
+    return t
+
+
+def muestra_formula(nombre, expresion, valor, unidades=''):
+    """Una línea «nombre = expresión = valor» en Markdown."""
+    return Markdown(f'**{nombre}** = {expresion} = **{valor}**{(" " + unidades) if unidades else ""}')
+
+# %%
+# %%capture
+# %mkdir -p ~/temp
+# %cd ~/temp
+
+
+# %% [markdown]
+# # Enunciado
+
+# %% [markdown]
+# Considere el proyecto cuyo cuadro de prelaciones, duraciones planificadas (semanas) y presupuesto por actividad (BAC, k€) se adjunta; el coste planificado de cada actividad se reparte uniformemente en su duración. Al final de la semana 10 se realiza un punto de control.
+
+# %%
+#| tbl-cap: "Planificación del proyecto"
+#| label: tbl-datosEnunciado
+datos_enunciado = pd.DataFrame([
+#  activity, predecessor, duration, BAC
+    ('A'     , '---'      , 1       , 10 ),
+    ('B'     , '---'      , 1       , 50 ),
+    ('C'     , 'A,B'      , 2       , 10 ),
+    ('D'     , 'C'        , 4       , 40 ),
+    ('E'     , 'B'        , 3       , 20 ),
+    ('F'     , 'D'        , 5       , 30 ),
+    ('G'     , 'C,E'      , 2       , 60 ),
+    ('H'     , 'F,G'      , 8       , 50 ),
+], columns=['activity', 'predecessor', 'duration', 'BAC']).set_index('activity')
+datos_enunciado
+
+# %%
+#| tbl-cap: "Datos del punto de control (final de la semana 10)"
+#| label: tbl-seguimiento
+seguimiento = pd.DataFrame([
+#  activity, actual_duration, AC, performed
+    ('A'     , 2              , 8 , 100      ),
+    ('B'     , 2              , 50, 100      ),
+    ('C'     , 3              , 8 , 100      ),
+    ('D'     , 5              , 27, 83       ),
+    ('E'     , 4              , 16, 100      ),
+    ('F'     , 0              , 0 , 0        ),
+    ('G'     , 4              , 57, 100      ),
+    ('H'     , 0              , 0 , 0        ),
+], columns=['activity', 'actual_duration', 'AC', 'performed']).set_index('activity')
+seguimiento
+
+# %%
+pregunta_1 = "1. Calcule PV, EV y AC en el punto de control, y los índices CPI y SPI.  "
+pregunta_2 = "2. El director informa al comité de que «el proyecto va bien: hemos gastado menos de lo previsto». ¿Es correcta la lectura? ¿Qué parte de la situación oculta?  "
+pregunta_3 = "3. ¿Qué actividades explican el retraso? Compare, actividad por actividad, el valor ganado con el valor planificado.  "
+pregunta_4 = "4. Estime el coste final (EAC = BAC/CPI) y la duración final con SPI. ¿Qué previsión se fiaría más y cuál menos?  "
+
+for item in sorted(dir()):
+    if item.startswith('pregunta_'):
+        display(Markdown(eval(item)))
+
+# %% [markdown]
+# # Resolución
+
+# %%
+datos_proyecto = datos_enunciado.copy()
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()
+BAC_total = float(datos_proyecto['BAC'].sum())
+duracion_planificada = proyecto.duration(datos_proyecto['duration'])
+semana_control = 10
+datos_valor_ganado = pd.concat([datos_proyecto, seguimiento], axis=1)
+gantts = EarnedValue(proyecto).calcula_gantts(datos_valor_ganado, planned_durations_label='duration',
+                                             actual_durations_label='actual_duration', PV_label='BAC', AC_label='AC',
+                                             percentage_complete_label='performed', tikz=True, params=dict(GANTT_PARAMS))
+
+# %% [markdown]
+# ## Apartado 1
+
+# %%
+display(Markdown(pregunta_1))
+
+# %%
+#| fig-cap: "PV: valor planificado"
+#| label: fig-ganttPV
+pinta_tikz(gantts['gantt_PV'])
+
+# %%
+#| fig-cap: "EV: valor ganado"
+#| label: fig-ganttEV
+pinta_tikz(gantts['gantt_EV'])
+
+# %%
+acumulados = gantts['acumulados']
+PV = float(acumulados.loc[semana_control, 'PV'])
+EV = float((datos_valor_ganado['BAC'] * datos_valor_ganado['performed'] / 100).sum())
+AC = float(datos_valor_ganado['AC'].sum())
+CPI, SPI = EV / AC, EV / PV
+pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV = EV − AC': EV - AC, 'SV = EV − PV': EV - PV, 'CPI': CPI, 'SPI': SPI}).round(3).to_frame('valor').T
+
+# %%
+#| fig-cap: "Curvas S"
+#| label: fig-curvasS
+plot_curvas_valor_ganado(gantts)
+
+# %% [markdown]
+# ## Apartado 2
+
+# %%
+display(Markdown(pregunta_2))
+
+# %%
+Markdown(f'''Gastar menos de lo previsto (AC = {AC:.0f} < PV = {PV:.0f}) no dice nada por sí solo: se ha gastado menos porque se ha hecho menos. La comparación correcta es entre lo gastado y lo *ganado*: CPI = {CPI:.2f} {">" if CPI > 1 else "<"} 1, así que el coste sí va bien, pero SPI = {SPI:.2f} < 1: el proyecto va retrasado, se ha ganado sólo el {EV/PV*100:.0f} % del valor previsto. La frase del director confunde la variación de gasto (AC − PV) con la de coste (EV − AC).''')
+
+# %% [markdown]
+# ## Apartado 3
+
+# %%
+display(Markdown(pregunta_3))
+
+# %%
+por_actividad = datos_valor_ganado[['BAC', 'performed', 'AC']].copy()
+por_actividad['EV'] = por_actividad['BAC'] * por_actividad['performed'] / 100
+calendario = proyecto.calendar(datos_proyecto['duration'])
+frac_planificada = ((semana_control - calendario['inicio_mas_temprano']).clip(lower=0).clip(upper=calendario['duracion']) / calendario['duracion'])
+por_actividad['PV'] = por_actividad['BAC'] * frac_planificada
+por_actividad['SV'] = por_actividad['EV'] - por_actividad['PV']
+por_actividad['CV'] = por_actividad['EV'] - por_actividad['AC']
+por_actividad.round(1)
+
+# %%
+retrasadas = por_actividad[por_actividad['SV'] < -0.5].sort_values('SV')
+Markdown(f'Las actividades con SV negativa explican el retraso: {", ".join(retrasadas.index)}. '
+         f'Las de mayor peso son {", ".join(retrasadas.index[:2])} (SV = {retrasadas["SV"].iloc[0]:.1f} y {retrasadas["SV"].iloc[1]:.1f} k€).' if len(retrasadas) > 1 else 'Una sola actividad explica el retraso.')
+
+# %% [markdown]
+# ## Apartado 4
+
+# %%
+display(Markdown(pregunta_4))
+
+# %%
+EAC = BAC_total / CPI
+IEAC = duracion_planificada / SPI
+Markdown(f'''EAC = {BAC_total:.0f} / {CPI:.2f} = {EAC:.0f} k€ (ahorro de {BAC_total - EAC:.0f}); duración prevista {duracion_planificada} / {SPI:.2f} = {IEAC:.1f} semanas. La previsión de coste es la más fiable (el CPI suele ser estable); la de plazo con SPI es la menos: el SPI tiende a 1 al final aunque el retraso persista, y además el retraso real depende de si las actividades retrasadas son críticas, cosa que el SPI (en euros) no distingue. Para el plazo conviene la programación ganada o replanificar lo que falta.''')

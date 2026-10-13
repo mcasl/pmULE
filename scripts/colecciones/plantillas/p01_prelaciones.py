@@ -3,6 +3,7 @@ cuadro de prelaciones expandido, cuadro de ancestros, iniciales y finales."""
 import networkx as nx
 import numpy as np
 
+import pandas as pd
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
                         literal_dataframe, literal_dict, BMATRIX)
@@ -283,6 +284,175 @@ def _grafo_erroneo(rng):
     return celdas, f"{n} actividades, grafo con una prelación de más y otra de menos"
 
 
+
+def _numeracion_nodos(rng):
+    """Numerar los nodos del PERT respetando i < j en cada arco; contar las numeraciones válidas."""
+    n = int(rng.choice([7, 8]))
+    info = P.buscar(rng, lambda i: 1 <= i["n_dummies"] <= 3 and 6 <= i["n_nodos"] <= 9,
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])), con_duraciones=False)
+    df = P.tabla_base(info)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones se adjunta. En un grafo PERT los nodos "
+                 "(sucesos) se numeran de modo que todo arco vaya de un número menor a uno mayor; esa "
+                 "numeración no es única.")]
+    celdas.append(preguntas([
+        "Dibuje el grafo PERT con el mínimo número de ficticias y numere sus nodos. Compruebe que cada "
+        "arco $(i, j)$, ficticias incluidas, cumple $i < j$.",
+        "¿Qué nodos pueden intercambiar su número sin violar la regla? Dé una segunda numeración válida.",
+        "¿Cuántas numeraciones válidas distintas admite el grafo? (Es el número de ordenaciones topológicas; "
+        "cuéntelas con un programa.)",
+        "¿Por qué conviene que la numeración sea creciente a lo largo de los arcos? Piense en la matriz de "
+        "Zaderenko."]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT con los nodos numerados"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas.append(code('#| tbl-cap: "Arcos del grafo: origen, destino y comprobación i < j"\n#| label: tbl-arcos\n'
+                       "arcos = pd.DataFrame([{'actividad': d['activity'], 'i': i, 'j': j, 'i < j': i < j}\n"
+                       "                      for i, j, d in proyecto.pert_graph.edges(data=True)]).set_index('actividad')\n"
+                       "arcos"))
+    celdas.append(code("Markdown(f'La numeración de la librería cumple la regla en {int(arcos[\"i < j\"].sum())} de {len(arcos)} arcos.')"))
+    celdas += apartado(2)
+    celdas.append(md("Dos nodos pueden intercambiar su número cuando no hay ningún camino entre ellos (ninguno "
+                     "es antecesor del otro). Se comprueba con el grafo: el par $(u, v)$ es intercambiable si "
+                     "$v$ no es alcanzable desde $u$ ni $u$ desde $v$."))
+    celdas.append(code("G = proyecto.pert_graph\n"
+                       "nodos = sorted(G.nodes)\n"
+                       "intercambiables = [(u, v) for u in nodos for v in nodos if u < v\n"
+                       "                   and not nx.has_path(G, u, v) and not nx.has_path(G, v, u)]\n"
+                       "print('Pares de nodos intercambiables:', intercambiables or 'ninguno')"))
+    celdas.append(code("if intercambiables:\n"
+                       "    u, v = intercambiables[0]\n"
+                       "    renumerar = {u: v, v: u}\n"
+                       "    arcos2 = arcos.copy()\n"
+                       "    arcos2['i'] = arcos2['i'].map(lambda x: renumerar.get(x, x)); arcos2['j'] = arcos2['j'].map(lambda x: renumerar.get(x, x))\n"
+                       "    arcos2['i < j'] = arcos2['i'] < arcos2['j']\n"
+                       "    display(Markdown(f'Intercambiando los nodos {u} y {v} todos los arcos siguen cumpliendo i < j: {bool(arcos2[\"i < j\"].all())}.'))\n"
+                       "    display(arcos2)\n"
+                       "else:\n"
+                       "    display(Markdown('No hay dos nodos intercambiables: la numeración topológica es única.'))"))
+    celdas += apartado(3)
+    celdas.append(md("Las numeraciones válidas son las ordenaciones topológicas del grafo de sucesos. Se cuentan "
+                     "con programación dinámica sobre subconjuntos: el número de formas de ordenar un conjunto "
+                     "$S$ es la suma, sobre cada nodo $v$ de $S$ sin antecesores dentro de $S$, de las formas de "
+                     "ordenar $S \\setminus \\{v\\}$."))
+    celdas.append(code("from functools import lru_cache\n"
+                       "antecesores = {v: {u for u in nodos if nx.has_path(G, u, v) and u != v} for v in nodos}\n"
+                       "@lru_cache(maxsize=None)\n"
+                       "def ordenaciones(restantes):\n"
+                       "    if not restantes:\n"
+                       "        return 1\n"
+                       "    S = set(restantes)\n"
+                       "    return sum(ordenaciones(tuple(sorted(S - {v}))) for v in S if not (antecesores[v] & S))\n"
+                       "n_numeraciones = ordenaciones(tuple(nodos))\n"
+                       "Markdown(f'El grafo admite **{n_numeraciones}** numeraciones válidas distintas (una sola si cada nodo es antecesor o descendiente de todos los demás).')"))
+    celdas.append(code("from itertools import islice\n"
+                       "print('Tres de ellas (nodo de la librería → nuevo número), generadas con networkx:')\n"
+                       "for orden in islice(nx.all_topological_sorts(G), 3):\n"
+                       "    print('  ', {viejo: nuevo + 1 for nuevo, viejo in enumerate(orden)})"))
+    celdas += apartado(4)
+    celdas.append(md("Con numeración creciente, la matriz de Zaderenko es triangular superior: cada arco está por "
+                     "encima de la diagonal, los tiempos tempranos se calculan recorriendo las columnas de "
+                     "izquierda a derecha y los tardíos las filas de abajo arriba, sin tener que buscar un orden "
+                     "de cálculo. Además, la regla garantiza que no hay ciclos."))
+    celdas.append(code('#| tbl-cap: "Matriz de Zaderenko (sin duraciones: X marca los arcos)"\n#| label: tbl-zaderenko\n'
+                       "Z = pd.DataFrame('', index=nodos, columns=nodos)\n"
+                       "for i, j, d in G.edges(data=True):\n"
+                       "    Z.loc[i, j] = d['activity']\n"
+                       "Z"))
+    return celdas, f"{n} actividades, {info['n_nodos']} nodos; numeración de los nodos"
+
+
+def _datos_sucios(rng):
+    """El cuadro llega con nombres en minúscula, separadores distintos, espacios, duplicados y «ninguna»."""
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 1 <= i["n_dummies"] <= 3, n=n, n_inicio=int(rng.choice([2, 3])),
+                    n_fin=int(rng.choice([1, 2])), con_duraciones=False)
+    preds = info["preds"]
+    sin_pred = ["---", "ninguna", "-", "", "Ninguna"]
+    seps = [", ", ",", "; ", " y ", " / "]
+    sucio = {}
+    for a, ps in preds.items():
+        if not ps:
+            sucio[a] = sin_pred[int(rng.integers(0, len(sin_pred)))]
+            continue
+        lista = sorted(ps)
+        if len(lista) >= 1 and rng.random() < 0.35:
+            lista = lista + [lista[0]]                 # duplicado
+        partes = [(p.lower() if rng.random() < 0.3 else p) + (" " if rng.random() < 0.3 else "") for p in lista]
+        sep = seps[int(rng.integers(0, len(seps)))]
+        sucio[a] = (" " if rng.random() < 0.3 else "") + sep.join(partes)
+    filas = list(preds)
+    nombres_sucios = {a: (a.lower() if rng.random() < 0.25 else a) for a in filas}
+    tabla = pd.DataFrame({"actividad": [nombres_sucios[a] for a in filas], "predecesoras": [sucio[a] for a in filas]})
+    celdas = [md("# Enunciado"),
+              md("Un becario ha transcrito el cuadro de prelaciones de un proyecto tal como se adjunta: con "
+                 "mayúsculas y minúsculas mezcladas, separadores distintos, espacios de más, alguna predecesora "
+                 "repetida y varias formas de decir «ninguna».")]
+    celdas.append(preguntas([
+        "Enumere los defectos de la tabla que impedirían leerla directamente con la librería.",
+        "Normalice la tabla con código (una regla para cada defecto) hasta obtener un cuadro de prelaciones "
+        "válido: nombres en mayúscula, predecesoras separadas por comas y `---` para las actividades iniciales.",
+        "Construya el proyecto, indique las actividades iniciales y finales y compruebe que no hay "
+        "prelaciones redundantes ni ciclos.",
+        "Dibuje el grafo PERT."]))
+    celdas.append(code('#| tbl-cap: "Tabla recibida"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(tabla, indice="actividad")))
+    celdas.append(md("# Resolución"))
+    celdas += apartado(1)
+    celdas.append(code("defectos = []\n"
+                       "t = datos_enunciado.reset_index()\n"
+                       "if (t['actividad'] != t['actividad'].str.upper()).any(): defectos.append('nombres de actividad en minúscula')\n"
+                       "if t['predecesoras'].str.contains(r'[a-z]').any(): defectos.append('predecesoras en minúscula')\n"
+                       "if t['predecesoras'].str.contains(r';| y | /').any(): defectos.append('separadores distintos de la coma (;, y, /)')\n"
+                       "if (t['predecesoras'] != t['predecesoras'].str.strip()).any() or t['predecesoras'].str.contains(r'\\s,|,\\s\\s').any(): defectos.append('espacios sobrantes')\n"
+                       "if t['predecesoras'].str.lower().isin(['ninguna', '-', '']).any(): defectos.append('varias formas de indicar que no hay predecesoras')\n"
+                       "import re\n"
+                       "def _partes(s):\n"
+                       "    return [p.strip().upper() for p in re.split(r'[,;/]| y ', s) if p.strip()]\n"
+                       "if any(len(_partes(s)) != len(set(_partes(s))) for s in t['predecesoras']): defectos.append('predecesoras repetidas')\n"
+                       "for d in defectos:\n"
+                       "    print('-', d)"))
+    celdas += apartado(2)
+    celdas.append(md("Cada regla corrige un defecto: pasar a mayúsculas, trocear por cualquiera de los separadores, "
+                     "quitar espacios, eliminar repetidos (conservando el orden) y traducir las formas de «ninguna» "
+                     "a `---`."))
+    celdas.append(code("def normaliza(s):\n"
+                       "    s = str(s).strip()\n"
+                       "    if s.lower() in ('', '-', '---', 'ninguna'):\n"
+                       "        return '---'\n"
+                       "    vistas = []\n"
+                       "    for p in _partes(s):\n"
+                       "        if p not in vistas:\n"
+                       "            vistas.append(p)\n"
+                       "    return ','.join(vistas)\n"
+                       "limpio = pd.DataFrame({'activity': t['actividad'].str.strip().str.upper(),\n"
+                       "                       'predecessor': t['predecesoras'].map(normaliza)}).set_index('activity')\n"
+                       "pd.concat({'recibido': t.set_index(limpio.index)['predecesoras'], 'normalizado': limpio['predecessor']}, axis=1)"))
+    celdas.append(code("desconocidas = {p for s in limpio['predecessor'] if s != '---' for p in s.split(',')} - set(limpio.index)\n"
+                       "print('Predecesoras que no son actividades de la tabla:', desconocidas or 'ninguna')"))
+    celdas += apartado(3)
+    celdas.append(code("datos_proyecto = limpio.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "print('Actividades iniciales:', ', '.join(sorted(prelaciones.start_activities)))\n"
+                       "print('Actividades finales:  ', ', '.join(sorted(prelaciones.end_activities)))"))
+    celdas.append(code("G = nx.DiGraph([(p, a) for a, ps in prelaciones.immediate_predecessor.items() for p in ps])\n"
+                       "G.add_nodes_from(datos_proyecto.index)\n"
+                       "print('¿Hay ciclos?', not nx.is_directed_acyclic_graph(G))\n"
+                       "redundantes = sorted(set(G.edges) - set(nx.transitive_reduction(G).edges))\n"
+                       "print('Prelaciones redundantes:', redundantes or 'ninguna')"))
+    celdas += apartado(4)
+    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=False, ranksep=1)"))
+    return celdas, f"{n} actividades; tabla con {len(set(sucio.values()))} formatos distintos que normalizar"
+
+
 VARIANTES = [
     Variante("redundancias", 1, "cuadro con prelaciones redundantes: depurarlo, cuadro expandido y de ancestros",
              lambda rng: _base(1, rng)),
@@ -292,6 +462,10 @@ VARIANTES = [
     Variante("texto", 2, "las prelaciones llegan como texto corrido con contexto; hay que tabularlas", _texto),
     Variante("grafo-erroneo", 3, "se da un grafo PERT con una prelación de más y otra de menos: encontrarlas "
                                  "comparando cuadros de ancestros", _grafo_erroneo),
+    Variante("numeracion-nodos", 2, "numerar los nodos del PERT con i < j en cada arco; nodos intercambiables; contar las numeraciones válidas",
+             _numeracion_nodos),
+    Variante("datos-sucios", 1, "cuadro transcrito con minúsculas, separadores y duplicados: normalizarlo con reglas antes de construir el proyecto",
+             _datos_sucios),
 ]
 
 

@@ -4,6 +4,7 @@ incidencia e instancias de referencia (Patterson)."""
 import numpy as np
 import pandas as pd
 
+import networkx as nx
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
                         literal_dataframe, literal_dict, BMATRIX)
@@ -443,6 +444,195 @@ def _svd_vs_mc(rng):
     return celdas, f"{n} actividades, {info['n_rutas']} rutas; criticidad Monte Carlo frente a |v₁|"
 
 
+
+def _editar_R(rng):
+    """Añadir una prelación: qué filas de R desaparecen, cuáles aparecen y cómo cambia τ."""
+    n = int(rng.choice([7, 8]))
+    estado = {}
+
+    def acepta(i):
+        if not (4 <= i["n_rutas"] <= 7 and 1 <= i["n_dummies"] <= 3 and (i["D"] >= 2).all()):
+            return False
+        preds = i["preds"]
+        G = P.grafo(preds)
+        cal = i["calendario"]
+        # candidatas (p -> a): sin camino en ningún sentido, p no final, a no inicial, y que la nueva prelación cambie τ
+        cands = [(p, a) for p in preds for a in preds if p != a and not nx.has_path(G, p, a) and not nx.has_path(G, a, p)]
+        rng.shuffle(cands)
+        for p, a in cands[:40]:
+            nuevo = {x: set(ps) for x, ps in preds.items()}
+            nuevo[a].add(p)
+            try:
+                j = P.analizar(P.reducir(nuevo), i["D"])
+            except Exception:
+                continue
+            if j["T"] > i["T"] and 3 <= j["n_rutas"] <= 9 and j["n_dummies"] <= 4:
+                estado.update(p=p, a=a, nuevo=j)
+                return True
+        return False
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D = info["D"]
+    p, a, nuevo = estado["p"], estado["a"], estado["nuevo"]
+    df = P.tabla_base(info, duration=D)
+    df2 = P.tabla_base(nuevo, duration=D)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones y duraciones (días) se adjunta. Durante la "
+                 f"revisión del plan se descubre que la actividad {a} no puede empezar hasta que termine {p}: "
+                 "hay que añadir esa prelación.")]
+    celdas.append(preguntas([
+        "Construya la matriz de rutas $R$ del proyecto original y calcule $\\tau = \\lVert R\\,t \\rVert_\\infty$.",
+        f"Razone, sin recalcular todo, qué le ocurre a $R$ al añadir la prelación {p} → {a}: ¿qué rutas dejan "
+        "de serlo (quedan «absorbidas» por otras más largas) y qué rutas nuevas aparecen?",
+        "Construya la matriz de rutas del proyecto modificado y compruebe su razonamiento. Calcule el nuevo "
+        "τ y la nueva ruta crítica.",
+        "¿Puede añadir una prelación *reducir* τ? ¿Y aumentar el número de rutas? Justifíquelo con $R$."]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code(BMATRIX))
+    celdas.append(code(PREP))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT original"\n#| label: fig-pert\n' "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code('#| tbl-cap: "Matriz de rutas original"\n#| label: tbl-R\n'
+                       "rutas = {r: ' - '.join(acts) for r, acts in proyecto.paths(dummies=False).items()}\n"
+                       "Rt = R @ t\n"
+                       "pd.DataFrame({'actividades': rutas, 'R·t': Rt})"))
+    celdas.append(code("tau = float(Rt.max())\n"
+                       "Markdown(f'τ = ‖R·t‖∞ = {tau:.0f} (ruta {Rt.idxmax()}: {rutas[Rt.idxmax()]}).')"))
+    celdas += apartado(2)
+    celdas.append(md(f"Añadir {p} → {a} crea un arco nuevo. Aparecen rutas nuevas: las que llegan hasta {p} por "
+                     f"cualquier camino (*prefijos*), saltan a {a} y continúan desde {a} hasta el final "
+                     f"(*sufijos*): hasta «número de prefijos × número de sufijos» filas nuevas. Las rutas "
+                     f"antiguas siguen existiendo, salvo una excepción: si alguna prelación antigua q → {a} se "
+                     f"vuelve redundante (porque q es antecesora de {p}), el cuadro depurado la elimina y las "
+                     f"rutas que usaban ese salto directo desaparecen, absorbidas por rutas nuevas que pasan por "
+                     f"q, …, {p}, {a} y son más largas. Y si {p} era final (o {a} inicial), las rutas que "
+                     f"terminaban en {p} (o empezaban en {a}) dejan de serlo: se prolongan a través del nuevo "
+                     f"arco. En la práctica $R$ gana filas y puede perder alguna."))
+    celdas.append(code(f"p, a = '{p}', '{a}'\n"
+                       "prefijos = [r for r in R.index if R.loc[r, p] == 1]\n"
+                       "sufijos = [r for r in R.index if R.loc[r, a] == 1]\n"
+                       "Markdown(f'Rutas por {p}: {\", \".join(prefijos)}; rutas por {a}: {\", \".join(sufijos)}. '\n"
+                       "         f'Se esperan hasta {len(prefijos)} × {len(sufijos)} = {len(prefijos) * len(sufijos)} combinaciones prefijo-sufijo (menos las repetidas).')"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Cuadro de prelaciones modificado"\n#| label: tbl-datosModificado\n'
+                       + literal_dataframe(df2, nombre="datos_modificados")))
+    celdas.append(code("prelaciones2 = PredecessorTable.from_dataframe_of_strings(datos_modificados, activity='activity', predecessor='predecessor')\n"
+                       "proyecto2 = prelaciones2.create_project()\n"
+                       "R2 = proyecto2.path_matrix(dummies=False)\n"
+                       "t2 = datos_modificados['duration'][R2.columns]\n"
+                       "rutas2 = {r: ' - '.join(acts) for r, acts in proyecto2.paths(dummies=False).items()}\n"
+                       "R2t = R2 @ t2\n"
+                       "pd.DataFrame({'actividades': rutas2, 'R·t': R2t})"))
+    celdas.append(code("conj1 = {frozenset(R.columns[R.loc[r] == 1]) for r in R.index}\n"
+                       "conj2 = {frozenset(R2.columns[R2.loc[r] == 1]) for r in R2.index}\n"
+                       "perdidas = [rutas[r] for r in R.index if frozenset(R.columns[R.loc[r] == 1]) in conj1 - conj2]\n"
+                       "nuevas = [rutas2[r] for r in R2.index if frozenset(R2.columns[R2.loc[r] == 1]) in conj2 - conj1]\n"
+                       "tau2 = float(R2t.max())\n"
+                       "Markdown(f'''Rutas que desaparecen: {'; '.join(perdidas) or 'ninguna'}.\\n\\nRutas nuevas: {'; '.join(nuevas) or 'ninguna'}.\\n\\n"
+                       "Nuevo τ = {tau2:.0f} (antes {tau:.0f}); ruta crítica {R2t.idxmax()}: {rutas2[R2t.idxmax()]}.''')"))
+    celdas.append(code('#| fig-cap: "Grafo PERT modificado"\n#| label: fig-pert2\n' "proyecto2.pert(durations=datos_modificados['duration'], ranksep=1)"))
+    celdas += apartado(4)
+    celdas.append(md("Añadir una prelación nunca reduce τ: cada ruta nueva contiene como subconjunto de "
+                     "actividades a alguna combinación que ya restringía el proyecto, y las rutas que "
+                     "desaparecen son las contenidas en alguna ruta nueva (su suma de duraciones es menor o "
+                     "igual). Formalmente, para cada fila antigua $r$ existe una fila nueva $r'$ con $R'_{r'} \\ge "
+                     "R_r$ componente a componente, luego $\\max R' t \\ge \\max R t$. El número de rutas sí puede "
+                     "crecer (producto de prefijos por sufijos) o decrecer (si muchas quedan absorbidas): $R$ no "
+                     "es monótona en tamaño, sólo en lo que restringe."))
+    return celdas, f"{n} actividades; añadir {p} → {a} cambia τ de {int(info['T'])} a {int(nuevo['T'])}"
+
+
+def _casi_criticas(rng):
+    """Margen de cada ruta, actividades que aparecen en las rutas casi críticas y proyecto más sensible."""
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 5 <= i["n_rutas"] <= 9 and 1 <= i["n_dummies"] <= 4 and i["n_criticas"] == 1
+                    and i["segunda"] is not None and i["T"] - i["segunda"] <= 2 and (i["D"] >= 2).all(),
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, T = info["D"], int(info["T"])
+    df = P.tabla_base(info, duration=D)
+    delta = 2
+    # segundo proyecto: mismas prelaciones, duraciones alteradas para que la ruta crítica destaque
+    L = info["L"]
+    crit = info["rutas_criticas"][0]
+    acts_crit = list(info["P"].columns[info["P"].loc[crit] == 1])
+    D2 = D.copy()
+    D2[acts_crit] = D2[acts_crit] + 2
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones y duraciones (días) se adjunta. El vector "
+                 "$R\\,t$ contiene la duración de todas las rutas, no sólo de la crítica: la diferencia "
+                 "$\\tau - (R\\,t)_r$ es el *margen* de la ruta $r$ (cuánto puede alargarse sin cambiar τ).")]
+    celdas.append(preguntas([
+        "Calcule $R\\,t$, τ y el margen de cada ruta. Ordene las rutas de menor a mayor margen.",
+        f"Llame *casi críticas* a las rutas con margen ≤ {delta}. ¿Qué actividades pertenecen a alguna ruta "
+        "casi crítica sin ser críticas? Obténgalas con $R^\\top$: sume las filas de $R$ correspondientes a las "
+        "rutas casi críticas y mire qué columnas son positivas.",
+        "¿Cuál es el menor retraso de una sola actividad no crítica que cambiaría la ruta crítica? Compruébelo "
+        "recalculando τ.",
+        f"Un segundo proyecto tiene las mismas prelaciones pero las actividades de la ruta crítica duran 2 "
+        "días más. Calcule sus márgenes. ¿Cuál de los dos proyectos es más *sensible* (más rutas pueden "
+        "convertirse en críticas con pequeños retrasos)? ¿Cuál tiene más varianza de τ si todas las "
+        "duraciones son inciertas? Razónelo y, si quiere, compruébelo con una simulación breve."]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code(BMATRIX))
+    celdas.append(code(PREP + f"\ndelta = {delta}"))
+    celdas += apartado(1)
+    celdas.append(code('#| tbl-cap: "Duración y margen de cada ruta"\n#| label: tbl-margenes\n'
+                       "Rt = R @ t\n"
+                       "tau = float(Rt.max())\n"
+                       "margen = (tau - Rt)\n"
+                       "tabla = pd.DataFrame({'actividades': {r: ' - '.join(acts) for r, acts in proyecto.paths(dummies=False).items()}, 'R·t': Rt, 'margen = τ − R·t': margen}).sort_values('margen = τ − R·t')\n"
+                       "tabla"))
+    celdas += apartado(2)
+    celdas.append(code("casi = tabla.index[tabla['margen = τ − R·t'] <= delta].tolist()\n"
+                       "criticas = tabla.index[tabla['margen = τ − R·t'] == 0].tolist()\n"
+                       "veces = R.loc[casi].sum()               # columnas de R^T · indicador de rutas casi críticas\n"
+                       "en_criticas = R.loc[criticas].sum() > 0\n"
+                       "casi_sin_ser = veces.index[(veces > 0) & ~en_criticas].tolist()\n"
+                       "display(pd.DataFrame({'en rutas casi críticas (nº)': veces, 'crítica': en_criticas}).T)\n"
+                       "Markdown(f'Rutas casi críticas (margen ≤ {delta}): {\", \".join(casi)}. Actividades en alguna de ellas sin ser críticas: {\", \".join(casi_sin_ser) or \"ninguna\"}.')"))
+    celdas += apartado(3)
+    celdas.append(md("Si la actividad $i$ se retrasa $x$ días, cada ruta que la contiene se alarga $x$; la "
+                     "primera no crítica en alcanzar τ es la de menor margen entre las que contienen $i$. El "
+                     "menor retraso que cambia la ruta crítica es, por tanto, el mínimo sobre las actividades no "
+                     "críticas del menor margen de sus rutas (más una unidad si se quiere que *supere* a la "
+                     "crítica)."))
+    celdas.append(code("no_criticas = [a for a in R.columns if not en_criticas[a]]\n"
+                       "umbral = pd.Series({a: float(margen[R[a] == 1].min()) for a in no_criticas}).sort_values()\n"
+                       "a_min = umbral.index[0]; x = int(umbral.iloc[0]) + 1\n"
+                       "t_retrasada = t.copy(); t_retrasada[a_min] += x\n"
+                       "Rt_r = R @ t_retrasada\n"
+                       "display(umbral.to_frame('margen mínimo de sus rutas').T)\n"
+                       "Markdown(f'Retrasando {a_min} {x} días: τ pasa de {tau:.0f} a {float(Rt_r.max()):.0f} y la ruta crítica es {Rt_r.idxmax()} (antes {Rt.idxmax()}).')"))
+    celdas += apartado(4)
+    celdas.append(code("t2 = t.copy()\n"
+                       "for act in R.columns[R.loc[Rt.idxmax()] == 1]:\n"
+                       "    t2[act] += 2\n"
+                       "Rt2 = R @ t2\n"
+                       "margen2 = Rt2.max() - Rt2\n"
+                       "comparacion = pd.DataFrame({'margen (proyecto 1)': margen, 'margen (proyecto 2)': margen2}).sort_values('margen (proyecto 1)')\n"
+                       "display(comparacion)\n"
+                       "n_casi1, n_casi2 = int((margen <= delta).sum()), int((margen2 <= delta).sum())\n"
+                       "Markdown(f'Rutas con margen ≤ {delta}: {n_casi1} en el proyecto 1 y {n_casi2} en el 2. El proyecto 1 es más sensible: más rutas compiten por ser la crítica.')"))
+    celdas.append(code("rng = np.random.default_rng(7)\n"
+                       "N = 5000\n"
+                       "def simula(tv):\n"
+                       "    X = pd.DataFrame(rng.normal(tv.values, 0.25 * tv.values, size=(N, len(tv))), columns=tv.index).clip(lower=0.1)\n"
+                       "    return (X @ R.T).max(axis='columns')\n"
+                       "T1, T2 = simula(t), simula(t2)\n"
+                       "pd.DataFrame({'proyecto 1': [tau, T1.mean(), T1.std(), T1.mean() - tau], 'proyecto 2': [float(Rt2.max()), T2.mean(), T2.std(), T2.mean() - float(Rt2.max())]},\n"
+                       "             index=['τ determinista', 'media simulada', 'desv. típica simulada', 'sesgo de fusión (media − τ)']).round(2)"))
+    celdas.append(md("Con duraciones inciertas, el proyecto con más rutas casi críticas sufre más *sesgo de "
+                     "fusión*: la media simulada supera a τ porque en cada réplica gana la ruta que haya salido "
+                     "más larga entre varias candidatas. La desviación típica, en cambio, suele ser algo menor "
+                     "en el proyecto sensible (el máximo de varias variables se dispersa menos que una sola) y "
+                     "mayor en el proyecto 2, donde τ depende casi siempre de la misma ruta y hereda toda su "
+                     "varianza. La sensibilidad se lee directamente en el vector de márgenes $\\tau\\mathbf{1} - "
+                     "R\\,t$: cuantos más ceros y valores pequeños tenga, más frágil es el camino crítico."))
+    return celdas, f"{n} actividades; {int((T - info['L'] <= delta).sum())} rutas con margen ≤ {delta}"
+
+
 VARIANTES = [
     Variante("tau-norma-infinito", 1, "R, R·t y τ = ‖R·t‖∞; equivalencia con Zaderenko; τ como función lineal a trozos de una duración", _tau),
     Variante("gradiente", 2, "∂τ/∂t con rutas críticas empatadas: subgradiente, diferencias finitas y suma de sensibilidades", _gradiente),
@@ -450,6 +640,10 @@ VARIANTES = [
     Variante("nucleo-incidencia", 3, "matriz de incidencia, R·H = 0 y perturbaciones de las duraciones que no cambian τ", _nucleo),
     Variante("patterson", 2, "una instancia de referencia (Patterson, formato RCP): τ frente a CPM y ranking SVD", _patterson),
     Variante("svd-vs-montecarlo", 3, "índice de criticidad Monte Carlo frente a |v₁|: correlación y efecto de la incertidumbre", _svd_vs_mc),
+    Variante("editar-R", 2, "añadir una prelación: filas de R que aparecen y desaparecen (prefijos × sufijos), nuevo τ y monotonía",
+             _editar_R),
+    Variante("casi-criticas", 2, "vector de márgenes τ·1 − R·t: rutas casi críticas, actividades que las forman, menor retraso que cambia la crítica y sensibilidad",
+             _casi_criticas),
 ]
 
 

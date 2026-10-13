@@ -452,6 +452,186 @@ def _convergencia(rng):
     return celdas, f"{n} actividades; convergencia de la media y del percentil 90 con N"
 
 
+
+def _correlacionadas(rng):
+    """Un factor común (meteorología, un mismo equipo) correlaciona las duraciones: efecto sobre la duración del proyecto."""
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 5 <= i["n_rutas"] <= 8 and 1 <= i["n_dummies"] <= 4 and i["n_criticas"] == 1
+                    and i["T"] >= 12 and (i["D"] >= 2).all(),
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D = info["D"]
+    T = int(info["T"])
+    sd = P.desviaciones(rng, list(D.index))
+    # actividades expuestas al factor común: la mitad, incluyendo al menos dos críticas
+    criticas = [a for a in D.index if info["calendario"].loc[a, "H_total"] == 0]
+    otras = [a for a in D.index if a not in criticas]
+    expuestas = sorted(set(rng.choice(criticas, size=min(2, len(criticas)), replace=False))
+                       | set(rng.choice(otras, size=max(1, len(otras) // 2), replace=False)))
+    df = P.tabla_base(info, duration=D, standard_deviation=sd,
+                      exposed=pd.Series({a: ("sí" if a in expuestas else "no") for a in D.index}))
+    N = 10000
+    semilla = int(rng.integers(1, 10000))
+    sigma_f = 0.15
+    plazo = T + 2
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duraciones medias y desviaciones típicas "
+                 "(en semanas) se adjunta. Las actividades marcadas como *expuestas* se realizan al aire libre: "
+                 "su duración depende además de un factor meteorológico común $F$ de media 1 y desviación "
+                 f"típica {sigma_f} (si la temporada es mala, $F > 1$ y todas ellas se alargan a la vez). La "
+                 "duración de una actividad expuesta es $F \\cdot X$, con $X$ normal de la media y desviación del "
+                 "cuadro; las no expuestas son normales independientes.")]
+    celdas.append(preguntas([
+        "Calcule la duración del proyecto y el camino crítico con las duraciones medias.",
+        f"Simule {N} réplicas suponiendo todas las duraciones independientes (ignorando $F$) y obtenga la media, "
+        f"la desviación típica y la probabilidad de terminar en {plazo} semanas o menos.",
+        "Repita la simulación con el factor común: en cada réplica se sortea un único valor de $F$ que "
+        "multiplica a todas las actividades expuestas. Compare media, desviación típica, percentil 95 y "
+        f"P(T ≤ {plazo}).",
+        "¿Por qué la correlación positiva aumenta la dispersión de la duración del proyecto aunque apenas "
+        "cambie la media? ¿Qué ocurre con la criticidad de las rutas?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"N, plazo, sigma_F = {N}, {plazo}, {sigma_f}\n"
+                       "expuestas = datos_proyecto.index[datos_proyecto['exposed'] == 'sí'].tolist()"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT con el camino crítico"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code("path_matrix = proyecto.path_matrix(dummies=False)\n"
+                       "duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
+                       "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
+                       "Markdown(f'Duración media del proyecto: {duracion_media} semanas. Actividades expuestas al factor común: {\", \".join(expuestas)}.')"))
+    celdas += apartado(2)
+    celdas.append(code(f"rng = np.random.default_rng({semilla})\n"
+                       "mu, sigma = datos_proyecto['duration'].astype(float), datos_proyecto['standard_deviation'].astype(float)\n"
+                       "X = pd.DataFrame(rng.normal(mu.values, sigma.values, size=(N, len(mu))), columns=mu.index).clip(lower=0)\n"
+                       "T_indep = (X[path_matrix.columns] @ path_matrix.T).max(axis='columns')\n"
+                       "resumen_indep = pd.Series({'media': T_indep.mean(), 'desviación típica': T_indep.std(), 'percentil 95': T_indep.quantile(0.95),\n"
+                       "                           f'P(T ≤ {plazo}) (%)': (T_indep <= plazo).mean() * 100})\n"
+                       "resumen_indep.round(3).to_frame('independientes').T"))
+    celdas += apartado(3)
+    celdas.append(md("Se reutilizan las mismas duraciones normales $X$ y se multiplica cada fila (réplica) de las "
+                     "actividades expuestas por un valor de $F$ común a toda la fila. Así la única diferencia "
+                     "entre las dos simulaciones es la correlación introducida por $F$."))
+    celdas.append(code("F = rng.normal(1.0, sigma_F, size=N).clip(min=0.5)\n"
+                       "Xc = X.copy()\n"
+                       "Xc[expuestas] = Xc[expuestas].mul(F, axis='rows')\n"
+                       "duraciones_rutas_c = Xc[path_matrix.columns] @ path_matrix.T\n"
+                       "T_corr = duraciones_rutas_c.max(axis='columns')\n"
+                       "resumen_corr = pd.Series({'media': T_corr.mean(), 'desviación típica': T_corr.std(), 'percentil 95': T_corr.quantile(0.95),\n"
+                       "                          f'P(T ≤ {plazo}) (%)': (T_corr <= plazo).mean() * 100})\n"
+                       "pd.DataFrame({'independientes': resumen_indep, 'con factor común': resumen_corr}).round(3)"))
+    celdas.append(code('#| tbl-cap: "Correlación entre las duraciones de dos actividades expuestas"\n#| label: tbl-correlacion\n'
+                       "a1, a2 = expuestas[:2]\n"
+                       "pd.DataFrame({'independientes': [X[a1].corr(X[a2])], 'con factor común': [Xc[a1].corr(Xc[a2])]}, index=[f'corr({a1}, {a2})']).round(3)"))
+    celdas.append(code('#| fig-cap: "Distribución de la duración con y sin factor común"\n#| label: fig-histograma\n'
+                       "from matplotlib import pyplot as plt\n"
+                       "fig, ax = plt.subplots(figsize=(8, 4))\n"
+                       "ax.hist(T_indep, bins=60, density=True, alpha=0.5, label='independientes')\n"
+                       "ax.hist(T_corr, bins=60, density=True, alpha=0.5, label='con factor común')\n"
+                       "ax.axvline(plazo, color='red', linestyle='--', label=f'plazo ({plazo})')\n"
+                       "ax.set_xlabel('Duración del proyecto (semanas)'); ax.legend(); plt.show()"))
+    celdas += apartado(4)
+    celdas.append(code("ruta_critica_mc = duraciones_rutas_c.idxmax(axis='columns')\n"
+                       "criticidad_corr = (ruta_critica_mc.value_counts(normalize=True) * 100).reindex(path_matrix.index, fill_value=0.0)\n"
+                       "criticidad_indep = ((X[path_matrix.columns] @ path_matrix.T).idxmax(axis='columns').value_counts(normalize=True) * 100).reindex(path_matrix.index, fill_value=0.0)\n"
+                       "pd.DataFrame({'actividades': path_matrix.apply(lambda f: ' - '.join(f.index[f == 1]), axis=1),\n"
+                       "              'criticidad indep. (%)': criticidad_indep, 'criticidad con F (%)': criticidad_corr}).round(1)"))
+    celdas.append(md("La varianza de una suma de variables correlacionadas positivamente es mayor que la suma de "
+                     "sus varianzas (se añaden los términos $2\\,\\mathrm{cov}$): cuando $F$ sale alto, todas las "
+                     "actividades expuestas se alargan a la vez y no se compensan unas con otras. La media casi "
+                     "no cambia (la de $F$ es 1), pero las colas se ensanchan: el percentil 95 sube y la "
+                     "probabilidad de cumplir el plazo baja. Las rutas con más actividades expuestas ganan "
+                     "criticidad. Suponer independencia, como hace el PERT clásico, es optimista en presencia "
+                     "de causas comunes de retraso."))
+    return celdas, f"{n} actividades; {len(expuestas)} expuestas a un factor común (σ_F = {sigma_f})"
+
+
+def _percentiles(rng):
+    """Leer la distribución simulada: percentiles, plazo para una probabilidad y plazo con margen."""
+    n = int(rng.choice([8, 9]))
+    info = P.buscar(rng, lambda i: 5 <= i["n_rutas"] <= 8 and 1 <= i["n_dummies"] <= 4
+                    and i["segunda"] is not None and i["T"] - i["segunda"] <= 2 and i["T"] >= 12 and (i["D"] >= 3).all(),
+                    n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D = info["D"]
+    T = int(info["T"])
+    a, m, b = P.tres_estimaciones_triangular(rng, D)
+    df = P.tabla_base(info, a=a, m=m, b=b)
+    N = 20000
+    semilla = int(rng.integers(1, 10000))
+    plazo_cliente = T + int(rng.integers(2, 4))
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones y estimaciones optimista, más probable y "
+                 "pesimista (en semanas) se adjunta; las duraciones siguen distribuciones triangulares "
+                 f"independientes. El cliente ha fijado la entrega en la semana {plazo_cliente} con una "
+                 "penalización por cada semana de retraso.")]
+    celdas.append(preguntas([
+        "Calcule la duración del proyecto con las duraciones medias de las triangulares, "
+        "$(a + m + b)/3$, y el camino crítico.",
+        f"Simule {N} réplicas con la matriz de caminos y obtenga los percentiles 10, 50, 80, 90 y 95 de la "
+        "duración. ¿Qué significa cada uno para el jefe de proyecto?",
+        f"¿Qué probabilidad hay de pagar penalización? ¿Cuántas semanas de retraso se superan sólo con "
+        "probabilidad 0,05? Calcule el retraso medio esperado (media de máx(0, T − plazo)).",
+        "¿Qué fecha habría que haber comprometido para que la probabilidad de penalización fuera del 10 %? "
+        "Compare con la duración media: ¿cuántas semanas de *margen* supone?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "datos_proyecto['duration'] = datos_proyecto.eval('(a + m + b) / 3')\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"N, plazo = {N}, {plazo_cliente}"))
+    celdas += apartado(1)
+    celdas.append(code('#| tbl-cap: "Media de cada triangular"\n#| label: tbl-medias\n'
+                       "pd.DataFrame({'(a + m + b)/3': [f\"({r['a']:g} + {r['m']:g} + {r['b']:g})/3 = {r['duration']:.2f}\" for _, r in datos_proyecto.iterrows()]}, index=datos_proyecto.index).T"))
+    celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones medias"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'].round(1), ranksep=1)"))
+    celdas.append(code("path_matrix = proyecto.path_matrix(dummies=False)\n"
+                       "duraciones_rutas_medias = path_matrix @ datos_proyecto['duration'][path_matrix.columns]\n"
+                       "duracion_media = float(duraciones_rutas_medias.max())\n"
+                       "Markdown(f'Con las medias, la ruta más larga es {duraciones_rutas_medias.idxmax()} ({\" - \".join(path_matrix.columns[path_matrix.loc[duraciones_rutas_medias.idxmax()] == 1])}) y la duración {duracion_media:.2f} semanas.')"))
+    celdas += apartado(2)
+    celdas.append(code(f"rng = np.random.default_rng({semilla})\n"
+                       "duraciones_mc = pd.DataFrame({act: rng.triangular(fila['a'], fila['m'], fila['b'], N) for act, fila in datos_proyecto.iterrows()})\n"
+                       "duraciones_rutas_mc = duraciones_mc[path_matrix.columns] @ path_matrix.T\n"
+                       "T_mc = duraciones_rutas_mc.max(axis='columns')\n"
+                       "percentiles = T_mc.quantile([0.10, 0.50, 0.80, 0.90, 0.95])\n"
+                       "percentiles.index = [f'P{int(p * 100)}' for p in percentiles.index]\n"
+                       "percentiles.round(2).to_frame('duración (semanas)').T"))
+    celdas.append(code('#| fig-cap: "Función de distribución simulada de la duración"\n#| label: fig-distribucion\n'
+                       "from matplotlib import pyplot as plt\n"
+                       "x = np.sort(T_mc.values); y = np.arange(1, N + 1) / N\n"
+                       "fig, ax = plt.subplots(figsize=(8, 4))\n"
+                       "ax.plot(x, y)\n"
+                       "for nombre, v in percentiles.items():\n"
+                       "    ax.axvline(v, color='grey', linestyle=':', alpha=0.7); ax.text(v, 0.02, nombre, rotation=90, va='bottom')\n"
+                       "ax.axvline(plazo, color='red', linestyle='--', label=f'plazo del cliente ({plazo})')\n"
+                       "ax.set_xlabel('Duración (semanas)'); ax.set_ylabel('P(T ≤ t)'); ax.legend(); plt.show()"))
+    celdas.append(md("El percentil $p$ es la duración que no se supera con probabilidad $p$: P50 es la mediana "
+                     "(tan probable acabar antes como después), P80 la fecha que se cumple cuatro de cada cinco "
+                     "veces, P95 una fecha «segura». La diferencia P95 − P50 mide cuánto margen hay que añadir a "
+                     "una previsión central para hacerla fiable."))
+    celdas += apartado(3)
+    celdas.append(code("p_penalizacion = float((T_mc > plazo).mean())\n"
+                       "retraso = (T_mc - plazo).clip(lower=0)\n"
+                       "retraso_95 = float(retraso.quantile(0.95))\n"
+                       "retraso_medio = float(retraso.mean())\n"
+                       "Markdown(f'''P(T > {plazo}) = {p_penalizacion:.3f}: se paga penalización en el {p_penalizacion * 100:.1f} % de las réplicas. "
+                       "El retraso supera {retraso_95:.2f} semanas sólo con probabilidad 0,05 (percentil 95 de máx(0, T − {plazo})). "
+                       "El retraso medio esperado es {retraso_medio:.3f} semanas: multiplicado por la penalización semanal da el coste esperado de la cláusula.''')"))
+    celdas += apartado(4)
+    celdas.append(code("fecha_10 = float(T_mc.quantile(0.90))\n"
+                       "Markdown(f'''Para que P(T > fecha) = 0,10 hay que comprometer el percentil 90: {fecha_10:.2f} semanas, "
+                       "es decir, {fecha_10 - duracion_media:.2f} semanas de margen sobre la duración media ({duracion_media:.2f}). "
+                       "Comprometer la media supone penalización aproximadamente la mitad de las veces (P(T > media) = {float((T_mc > duracion_media).mean()):.3f}, "
+                       "algo más de 0,5 por el sesgo de fusión de las rutas).''')"))
+    return celdas, f"{n} actividades; plazo del cliente {plazo_cliente}; percentiles y retraso esperado"
+
+
 VARIANTES = [
     Variante("normal", 1, "Monte Carlo con R·T, comparación con la aproximación normal, criticidad y sensibilidad (normal)",
              lambda rng: _base(1, rng)),
@@ -460,6 +640,10 @@ VARIANTES = [
     Variante("a-mano", 1, "cinco réplicas a mano: R·T, máximo por columnas, media, desviación y criticidad", _a_mano),
     Variante("mixtas", 2, "distribuciones distintas por actividad (incluidas fijas) con monte_carlo de la librería", _mixtas),
     Variante("convergencia", 3, "cuántas réplicas hacen falta: error típico de la media y del percentil 90", _convergencia),
+    Variante("correlacionadas", 3, "un factor común correlaciona las duraciones expuestas: misma media, más dispersión, menos probabilidad de cumplir",
+             _correlacionadas),
+    Variante("percentiles", 2, "leer la distribución simulada: percentiles, probabilidad de penalización, retraso esperado y margen a comprometer",
+             _percentiles),
 ]
 
 
