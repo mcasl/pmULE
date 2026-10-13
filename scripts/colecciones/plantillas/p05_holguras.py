@@ -1,7 +1,7 @@
 """Colección 05 — Holguras total, libre e independiente, caminos críticos y
 su interpretación."""
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="05_holguras", prefijo="Holguras",
@@ -67,8 +67,7 @@ def _base(k, rng):
                        "proyecto = prelaciones.create_project()"))
     ap = 1
     celdas += apartado(ap); ap += 1
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos de los nodos y camino crítico", label="fig-pert")
     celdas.append(md("Con las fechas de cada actividad (ES, EF, LS, LF) y las de sus vecinas se definen las "
                      "tres holguras:\n\n"
                      "- **Total**: $H_t = LS - ES = LF - EF$. Retraso máximo sin alargar el proyecto, "
@@ -178,8 +177,7 @@ def _compartida(rng):
                        "proyecto = prelaciones.create_project()\n"
                        "duracion_proyecto = proyecto.duration(datos_proyecto['duration'])"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Calendario y holguras"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
@@ -239,8 +237,7 @@ def _vigilancia(rng):
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Calendario y holguras"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
@@ -355,8 +352,7 @@ def _mini(rng):
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Rutas del proyecto y su duración"\n#| label: tbl-rutas\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
                        "detalle_rutas(R, datos_proyecto['duration'][R.columns])"))
@@ -388,17 +384,17 @@ def _mini(rng):
 
 VARIANTES = [
     Variante("tres-holguras", 1, "holguras total, libre e independiente; caminos críticos; retraso de una actividad",
-             lambda rng: _base(1, rng)),
-    Variante("tres-holguras-b", 2, "ídem con holgura independiente distinta de la libre", lambda rng: _base(2, rng)),
-    Variante("varias-criticas", 2, "ídem con dos o más rutas críticas", lambda rng: _base(3, rng)),
+             lambda rng: _base(1, rng), grafo="roy"),
+    Variante("tres-holguras-b", 2, "ídem con holgura independiente distinta de la libre", lambda rng: _base(2, rng), grafo="roy"),
+    Variante("varias-criticas", 2, "ídem con dos o más rutas críticas", lambda rng: _base(3, rng), grafo="roy"),
     Variante("holgura-compartida", 2, "dos actividades consecutivas no pueden gastar las dos la misma holgura total",
-             _compartida),
+             _compartida, grafo="roy"),
     Variante("vigilancia", 2, "ordenar por riesgo; no críticas sin margen; la que más puede retrasarse sin que se note",
-             _vigilancia),
+             _vigilancia, grafo="roy"),
     Variante("diagnostico", 3, "calendario entregado con dos errores: localizarlos por las relaciones entre fechas y holguras",
-             _diagnostico),
+             _diagnostico, grafo="roy"),
     Variante("mini-a-mano", 1, "cinco o seis actividades sin ficticias: rutas, pasos adelante y atrás y holguras con los números sustituidos",
-             _mini),
+             _mini, grafo="roy"),
 ]
 
 

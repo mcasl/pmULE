@@ -208,7 +208,7 @@ for item in sorted(dir()):
 #| label: tbl-datosEnunciado
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor
-    ('G'     , 'A,F'      ),
+    ('G'     , 'C,F'      ),
     ('B'     , '---'      ),
     ('D'     , 'A,B,C'    ),
     ('F'     , 'B,E'      ),

@@ -258,9 +258,9 @@ varianzas = R @ datos_proyecto['variance'][R.columns]
 display(Markdown(pregunta_1))
 
 # %%
-#| fig-cap: "Grafo PERT con tiempos y camino crítico"
+#| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 #| tbl-cap: "Duración media y varianza de cada ruta"

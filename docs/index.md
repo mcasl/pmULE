@@ -294,6 +294,19 @@ Relaciones de precedencia generalizadas (fin-comienzo, comienzo-comienzo, fin-fi
 [Avanzado 05](colecciones/15_avanzado/Avanzado_05.html) — *fechas-calendario* (nivel 2): 8 actividades; inicio 2026-09-21, 2 festivos  
 [Avanzado 06](colecciones/15_avanzado/Avanzado_06.html) — *decision-economica* (nivel 2): 8 actividades; indirectos 8, plazo 22, penalización 11, prima 6  
 
+## Gantt y grafos: ida y vuelta
+
+Construir el diagrama de Gantt a partir del grafo PERT o del Roy (leyendo el cuadro de prelaciones del dibujo) y reconstruir el cuadro, el Roy y el PERT a partir de un Gantt con flechas de prelación.  
+
+[Gantt 01](colecciones/16_gantt_grafos/Gantt_01.html) — *pert-a-gantt* (nivel 1): 7 actividades, 2 ficticias; del PERT al Gantt  
+[Gantt 02](colecciones/16_gantt_grafos/Gantt_02.html) — *roy-a-gantt* (nivel 1): 8 actividades, 2 ficticias; del Roy al Gantt  
+[Gantt 03](colecciones/16_gantt_grafos/Gantt_03.html) — *gantt-a-roy* (nivel 2): 8 actividades, 1 ficticias en PERT; del Gantt al Roy  
+[Gantt 04](colecciones/16_gantt_grafos/Gantt_04.html) — *gantt-a-pert* (nivel 2): 8 actividades, 1 ficticias en PERT; del Gantt al PERT  
+[Gantt 05](colecciones/16_gantt_grafos/Gantt_05.html) — *pert-a-gantt* (nivel 1): 7 actividades, 1 ficticias; del PERT al Gantt  
+[Gantt 06](colecciones/16_gantt_grafos/Gantt_06.html) — *roy-a-gantt* (nivel 1): 7 actividades, 1 ficticias; del Roy al Gantt  
+[Gantt 07](colecciones/16_gantt_grafos/Gantt_07.html) — *gantt-a-roy* (nivel 2): 7 actividades, 2 ficticias en PERT; del Gantt al Roy  
+[Gantt 08](colecciones/16_gantt_grafos/Gantt_08.html) — *gantt-a-pert* (nivel 2): 7 actividades, 1 ficticias en PERT; del Gantt al PERT  
+
 ## Exámenes montados con las plantillas
 
 Generados con `python -m scripts.colecciones.examen` (enunciado y solución por separado, datos nuevos).  

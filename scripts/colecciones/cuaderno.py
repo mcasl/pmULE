@@ -296,10 +296,39 @@ def _celda_code(texto: str) -> str:
 
 class Variante:
     """Una variante de una plantilla: nombre corto (slug), nivel 1-3, descripción y
-    función generadora ``fn(rng) -> (celdas, subtitulo)``."""
+    función generadora ``fn(rng) -> (celdas, subtitulo)``.
 
-    def __init__(self, nombre: str, nivel: int, descripcion: str, fn):
-        self.nombre, self.nivel, self.descripcion, self.fn = nombre, nivel, descripcion, fn
+    ``grafo`` decide qué grafo dibujan las celdas emitidas con :func:`fig_grafo`:
+    ``'pert'`` o ``'roy'`` (fijo, cuando la competencia lo exige), ``'ambos'`` (los dos)
+    o ``'alterno'`` (PERT en la primera vuelta de la colección, Roy en la segunda, …;
+    con ``--repeticiones 2`` cada variante sale una vez con cada grafo)."""
+
+    def __init__(self, nombre: str, nivel: int, descripcion: str, fn, grafo: str = "alterno"):
+        assert grafo in ("pert", "roy", "ambos", "alterno"), grafo
+        self.nombre, self.nivel, self.descripcion, self.fn, self.grafo = nombre, nivel, descripcion, fn, grafo
+
+
+ESTADO = {"grafo": "pert"}   # grafo activo mientras se genera un cuaderno (lo fija despachar)
+
+
+def fig_grafo(durations: str = "datos_proyecto['duration']", cap: str = "Grafo PERT",
+              label: str = "fig-pert", obj: str = "proyecto", tipo: str | None = None,
+              ranksep: float = 1) -> list[tuple]:
+    """Celda(s) de figura con el grafo activo (PERT, Roy o ambos). ``cap`` se escribe
+    pensando en el PERT; para el Roy se adapta («PERT» → «Roy», sin «de los nodos»)."""
+    tipo = tipo or ESTADO["grafo"]
+    tipos = ["pert", "roy"] if tipo == "ambos" else [tipo]
+    celdas = []
+    for t in tipos:
+        if t == "roy":
+            c = cap.replace("PERT", "Roy").replace("tiempos de los nodos", "tiempos")
+            llamada = f"{obj}.roy(durations={durations}, ranksep=1.2, nodesep=1.2)"
+        else:
+            c = cap
+            llamada = f"{obj}.pert(durations={durations}, ranksep={ranksep})"
+        lab = label if len(tipos) == 1 else f"{label}-{t}"
+        celdas.append(code(f'#| fig-cap: "{c}"\n#| label: {lab}\n{llamada}'))
+    return celdas
 
 
 def elegir(variantes: list, k: int):
@@ -328,7 +357,10 @@ def render(celdas: list[tuple], titulo: str, subtitulo: str, coleccion: str = ""
 
 
 def despachar(variantes: list, k: int, rng):
-    """Ejecuta la variante k (cíclica) y devuelve (celdas, subtitulo, variante)."""
+    """Ejecuta la variante k (cíclica) y devuelve (celdas, subtitulo, variante).
+    Fija el grafo activo: el de la variante o, si es 'alterno', PERT/Roy según la vuelta."""
     v = elegir(variantes, k)
+    vuelta = (k - 1) // len(variantes)
+    ESTADO["grafo"] = v.grafo if v.grafo != "alterno" else ("pert" if vuelta % 2 == 0 else "roy")
     celdas, sub = v.fn(rng)
     return celdas, sub, v

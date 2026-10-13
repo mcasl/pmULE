@@ -293,9 +293,9 @@ proyecto = prelaciones.create_project()
 duraciones = datos_proyecto['duration'].round().astype(int)
 
 # %%
-#| fig-cap: "Grafo PERT con las duraciones medias y el camino crítico"
+#| fig-cap: "Grafo Roy con las duraciones medias y el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=duraciones, ranksep=1)
+proyecto.roy(durations=duraciones, ranksep=1.2, nodesep=1.2)
 
 # %%
 duracion_proyecto = proyecto.duration(duraciones)

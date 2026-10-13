@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="14_comprension", prefijo="Comprension",
@@ -65,8 +65,7 @@ def _disena(rng):
                        "    index=['actividades', 'iniciales', 'ficticias', 'rutas críticas', 'con holgura positiva', 'prelaciones redundantes'])\n"
                        "comprobacion['cumple'] = [str(e) == str(o) if e != '≥ 1' else o >= 1 for e, o in zip(comprobacion['exigido'], comprobacion['obtenido'])]\n"
                        "comprobacion"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con las rutas críticas"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las rutas críticas", label="fig-pert")
     celdas.append(code("for nombre, acts in rutas_criticas.items():\n"
                        "    print(f'{nombre}: {\" - \".join(acts)}')\n"
                        "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]"))
@@ -428,8 +427,7 @@ def _tipo_test(rng):
                        "sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])\n"
                        f"X, plazo = '{X}', {plazo}\n"
                        "p_plazo = float(norm.cdf((plazo - duracion) / sigma))"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con el camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el camino crítico", label="fig-pert")
     celdas.append(md("Cada pregunta se construye con la respuesta correcta calculada y tres distractores "
                      "*plausibles*: errores típicos (sumar todas las duraciones, confundir holgura libre y "
                      "total, contar las ficticias como rutas, usar la varianza en lugar de la desviación…)."))

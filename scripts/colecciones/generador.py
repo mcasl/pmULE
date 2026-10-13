@@ -49,7 +49,7 @@ PROB_CONTEXTO = 0.5          # fracción de cuadernos con contexto narrativo
 sys.path.insert(0, str(SRC))
 
 from . import contextos                             # noqa: E402
-from .cuaderno import render                        # noqa: E402
+from .cuaderno import render, ESTADO                # noqa: E402
 from .plantillas import PLANTILLAS                  # noqa: E402
 
 
@@ -84,7 +84,7 @@ def generar_coleccion(plantilla, n, semilla, forzar, ejecutar, indice):
         ruta_py.write_text(texto, encoding="utf8")
         print(f"  + {ruta_py.relative_to(REPO)}  —  [{variante.nombre}, nivel {variante.nivel}] {subtitulo}")
         entradas.append(dict(nombre=nombre, coleccion=meta["slug"], variante=variante.nombre,
-                             nivel=variante.nivel, subtitulo=subtitulo,
+                             nivel=variante.nivel, subtitulo=subtitulo, grafo=ESTADO["grafo"],
                              ruta=str(ruta_py.relative_to(REPO)), semilla=semilla_de(semilla, indice, k)))
         _emparejar(ruta_py)
         if ejecutar:
@@ -215,7 +215,7 @@ def listar():
         meta = plantilla.META
         print(f"[{meta['slug']}] {meta['titulo']} — {len(plantilla.VARIANTES)} variantes")
         for v in plantilla.VARIANTES:
-            print(f"    {v.nombre:28s} nivel {v.nivel}  {v.descripcion}")
+            print(f"    {v.nombre:28s} nivel {v.nivel}  grafo {v.grafo:8s} {v.descripcion}")
 
 
 def main(argv=None):

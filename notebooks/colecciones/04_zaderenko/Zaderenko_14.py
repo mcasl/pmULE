@@ -339,6 +339,6 @@ Markdown(f'El cuadro recuperado reproduce el Gantt: {compatible}. Una predecesor
          'Por eso el Gantt no determina el cuadro de prelaciones.')
 
 # %%
-#| fig-cap: "Grafo PERT con el camino crítico"
+#| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=prelaciones_recuperadas['duration'], ranksep=1)
+proyecto.roy(durations=prelaciones_recuperadas['duration'], ranksep=1.2, nodesep=1.2)

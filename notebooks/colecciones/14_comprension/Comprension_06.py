@@ -258,9 +258,9 @@ comprobacion['cumple'] = [str(e) == str(o) if e != '≥ 1' else o >= 1 for e, o 
 comprobacion
 
 # %%
-#| fig-cap: "Grafo PERT con las rutas críticas"
+#| fig-cap: "Grafo Roy con las rutas críticas"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 for nombre, acts in rutas_criticas.items():

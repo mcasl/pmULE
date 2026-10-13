@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="12_valor_ganado", prefijo="ValorGanado",
@@ -117,8 +117,7 @@ def _base(k, rng):
                        "proyecto = prelaciones.create_project()\n"
                        "BAC_total = float(datos_proyecto['BAC'].sum())\n"
                        "duracion_planificada = proyecto.duration(datos_proyecto['duration'])"))
-    celdas.append(code('#| fig-cap: "Grafo PERT de la planificación"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la planificación", label="fig-pert")
     ap = 1
     params = ("params=dict(period_width=1, row_height=0.7, activity_relative_height=0.6, **GANTT_PARAMS,\n"
               "                                       critical_background_color='white!90!green', regular_background_color='white!90!green',\n"

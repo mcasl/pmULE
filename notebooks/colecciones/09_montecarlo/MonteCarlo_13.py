@@ -298,9 +298,9 @@ resumen
 display(Markdown(pregunta_2))
 
 # %%
-#| fig-cap: "Grafo PERT con duraciones medias y camino crítico"
+#| fig-cap: "Grafo Roy con duraciones medias y camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])

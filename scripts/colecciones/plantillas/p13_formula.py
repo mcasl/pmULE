@@ -6,7 +6,7 @@ import pandas as pd
 
 import networkx as nx
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="13_formula_compleccion", prefijo="Formula",
@@ -91,7 +91,7 @@ def _tau(rng):
     celdas.append(code(BMATRIX))
     celdas.append(code(PREP))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n' "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de rutas R"\n#| label: tbl-R\n'
                        "rutas = proyecto.paths(dummies=False)\n"
                        "display(pd.Series({r: ' - '.join(a) for r, a in rutas.items()}).to_frame('actividades'))\n"
@@ -151,8 +151,7 @@ def _gradiente(rng):
     celdas.append(md("# Resolución"))
     celdas.append(code(PREP))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y rutas críticas"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y rutas críticas", label="fig-pert")
     celdas.append(code("Rt = R @ t\n"
                        "tau = float(Rt.max())\n"
                        "criticas = Rt.index[np.isclose(Rt, tau)].tolist()\n"
@@ -283,7 +282,7 @@ def _nucleo(rng):
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT numerado"\n#| label: fig-pert\n' "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT numerado", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de incidencia H (arcos × nodos)"\n#| label: tbl-H\n'
                        "H = proyecto.incidence_matrix()\n"
                        "H"))
@@ -492,7 +491,7 @@ def _editar_R(rng):
     celdas.append(code(BMATRIX))
     celdas.append(code(PREP))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT original"\n#| label: fig-pert\n' "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT original", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de rutas original"\n#| label: tbl-R\n'
                        "rutas = {r: ' - '.join(acts) for r, acts in proyecto.paths(dummies=False).items()}\n"
                        "Rt = R @ t\n"
@@ -531,7 +530,7 @@ def _editar_R(rng):
                        "tau2 = float(R2t.max())\n"
                        "Markdown(f'''Rutas que desaparecen: {'; '.join(perdidas) or 'ninguna'}.\\n\\nRutas nuevas: {'; '.join(nuevas) or 'ninguna'}.\\n\\n"
                        "Nuevo τ = {tau2:.0f} (antes {tau:.0f}); ruta crítica {R2t.idxmax()}: {rutas2[R2t.idxmax()]}.''')"))
-    celdas.append(code('#| fig-cap: "Grafo PERT modificado"\n#| label: fig-pert2\n' "proyecto2.pert(durations=datos_modificados['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_modificados['duration']", cap="Grafo PERT modificado", label="fig-pert2", obj="proyecto2")
     celdas += apartado(4)
     celdas.append(md("Añadir una prelación nunca reduce τ: cada ruta nueva contiene como subconjunto de "
                      "actividades a alguna combinación que ya restringía el proyecto, y las rutas que "
@@ -636,9 +635,9 @@ def _casi_criticas(rng):
 VARIANTES = [
     Variante("tau-norma-infinito", 1, "R, R·t y τ = ‖R·t‖∞; equivalencia con Zaderenko; τ como función lineal a trozos de una duración", _tau),
     Variante("gradiente", 2, "∂τ/∂t con rutas críticas empatadas: subgradiente, diferencias finitas y suma de sensibilidades", _gradiente),
-    Variante("svd-rango-1", 3, "SVD de R: σ₁/σ₂, rankings por u₁ y v₁, aproximación de rango 1 de τ y precisión frente al conjunto crítico", _svd),
-    Variante("nucleo-incidencia", 3, "matriz de incidencia, R·H = 0 y perturbaciones de las duraciones que no cambian τ", _nucleo),
-    Variante("patterson", 2, "una instancia de referencia (Patterson, formato RCP): τ frente a CPM y ranking SVD", _patterson),
+    Variante("svd-rango-1", 3, "SVD de R: σ₁/σ₂, rankings por u₁ y v₁, aproximación de rango 1 de τ y precisión frente al conjunto crítico", _svd, grafo="pert"),
+    Variante("nucleo-incidencia", 3, "matriz de incidencia, R·H = 0 y perturbaciones de las duraciones que no cambian τ", _nucleo, grafo="pert"),
+    Variante("patterson", 2, "una instancia de referencia (Patterson, formato RCP): τ frente a CPM y ranking SVD", _patterson, grafo="pert"),
     Variante("svd-vs-montecarlo", 3, "índice de criticidad Monte Carlo frente a |v₁|: correlación y efecto de la incertidumbre", _svd_vs_mc),
     Variante("editar-R", 2, "añadir una prelación: filas de R que aparecen y desaparecen (prefijos × sufijos), nuevo τ y monotonía",
              _editar_R),

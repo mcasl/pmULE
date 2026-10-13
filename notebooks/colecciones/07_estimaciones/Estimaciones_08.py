@@ -268,9 +268,9 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 
 # %%
-#| fig-cap: "Grafo PERT con duraciones medias y camino crítico"
+#| fig-cap: "Grafo Roy con duraciones medias y camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])

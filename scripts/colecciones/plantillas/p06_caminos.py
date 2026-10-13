@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="06_matriz_caminos", prefijo="Caminos",
@@ -94,8 +94,7 @@ def _base(k, rng):
                            "datos_proyecto"))
         celdas.append(code("prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                            "proyecto = prelaciones.create_project()"))
-        celdas.append(code('#| fig-cap: "Grafo PERT reconstruido, con tiempos y ruta crítica"\n#| label: fig-pert\n'
-                           "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+        celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT reconstruido, con tiempos y ruta crítica", label="fig-pert", tipo="pert")
         celdas.append(code('#| fig-cap: "Grafo Roy reconstruido"\n#| label: fig-roy\n'
                            "proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)"))
         celdas.append(code("rutas_grafo = {' - '.join(a) for a in proyecto.paths(dummies=False).values()}\n"
@@ -106,8 +105,7 @@ def _base(k, rng):
                            "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                            "proyecto = prelaciones.create_project()"))
         celdas += apartado(ap); ap += 1
-        celdas.append(code('#| fig-cap: "Grafo PERT con numeración de nodos"\n#| label: fig-pert\n'
-                           "proyecto.pert(durations=False, ranksep=1)"))
+        celdas += fig_grafo(durations="False", cap="Grafo PERT con numeración de nodos", label="fig-pert", tipo="pert")
         celdas.append(md("Las rutas se enumeran recorriendo el grafo desde el nodo inicial: en cada nodo se "
                          "abre una rama por cada arco saliente. Las ficticias se recorren pero no se anotan."))
         celdas.append(code('#| tbl-cap: "Rutas del proyecto"\n#| label: tbl-rutas\n'
@@ -203,8 +201,7 @@ def _escenarios(rng):
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de caminos"\n#| label: tbl-matrizCaminos\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
                        "proyecto.display_path_matrix(dummies=False)"))
@@ -234,7 +231,7 @@ VARIANTES = [
              lambda rng: _base(1, rng)),
     Variante("matriz-y-duracion-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng)),
     Variante("rutas-a-grafo-svd", 3, "reconstruir el grafo a partir de las rutas; rutas dominantes por SVD",
-             lambda rng: _base(3, rng)),
+             lambda rng: _base(3, rng), grafo="pert"),
     Variante("escenarios", 2, "tres escenarios de duración a la vez con R·T; puente con Monte Carlo", _escenarios),
 ]
 

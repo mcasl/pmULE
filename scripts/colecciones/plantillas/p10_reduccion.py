@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="10_reduccion", prefijo="Reduccion",
@@ -130,8 +130,7 @@ def _base(k, rng):
                            "                                 np.inf)\n"
                            "datos_proyecto[['duration', 'cap_duration', 'cost_normal', 'cost_cap', 'ucr']]"))
     celdas += apartado(ap); ap += 1
-    celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones normales y el camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones normales y el camino crítico", label="fig-pert")
     if variante == 1:
         celdas.append(code("duracion_normal = proyecto.duration(datos_proyecto['duration'])\n"
                            "coste_normal = int(datos_proyecto['cost_normal'].sum())\n"
@@ -191,8 +190,7 @@ def _base(k, rng):
                            "Al acortar la ruta crítica, otras rutas con holgura pequeña alcanzan su duración y pasan a ser críticas; a partir de ese momento "
                            "reducir una sola actividad no basta, salvo que sea común a todas las rutas críticas, y hay que acortar una actividad de cada ruta "
                            "(paso(s) {\", \".join(str(p + 1) for p in pasos_dobles)}), con el coste sumado.''')"))
-        celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones reducidas"\n#| label: fig-pertReducido\n'
-                           "proyecto.pert(durations=duraciones_reducidas, ranksep=1)"))
+        celdas += fig_grafo(durations="duraciones_reducidas", cap="Grafo PERT con las duraciones reducidas", label="fig-pertReducido")
     elif variante == 2:
         celdas.append(code("curva = pd.DataFrame({'duración': [duracion_normal] + resumen['duración'].tolist(),\n"
                            "                      'coste directo': [coste_directo_normal] + (coste_directo_normal + resumen['sobrecoste acumulado']).tolist()})\n"
@@ -297,8 +295,7 @@ def _barata_no_optima(rng):
                        "proyecto = prelaciones.create_project()\n"
                        "R = proyecto.path_matrix(dummies=False)"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones normales y las rutas críticas"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones normales y las rutas críticas", label="fig-pert")
     celdas.append(code("duracion_normal = proyecto.duration(datos_proyecto['duration'])\n"
                        "rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])\n"
                        "for nombre, acts in rutas_criticas.items():\n"
@@ -503,8 +500,7 @@ def _programacion_lineal(rng):
                        "proyecto = prelaciones.create_project()\n"
                        f"reduccion = {r}"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones normales"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones normales", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de caminos y duración de cada ruta"\n#| label: tbl-rutas\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
                        "duracion_normal = proyecto.duration(datos_proyecto['duration'])\n"
@@ -607,8 +603,7 @@ def _cur_por_tramos(rng):
                        "R = proyecto.path_matrix(dummies=False)\n"
                        f"reduccion = {r}"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones normales"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones normales", label="fig-pert")
     celdas.append(code("duracion_normal = proyecto.duration(datos_proyecto['duration'])\n"
                        "rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])\n"
                        "for nombre, acts in rutas_criticas.items():\n"

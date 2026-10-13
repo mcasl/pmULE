@@ -1,7 +1,7 @@
 """Colección 07 — Tres estimaciones: media y varianza PERT de cada actividad,
 cálculo inverso, comparación Beta-PERT / triangular / uniforme."""
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="07_estimaciones", prefijo="Estimaciones",
@@ -69,8 +69,7 @@ def _base(k, rng):
     celdas.append(code("prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()\n"
                        "duraciones = datos_proyecto['duration'].round().astype(int)"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con las duraciones medias y el camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=duraciones, ranksep=1)"))
+    celdas += fig_grafo(durations="duraciones", cap="Grafo PERT con las duraciones medias y el camino crítico", label="fig-pert")
     celdas.append(code("duracion_proyecto = proyecto.duration(duraciones)\n"
                        "camino_critico = proyecto.display_critical_path(duraciones)\n"
                        "Markdown(f'La duración media del proyecto es {duracion_proyecto} semanas. Las estimaciones optimista y pesimista '\n"
@@ -148,8 +147,7 @@ def _deterministas(rng):
     celdas += apartado(2)
     celdas.append(code("prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con duraciones medias y camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con duraciones medias y camino crítico", label="fig-pert")
     celdas.append(code("duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
                        "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
                        "Markdown(f'La duración media del proyecto es {duracion_media} semanas.')"))
