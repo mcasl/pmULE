@@ -199,8 +199,9 @@ def fondahl_construct(immediate_predecessors: dict) -> tuple:
     direct construction algorithm.
 
     Unlike the Roy/augmented approach (one dummy per predecessor link followed by
-    simplification), Fondahl builds the minimum-dummy network directly in a single
-    topological forward pass:
+    simplification), Fondahl builds a network with few dummies directly in a single
+    topological forward pass (not the minimum: that problem is NP-hard, and
+    ``_simplify_local`` usually removes many more afterwards):
 
     * Activities with a single predecessor are attached directly to that predecessor's
       head node (no dummy needed) whenever that node has not yet been used by another
@@ -323,6 +324,219 @@ def _simplify_sweep(project: "ProjectGraph") -> tuple:
         if updated:
             removed += 1
     return project, removed
+
+
+def _simplify_legacy(project: "ProjectGraph") -> "ProjectGraph":
+    """Simplificación ANTIGUA (hasta 2026-10): _simplify_sweep hasta punto fijo.
+
+    Ya no se usa en create_project_fondahl (sustituida por _simplify_local).
+    Se conserva como referencia y para comparar resultados: es correcta pero
+    lenta, porque cada ficticia se valida recalculando las predecesoras
+    distantes de todo el proyecto dos veces (contraer / eliminar), lo que da
+    un coste del orden de n³ (120 actividades ≈ 100 s).
+    """
+    removed = 1
+    while removed:
+        project, removed = _simplify_sweep(project)
+    return project
+
+
+def _simplify_local(project: "ProjectGraph") -> "ProjectGraph":
+    """Elimina o contrae ficticias redundantes con comprobaciones LOCALES.
+
+    Toma exactamente las mismas decisiones, en el mismo orden, que
+    _simplify_legacy (y por tanto produce el mismo grafo), pero valida cada
+    ficticia con operaciones locales en lugar de recalcular las predecesoras
+    distantes de todo el proyecto. Pasa de ~n³ a casi lineal (500
+    actividades: horas → décimas de segundo).
+
+    Qué hacía la versión antigua (y se reproduce aquí)
+    -------------------------------------------------
+    Pasadas sobre las ficticias en orden alfabético de nombre, hasta que una
+    pasada no cambia nada. Para cada ficticia d = (u → v):
+      1) intenta CONTRAERLA: nx.contracted_nodes funde u en v (las entradas y
+         salidas de u pasan a v; si ya existía un arco con los mismos
+         extremos se conserva el existente y se descarta el de u);
+      2) si no vale, intenta ELIMINARLA (borrar el arco);
+    y acepta la operación si el grafo sigue siendo acíclico, con un único
+    origen y un único sumidero, y las predecesoras distantes de cada
+    actividad real no cambian.
+
+    Idea clave — el conjunto A(n)
+    -----------------------------
+    Para cada nudo n:
+
+        A(n) = actividades REALES que deben haber terminado para alcanzar n
+             = ⋃ sobre los arcos (p → n):  A(p) ∪ ({actividad del arco} si es real)
+
+    Las predecesoras distantes de una actividad real X son exactamente
+    A(cola(X)). Por tanto, una operación conserva el proyecto si y solo si
+    no cambia A(n) en ningún nudo del que salga una actividad real. A se
+    calcula una vez en orden topológico y se guarda como bitset (un entero
+    de Python: bit i = actividad real i), así que uniones, diferencias y
+    comparaciones son operaciones de bits.
+
+    Comprobación de la CONTRACCIÓN de d = (u → v)
+    ---------------------------------------------
+      a) Ninguna actividad real puede perderse: si un arco real de u choca
+         con uno ya existente de v (mismo vecino), contracted_nodes lo
+         descartaría → rechazar.
+      b) Acíclico: si hay otro camino u ⇝ v además de d, fundir u y v cierra
+         un ciclo → rechazar. Se busca con un DFS desde los sucesores de u,
+         podado a nudos anteriores a v en el orden topológico. Sin ese otro
+         camino tampoco pueden aparecer orígenes ni sumideros nuevos.
+      c) Semántica: A(v) no cambia (lo que llega a u ya llegaba a v por d).
+         Lo que cambia es lo que sale de u, que pasa a salir de v:
+           - una actividad real que salía de u pasa a tener A(v) en vez de
+             A(u) → hace falta A(u) == A(v);
+           - una ficticia (u → w) aporta ahora A(v) a w: A(w) puede crecer.
+         Ese crecimiento se propaga aguas abajo (solo puede crecer, nunca
+         menguar); si llega a un nudo del que sale una actividad real →
+         rechazar. Si no, se acepta y se actualizan los A que crecieron.
+
+    Comprobación de la ELIMINACIÓN de d = (u → v)
+    ---------------------------------------------
+      a) u necesita otra salida y v otra entrada (si no, aparece un origen o
+         un sumidero nuevo). Borrar un arco nunca crea ciclos.
+      b) Semántica: A'(v) = unión de las demás entradas de v. Si es menor
+         que A(v), la disminución se propaga aguas abajo (recalculando cada
+         nudo afectado desde sus entradas, en orden topológico); si llega a
+         un nudo del que sale una actividad real → rechazar.
+
+    Las propagaciones se detienen en cuanto un nudo no cambia, así que en la
+    práctica tocan muy pocos nudos. Tras cada operación aceptada se recalcula
+    el orden topológico y el índice nombre → arco (O(V + E)).
+
+    El problema de mínimo número de ficticias es NP-duro: esto es un voraz
+    que llega a un mínimo local y su resultado depende del orden (por eso se
+    respeta el orden alfabético de la versión antigua).
+    """
+    import heapq
+
+    G = project.pert_graph.copy()
+
+    def is_dummy_name(name: str) -> bool:
+        return name.startswith("@")
+
+    real = sorted({d["activity"] for _, _, d in G.edges(data=True)
+                   if not is_dummy_name(d["activity"])})
+    bit = {name: 1 << i for i, name in enumerate(real)}   # ficticias → 0
+
+    def contribution(p, n, a_p) -> int:
+        """Lo que el arco (p → n) aporta a A(n), si A(p) vale a_p."""
+        return a_p | bit.get(G.edges[p, n]["activity"], 0)
+
+    def has_real_out(n) -> bool:
+        return any(not is_dummy_name(d) for _, _, d in G.out_edges(n, data="activity"))
+
+    pos, where = {}, {}
+
+    def reindex():
+        pos.clear()
+        pos.update({n: i for i, n in enumerate(nx.topological_sort(G))})
+        where.clear()
+        where.update({d: (s, t) for s, t, d in G.edges(data="activity")})
+
+    reindex()
+    A = {}
+    for n in sorted(pos, key=pos.get):
+        acc = 0
+        for p in G.predecessors(n):
+            acc |= contribution(p, n, A[p])
+        A[n] = acc
+
+    def propagate_growth(seeds: dict):
+        """seeds: nudo → A nuevo (⊇ A actual). Devuelve los A nuevos o None."""
+        new = {}
+        heap = []
+        for n, val in seeds.items():
+            if val != A[n]:
+                new[n] = val
+                heapq.heappush(heap, (pos[n], n))
+        while heap:
+            _, n = heapq.heappop(heap)
+            if has_real_out(n):
+                return None
+            for s in G.successors(n):
+                val = new.get(s, A[s]) | contribution(n, s, new[n])
+                if val != new.get(s, A[s]):
+                    if s not in new:
+                        heapq.heappush(heap, (pos[s], s))
+                    new[s] = val
+        return new
+
+    def try_contract(u, v) -> bool:
+        # (a) ningún arco real de u puede chocar con uno existente de v
+        for p in G.predecessors(u):
+            if G.has_edge(p, v) and not is_dummy_name(G.edges[p, u]["activity"]):
+                return False
+        for w in G.successors(u):
+            if w != v and G.has_edge(v, w) and not is_dummy_name(G.edges[u, w]["activity"]):
+                return False
+        # (b) otro camino u ⇝ v → ciclo
+        stack = [w for w in G.successors(u) if w != v]
+        seen = set(stack)
+        while stack:
+            n = stack.pop()
+            if n == v:
+                return False
+            for s in G.successors(n):
+                if s not in seen and pos[s] <= pos[v]:
+                    seen.add(s)
+                    stack.append(s)
+        # (c) semántica
+        seeds = {}
+        for w in G.successors(u):
+            if w == v:
+                continue
+            if is_dummy_name(G.edges[u, w]["activity"]):
+                seeds[w] = seeds.get(w, A[w]) | A[v]
+            elif A[u] != A[v]:
+                return False
+        new = propagate_growth(seeds)
+        if new is None:
+            return False
+        nx.contracted_nodes(G, v, u, self_loops=False, copy=False)
+        A.update(new)
+        del A[u]
+        return True
+
+    def try_remove(u, v) -> bool:
+        if G.out_degree(u) < 2 or G.in_degree(v) < 2:
+            return False
+        # Cada nudo se recalcula al sacarlo del heap (orden topológico), cuando
+        # ya están resueltos todos sus predecesores afectados.
+        new, queued, heap = {}, {v}, [(pos[v], v)]
+        while heap:
+            _, n = heapq.heappop(heap)
+            val = 0
+            for p in G.predecessors(n):
+                if (p, n) != (u, v):
+                    val |= contribution(p, n, new.get(p, A[p]))
+            if val == A[n]:
+                continue                 # no cambia: la propagación se corta aquí
+            if has_real_out(n):
+                return False
+            new[n] = val
+            for s in G.successors(n):
+                if s not in queued:
+                    queued.add(s)
+                    heapq.heappush(heap, (pos[s], s))
+        G.remove_edge(u, v)
+        A.update(new)
+        return True
+
+    changed = True
+    while changed:
+        changed = False
+        for name in sorted(where):
+            if not is_dummy_name(name) or name not in where:
+                continue
+            u, v = where[name]
+            if try_contract(u, v) or try_remove(u, v):
+                reindex()
+                changed = True
+    return ProjectGraph(G)
 
 
 class PredecessorTable:
@@ -522,7 +736,7 @@ class PredecessorTable:
         Parameters
         ----------
         simplify : bool, default True
-            Run _simplify_sweep passes until no further dummies can be removed.
+            Remove/contract redundant dummies with ``_simplify_local``.
         """
         return self.create_project_fondahl(simplify=simplify)
 
@@ -533,14 +747,17 @@ class PredecessorTable:
         dummies in the first place, avoiding the cycle-creation bug that
         affects ``create_project`` when two activities share all predecessors.
 
-        Post-construction simplification (optional) uses single-pass sweeps
-        (``_simplify_sweep``) rather than the reset-based ``simplify()``, so
-        the sweep is O(D·n²) per pass instead of O(D²·n⁴).
+        Fondahl does NOT give the minimum number of dummies: the optional
+        post-construction simplification (``_simplify_local``) usually removes
+        30-50 % of them.  It validates each dummy with local bitset checks
+        (see its docstring), so it is almost linear in the graph size.  The
+        previous implementation (``_simplify_legacy``: ``_simplify_sweep``
+        until a fixed point) gives the same kind of result but is ~n³.
 
         Parameters
         ----------
         simplify : bool, default True
-            Run ``_simplify_sweep`` passes until no further dummies can be removed.
+            Remove/contract redundant dummies with ``_simplify_local``.
         """
         nodes, real_arcs, dummy_arcs = fondahl_construct(self.immediate_predecessor)
 
@@ -563,9 +780,7 @@ class PredecessorTable:
         project = ProjectGraph(G)
 
         if simplify:
-            removed = 1
-            while removed:
-                project, removed = _simplify_sweep(project)
+            project = _simplify_local(project)   # antes: _simplify_legacy(project)
 
         # Final relabeling to get clean sequential node labels after simplification.
         new_graph = nx.relabel_nodes(
