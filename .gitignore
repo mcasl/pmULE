@@ -37,3 +37,7 @@ pip-delete-this-directory.txt
 # Instrucciones locales para Claude (contienen datos privados)
 CLAUDE.md
 .claude/
+
+# Exámenes generados con scripts/colecciones/examen.py (el patrón "Examenes" de arriba los excluía en APFS, insensible a mayúsculas)
+!/notebooks/examenes/
+!/docs/examenes/
