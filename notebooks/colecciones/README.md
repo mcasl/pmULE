@@ -394,3 +394,22 @@ Variantes:
 - `Avanzado_04` [pdm-desfases, nivel 3] — 8 actividades; 4 relaciones PDM no ordinarias (1 CC, 1 FF)
 - `Avanzado_05` [fechas-calendario, nivel 2] — 8 actividades; inicio 2026-09-21, 2 festivos
 - `Avanzado_06` [decision-economica, nivel 2] — 8 actividades; indirectos 8, plazo 22, penalización 11, prima 6
+
+## 16_gantt_grafos — Gantt y grafos: ida y vuelta
+
+Construir el diagrama de Gantt a partir del grafo PERT o del Roy (leyendo el cuadro de prelaciones del dibujo) y reconstruir el cuadro, el Roy y el PERT a partir de un Gantt con flechas de prelación.
+
+Variantes:
+  - `pert-a-gantt` (nivel 1): del PERT sin tiempos (más duraciones) al cuadro, el calendario y los Gantt temprano y tardío
+  - `roy-a-gantt` (nivel 1): del Roy al cuadro, el calendario y los Gantt temprano y tardío; holgura libre como hueco, total como desplazamiento
+  - `gantt-a-roy` (nivel 2): del Gantt con flechas al cuadro de prelaciones y al Roy; qué holguras se leen en el Gantt
+  - `gantt-a-pert` (nivel 2): del Gantt con flechas al cuadro y al PERT con mínimo de ficticias; por qué el Gantt no las necesita
+
+- `Gantt_01` [pert-a-gantt, nivel 1] — 7 actividades, 2 ficticias; del PERT al Gantt
+- `Gantt_02` [roy-a-gantt, nivel 1] — 8 actividades, 2 ficticias; del Roy al Gantt
+- `Gantt_03` [gantt-a-roy, nivel 2] — 8 actividades, 1 ficticias en PERT; del Gantt al Roy
+- `Gantt_04` [gantt-a-pert, nivel 2] — 8 actividades, 1 ficticias en PERT; del Gantt al PERT
+- `Gantt_05` [pert-a-gantt, nivel 1] — 7 actividades, 1 ficticias; del PERT al Gantt
+- `Gantt_06` [roy-a-gantt, nivel 1] — 7 actividades, 1 ficticias; del Roy al Gantt
+- `Gantt_07` [gantt-a-roy, nivel 2] — 7 actividades, 2 ficticias en PERT; del Gantt al Roy
+- `Gantt_08` [gantt-a-pert, nivel 2] — 7 actividades, 1 ficticias en PERT; del Gantt al PERT

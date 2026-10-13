@@ -299,9 +299,9 @@ BAC_total = float(datos_proyecto['BAC'].sum())
 duracion_planificada = proyecto.duration(datos_proyecto['duration'])
 
 # %%
-#| fig-cap: "Grafo PERT de la planificación"
+#| fig-cap: "Grafo Roy de la planificación"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %% [markdown]
 # ## Apartado 1

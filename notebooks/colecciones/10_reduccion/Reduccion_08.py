@@ -270,9 +270,9 @@ datos_proyecto[['duration', 'cap_duration', 'cost_normal', 'cost_cap', 'ucr']]
 display(Markdown(pregunta_2))
 
 # %%
-#| fig-cap: "Grafo PERT con las duraciones normales y el camino crítico"
+#| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 duracion_normal = proyecto.duration(datos_proyecto['duration'])
@@ -327,6 +327,6 @@ pasos_dobles = [p for p, acts in pasos.items() if len(acts) > 1]
 Markdown(f'''El proyecto pasa a durar {duracion_reducida} semanas con un coste de {coste_normal} + {resumen["sobrecoste del paso"].sum():.0f} = {coste_final:.0f} k€. Al acortar la ruta crítica, otras rutas con holgura pequeña alcanzan su duración y pasan a ser críticas; a partir de ese momento reducir una sola actividad no basta, salvo que sea común a todas las rutas críticas, y hay que acortar una actividad de cada ruta (paso(s) {", ".join(str(p + 1) for p in pasos_dobles)}), con el coste sumado.''')
 
 # %%
-#| fig-cap: "Grafo PERT con las duraciones reducidas"
+#| fig-cap: "Grafo Roy con las duraciones reducidas"
 #| label: fig-pertReducido
-proyecto.pert(durations=duraciones_reducidas, ranksep=1)
+proyecto.roy(durations=duraciones_reducidas, ranksep=1.2, nodesep=1.2)

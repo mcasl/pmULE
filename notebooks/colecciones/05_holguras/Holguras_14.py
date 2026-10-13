@@ -231,9 +231,9 @@ proyecto = prelaciones.create_project()
 display(Markdown(pregunta_1))
 
 # %%
-#| fig-cap: "Grafo PERT"
+#| fig-cap: "Grafo Roy"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 #| tbl-cap: "Rutas del proyecto y su duración"

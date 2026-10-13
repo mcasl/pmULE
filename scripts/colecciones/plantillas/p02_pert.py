@@ -1,7 +1,7 @@
 """Colección 02 — Grafo PERT: dibujar con el mínimo de ficticias, justificar
 cada ficticia, numerar nodos, enumerar rutas y comprobar con los ancestros."""
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="02_pert", prefijo="PERT",
@@ -64,8 +64,7 @@ def _base(k, rng):
                      "en los demás casos hacen falta ficticias."))
     celdas.append(code('#| tbl-cap: "Cuadro de prelaciones expandido"\n#| label: tbl-prelacionesExpandido\n'
                        "prelaciones.display_immediate_linkage_matrix()"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con numeración de nodos; las ficticias se dibujan discontinuas"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT con numeración de nodos; las ficticias se dibujan discontinuas", label="fig-pert")
     celdas.append(code("print(f'El grafo tiene {len(proyecto.nodes)} nodos, {len(proyecto)} actividades reales '\n"
                        "      f'y {len(proyecto.dummies)} ficticias: {\", \".join(proyecto.dummies)}')"))
     celdas += apartado(ap); ap += 1
@@ -205,8 +204,7 @@ def _compartir_nodos(rng):
                      "actividades iniciales (todas comparten el nodo origen) y las finales (todas comparten el "
                      "sumidero): si dos actividades son a la vez iniciales y finales hace falta una ficticia."))
     celdas += apartado(4)
-    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT del proyecto", label="fig-pert")
     return celdas, f"{n} actividades, {len(estado['mismas_pred'])} pareja(s) con mismas predecesoras y {len(estado['mismas_suc'])} con mismas sucesoras"
 
 
@@ -269,14 +267,14 @@ def _ficticias_sobrantes(rng):
 
 VARIANTES = [
     Variante("minimo-ficticias", 1, "dibujar con el mínimo de ficticias, justificar cada una, rutas y ancestros",
-             lambda rng: _base(1, rng)),
+             lambda rng: _base(1, rng), grafo="pert"),
     Variante("paralelas", 2, "ídem con dos actividades de idénticas predecesoras (arcos paralelos)",
-             lambda rng: _base(2, rng)),
-    Variante("mas-ficticias", 2, "ídem con un proyecto mayor y más ficticias", lambda rng: _base(3, rng)),
+             lambda rng: _base(2, rng), grafo="pert"),
+    Variante("mas-ficticias", 2, "ídem con un proyecto mayor y más ficticias", lambda rng: _base(3, rng), grafo="pert"),
     Variante("compartir-nodos", 2, "qué parejas pueden compartir nodo inicial, nodo final, ambos o ninguno",
-             _compartir_nodos),
+             _compartir_nodos, grafo="pert"),
     Variante("ficticias-sobrantes", 3, "grafo sistemático sin simplificar frente al mínimo: qué ficticias sobran y por qué",
-             _ficticias_sobrantes),
+             _ficticias_sobrantes, grafo="pert"),
 ]
 
 

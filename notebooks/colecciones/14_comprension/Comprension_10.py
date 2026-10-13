@@ -238,9 +238,9 @@ X, plazo = 'D', 37
 p_plazo = float(norm.cdf((plazo - duracion) / sigma))
 
 # %%
-#| fig-cap: "Grafo PERT con el camino crítico"
+#| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %% [markdown]
 # Cada pregunta se construye con la respuesta correcta calculada y tres distractores *plausibles*: errores típicos (sumar todas las duraciones, confundir holgura libre y total, contar las ficticias como rutas, usar la varianza en lugar de la desviación…).

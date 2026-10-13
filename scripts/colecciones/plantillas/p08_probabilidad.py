@@ -6,7 +6,7 @@ from scipy.stats import norm
 
 import networkx as nx
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="08_probabilidad", prefijo="Probabilidad",
@@ -55,8 +55,7 @@ def _base(k, rng):
                        "proyecto = prelaciones.create_project()"))
     ap = 1
     celdas += apartado(ap); ap += 1
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos de los nodos y camino crítico", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Holgura total de las actividades"\n#| label: tbl-holguras\n'
                        "resultados_pert = proyecto.calculate_pert(durations=datos_proyecto['duration'])\n"
                        "resultados_pert['activities'].T"))
@@ -157,8 +156,7 @@ def _casi_critica(rng):
                        "medias = R @ datos_proyecto['duration'][R.columns]\n"
                        "varianzas = R @ datos_proyecto['variance'][R.columns]"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Duración media y varianza de cada ruta"\n#| label: tbl-rutas\n'
                        "rutas = pd.DataFrame({'actividades': [' - '.join(R.columns[R.loc[r] == 1]) for r in R.index],\n"
                        "                      'media': medias, 'varianza': varianzas, 'σ': np.sqrt(varianzas)}, index=R.index).sort_values('media', ascending=False)\n"
@@ -225,8 +223,7 @@ def _varianza_maxima(rng):
                        "proyecto = prelaciones.create_project()\n"
                        f"X, plazo, probabilidad_objetivo = '{X}', {plazo}, {prob}"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
     celdas.append(code("duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
                        "criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts))\n"
                        "Markdown(f'Duración media {duracion_media} semanas; ruta crítica {\" - \".join(criticas)}. {X} {\"sí\" if X in criticas else \"no\"} está en ella.')"))
@@ -293,8 +290,7 @@ def _diagnostico(rng):
                        "proyecto = prelaciones.create_project()\n"
                        f"plazo = {plazo}"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
     celdas.append(code("duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
                        "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])"))
     celdas += apartado(2)
@@ -466,8 +462,7 @@ def _ser_critica(rng):
                        "proyecto = prelaciones.create_project()\n"
                        f"plazo = {plazo}"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Media y varianza de cada ruta"\n#| label: tbl-rutas\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
                        "medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')\n"

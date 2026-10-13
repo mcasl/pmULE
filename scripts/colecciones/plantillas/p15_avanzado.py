@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="15_avanzado", prefijo="Avanzado",
@@ -160,8 +160,7 @@ def _pdm(rng):
                        "Las relaciones CC y FF permiten solapar actividades (acortan); los desfases positivos en FC son esperas obligadas (alargan); "
                        "una CF con desfase grande obliga a que la sucesora no termine demasiado pronto, lo que puede retrasarla respecto al FC clásico. "
                        "El efecto neto depende de cuáles de ellas están en el camino crítico.''')"))
-    celdas.append(code('#| fig-cap: "Grafo PERT equivalente con todas las relaciones FC + 0"\n#| label: fig-pertFc\n'
-                       "proyecto_fc.pert(durations=tabla_fc['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="tabla_fc['duration']", cap="Grafo PERT equivalente con todas las relaciones FC + 0", label="fig-pertFc", obj="proyecto_fc")
     return celdas, f"{n} actividades; {len(idx)} relaciones PDM no ordinarias ({n_cc} CC, {n_ff} FF)"
 
 
@@ -364,7 +363,7 @@ def _decision_economica(rng):
 
 VARIANTES = [
     Variante("pdm-desfases", 3, "relaciones FC/CC/FF/CF con desfases: pasos adelante y atrás con candidatos, criticidad por solape, comparación con FC+0",
-             _pdm),
+             _pdm, grafo="roy"),
     Variante("fechas-calendario", 2, "del calendario en días laborables a fechas reales: fines de semana, festivos y efecto de un festivo nuevo",
              _fechas),
     Variante("decision-economica", 2, "duración óptima con costes directos (Ackoff), indirectos, penalización y prima; análisis marginal",

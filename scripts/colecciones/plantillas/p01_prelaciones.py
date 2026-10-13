@@ -5,7 +5,7 @@ import numpy as np
 
 import pandas as pd
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="01_prelaciones", prefijo="Prelaciones",
@@ -124,8 +124,7 @@ def _base(k, rng):
     celdas.append(md("Las actividades ficticias (discontinuas) del grafo transmiten precisamente las "
                      "prelaciones que no pueden representarse compartiendo nodos. Siguiendo hacia atrás los "
                      "arcos desde el final de cada actividad se recorren todos sus ancestros."))
-    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT del proyecto", label="fig-pert")
     sub = f"{n} actividades, {len(redundantes)} prelaciones redundantes" + (", una errata con ciclo" if con_ciclo else "")
     return celdas, sub
 
@@ -193,8 +192,7 @@ def _texto(rng):
                        "redundantes = sorted(set(G.edges) - set(nx.transitive_reduction(G).edges))\n"
                        "print('Prelaciones redundantes:', redundantes or 'ninguna')"))
     celdas += apartado(4)
-    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT del proyecto", label="fig-pert")
     return celdas, f"{n} actividades descritas en texto ({ctx['tema']})"
 
 
@@ -278,8 +276,7 @@ def _grafo_erroneo(rng):
                      "(si la comparación muestra alguna más, es consecuencia de estas dos: al añadir o quitar una "
                      "prelación cambian las que son redundantes)."))
     celdas += apartado(3)
-    celdas.append(code('#| fig-cap: "Grafo PERT correcto"\n#| label: fig-pertCorrecto\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT correcto", label="fig-pertCorrecto")
     celdas.append(code("Markdown(f'El grafo correcto tiene {len(proyecto.dummies)} ficticia(s) frente a {len(proyecto_dibujado.dummies)} del dibujado.')"))
     return celdas, f"{n} actividades, grafo con una prelación de más y otra de menos"
 
@@ -310,8 +307,7 @@ def _numeracion_nodos(rng):
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con los nodos numerados"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT con los nodos numerados", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Arcos del grafo: origen, destino y comprobación i < j"\n#| label: tbl-arcos\n'
                        "arcos = pd.DataFrame([{'actividad': d['activity'], 'i': i, 'j': j, 'i < j': i < j}\n"
                        "                      for i, j, d in proyecto.pert_graph.edges(data=True)]).set_index('actividad')\n"
@@ -448,24 +444,23 @@ def _datos_sucios(rng):
                        "redundantes = sorted(set(G.edges) - set(nx.transitive_reduction(G).edges))\n"
                        "print('Prelaciones redundantes:', redundantes or 'ninguna')"))
     celdas += apartado(4)
-    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT del proyecto", label="fig-pert")
     return celdas, f"{n} actividades; tabla con {len(set(sucio.values()))} formatos distintos que normalizar"
 
 
 VARIANTES = [
     Variante("redundancias", 1, "cuadro con prelaciones redundantes: depurarlo, cuadro expandido y de ancestros",
-             lambda rng: _base(1, rng)),
-    Variante("redundancias-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng)),
+             lambda rng: _base(1, rng), grafo="pert"),
+    Variante("redundancias-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng), grafo="pert"),
     Variante("ciclo", 2, "errata que crea un ciclo: detectarla con la librería y corregirla antes de depurar",
-             lambda rng: _base(3, rng)),
-    Variante("texto", 2, "las prelaciones llegan como texto corrido con contexto; hay que tabularlas", _texto),
+             lambda rng: _base(3, rng), grafo="pert"),
+    Variante("texto", 2, "las prelaciones llegan como texto corrido con contexto; hay que tabularlas", _texto, grafo="pert"),
     Variante("grafo-erroneo", 3, "se da un grafo PERT con una prelación de más y otra de menos: encontrarlas "
-                                 "comparando cuadros de ancestros", _grafo_erroneo),
+                                 "comparando cuadros de ancestros", _grafo_erroneo, grafo="pert"),
     Variante("numeracion-nodos", 2, "numerar los nodos del PERT con i < j en cada arco; nodos intercambiables; contar las numeraciones válidas",
-             _numeracion_nodos),
+             _numeracion_nodos, grafo="pert"),
     Variante("datos-sucios", 1, "cuadro transcrito con minúsculas, separadores y duplicados: normalizarlo con reglas antes de construir el proyecto",
-             _datos_sucios),
+             _datos_sucios, grafo="pert"),
 ]
 
 

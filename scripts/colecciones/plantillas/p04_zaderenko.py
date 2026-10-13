@@ -3,7 +3,7 @@ nodos, calendario de las actividades y diagrama de Gantt."""
 import networkx as nx
 import pandas as pd
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="04_zaderenko", prefijo="Zaderenko",
@@ -46,8 +46,7 @@ def _base(k, rng):
     celdas += apartado(ap); ap += 1
     celdas.append(code('#| tbl-cap: "Cuadro de prelaciones expandido"\n#| label: tbl-prelacionesExpandido\n'
                        "prelaciones.display_immediate_linkage_matrix()"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con numeración de nodos"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT con numeración de nodos", label="fig-pert")
     celdas += apartado(ap); ap += 1
     celdas.append(md("En la matriz de Zaderenko la casilla (i, j) contiene la duración de la actividad que va "
                      "del nodo i al nodo j (cero para las ficticias). El tiempo más temprano de un nodo es el "
@@ -80,8 +79,7 @@ def _base(k, rng):
                        "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
     celdas.append(code('#| tbl-cap: "Fechas de cada actividad a partir de los tiempos de sus nodos"\n#| label: tbl-fechasPaso\n'
                        "detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d', 'H_total = LS − ES']]"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"\n#| label: fig-pertTiempos\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos de los nodos y camino crítico", label="fig-pertTiempos")
     celdas += apartado(ap); ap += 1
     celdas.append(md("Las flechas unen el final de cada predecesora con el inicio de su sucesora; en rojo, las "
                      "prelaciones críticas (sin hueco entre barras críticas)."))
@@ -161,8 +159,7 @@ def _matriz_dada(rng):
     celdas += apartado(2)
     celdas.append(code("prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
-    celdas.append(code('#| fig-cap: "Grafo PERT reconstruido"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT reconstruido", label="fig-pert")
     celdas.append(md("La numeración de los nodos puede diferir de la del enunciado (hay varias numeraciones "
                      "válidas), pero la matriz tiene las mismas actividades en las mismas posiciones relativas."))
     celdas += apartado(3)
@@ -223,8 +220,7 @@ def _prediccion(rng):
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
     celdas += apartado(1)
-    celdas.append(code('#| fig-cap: "Grafo PERT con numeración de nodos"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT con numeración de nodos", label="fig-pert")
     celdas.append(md("A ojo sólo puede intuirse: las rutas con más actividades o con actividades largas son las "
                      "candidatas. La forma del grafo no basta; hacen falta las duraciones."))
     celdas += apartado(2)
@@ -412,22 +408,21 @@ def _gantt_dado(rng):
                        "Markdown(f'El cuadro recuperado reproduce el Gantt: {compatible}. Una predecesora ajustada suele ser una antecesora real (inmediata o no), '\n"
                        "         'pero puede ser una coincidencia de fechas; y las predecesoras reales con holgura entre su fin y el inicio de la sucesora no se ven en el Gantt. '\n"
                        "         'Por eso el Gantt no determina el cuadro de prelaciones.')"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con el camino crítico"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=prelaciones_recuperadas['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="prelaciones_recuperadas['duration']", cap="Grafo PERT con el camino crítico", label="fig-pert")
     return celdas, f"{n} actividades; sólo se conoce el Gantt de inicios tempranos"
 
 
 VARIANTES = [
     Variante("zaderenko", 1, "matriz de Zaderenko, tiempos de los nodos, calendario, Gantt y efecto de un retraso",
-             lambda rng: _base(1, rng)),
-    Variante("zaderenko-b", 1, "ídem con un proyecto mayor", lambda rng: _base(2, rng)),
-    Variante("zaderenko-c", 2, "ídem con diez actividades", lambda rng: _base(3, rng)),
+             lambda rng: _base(1, rng), grafo="pert"),
+    Variante("zaderenko-b", 1, "ídem con un proyecto mayor", lambda rng: _base(2, rng), grafo="pert"),
+    Variante("zaderenko-c", 2, "ídem con diez actividades", lambda rng: _base(3, rng), grafo="pert"),
     Variante("matriz-dada", 3, "inverso: de la matriz de Zaderenko rellena al cuadro de prelaciones, el grafo y los tiempos",
-             _matriz_dada),
+             _matriz_dada, grafo="pert"),
     Variante("prediccion", 2, "predecir sin calcular si un retraso cambia el plazo y comprobarlo con las holguras",
-             _prediccion),
+             _prediccion, grafo="pert"),
     Variante("plazo-impuesto", 2, "plazo menor que la duración: tardíos desde el plazo, holguras negativas, rutas que lo exceden y actividad común",
-             _plazo_impuesto),
+             _plazo_impuesto, grafo="pert"),
     Variante("gantt-dado", 3, "sólo se conoce el Gantt: deducir iniciales, predecesoras posibles y ajustadas, y una ruta crítica",
              _gantt_dado),
 ]

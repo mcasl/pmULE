@@ -252,9 +252,9 @@ proyecto = prelaciones.create_project()
 display(Markdown(pregunta_1))
 
 # %%
-#| fig-cap: "Grafo PERT con las duraciones normales y el camino crítico"
+#| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 plazo_contrato, penalizacion_semanal = 28, 3

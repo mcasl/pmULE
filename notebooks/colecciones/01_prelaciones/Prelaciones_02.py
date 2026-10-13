@@ -210,7 +210,7 @@ datos_enunciado = pd.DataFrame([
 #  activity, predecessor
     ('G'     , 'F'        ),
     ('I'     , 'D,F,H'    ),
-    ('J'     , 'D,I'      ),
+    ('J'     , 'B,I'      ),
     ('F'     , 'E'        ),
     ('A'     , '---'      ),
     ('H'     , 'B,E'      ),

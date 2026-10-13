@@ -255,9 +255,9 @@ reduccion = 3
 display(Markdown(pregunta_1))
 
 # %%
-#| fig-cap: "Grafo PERT con las duraciones normales"
+#| fig-cap: "Grafo Roy con las duraciones normales"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 #| tbl-cap: "Matriz de caminos y duración de cada ruta"

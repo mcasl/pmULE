@@ -4,7 +4,7 @@ import numpy as np
 
 import pandas as pd
 from .. import proyectos as P
-from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
+from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
 
 META = dict(slug="03_roy", prefijo="Roy",
@@ -72,8 +72,7 @@ def _base(k, rng):
     celdas.append(code('#| fig-cap: "Grafo Roy del proyecto"\n#| label: fig-roy\n'
                        "proyecto.roy(ranksep=1.2, nodesep=1.2)"))
     celdas += apartado(ap); ap += 1
-    celdas.append(code('#| fig-cap: "Grafo PERT equivalente"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=False, ranksep=1)"))
+    celdas += fig_grafo(durations="False", cap="Grafo PERT equivalente", label="fig-pert", tipo="pert")
     celdas.append(code("n_act = len(proyecto)\n"
                        "n_prelaciones = sum(len(p) for p in prelaciones.immediate_predecessor.values())\n"
                        "n_arcos_roy = n_prelaciones + len(prelaciones.start_activities) + len(prelaciones.end_activities)\n"
@@ -102,8 +101,7 @@ def _base(k, rng):
                        "Markdown(f'La duración del proyecto es {duracion_proyecto} semanas.')"))
     celdas.append(code('#| fig-cap: "Grafo Roy con tiempos y camino crítico"\n#| label: fig-royCritico\n'
                        "proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)"))
-    celdas.append(code('#| fig-cap: "Grafo PERT con tiempos y camino crítico"\n#| label: fig-pertCritico\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pertCritico", tipo="pert")
     if con_desfases:
         W, Z, X, Y, espera = mods["W"], mods["Z"], mods["X"], mods["Y"], mods["espera"]
         mitad = int(D[W]) // 2
@@ -294,8 +292,7 @@ def _desde_sucesoras(rng):
     celdas += apartado(2)
     celdas.append(code('#| fig-cap: "Grafo Roy"\n#| label: fig-roy\n'
                        "proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)"))
-    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n'
-                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT", label="fig-pert", tipo="pert")
     celdas.append(code("Markdown(f'El PERT necesita {len(proyecto.dummies)} actividad(es) ficticia(s); el Roy, ninguna.')"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Calendario del proyecto"\n#| label: tbl-calendario\n'
@@ -317,14 +314,14 @@ def _desde_sucesoras(rng):
 
 VARIANTES = [
     Variante("roy-vs-pert", 1, "grafo Roy, PERT equivalente, comparación de nodos y arcos, calendario y camino crítico",
-             lambda rng: _base(1, rng)),
-    Variante("roy-vs-pert-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng)),
+             lambda rng: _base(1, rng), grafo="roy"),
+    Variante("roy-vs-pert-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng), grafo="roy"),
     Variante("esperas-y-solapes", 3, "espera entre dos actividades y solape comienzo-comienzo modelados con actividades auxiliares",
-             lambda rng: _base(3, rng)),
+             lambda rng: _base(3, rng), grafo="roy"),
     Variante("predecesora-dominante", 2, "cálculo hacia delante y hacia atrás a mano sobre Roy; qué predecesora fija cada inicio",
-             _predecesora_dominante),
+             _predecesora_dominante, grafo="roy"),
     Variante("desde-sucesoras", 1, "el cuadro da sucesoras en lugar de predecesoras: invertirlo, Roy, PERT y calendario",
-             _desde_sucesoras),
+             _desde_sucesoras, grafo="roy"),
 ]
 
 

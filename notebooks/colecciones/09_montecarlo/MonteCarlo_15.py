@@ -256,9 +256,9 @@ expuestas = datos_proyecto.index[datos_proyecto['exposed'] == 'sí'].tolist()
 display(Markdown(pregunta_1))
 
 # %%
-#| fig-cap: "Grafo PERT con el camino crítico"
+#| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
 path_matrix = proyecto.path_matrix(dummies=False)
