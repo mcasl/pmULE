@@ -83,6 +83,10 @@ def _base(k, rng):
     celdas.append(code('#| tbl-cap: "Calendario y holguras del proyecto"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
+    celdas.append(md("Con los números sustituidos, actividad a actividad (ES, EF, LS y LF son inicio y fin más "
+                     "tempranos y más tardíos; «pred.» y «suc.» las predecesoras y sucesoras inmediatas):"))
+    celdas.append(code('#| tbl-cap: "Cálculo paso a paso de fechas y holguras"\n#| label: tbl-holgurasPaso\n'
+                       "detalle_holguras(calendario, prelaciones)"))
     celdas += apartado(ap); ap += 1
     celdas.append(code("duracion_proyecto = proyecto.duration(datos_proyecto['duration'])\n"
                        "rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])\n"
@@ -179,6 +183,10 @@ def _compartida(rng):
     celdas.append(code('#| tbl-cap: "Calendario y holguras"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
+    celdas.append(md("Con los números sustituidos, actividad a actividad (ES, EF, LS y LF son inicio y fin más "
+                     "tempranos y más tardíos; «pred.» y «suc.» las predecesoras y sucesoras inmediatas):"))
+    celdas.append(code('#| tbl-cap: "Cálculo paso a paso de fechas y holguras"\n#| label: tbl-holgurasPaso\n'
+                       "detalle_holguras(calendario, prelaciones)"))
     celdas += apartado(2)
     celdas.append(md(f"No. La holgura total de {X} y la de {Y} son la *misma* holgura: la de la cadena en la que "
                      f"están. {X} tiene holgura libre cero, así que cualquier retraso suyo mueve el inicio de {Y} y le "
@@ -236,6 +244,10 @@ def _vigilancia(rng):
     celdas.append(code('#| tbl-cap: "Calendario y holguras"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
+    celdas.append(md("Con los números sustituidos, actividad a actividad (ES, EF, LS y LF son inicio y fin más "
+                     "tempranos y más tardíos; «pred.» y «suc.» las predecesoras y sucesoras inmediatas):"))
+    celdas.append(code('#| tbl-cap: "Cálculo paso a paso de fechas y holguras"\n#| label: tbl-holgurasPaso\n'
+                       "detalle_holguras(calendario, prelaciones)"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Actividades ordenadas por necesidad de vigilancia"\n#| label: tbl-orden\n'
                        "orden = calendario.sort_values(['H_total', 'H_libre', 'duracion'], ascending=[True, True, False])\n"
@@ -310,6 +322,70 @@ def _diagnostico(rng):
     return celdas, f"{n} actividades; calendario con errores en {e1} y {e2}"
 
 
+
+def _mini(rng):
+    """Cinco o seis actividades: todo el cálculo a mano, paso a paso, sin ficticias."""
+    n = int(rng.choice([5, 6]))
+
+    def acepta(i):
+        cal = i["calendario"]
+        return (i["n_dummies"] == 0 and i["n_criticas"] == 1 and (cal["H_total"] > 0).sum() >= 2
+                and (cal["H_total"] > cal["H_libre"]).sum() >= 1 and 2 <= i["n_rutas"] <= 4)
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=2, n_fin=int(rng.choice([1, 2])))
+    D, cal = info["D"], info["calendario"]
+    df = P.tabla_base(info, duration=D)
+    X = cal.index[(cal["H_total"] > cal["H_libre"])][0]
+    celdas = [md("# Enunciado"),
+              md("Considere el pequeño proyecto cuyo cuadro de prelaciones y duraciones (en días) se adjunta. "
+                 "Resuélvalo completamente a mano, anotando cada operación, antes de comprobarlo con la librería.")]
+    celdas.append(preguntas([
+        "Dibuje el grafo PERT y enumere todas las rutas desde el inicio hasta el final con su duración. "
+        "¿Cuál es la duración del proyecto y cuál la ruta crítica?",
+        "Calcule, por el paso hacia adelante, el inicio y fin más tempranos de cada actividad; por el paso "
+        "hacia atrás, el fin e inicio más tardíos.",
+        "Calcule las holguras total, libre e independiente de cada actividad escribiendo la fórmula con los "
+        "números sustituidos.",
+        f"La actividad {X} tiene holgura total mayor que la libre. Explique con las fechas de sus sucesoras "
+        "por qué."]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code('#| tbl-cap: "Rutas del proyecto y su duración"\n#| label: tbl-rutas\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "detalle_rutas(R, datos_proyecto['duration'][R.columns])"))
+    celdas.append(code("duracion_proyecto = proyecto.duration(datos_proyecto['duration'])\n"
+                       "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
+                       "Markdown(f'La duración del proyecto es la de la ruta más larga: {duracion_proyecto} días.')"))
+    celdas += apartado(2)
+    celdas.append(md("Paso hacia adelante (de izquierda a derecha): ES = máximo de los EF de las predecesoras "
+                     "(0 si es inicial); EF = ES + duración. Paso hacia atrás (de derecha a izquierda): LF = "
+                     "mínimo de los LS de las sucesoras (la duración del proyecto si es final); LS = LF − duración."))
+    celdas.append(code('#| tbl-cap: "Paso hacia adelante y hacia atrás"\n#| label: tbl-pasos\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "detalle = detalle_holguras(calendario, prelaciones)\n"
+                       "detalle[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d']]"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Holguras con los números sustituidos"\n#| label: tbl-holgurasPaso\n'
+                       "detalle[['H_total = LS − ES', 'H_libre = mín ES suc. − EF', 'H_indep. = máx(0, mín ES suc. − máx LF pred. − d)']]"))
+    celdas.append(code('#| tbl-cap: "Calendario y holguras según la librería"\n#| label: tbl-calendario\n'
+                       "calendario"))
+    celdas += apartado(4)
+    celdas.append(code(f"X = '{X}'\n"
+                       "sucesoras_X = [a for a, ps in prelaciones.immediate_predecessor.items() if X in ps]\n"
+                       "Markdown(f'''{X} termina lo más pronto en {int(calendario.loc[X, \"fin_mas_temprano\"])} y sus sucesoras ({\", \".join(sucesoras_X)}) "
+                       "empiezan lo más pronto en {int(calendario.loc[sucesoras_X, \"inicio_mas_temprano\"].min())}: eso limita su holgura libre a "
+                       "{int(calendario.loc[X, \"H_libre\"])}. Pero las sucesoras pueden empezar lo más tarde en {int(calendario.loc[sucesoras_X, \"inicio_mas_tardio\"].min())}, "
+                       "así que {X} puede retrasarse hasta {int(calendario.loc[X, \"H_total\"])} si arrastra a sus sucesoras (holgura total).''')"))
+    return celdas, f"{n} actividades, {info['n_rutas']} rutas, sin ficticias; cálculo completo a mano"
+
+
 VARIANTES = [
     Variante("tres-holguras", 1, "holguras total, libre e independiente; caminos críticos; retraso de una actividad",
              lambda rng: _base(1, rng)),
@@ -321,6 +397,8 @@ VARIANTES = [
              _vigilancia),
     Variante("diagnostico", 3, "calendario entregado con dos errores: localizarlos por las relaciones entre fechas y holguras",
              _diagnostico),
+    Variante("mini-a-mano", 1, "cinco o seis actividades sin ficticias: rutas, pasos adelante y atrás y holguras con los números sustituidos",
+             _mini),
 ]
 
 

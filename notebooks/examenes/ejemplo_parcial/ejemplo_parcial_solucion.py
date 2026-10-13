@@ -1,8 +1,8 @@
 # ---
 # title: ejemplo_parcial — solucion
-# subtitle: "P1: Holguras y camino crítico (holgura-compartida); P2: Probabilidad de cumplir el plazo (aproximación normal) (dos-rutas-criticas); P3: Reducción de la duración con mínimo coste (barata-no-optima); P4: Método del valor ganado (earned-schedule)"
+# subtitle: "P1: Holguras y camino crítico (holgura-compartida); P2: Probabilidad de cumplir el plazo (aproximación normal) (dos-rutas-criticas); P3: Método del valor ganado (tendencia)"
 # coleccion: examen
-# variante: 05:holgura-compartida,08:dos-rutas-criticas,10:barata-no-optima,12:earned-schedule
+# variante: 05:holgura-compartida,08:dos-rutas-criticas,12:tendencia
 # nivel: 0
 # lang: es
 # documentclass: scrreprt
@@ -48,6 +48,140 @@ GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de G
 
 
 # %%
+# Funciones auxiliares para mostrar los cálculos intermedios paso a paso
+from itertools import combinations as _combinations
+
+
+def detalle_tiempos_nodos(proyecto, duraciones):
+    """Tiempos tempranos y tardíos de los nodos con los candidatos que se comparan en cada uno."""
+    G = proyecto.pert_graph
+    d = {data['activity']: (0 if data['activity'].startswith('@') else int(duraciones[data['activity']]))
+         for _, _, data in G.edges(data=True)}
+    nodos = list(proyecto.nodes)
+    early, filas = {}, []
+    for j in nodos:
+        entrantes = [(i, data['activity']) for i, _, data in G.in_edges(j, data=True)]
+        if not entrantes:
+            early[j] = 0
+            filas.append({'nodo': j, 'candidatos t_i + d_ij': 'nodo inicial', 'tiempo temprano = máx': 0})
+            continue
+        cand = {f'{a}: {early[i]} + {d[a]} = {early[i] + d[a]}': early[i] + d[a] for i, a in entrantes}
+        early[j] = max(cand.values())
+        filas.append({'nodo': j, 'candidatos t_i + d_ij': '; '.join(cand), 'tiempo temprano = máx': early[j]})
+    tempranos = pd.DataFrame(filas).set_index('nodo')
+    late, filas = {}, []
+    for i in reversed(nodos):
+        salientes = [(j, data['activity']) for _, j, data in G.out_edges(i, data=True)]
+        if not salientes:
+            late[i] = early[i]
+            filas.append({'nodo': i, 'candidatos t*_j − d_ij': 'nodo final (= su tiempo temprano)', 'tiempo tardío = mín': late[i]})
+            continue
+        cand = {f'{a}: {late[j]} − {d[a]} = {late[j] - d[a]}': late[j] - d[a] for j, a in salientes}
+        late[i] = min(cand.values())
+        filas.append({'nodo': i, 'candidatos t*_j − d_ij': '; '.join(cand), 'tiempo tardío = mín': late[i]})
+    tardios = pd.DataFrame(filas).set_index('nodo')
+    return tempranos, tardios
+
+
+def detalle_holguras(calendario, prelaciones):
+    """Cómo se obtiene cada fecha y cada holgura a partir de las vecinas."""
+    pred = prelaciones.immediate_predecessor
+    suc = {a: sorted(s for s, ps in pred.items() if a in ps) for a in calendario.index}
+    fin = int(calendario['fin_mas_temprano'].max())
+    filas = []
+    for a in calendario.index:
+        ES, EF = int(calendario.loc[a, 'inicio_mas_temprano']), int(calendario.loc[a, 'fin_mas_temprano'])
+        LS, LF = int(calendario.loc[a, 'inicio_mas_tardio']), int(calendario.loc[a, 'fin_mas_tardio'])
+        dur = int(calendario.loc[a, 'duracion'])
+        ps, ss = sorted(pred[a]), suc[a]
+        ef_pred = {p: int(calendario.loc[p, 'fin_mas_temprano']) for p in ps}
+        es_suc = {s: int(calendario.loc[s, 'inicio_mas_temprano']) for s in ss}
+        lf_pred = {p: int(calendario.loc[p, 'fin_mas_tardio']) for p in ps}
+        ls_suc = {s: int(calendario.loc[s, 'inicio_mas_tardio']) for s in ss}
+        min_es_suc = min(es_suc.values()) if es_suc else fin
+        max_lf_pred = max(lf_pred.values()) if lf_pred else 0
+        filas.append({
+            'actividad': a,
+            'ES = máx EF pred.': (f"máx({', '.join(f'{p}: {v}' for p, v in ef_pred.items())}) = {ES}" if ps else f'inicial → {ES}'),
+            'EF = ES + d': f'{ES} + {dur} = {EF}',
+            'LF = mín LS suc.': (f"mín({', '.join(f'{s}: {v}' for s, v in ls_suc.items())}) = {LF}" if ss else f'final → {LF}'),
+            'LS = LF − d': f'{LF} − {dur} = {LS}',
+            'H_total = LS − ES': f'{LS} − {ES} = {LS - ES}',
+            'H_libre = mín ES suc. − EF': f"{min_es_suc}{'' if ss else ' (fin)'} − {EF} = {min_es_suc - EF}",
+            'H_indep. = máx(0, mín ES suc. − máx LF pred. − d)': f'máx(0, {min_es_suc} − {max_lf_pred} − {dur}) = {max(0, min_es_suc - max_lf_pred - dur)}',
+        })
+    return pd.DataFrame(filas).set_index('actividad')
+
+
+def detalle_rutas(R, valores, nombre='duración', decimales=0):
+    """Suma término a término de un valor (duraciones, varianzas…) a lo largo de cada ruta."""
+    filas = {}
+    for r in R.index:
+        acts = list(R.columns[R.loc[r] == 1])
+        total = float(sum(valores[a] for a in acts))
+        filas[r] = {'actividades': ' - '.join(acts),
+                    f'{nombre} = suma': ' + '.join(f'{a}({valores[a]:.{decimales}f})' for a in acts) + f' = {total:.{decimales}f}',
+                    nombre: total}
+    return pd.DataFrame(filas).T
+
+
+def detalle_estimaciones(datos, a='a', m='m', b='b'):
+    """Media y varianza PERT de cada actividad con los números sustituidos."""
+    filas = {}
+    for act, fila in datos.iterrows():
+        A, M, B = float(fila[a]), float(fila[m]), float(fila[b])
+        filas[act] = {'D = (a + 4m + b)/6': f'({A:g} + 4·{M:g} + {B:g})/6 = {(A + 4 * M + B) / 6:.2f}',
+                      'σ² = ((b − a)/6)²': f'(({B:g} − {A:g})/6)² = {((B - A) / 6) ** 2:.3f}'}
+    return pd.DataFrame(filas).T
+
+
+def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
+    """En cada paso de Ackoff-Sasieni: rutas críticas, opciones consideradas (actividades comunes y parejas)
+    con su coste, y la elegida."""
+    R = proyecto.path_matrix(dummies=False)
+    d = duraciones.astype(float).copy()
+    filas = []
+    for paso, elegidas in sorted(pasos.items()):
+        L = R @ d[R.columns]
+        T = float(L.max())
+        criticas = [r for r in L.index if np.isclose(L[r], T)]
+        conjuntos = [set(R.columns[R.loc[r] == 1]) for r in criticas]
+        con_margen = {x for x in R.columns if d[x] > topes[x] and np.isfinite(cur[x])}
+        opciones = {x: float(cur[x]) for x in set.intersection(*conjuntos) & con_margen}
+        if len(conjuntos) > 1:
+            cand = sorted(set().union(*conjuntos) & con_margen)
+            for p, q in _combinations(cand, 2):
+                if all(p in s or q in s for s in conjuntos) and p not in opciones and q not in opciones:
+                    opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
+        orden = sorted(opciones.items(), key=lambda kv: kv[1])
+        filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
+                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
+        for x in elegidas:
+            d[x] -= 1
+    return pd.DataFrame(filas).set_index('paso')
+
+
+def detalle_valor_ganado(datos_vg, calendario, semana):
+    """PV, EV y AC actividad a actividad en el punto de control."""
+    filas = {}
+    for a, fila in datos_vg.iterrows():
+        es, dur = int(calendario.loc[a, 'inicio_mas_temprano']), int(calendario.loc[a, 'duracion'])
+        frac = min(max(semana - es, 0), dur) / dur
+        filas[a] = {'BAC': float(fila['BAC']), 'planificado hasta la semana': f'{min(max(semana - es, 0), dur)} de {dur}',
+                    'PV = BAC·fracción': f'{fila["BAC"]:.0f}·{frac:.2f} = {fila["BAC"] * frac:.1f}',
+                    'realizado (%)': int(fila['performed']),
+                    'EV = BAC·%': f'{fila["BAC"]:.0f}·{fila["performed"] / 100:.2f} = {fila["BAC"] * fila["performed"] / 100:.1f}',
+                    'AC': float(fila['AC']), 'PV_i': fila['BAC'] * frac, 'EV_i': fila['BAC'] * fila['performed'] / 100}
+    t = pd.DataFrame(filas).T
+    return t
+
+
+def muestra_formula(nombre, expresion, valor, unidades=''):
+    """Una línea «nombre = expresión = valor» en Markdown."""
+    return Markdown(f'**{nombre}** = {expresion} = **{valor}**{(" " + unidades) if unidades else ""}')
+
+# %%
 # %%capture
 # %mkdir -p ~/temp
 # %cd ~/temp
@@ -65,9 +199,9 @@ for _v in [v for v in list(globals()) if v.startswith('pregunta_')]:
 
 # %%
 pregunta_1 = "1. Calcule el calendario del proyecto con las holguras total, libre e independiente.  "
-pregunta_2 = "2. A y C son consecutivas y tienen la misma holgura total. El responsable de A pide retrasarla 3 semanas y el de C también. ¿Pueden concederse las dos peticiones sin alargar el proyecto? Razónelo antes de calcular.  "
-pregunta_3 = "3. Compruébelo: recalcule el calendario con A retrasada 3 semanas y después con las dos retrasadas.  "
-pregunta_4 = "4. ¿Qué holgura expresa cuánto puede retrasarse cada una sin quitarle margen a la otra? ¿Cómo repartiría las 3 semanas entre A y C?  "
+pregunta_2 = "2. F y H son consecutivas y tienen la misma holgura total. El responsable de F pide retrasarla 12 semanas y el de H también. ¿Pueden concederse las dos peticiones sin alargar el proyecto? Razónelo antes de calcular.  "
+pregunta_3 = "3. Compruébelo: recalcule el calendario con F retrasada 12 semanas y después con las dos retrasadas.  "
+pregunta_4 = "4. ¿Qué holgura expresa cuánto puede retrasarse cada una sin quitarle margen a la otra? ¿Cómo repartiría las 12 semanas entre F y H?  "
 
 for item in sorted(dir()):
     if item.startswith('pregunta_'):
@@ -78,38 +212,17 @@ for item in sorted(dir()):
 #| label: tbl-datosEnunciado-p1
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor, duration
-    ('A'     , '---'      , 1       ),
-    ('B'     , '---'      , 8       ),
-    ('C'     , 'A'        , 4       ),
-    ('D'     , 'A'        , 2       ),
-    ('E'     , 'B,C,D'    , 8       ),
-    ('F'     , 'D'        , 2       ),
-    ('G'     , 'C,F'      , 1       ),
-    ('H'     , 'E'        , 2       ),
-    ('I'     , 'F,H'      , 2       ),
-    ('J'     , 'G,I'      , 7       ),
+    ('A'     , '---'      , 7       ),
+    ('B'     , '---'      , 3       ),
+    ('C'     , '---'      , 4       ),
+    ('D'     , 'A,C'      , 7       ),
+    ('E'     , 'D'        , 1       ),
+    ('F'     , 'B'        , 4       ),
+    ('G'     , 'E'        , 5       ),
+    ('H'     , 'F'        , 1       ),
+    ('I'     , 'G,H'      , 3       ),
 ], columns=['activity', 'predecessor', 'duration']).set_index('activity')
 datos_enunciado
-
-# %% [markdown]
-# El proyecto corresponde a el lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).
-
-# %%
-#| tbl-cap: "Descripción de las actividades"
-#| label: tbl-descripciones-p1
-descripciones = pd.Series({
-    'A': 'Estudio de requisitos',
-    'B': 'Diseño de la arquitectura',
-    'C': 'Diseño de interfaz y prototipo',
-    'D': 'Base de datos y modelo',
-    'E': 'API del servidor',
-    'F': 'Pantallas principales',
-    'G': 'Módulo de pagos',
-    'H': 'Notificaciones y sincronización',
-    'I': 'Pruebas de integración',
-    'J': 'Pruebas con usuarios',
-}, name='Descripción')
-descripciones.to_frame()
 
 # %% [markdown]
 # ## Solución del problema 1
@@ -138,13 +251,21 @@ calendario = proyecto.calendar(datos_proyecto['duration'])
 calendario
 
 # %% [markdown]
+# Con los números sustituidos, actividad a actividad (ES, EF, LS y LF son inicio y fin más tempranos y más tardíos; «pred.» y «suc.» las predecesoras y sucesoras inmediatas):
+
+# %%
+#| tbl-cap: "Cálculo paso a paso de fechas y holguras"
+#| label: tbl-holgurasPaso-p1
+detalle_holguras(calendario, prelaciones)
+
+# %% [markdown]
 # ## Apartado 2
 
 # %%
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# No. La holgura total de A y la de C son la *misma* holgura: la de la cadena en la que están. A tiene holgura libre cero, así que cualquier retraso suyo mueve el inicio de C y le consume holgura. Si A gasta las 3 semanas, C se queda sin ninguna; si además C se retrasa, el proyecto se alarga.
+# No. La holgura total de F y la de H son la *misma* holgura: la de la cadena en la que están. F tiene holgura libre cero, así que cualquier retraso suyo mueve el inicio de H y le consume holgura. Si F gasta las 12 semanas, H se queda sin ninguna; si además H se retrasa, el proyecto se alarga.
 
 # %% [markdown]
 # ## Apartado 3
@@ -153,7 +274,7 @@ display(Markdown(pregunta_2))
 display(Markdown(pregunta_3))
 
 # %%
-X, Y, h = 'A', 'C', 3
+X, Y, h = 'F', 'H', 12
 d1 = datos_proyecto['duration'].copy(); d1[X] += h
 d2 = d1.copy(); d2[Y] += h
 cal1, cal2 = proyecto.calendar(d1), proyecto.calendar(d2)
@@ -186,10 +307,10 @@ for _v in [v for v in list(globals()) if v.startswith('pregunta_')]:
 # %%
 pregunta_1 = "1. Determine la duración media del proyecto y su(s) camino(s) crítico(s).  "
 pregunta_2 = "2. Calcule la varianza y la desviación típica de la duración del proyecto. ¿Qué ruta crítica debe usarse para ello? Razone la respuesta.  "
-pregunta_3 = "3. ¿Qué probabilidad hay de terminar el proyecto en 36 semanas o menos?  "
-pregunta_4 = "4. ¿Qué probabilidad hay de terminar entre las semanas 33 y 36?  "
-pregunta_5 = "5. ¿Qué duración puede comprometerse con el cliente con una probabilidad del 95% de cumplirla?  "
-pregunta_6 = "6. ¿Qué probabilidad hay de terminar en la duración media o antes? ¿Puede garantizarse esa duración con un 95% de probabilidad sin modificar el proyecto?  "
+pregunta_3 = "3. ¿Qué probabilidad hay de terminar el proyecto en 34 semanas o menos?  "
+pregunta_4 = "4. ¿Qué probabilidad hay de terminar entre las semanas 31 y 34?  "
+pregunta_5 = "5. ¿Qué duración puede comprometerse con el cliente con una probabilidad del 90% de cumplirla?  "
+pregunta_6 = "6. ¿Qué probabilidad hay de terminar en la duración media o antes? ¿Puede garantizarse esa duración con un 90% de probabilidad sin modificar el proyecto?  "
 
 for item in sorted(dir()):
     if item.startswith('pregunta_'):
@@ -200,17 +321,38 @@ for item in sorted(dir()):
 #| label: tbl-datosEnunciado-p2
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor, duration, standard_deviation
-    ('A'     , '---'      , 5       , 1                 ),
-    ('B'     , '---'      , 5       , 0.8               ),
-    ('C'     , 'A,B'      , 4       , 0.1               ),
-    ('D'     , 'A'        , 4       , 1                 ),
-    ('E'     , 'C'        , 8       , 0.3               ),
-    ('F'     , 'E'        , 8       , 0.8               ),
-    ('G'     , 'F'        , 3       , 0.6               ),
-    ('H'     , 'F'        , 6       , 0.2               ),
-    ('I'     , 'G,H'      , 3       , 0.4               ),
+    ('A'     , '---'      , 7       , 0.1               ),
+    ('B'     , '---'      , 4       , 0.8               ),
+    ('C'     , '---'      , 7       , 0.4               ),
+    ('D'     , 'A,B,C'    , 6       , 0.1               ),
+    ('E'     , 'D'        , 3       , 0.3               ),
+    ('F'     , 'E'        , 4       , 0.8               ),
+    ('G'     , 'F'        , 3       , 1                 ),
+    ('H'     , 'G'        , 6       , 0.4               ),
+    ('I'     , 'H'        , 3       , 0.3               ),
+    ('J'     , 'H'        , 2       , 0.4               ),
 ], columns=['activity', 'predecessor', 'duration', 'standard_deviation']).set_index('activity')
 datos_enunciado
+
+# %% [markdown]
+# El proyecto corresponde a el lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+
+# %%
+#| tbl-cap: "Descripción de las actividades"
+#| label: tbl-descripciones-p2
+descripciones = pd.Series({
+    'A': 'Estudio de requisitos',
+    'B': 'Diseño de la arquitectura',
+    'C': 'Diseño de interfaz y prototipo',
+    'D': 'Base de datos y modelo',
+    'E': 'API del servidor',
+    'F': 'Pantallas principales',
+    'G': 'Módulo de pagos',
+    'H': 'Notificaciones y sincronización',
+    'I': 'Pruebas de integración',
+    'J': 'Pruebas con usuarios',
+}, name='Descripción')
+descripciones.to_frame()
 
 # %% [markdown]
 # ## Solución del problema 2
@@ -261,6 +403,17 @@ desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(durations=dato
                                                                    variances=datos_proyecto['variance'])
 varianza_rutas
 
+# %% [markdown]
+# Sumando actividad a actividad a lo largo de cada ruta (la media de una ruta es la suma de las medias; su varianza, la suma de las varianzas):
+
+# %%
+#| tbl-cap: "Media y varianza de cada ruta, sumando sus actividades"
+#| label: tbl-rutasPaso-p2
+R = proyecto.path_matrix(dummies=False)
+detalle_medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')
+detalle_varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'varianza', 3)
+pd.concat([detalle_medias, detalle_varianzas.drop(columns='actividades')], axis=1)
+
 # %%
 Markdown(f'La varianza del proyecto es {desviacion_proyecto**2:.3f} y su desviación típica {desviacion_proyecto:.3f} semanas.')
 
@@ -274,7 +427,7 @@ display(Markdown(pregunta_3))
 # Con $T \sim N(\mu, \sigma)$: $P(T \le t) = \Phi\left(\frac{t - \mu}{\sigma}\right)$.
 
 # %%
-plazo = 36
+plazo = 34
 z = (plazo - duracion_media) / desviacion_proyecto
 probabilidad_plazo = norm.cdf(z)
 Markdown(f'z = ({plazo} − {duracion_media}) / {desviacion_proyecto:.3f} = {z:.3f}, luego P(T ≤ {plazo}) = Φ({z:.3f}) = {probabilidad_plazo:.4f} ({probabilidad_plazo*100:.1f} %).')
@@ -286,7 +439,7 @@ Markdown(f'z = ({plazo} − {duracion_media}) / {desviacion_proyecto:.3f} = {z:.
 display(Markdown(pregunta_4))
 
 # %%
-t_a, t_b = 33, 36
+t_a, t_b = 31, 34
 p_b = norm.cdf((t_b - duracion_media) / desviacion_proyecto)
 p_a = norm.cdf((t_a - duracion_media) / desviacion_proyecto)
 Markdown(f'P({t_a} < T ≤ {t_b}) = Φ({(t_b - duracion_media) / desviacion_proyecto:.3f}) − Φ({(t_a - duracion_media) / desviacion_proyecto:.3f}) '
@@ -302,7 +455,7 @@ display(Markdown(pregunta_5))
 # Se busca $t$ tal que $P(T \le t) = p$, es decir, $t = \mu + z_p\,\sigma$ con $z_p = \Phi^{-1}(p)$.
 
 # %%
-probabilidad_objetivo = 0.95
+probabilidad_objetivo = 0.9
 z_p = norm.ppf(probabilidad_objetivo)
 duracion_comprometida = duracion_media + z_p * desviacion_proyecto
 Markdown(f'z = {z_p:.3f}; t = {duracion_media} + {z_p:.3f} × {desviacion_proyecto:.3f} = {duracion_comprometida:.2f} semanas. '
@@ -315,124 +468,10 @@ Markdown(f'z = {z_p:.3f}; t = {duracion_media} + {z_p:.3f} × {desviacion_proyec
 display(Markdown(pregunta_6))
 
 # %%
-Markdown(f'''La duración media es la mediana de la normal, así que P(T ≤ {duracion_media}) = 0.5: sólo la mitad de las veces se terminaría en la duración media o antes. Para garantizarla con un 95% haría falta que la media del proyecto fuera {duracion_media} − {z_p:.3f} × {desviacion_proyecto:.3f} = {duracion_media - z_p * desviacion_proyecto:.2f} semanas, es decir, reducir el proyecto (acortando actividades críticas) o reducir su varianza. Sin tocar el proyecto no es posible.''')
+Markdown(f'''La duración media es la mediana de la normal, así que P(T ≤ {duracion_media}) = 0.5: sólo la mitad de las veces se terminaría en la duración media o antes. Para garantizarla con un 90% haría falta que la media del proyecto fuera {duracion_media} − {z_p:.3f} × {desviacion_proyecto:.3f} = {duracion_media - z_p * desviacion_proyecto:.2f} semanas, es decir, reducir el proyecto (acortando actividades críticas) o reducir su varianza. Sin tocar el proyecto no es posible.''')
 
 # %% [markdown]
 # # Problema 3
-
-# %%
-for _v in [v for v in list(globals()) if v.startswith('pregunta_')]:
-    del globals()[_v]
-
-# %% [markdown]
-# Considere el proyecto cuyo cuadro de prelaciones, duraciones normal y tope (semanas) y coste unitario de reducción (k€/semana) se adjunta. Las actividades con CUR infinito no pueden acelerarse.
-
-# %%
-pregunta_1 = "1. Determine la duración del proyecto y sus rutas críticas. ¿Qué actividades son comunes a todas ellas?  "
-pregunta_2 = "2. La actividad crítica más barata de acelerar es B. Un compañero propone acortarla una semana para reducir el proyecto una semana. Prediga, sin calcular, si funcionará.  "
-pregunta_3 = "3. Compruébelo: acorte B una semana y recalcule la duración.  "
-pregunta_4 = "4. Aplique el algoritmo de Ackoff-Sasieni para reducir el proyecto dos semanas con mínimo coste y explique por qué en cada paso elige lo que elige (actividad común frente a pareja de actividades).  "
-
-for item in sorted(dir()):
-    if item.startswith('pregunta_'):
-        display(Markdown(eval(item)))
-
-# %%
-#| tbl-cap: "Cuadro de datos del enunciado"
-#| label: tbl-datosEnunciado-p3
-datos_enunciado = pd.DataFrame([
-#  activity, predecessor, duration, cap_duration, ucr   
-    ('A'     , '---'      , 3       , 3           , np.inf),
-    ('B'     , '---'      , 3       , 1           , 1     ),
-    ('C'     , '---'      , 2       , 1           , 1     ),
-    ('D'     , 'A,B,C'    , 8       , 6           , 9     ),
-    ('E'     , 'D'        , 3       , 3           , np.inf),
-    ('F'     , 'B'        , 2       , 2           , np.inf),
-    ('G'     , 'E,F'      , 6       , 4           , 9     ),
-    ('H'     , 'E'        , 6       , 3           , 2     ),
-    ('I'     , 'G'        , 7       , 7           , np.inf),
-], columns=['activity', 'predecessor', 'duration', 'cap_duration', 'ucr']).set_index('activity')
-datos_enunciado
-
-# %% [markdown]
-# ## Solución del problema 3
-
-# %%
-datos_proyecto = datos_enunciado.copy()
-prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
-proyecto = prelaciones.create_project()
-R = proyecto.path_matrix(dummies=False)
-
-# %% [markdown]
-# ## Apartado 1
-
-# %%
-display(Markdown(pregunta_1))
-
-# %%
-#| fig-cap: "Grafo PERT con las duraciones normales y las rutas críticas"
-#| label: fig-pert-p3
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %%
-duracion_normal = proyecto.duration(datos_proyecto['duration'])
-rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])
-for nombre, acts in rutas_criticas.items():
-    print(f'{nombre}: {" - ".join(acts)}')
-comunes = set.intersection(*[set(a) for a in rutas_criticas.values()])
-Markdown(f'Duración {duracion_normal} semanas con {len(rutas_criticas)} rutas críticas; actividades comunes a todas: {", ".join(sorted(comunes)) or "ninguna"}.')
-
-# %% [markdown]
-# ## Apartado 2
-
-# %%
-display(Markdown(pregunta_2))
-
-# %% [markdown]
-# No funcionará: B está en una sola de las rutas críticas. Al acortarla, esa ruta se acorta, pero la otra sigue midiendo lo mismo y el proyecto también. Para reducir el proyecto hay que acortar *todas* las rutas críticas a la vez: una actividad común, o una actividad de cada ruta.
-
-# %% [markdown]
-# ## Apartado 3
-
-# %%
-display(Markdown(pregunta_3))
-
-# %%
-barata = 'B'
-d1 = datos_proyecto['duration'].copy(); d1[barata] -= 1
-Markdown(f'Acortando {barata} una semana la duración del proyecto es {proyecto.duration(d1)} semanas (antes {duracion_normal}): '
-         f'se han gastado {datos_proyecto.loc[barata, "ucr"]:.0f} k€ para nada; la ruta {[r for r, a in rutas_criticas.items() if barata not in a][0]} sigue siendo crítica.')
-
-# %% [markdown]
-# ## Apartado 4
-
-# %%
-display(Markdown(pregunta_4))
-
-# %%
-#| tbl-cap: "Algoritmo de Ackoff-Sasieni"
-#| label: tbl-ackoff-p3
-tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(
-    durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
-    costs=datos_proyecto['ucr'], reduction=2, report=False)
-tabla_ackoff
-
-# %%
-resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos.values()],
-                        'coste del paso': [sum(datos_proyecto.loc[acts, 'ucr']) for acts in pasos.values()]},
-                       index=pd.Index(range(1, len(pasos) + 1), name='paso'))
-resumen
-
-# %%
-mas_barata_comun = min(comunes, key=lambda a: datos_proyecto.loc[a, 'ucr']) if comunes else None
-pareja = sorted(set(a for r, acts in rutas_criticas.items() for a in acts) - comunes, key=lambda a: datos_proyecto.loc[a, 'ucr'])
-Markdown(f'''En cada paso el algoritmo compara el coste de la actividad común más barata ({mas_barata_comun}: {datos_proyecto.loc[mas_barata_comun, "ucr"]:.0f} k€) con el de la pareja más barata que cubre las dos rutas, y elige la opción de menor coste *que reduzca todas las rutas críticas*. {barata} sola nunca es candidata, por barata que sea, salvo emparejada con una actividad de la otra ruta.''')
-
-# %%
-Markdown(f'Duración final {proyecto.duration(duraciones_reducidas)} semanas, sobrecoste total {resumen["coste del paso"].sum():.0f} k€.')
-
-# %% [markdown]
-# # Problema 4
 
 # %%
 for _v in [v for v in list(globals()) if v.startswith('pregunta_')]:
@@ -443,53 +482,83 @@ for _v in [v for v in list(globals()) if v.startswith('pregunta_')]:
 
 # %%
 #| tbl-cap: "Planificación del proyecto"
-#| label: tbl-datosEnunciado-p4
+#| label: tbl-datosEnunciado-p3
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor, duration, BAC
-    ('A'     , '---'      , 7       , 40 ),
-    ('B'     , '---'      , 6       , 20 ),
-    ('C'     , 'A,B'      , 2       , 10 ),
-    ('D'     , 'A,B'      , 2       , 40 ),
-    ('E'     , 'B'        , 8       , 20 ),
-    ('F'     , 'C'        , 1       , 30 ),
-    ('G'     , 'D,F'      , 6       , 40 ),
-    ('H'     , 'E,G'      , 4       , 60 ),
-    ('I'     , 'H'        , 2       , 20 ),
+    ('A'     , '---'      , 3       , 20 ),
+    ('B'     , '---'      , 4       , 50 ),
+    ('C'     , '---'      , 6       , 40 ),
+    ('D'     , 'A,B,C'    , 4       , 60 ),
+    ('E'     , 'B,C'      , 3       , 60 ),
+    ('F'     , 'D,E'      , 2       , 10 ),
+    ('G'     , 'D'        , 2       , 50 ),
+    ('H'     , 'F'        , 4       , 30 ),
 ], columns=['activity', 'predecessor', 'duration', 'BAC']).set_index('activity')
 datos_enunciado
 
 # %% [markdown]
-# Al final de la semana 11 se realiza un punto de control. Para cada actividad se anotan las semanas trabajadas hasta ese momento, el coste real incurrido (k€) y el porcentaje realizado.
+# Se han realizado tres puntos de control, al final de las semanas 5, 9 y 13. En cada uno se anotó, para cada actividad, las semanas trabajadas hasta ese momento, el coste real incurrido (k€) y el porcentaje realizado.
 
 # %%
-#| tbl-cap: "Datos del punto de control (final de la semana 11)"
-#| label: tbl-seguimiento-p4
-seguimiento = pd.DataFrame([
+#| tbl-cap: "Punto de control 1 (final de la semana 5)"
+#| label: tbl-seguimiento1-p3
+seguimiento_1 = pd.DataFrame([
 #  activity, actual_duration, AC, performed
-    ('A'     , 10             , 48, 100      ),
-    ('B'     , 6              , 22, 100      ),
-    ('C'     , 1              , 6 , 50       ),
-    ('D'     , 1              , 10, 25       ),
-    ('E'     , 5              , 12, 42       ),
+    ('A'     , 4              , 20, 100      ),
+    ('B'     , 5              , 41, 62       ),
+    ('C'     , 5              , 33, 83       ),
+    ('D'     , 0              , 0 , 0        ),
+    ('E'     , 0              , 0 , 0        ),
     ('F'     , 0              , 0 , 0        ),
     ('G'     , 0              , 0 , 0        ),
     ('H'     , 0              , 0 , 0        ),
-    ('I'     , 0              , 0 , 0        ),
 ], columns=['activity', 'actual_duration', 'AC', 'performed']).set_index('activity')
-seguimiento
+seguimiento_1
 
 # %%
-pregunta_1 = "1. Dibuje los diagramas de Gantt del valor planificado y del valor ganado y calcule PV, EV, AC, CPI y SPI en el punto de control.  "
-pregunta_2 = "2. Calcule la programación ganada (ES), el retraso en semanas y el índice SPI(t).  "
-pregunta_3 = "3. Estime la duración final del proyecto con SPI y con SPI(t). ¿Por qué difieren? ¿Cuál es más fiable?  "
-pregunta_4 = "4. ¿Qué valor tomará el SPI clásico cuando el proyecto termine, aunque acabe tarde? ¿Y el SPI(t)?  "
+#| tbl-cap: "Punto de control 2 (final de la semana 9)"
+#| label: tbl-seguimiento2-p3
+seguimiento_2 = pd.DataFrame([
+#  activity, actual_duration, AC, performed
+    ('A'     , 4              , 20, 100      ),
+    ('B'     , 8              , 65, 100      ),
+    ('C'     , 6              , 40, 100      ),
+    ('D'     , 1              , 11, 12       ),
+    ('E'     , 1              , 30, 33       ),
+    ('F'     , 0              , 0 , 0        ),
+    ('G'     , 0              , 0 , 0        ),
+    ('H'     , 0              , 0 , 0        ),
+], columns=['activity', 'actual_duration', 'AC', 'performed']).set_index('activity')
+seguimiento_2
+
+# %%
+#| tbl-cap: "Punto de control 3 (final de la semana 13)"
+#| label: tbl-seguimiento3-p3
+seguimiento_3 = pd.DataFrame([
+#  activity, actual_duration, AC, performed
+    ('A'     , 4              , 20, 100      ),
+    ('B'     , 8              , 65, 100      ),
+    ('C'     , 6              , 40, 100      ),
+    ('D'     , 5              , 56, 62       ),
+    ('E'     , 3              , 90, 100      ),
+    ('F'     , 0              , 0 , 0        ),
+    ('G'     , 0              , 0 , 0        ),
+    ('H'     , 0              , 0 , 0        ),
+], columns=['activity', 'actual_duration', 'AC', 'performed']).set_index('activity')
+seguimiento_3
+
+# %%
+pregunta_1 = "1. Calcule PV, EV y AC en cada punto de control.  "
+pregunta_2 = "2. Calcule CV, SV, CPI y SPI en cada punto de control y represente su evolución.  "
+pregunta_3 = "3. Calcule en cada punto la estimación del coste final EAC = BAC / CPI y comente la tendencia.  "
+pregunta_4 = "4. A la vista de la evolución, ¿el proyecto se está recuperando o deteriorando? ¿Qué decisiones tomaría tras el último punto de control?  "
 
 for item in sorted(dir()):
     if item.startswith('pregunta_'):
         display(Markdown(eval(item)))
 
 # %% [markdown]
-# ## Solución del problema 4
+# ## Solución del problema 3
 
 # %%
 datos_proyecto = datos_enunciado.copy()
@@ -500,7 +569,7 @@ duracion_planificada = proyecto.duration(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo PERT de la planificación"
-#| label: fig-pert-p4
+#| label: fig-pert-p3
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 
 # %% [markdown]
@@ -509,46 +578,22 @@ proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 # %%
 display(Markdown(pregunta_1))
 
-# %% [markdown]
-# En el Gantt del valor planificado cada casilla lleva el coste planificado de la semana (BAC / duración). En el del valor ganado, el BAC multiplicado por el porcentaje realizado se reparte entre las semanas trabajadas. En el del coste real, el coste incurrido entre las semanas trabajadas.
-
 # %%
-datos_valor_ganado = pd.concat([datos_proyecto, seguimiento], axis=1)
-vg = EarnedValue(proyecto)
-gantts = vg.calcula_gantts(datos_valor_ganado, planned_durations_label='duration',
-                           actual_durations_label='actual_duration', PV_label='BAC', AC_label='AC',
-                           percentage_complete_label='performed', tikz=True,
-                           params=dict(period_width=1, row_height=0.7, activity_relative_height=0.6, **GANTT_PARAMS,
-                                       critical_background_color='white!90!green', regular_background_color='white!90!green',
-                                       regular_text_color='black', critical_text_color='black'))
-
-# %%
-#| fig-cap: "PV: valor planificado"
-#| label: fig-ganttPV-p4
-pinta_tikz(gantts['gantt_PV'])
-
-# %%
-#| fig-cap: "EV: valor ganado"
-#| label: fig-ganttEV-p4
-pinta_tikz(gantts['gantt_EV'])
-
-# %%
-semana_control = 11
-acumulados = gantts['acumulados']
-PV = float(acumulados.loc[semana_control, 'PV'])
-EV = float((datos_valor_ganado['BAC'] * datos_valor_ganado['performed'] / 100).sum())
-AC = float(datos_valor_ganado['AC'].sum())
-CV, SV = EV - AC, EV - PV
-CPI, SPI = EV / AC, EV / PV
-pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV': CV, 'SV': SV, 'CPI': CPI, 'SPI': SPI, 'BAC': BAC_total}).round(3).to_frame('valor').T
-
-# %%
-#| fig-cap: "Curvas S del proyecto"
-#| label: fig-curvasS-p4
-plot_curvas_valor_ganado(gantts)
-
-# %%
-Markdown(f'''En la semana {semana_control} se ha ganado valor por {EV:.1f} k€ frente a los {PV:.1f} planificados (SV = {SV:.1f}, SPI = {SPI:.2f}: {"retraso" if SPI < 1 else "adelanto"}) y se han gastado {AC:.1f} k€ (CV = {CV:.1f}, CPI = {CPI:.2f}: por cada euro gastado se obtienen {CPI:.2f} euros de valor, {"sobrecoste" if CPI < 1 else "ahorro"}).''')
+seguimientos = {5: seguimiento_1, 9: seguimiento_2, 13: seguimiento_3}
+filas = {}
+curvas = {}
+for semana, seguimiento in seguimientos.items():
+    datos_vg = pd.concat([datos_proyecto, seguimiento], axis=1)
+    gantts = EarnedValue(proyecto.copy()).calcula_gantts(datos_vg, planned_durations_label='duration',
+                                                          actual_durations_label='actual_duration', PV_label='BAC',
+                                                          AC_label='AC', percentage_complete_label='performed', tikz=False)
+    PV = float(gantts['acumulados'].loc[semana, 'PV'])
+    EV = float((datos_vg['BAC'] * datos_vg['performed'] / 100).sum())
+    AC = float(datos_vg['AC'].sum())
+    filas[semana] = {'PV': PV, 'EV': EV, 'AC': AC}
+indicadores = pd.DataFrame(filas).T
+indicadores.index.name = 'semana'
+indicadores.round(1)
 
 # %% [markdown]
 # ## Apartado 2
@@ -556,23 +601,18 @@ Markdown(f'''En la semana {semana_control} se ha ganado valor por {EV:.1f} k€ 
 # %%
 display(Markdown(pregunta_2))
 
-# %% [markdown]
-# La programación ganada (*Earned Schedule*) busca en qué instante de la planificación se había previsto alcanzar el valor que realmente se ha ganado:
-#
-# $$ES = C + \frac{EV - PV_C}{PV_{C+1} - PV_C}$$
-#
-# donde $C$ es la última semana completa con $PV_C \le EV$. Entonces $SPI(t) = ES / AT$, siendo $AT$ el tiempo real transcurrido.
+# %%
+indicadores['CV'] = indicadores['EV'] - indicadores['AC']
+indicadores['SV'] = indicadores['EV'] - indicadores['PV']
+indicadores['CPI'] = indicadores['EV'] / indicadores['AC']
+indicadores['SPI'] = indicadores['EV'] / indicadores['PV']
+indicadores.round(3)
 
 # %%
-pv_acumulado = pd.concat([pd.Series({0: 0.0}), acumulados['PV'].astype(float)])
-C = int(pv_acumulado[pv_acumulado <= EV].index.max())
-PV_C, PV_C1 = float(pv_acumulado[C]), float(pv_acumulado[C + 1])
-AT = semana_control
-ES = C + (EV - PV_C) / (PV_C1 - PV_C)
-SPI_t = ES / AT
-Markdown(f'PV acumulado en la semana {C}: {PV_C:.1f}; en la {C + 1}: {PV_C1:.1f}. '
-         f'ES = {C} + ({EV:.1f} − {PV_C:.1f}) / ({PV_C1:.1f} − {PV_C:.1f}) = {ES:.2f} semanas. '
-         f'Retraso = AT − ES = {AT - ES:.2f} semanas; SPI(t) = {ES:.2f} / {AT} = {SPI_t:.2f}.')
+#| fig-cap: "Evolución de CPI y SPI"
+#| label: fig-evolucion-p3
+ax = indicadores[['CPI', 'SPI']].plot(marker='o', figsize=(7, 4))
+ax.axhline(1, color='grey', linestyle='--'); ax.set_ylabel('índice');
 
 # %% [markdown]
 # ## Apartado 3
@@ -581,14 +621,9 @@ Markdown(f'PV acumulado en la semana {C}: {PV_C:.1f}; en la {C + 1}: {PV_C1:.1f}
 display(Markdown(pregunta_3))
 
 # %%
-PD = duracion_planificada
-IEAC_spi = PD / SPI
-IEAC_t = PD / SPI_t
-pd.DataFrame({'con SPI (€)': [SPI, IEAC_spi], 'con SPI(t) (tiempo)': [SPI_t, IEAC_t]},
-             index=['índice', 'duración prevista (semanas)']).round(2)
-
-# %% [markdown]
-# El SPI en unidades monetarias compara euros ganados con euros planificados, y depende de qué actividades (caras o baratas) estén retrasadas. El SPI(t) compara tiempos: cuántas semanas de avance planificado se han conseguido en las semanas transcurridas. Es más fiable para prever la duración, sobre todo en la segunda mitad del proyecto.
+indicadores['EAC'] = BAC_total / indicadores['CPI']
+indicadores['VAC'] = BAC_total - indicadores['EAC']
+indicadores[['CPI', 'EAC', 'VAC']].round({'CPI': 3, 'EAC': 1, 'VAC': 1})
 
 # %% [markdown]
 # ## Apartado 4
@@ -597,4 +632,7 @@ pd.DataFrame({'con SPI (€)': [SPI, IEAC_spi], 'con SPI(t) (tiempo)': [SPI_t, I
 display(Markdown(pregunta_4))
 
 # %%
-Markdown(f'''Al terminar, EV = BAC y PV = BAC, así que el SPI clásico vale 1 aunque el proyecto haya terminado tarde: pierde su capacidad de aviso conforme avanza el proyecto. El SPI(t) al final vale PD / duración real = {PD} / duración real, que sigue siendo menor que 1 si hubo retraso.''')
+cpi = indicadores['CPI']; spi = indicadores['SPI']
+tend_c = 'mejora' if cpi.iloc[-1] > cpi.iloc[0] else 'empeora'
+tend_s = 'mejora' if spi.iloc[-1] > spi.iloc[0] else 'empeora'
+Markdown(f'''Entre el primer y el último punto de control el CPI {tend_c} ({cpi.iloc[0]:.2f} → {cpi.iloc[-1]:.2f}) y el SPI {tend_s} ({spi.iloc[0]:.2f} → {spi.iloc[-1]:.2f}). La previsión de coste final pasa de {indicadores["EAC"].iloc[0]:.0f} a {indicadores["EAC"].iloc[-1]:.0f} k€ frente a un presupuesto de {BAC_total:.0f}. Conviene recordar que el SPI tiende a 1 al final del proyecto aunque haya retraso, así que su mejora en los últimos puntos puede ser aparente; para el plazo es preferible la programación ganada. Tras el último control procede revisar las actividades pendientes: acelerar las críticas (si el sobrecoste compensa la penalización o los costes indirectos) y revisar las causas del sobrecoste en las ya ejecutadas para que no se repitan.''')

@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
+import networkx as nx
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado,
                         literal_dataframe, literal_dict, BMATRIX)
@@ -74,6 +75,13 @@ def _base(k, rng):
                        "desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(durations=datos_proyecto['duration'],\n"
                        "                                                                   variances=datos_proyecto['variance'])\n"
                        "varianza_rutas"))
+    celdas.append(md("Sumando actividad a actividad a lo largo de cada ruta (la media de una ruta es la suma de "
+                     "las medias; su varianza, la suma de las varianzas):"))
+    celdas.append(code('#| tbl-cap: "Media y varianza de cada ruta, sumando sus actividades"\n#| label: tbl-rutasPaso\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "detalle_medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')\n"
+                       "detalle_varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'varianza', 3)\n"
+                       "pd.concat([detalle_medias, detalle_varianzas.drop(columns='actividades')], axis=1)"))
     celdas.append(code("Markdown(f'La varianza del proyecto es {desviacion_proyecto**2:.3f} y su desviación típica {desviacion_proyecto:.3f} semanas.')"))
     celdas += apartado(ap); ap += 1
     celdas.append(md("Con $T \\sim N(\\mu, \\sigma)$: $P(T \\le t) = \\Phi\\left(\\frac{t - \\mu}{\\sigma}\\right)$."))
@@ -309,6 +317,195 @@ def _diagnostico(rng):
     return celdas, f"{n} actividades; resolución con σ sumadas y con la ruta equivocada"
 
 
+
+def _hito(rng):
+    """Probabilidad de alcanzar un hito intermedio (el fin de una actividad) en una fecha dada."""
+    n = int(rng.choice([9, 10]))
+    estado = {}
+
+    def acepta(i):
+        if not (1 <= i["n_dummies"] <= 4 and 5 <= i["n_rutas"] <= 10 and i["n_criticas"] == 1):
+            return False
+        cal = i["calendario"]
+        suc = P.sucesoras(i["preds"])
+        # hito: actividad con sucesoras, que empieza al menos en la semana 4 y a la que llegan ≥ 2 cadenas
+        G = P.grafo(i["preds"])
+        cand = [a for a in cal.index if suc[a] and cal.loc[a, "inicio_mas_temprano"] >= 4
+                and sum(len(list(nx.all_simple_paths(G, x, a))) for x in i["iniciales"]) >= 2]
+        if not cand:
+            return False
+        estado["X"] = cand[int(rng.integers(0, len(cand)))]
+        return True
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])))
+    D, cal = info["D"], info["calendario"]
+    X = estado["X"]
+    sd = P.desviaciones(rng, list(D.index))
+    df = P.tabla_base(info, duration=D, standard_deviation=sd)
+    EF_X = int(cal.loc[X, "fin_mas_temprano"])
+    fecha = EF_X + int(rng.integers(1, 3))
+    T = int(info["T"])
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duraciones medias y desviaciones típicas "
+                 f"(en semanas) se adjunta. El fin de la actividad {X} es un hito del proyecto (una entrega "
+                 f"parcial) comprometido para la semana {fecha}.")]
+    celdas.append(preguntas([
+        f"Enumere todas las cadenas de actividades que van desde una actividad inicial hasta {X} (incluida) "
+        "y calcule la media y la varianza de la duración de cada una.",
+        f"¿Cuál es la fecha media del hito? ¿Qué cadena determina su varianza? Calcule la probabilidad de "
+        f"alcanzar el hito en la semana {fecha} o antes.",
+        f"Calcule la probabilidad de terminar *todo el proyecto* en la semana {T + 1} o antes. ¿Por qué son "
+        "cuestiones distintas, aunque se resuelvan igual?",
+        f"¿Es {X} crítica? ¿Cambiaría la probabilidad del hito si se retrasara una actividad que no esté en "
+        f"ninguna cadena que llegue a {X}?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"X, fecha_hito = '{X}', {fecha}"))
+    celdas += apartado(1)
+    celdas.append(md("Las cadenas que llegan al hito son los caminos del grafo de actividades (Roy) desde las "
+                     "iniciales hasta $X$. Cada una tiene media la suma de las medias y varianza la suma de las "
+                     "varianzas de sus actividades."))
+    celdas.append(code('#| fig-cap: "Grafo Roy con el hito marcado"\n#| label: fig-roy\n'
+                       "proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)"))
+    celdas.append(code('#| tbl-cap: "Cadenas hasta el hito"\n#| label: tbl-cadenas\n'
+                       "G = nx.DiGraph([(p, a) for a, ps in prelaciones.immediate_predecessor.items() for p in ps])\n"
+                       "cadenas = [c for ini in sorted(prelaciones.start_activities) for c in nx.all_simple_paths(G, ini, X)]\n"
+                       "if not cadenas:\n"
+                       "    cadenas = [[X]]\n"
+                       "R_hito = pd.DataFrame(0, index=[f'cadena_{i + 1}' for i in range(len(cadenas))], columns=list(datos_proyecto.index))\n"
+                       "for i, c in enumerate(cadenas):\n"
+                       "    R_hito.loc[f'cadena_{i + 1}', c] = 1\n"
+                       "medias_hito = detalle_rutas(R_hito, datos_proyecto['duration'], 'media')\n"
+                       "varianzas_hito = detalle_rutas(R_hito, datos_proyecto['variance'], 'varianza', 3)\n"
+                       "pd.concat([medias_hito, varianzas_hito.drop(columns='actividades')], axis=1)"))
+    celdas += apartado(2)
+    celdas.append(code("fecha_media = float(medias_hito['media'].max())\n"
+                       "criticas_hito = medias_hito.index[np.isclose(medias_hito['media'], fecha_media)]\n"
+                       "varianza_hito = float(varianzas_hito.loc[criticas_hito, 'varianza'].max())\n"
+                       "sigma_hito = float(np.sqrt(varianza_hito))\n"
+                       "z = (fecha_hito - fecha_media) / sigma_hito\n"
+                       "p_hito = norm.cdf(z)\n"
+                       "Markdown(f'''La fecha media del hito es la de la cadena más larga: {fecha_media:.0f} (coincide con el fin más temprano de {X} en el calendario). "
+                       "Su varianza es la de esa cadena ({\", \".join(criticas_hito)}; si hay empate, la de mayor varianza): {varianza_hito:.3f}, σ = {sigma_hito:.3f}. "
+                       "Entonces z = ({fecha_hito} − {fecha_media:.0f}) / {sigma_hito:.3f} = {z:.3f} y P(hito ≤ {fecha_hito}) = Φ({z:.3f}) = {p_hito:.4f} ({p_hito * 100:.1f} %).''')"))
+    celdas.append(code("calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "Markdown(f'Comprobación: el fin más temprano de {X} en el calendario es {int(calendario.loc[X, \"fin_mas_temprano\"])}.')"))
+    celdas += apartado(3)
+    celdas.append(code(f"plazo = {T + 1}\n"
+                       "duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
+                       "sigma_proyecto, varianza_rutas = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])\n"
+                       "z_p = (plazo - duracion_media) / sigma_proyecto\n"
+                       "p_proyecto = norm.cdf(z_p)\n"
+                       "Markdown(f'''Para el proyecto completo: media {duracion_media}, σ = {sigma_proyecto:.3f}; z = ({plazo} − {duracion_media}) / {sigma_proyecto:.3f} = {z_p:.3f}, "
+                       "P(T ≤ {plazo}) = {p_proyecto:.4f}. Es la misma técnica aplicada a otro suceso: el hito depende sólo de las cadenas que llegan a {X}; "
+                       "el fin del proyecto, de todas las rutas completas. Una probabilidad alta del hito no garantiza una probabilidad alta del plazo, ni al revés.''')"))
+    celdas += apartado(4)
+    celdas.append(code("es_critica = int(calendario.loc[X, 'H_total']) == 0\n"
+                       "antecesoras = nx.ancestors(G, X) | {X}\n"
+                       "ajenas = sorted(set(datos_proyecto.index) - antecesoras)\n"
+                       "Markdown(f'''{X} {\"es\" if es_critica else \"no es\"} crítica (holgura total {int(calendario.loc[X, \"H_total\"])}). "
+                       "La probabilidad del hito sólo depende de las actividades de sus cadenas ({\", \".join(sorted(antecesoras))}); un retraso en "
+                       "{\", \".join(ajenas)} no la altera, aunque sí pueda alterar la del proyecto.''')"))
+    return celdas, f"{n} actividades; hito al final de {X} (fecha media {EF_X}, comprometida {fecha})"
+
+
+def _ser_critica(rng):
+    """Dos cadenas paralelas: probabilidad de que cada una sea la crítica y probabilidad exacta del plazo."""
+    n1, n2 = int(rng.choice([2, 3])), int(rng.choice([2, 3]))
+    nombres1 = list("BCD")[:n1]
+    nombres2 = list("EFG")[:n2]
+    preds = {"A": set()}
+    prev = "A"
+    for a in nombres1:
+        preds[a] = {prev}; prev = a
+    fin1 = prev
+    prev = "A"
+    for a in nombres2:
+        preds[a] = {prev}; prev = a
+    fin2 = prev
+    preds["H"] = {fin1, fin2}
+    # medias: cadena 1 algo más larga que la 2
+    while True:
+        d1 = rng.integers(3, 8, size=n1)
+        d2 = rng.integers(3, 8, size=n2)
+        if 1 <= d1.sum() - d2.sum() <= 2:
+            break
+    D = pd.Series({"A": int(rng.integers(2, 4)), **{a: int(x) for a, x in zip(nombres1, d1)},
+                   **{a: int(x) for a, x in zip(nombres2, d2)}, "H": int(rng.integers(1, 3))}, name="duration")
+    sd = pd.Series({"A": 0.0, **{a: float(rng.choice([0.5, 0.8, 1.0])) for a in nombres1},
+                    **{a: float(rng.choice([1.0, 1.2, 1.5])) for a in nombres2}, "H": 0.0}, name="standard_deviation")
+    info = P.analizar(preds, D)
+    df = P.tabla_base(info, duration=D, standard_deviation=sd)
+    T = int(info["T"])
+    plazo = T + 1
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duraciones medias y desviaciones típicas "
+                 "(en semanas) se adjunta. Las actividades A y H tienen duración fija; las demás son "
+                 "independientes y aproximadamente normales.")]
+    celdas.append(preguntas([
+        "Dibuje el grafo y enumere las rutas con su duración media y su varianza. ¿Cuál es la ruta crítica "
+        "en media?",
+        "Las dos rutas comparten A y H. Calcule la media y la varianza de la *diferencia* entre la duración "
+        "de la ruta que pasa por " + nombres1[0] + " y la que pasa por " + nombres2[0] + ". ¿Qué probabilidad "
+        "hay de que la segunda resulte más larga (es decir, de que sea ella la crítica)?",
+        f"Calcule la probabilidad de terminar el proyecto en {plazo} semanas o menos (a) con el método PERT "
+        "(sólo la ruta crítica) y (b) de forma exacta, usando que las dos cadenas son independientes: el "
+        "proyecto termina a tiempo si *las dos* cadenas terminan a tiempo.",
+        "¿Cuál de las dos probabilidades es mayor? ¿Es general ese sentido del error del método PERT?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"plazo = {plazo}"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Grafo PERT"\n#| label: fig-pert\n'
+                       "proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)"))
+    celdas.append(code('#| tbl-cap: "Media y varianza de cada ruta"\n#| label: tbl-rutas\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')\n"
+                       "varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'varianza', 3)\n"
+                       "pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)"))
+    celdas.append(code(f"ruta1 = R.index[R['{nombres1[0]}'] == 1][0]; ruta2 = R.index[R['{nombres2[0]}'] == 1][0]\n"
+                       "mu1, mu2 = float(medias.loc[ruta1, 'media']), float(medias.loc[ruta2, 'media'])\n"
+                       "v1, v2 = float(varianzas.loc[ruta1, 'varianza']), float(varianzas.loc[ruta2, 'varianza'])\n"
+                       "Markdown(f'En media la ruta crítica es {ruta1 if mu1 >= mu2 else ruta2} ({max(mu1, mu2):.0f} semanas frente a {min(mu1, mu2):.0f}).')"))
+    celdas += apartado(2)
+    celdas.append(md("A y H están en las dos rutas y son fijas: en la diferencia $L_2 - L_1$ se cancelan. La "
+                     "diferencia de dos normales independientes es normal con media la diferencia de medias y "
+                     "varianza la *suma* de varianzas."))
+    celdas.append(code("mu_dif, var_dif = mu2 - mu1, v1 + v2\n"
+                       "sigma_dif = np.sqrt(var_dif)\n"
+                       "p_ruta2_critica = 1 - norm.cdf((0 - mu_dif) / sigma_dif)\n"
+                       "Markdown(f'''L₂ − L₁ ~ N({mu2:.0f} − {mu1:.0f} = {mu_dif:.0f}, {v1:.3f} + {v2:.3f} = {var_dif:.3f}), σ = {sigma_dif:.3f}. "
+                       "P(L₂ > L₁) = P(Z > (0 − ({mu_dif:.0f})) / {sigma_dif:.3f}) = 1 − Φ({-mu_dif / sigma_dif:.3f}) = {p_ruta2_critica:.4f}: "
+                       "la ruta «no crítica» resulta ser la más larga el {p_ruta2_critica * 100:.1f} % de las veces.''')"))
+    celdas += apartado(3)
+    celdas.append(code("duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
+                       "sigma_pert = np.sqrt(v1 if mu1 >= mu2 else v2)\n"
+                       "p_pert = norm.cdf((plazo - duracion_media) / sigma_pert)\n"
+                       "dA, dH = float(datos_proyecto.loc['A', 'duration']), float(datos_proyecto.loc['H', 'duration'])\n"
+                       "limite = plazo - dA - dH   # lo que puede durar cada cadena intermedia\n"
+                       "p1 = norm.cdf((limite - (mu1 - dA - dH)) / np.sqrt(v1))\n"
+                       "p2 = norm.cdf((limite - (mu2 - dA - dH)) / np.sqrt(v2))\n"
+                       "p_exacta = p1 * p2\n"
+                       "Markdown(f'''(a) PERT: z = ({plazo} − {duracion_media}) / {sigma_pert:.3f} = {(plazo - duracion_media) / sigma_pert:.3f}, P = {p_pert:.4f}.\n\n"
+                       "(b) Exacta: cada cadena intermedia debe durar como mucho {plazo} − {dA:.0f} − {dH:.0f} = {limite:.0f}; "
+                       "P(cadena 1 ≤ {limite:.0f}) = {p1:.4f}, P(cadena 2 ≤ {limite:.0f}) = {p2:.4f}, y por independencia P(T ≤ {plazo}) = {p1:.4f} × {p2:.4f} = {p_exacta:.4f}.''')"))
+    celdas += apartado(4)
+    celdas.append(code("Markdown(f'''PERT da {p_pert:.4f} y el cálculo exacto {p_exacta:.4f}: PERT es optimista. Es general: el máximo de varias rutas es "
+                       "siempre mayor o igual que la ruta crítica sola, luego P(máx ≤ t) ≤ P(ruta crítica ≤ t). El error es grande cuando hay rutas "
+                       "casi críticas con varianza apreciable, como aquí.''')"))
+    return celdas, f"dos cadenas paralelas de {n1} y {n2} actividades; P(ruta no crítica resulta la más larga)"
+
+
 VARIANTES = [
     Variante("normal", 1, "varianza por la ruta crítica, P(T ≤ t), P(a < T ≤ b), duración para un percentil",
              lambda rng: _base(1, rng)),
@@ -320,6 +517,10 @@ VARIANTES = [
              _varianza_maxima),
     Variante("diagnostico", 2, "resolución entregada con σ sumadas y con la ruta equivocada: localizar y corregir",
              _diagnostico),
+    Variante("hito", 2, "probabilidad de alcanzar un hito intermedio: cadenas hasta la actividad, media y varianza del hito frente a las del proyecto",
+             _hito),
+    Variante("ser-critica", 3, "dos cadenas paralelas: probabilidad de que la no crítica resulte la más larga y probabilidad exacta del plazo frente a PERT",
+             _ser_critica),
 ]
 
 

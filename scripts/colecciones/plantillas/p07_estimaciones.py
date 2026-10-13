@@ -53,6 +53,8 @@ def _base(k, rng):
                        "datos_proyecto.loc[conocidas, 'duration'] = numericas.eval('(a + 4 * m + b) / 6')\n"
                        "datos_proyecto.loc[conocidas, 'variance'] = numericas.eval('((b - a) / 6) ** 2')\n"
                        "datos_proyecto"))
+    celdas.append(code('#| tbl-cap: "Media y varianza de cada actividad con los números sustituidos"\n#| label: tbl-estimacionesPaso\n'
+                       "detalle_estimaciones(datos_proyecto[conocidas])"))
     celdas += apartado(ap); ap += 1
     celdas.append(md("Despejando en la fórmula de la media: $a = 6D - 4m - b$."))
     celdas.append(code("faltan = ~conocidas\n"
