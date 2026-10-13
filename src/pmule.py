@@ -1432,13 +1432,40 @@ class ProjectGraph:
                 extra_cols = pd.concat([user_cols, extra_cols], axis=1)
             if user_rows is not None:
                 extra_rows = pd.concat([user_rows, extra_rows], axis=0) 
+            precedences = (
+                self._gantt_precedences(set(gantt_data.index))
+                if params.get("arrows", False) else None
+            )
             dibujo = make_gantt_tikz(
                 gantt_data=gantt_data,
                 extra_cols=extra_cols,
                 extra_rows=extra_rows,
                 params=params,
+                precedences=precedences,
             )
         return resultado, dibujo
+
+    def _gantt_precedences(self, present: set) -> list:
+        """Pares (predecesora, sucesora) entre las barras del Gantt.
+
+        Solo actividades reales (las ficticias se resuelven); si una
+        predecesora inmediata no tiene barra (duración 0), se salta hasta las
+        suyas, de modo que la prelación no se pierde.
+        """
+        pairs = set()
+        for act in present:
+            stack = list(self.calculate_immediate_predecessor_of(act))
+            seen = set()
+            while stack:
+                pred = stack.pop()
+                if pred in seen:
+                    continue
+                seen.add(pred)
+                if pred in present:
+                    pairs.add((pred, act))
+                elif pred in self.nodes_from_edges:
+                    stack.extend(self.calculate_immediate_predecessor_of(pred))
+        return sorted(pairs)
 
     def roy(
         self,
@@ -2945,7 +2972,16 @@ def make_gantt_tikz(
     extra_rows=None,
     extra_cols=None,
     params=None,
+    precedences=None,
 ):
+    """Código TikZ de un diagrama de Gantt.
+
+    precedences : lista de pares (predecesora, sucesora) entre actividades de
+        ``gantt_data``. Solo se dibujan si ``params["arrows"]`` es True.
+        Parámetros de estilo: ``arrow_width`` (1pt), ``arrow_color``
+        (black!60), ``critical_arrow_color`` (red!70!black, para pares críticos
+        sin hueco), ``arrow_corner`` (radio de las esquinas, 1.5pt).
+    """
     if params is None:
         params = dict()
     gantt_data["start"] = gantt_data["start"].astype(int)
@@ -2974,6 +3010,10 @@ def make_gantt_tikz(
         "activity_inner_text_style", r"\bfseries\large"
     )
     arrow_width = params.get("arrow_width", "1pt")
+    arrows = params.get("arrows", False)
+    arrow_color = params.get("arrow_color", "black!60")
+    critical_arrow_color = params.get("critical_arrow_color", "red!70!black")
+    arrow_corner = params.get("arrow_corner", "1.5pt")
     row_totals = params.get("row_totals", False)
     nan_string = params.get("nan_string", "---")
     inner_text = params.get("inner_text", None)
@@ -3100,6 +3140,41 @@ def make_gantt_tikz(
             )
 
     text += "\n" + r"%Fin retícula adicional inferior"
+
+    if arrows and precedences:
+        text += "\n" + r"%Flechas de prelación (debajo de las barras)"
+        row_of = {a: i for i, a in enumerate(activity_list)}
+        row_of.update(slide_activity_dict)          # 💤X comparte fila con X
+        half_bar = row_height * activity_relative_height / 2
+        delta = 0.15 * period_width                # entrada vertical: desplazamiento desde la esquina
+        for pred, succ in precedences:
+            if pred not in row_of or succ not in row_of or row_of[pred] == row_of[succ]:
+                continue
+            sp, dp = gantt_data.loc[pred, "start"], gantt_data.loc[pred, "duration"]
+            ss = gantt_data.loc[succ, "start"]
+            if any(pd.isna(v) for v in (sp, dp, ss)):
+                continue
+            x_end = (sp + dp) * period_width
+            x_start = ss * period_width
+            y_p = (-row_of[pred] - 0.5) * row_height
+            y_s = (-row_of[succ] - 0.5) * row_height
+            gap = x_start - x_end
+            is_critical = (gantt_data.loc[pred, "Htotal"] == 0
+                           and gantt_data.loc[succ, "Htotal"] == 0 and gap <= 1e-9)
+            color = critical_arrow_color if is_critical else arrow_color
+            style = (f"->, {color}, line width={arrow_width}, "
+                     f"rounded corners={arrow_corner}, shorten >=1.5pt")
+            if gap > 1e-9:
+                # codo en el hueco: sale por la derecha, baja/sube, entra por la izquierda
+                x_mid = x_end + min(gap, period_width) / 2
+                text += ("\n" + rf"\draw[{style}] ({x_end:.3f},{y_p:.3f}) -- "
+                         rf"({x_mid:.3f},{y_p:.3f}) -- ({x_mid:.3f},{y_s:.3f}) -- ({x_start:.3f},{y_s:.3f});")
+            else:
+                # sin hueco (o solape): entra por el borde superior/inferior de la sucesora
+                x_in = x_start + delta
+                y_edge = y_s + half_bar if y_s < y_p else y_s - half_bar
+                text += ("\n" + rf"\draw[{style}] ({x_end:.3f},{y_p:.3f}) -- "
+                         rf"({x_in:.3f},{y_p:.3f}) -- ({x_in:.3f},{y_edge:.3f});")
 
     text += "%Dibujo de las actividades"
     for y, actividad in enumerate(activity_list):
