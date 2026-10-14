@@ -299,6 +299,18 @@ calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
 #| label: fig-grafo
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 
+# %% [markdown]
+# El coste mensual de cada actividad es su BAC dividido por su duración. Escribiéndolo en cada casilla del Gantt de inicios más tempranos, el desembolso de cada mes es la suma de su columna (fila *Total*) y la fila *Acumulado* muestra lo invertido hasta ese mes; la columna *Total* de cada actividad recupera su BAC.
+
+# %%
+#| fig-cap: "Gantt con el coste mensual de cada actividad (k€): la fila Total es el desembolso del mes"
+#| label: fig-ganttCostes
+datos_gantt = datos_proyecto.copy()
+datos_gantt['coste_mensual'] = datos_gantt['BAC'] / datos_gantt['duration']
+gantt_costes, dibujo = proyecto.gantt(datos_gantt, 'duration', 'coste_mensual', total='ambas', acumulado=True, tikz=True,
+                                      params=dict(inner_text_digits=1, **GANTT_PARAMS))
+pinta_tikz(dibujo)
+
 # %%
 def desembolsos(cal, dur, duraciones=None):
     '''Desembolso de cada mes (1..T) repartiendo el BAC de cada actividad uniformemente.'''
@@ -310,7 +322,8 @@ def desembolsos(cal, dur, duraciones=None):
             pagos[m] += fila['BAC'] / d
     return pagos
 pagos = desembolsos(calendario, duracion)
-display(pagos.round(1).to_frame('desembolso (k€)').T)
+fila_total = gantt_costes.data.loc['Total'].drop('Total', errors='ignore').astype(float)
+display(pd.DataFrame({'desembolso (k€)': pagos, 'fila Total del Gantt': fila_total.values[:len(pagos)]}).round(1).T)
 Markdown(f'La fase de inversión dura {duracion} meses y suma {pagos.sum():.0f} k€ (= Σ BAC = {I0:.0f}).')
 
 # %% [markdown]
