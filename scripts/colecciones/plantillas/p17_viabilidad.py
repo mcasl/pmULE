@@ -345,6 +345,16 @@ def _vinculo_proyecto(rng):
                        "duracion = int(proyecto.duration(datos_proyecto['duration']))\n"
                        "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]"))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el camino crítico", label="fig-grafo")
+    celdas.append(md("El coste mensual de cada actividad es su BAC dividido por su duración. Escribiéndolo en cada "
+                     "casilla del Gantt de inicios más tempranos, el desembolso de cada mes es la suma de su columna "
+                     "(fila *Total*) y la fila *Acumulado* muestra lo invertido hasta ese mes; la columna *Total* de "
+                     "cada actividad recupera su BAC."))
+    celdas.append(code('#| fig-cap: "Gantt con el coste mensual de cada actividad (k€): la fila Total es el desembolso del mes"\n#| label: fig-ganttCostes\n'
+                       "datos_gantt = datos_proyecto.copy()\n"
+                       "datos_gantt['coste_mensual'] = datos_gantt['BAC'] / datos_gantt['duration']\n"
+                       "gantt_costes, dibujo = proyecto.gantt(datos_gantt, 'duration', 'coste_mensual', total='ambas', acumulado=True, tikz=True,\n"
+                       "                                      params=dict(inner_text_digits=1, **GANTT_PARAMS))\n"
+                       "pinta_tikz(dibujo)"))
     celdas.append(code("def desembolsos(cal, dur, duraciones=None):\n"
                        "    '''Desembolso de cada mes (1..T) repartiendo el BAC de cada actividad uniformemente.'''\n"
                        "    duraciones = datos_proyecto['duration'] if duraciones is None else duraciones\n"
@@ -355,7 +365,8 @@ def _vinculo_proyecto(rng):
                        "            pagos[m] += fila['BAC'] / d\n"
                        "    return pagos\n"
                        "pagos = desembolsos(calendario, duracion)\n"
-                       "display(pagos.round(1).to_frame('desembolso (k€)').T)\n"
+                       "fila_total = gantt_costes.data.loc['Total'].drop('Total', errors='ignore').astype(float)\n"
+                       "display(pd.DataFrame({'desembolso (k€)': pagos, 'fila Total del Gantt': fila_total.values[:len(pagos)]}).round(1).T)\n"
                        "Markdown(f'La fase de inversión dura {duracion} meses y suma {pagos.sum():.0f} k€ (= Σ BAC = {I0:.0f}).')"))
     celdas += apartado(2)
     celdas.append(md("Cada mes es un periodo: en los meses 1…T el flujo es −desembolso; en los T+1…T+N, +F. La "
