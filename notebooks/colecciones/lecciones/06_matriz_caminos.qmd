@@ -1,0 +1,80 @@
+---
+title: "Lección 06 — La matriz de caminos"
+subtitle: "Rutas como filas de una matriz, duración = máx(R·t), escenarios y reconstrucción del grafo"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A escribir las rutas de un proyecto como una matriz de ceros y unos, a obtener con un producto matricial la duración de todas las rutas (y por tanto la del proyecto y el camino crítico), a evaluar varios escenarios de duraciones de una vez y a reconstruir el grafo a partir de sus rutas.
+
+## Conceptos
+
+**Matriz de caminos (o de rutas)** $R$. Una fila por cada ruta del nodo inicial al final, una columna por actividad; $R_{ri} = 1$ si la actividad $i$ está en la ruta $r$. Las ficticias no tienen columna. $R$ es una descripción *completa* del proyecto a efectos de plazos: dos proyectos con la misma $R$ tienen el mismo calendario para cualquier vector de duraciones.
+
+**Duración de las rutas.** Con $t$ el vector de duraciones (una por actividad, en el orden de las columnas),
+
+$$L = R\,t$$
+
+es el vector de duraciones de las rutas: $L_r = \sum_i R_{ri}\, t_i$. La duración del proyecto es
+
+$$T = \max_r L_r = \lVert R\,t \rVert_\infty ,$$
+
+y las rutas críticas son las filas donde se alcanza el máximo. Esta fórmula es el punto de partida del artículo *The formula for the completion time* (lección 13).
+
+**Holgura de una ruta.** $T - L_r$: cuánto puede alargarse la ruta sin cambiar $T$. La holgura total de una actividad es el mínimo de las holguras de las rutas que la contienen: $H_i = \min_{r:\,R_{ri}=1} (T - L_r)$.
+
+**Escenarios.** Si en vez de un vector $t$ hay una matriz $\mathcal{T}$ con una columna por escenario, $R\,\mathcal{T}$ da de golpe las duraciones de todas las rutas en todos los escenarios, y el máximo por columnas la duración del proyecto en cada uno. Es exactamente lo que hace Monte Carlo con miles de columnas (lección 09).
+
+**De las rutas al grafo.** Las rutas determinan las prelaciones: $P$ precede a $A$ si en toda ruta que contiene a las dos $P$ va antes, y la prelación es inmediata si ninguna otra actividad se interpone en alguna ruta. Con eso se reconstruye el cuadro y, de él, el PERT.
+
+## Ejemplo guía
+
+Rutas: A–C–F, A–D–F, B–D–F, B–E–G.
+
+$$
+R = \begin{pmatrix}
+1 & 0 & 1 & 0 & 0 & 1 & 0\\
+1 & 0 & 0 & 1 & 0 & 1 & 0\\
+0 & 1 & 0 & 1 & 0 & 1 & 0\\
+0 & 1 & 0 & 0 & 1 & 0 & 1
+\end{pmatrix},\qquad
+t = (3, 2, 4, 1, 2, 3, 2)^\top,\qquad
+R\,t = \begin{pmatrix} 10 \\ 7 \\ 6 \\ 6 \end{pmatrix}.
+$$
+
+$T = 10$, ruta crítica la primera (A–C–F). Holguras de las rutas: 0, 3, 4, 4. Holgura de D = mín(3, 4) = 3; de B = mín(4, 4) = 4; de F = mín(0, 3, 4) = 0. Coincide con el calendario.
+
+Escenario «C dura 2 y E dura 5»: $t' = (3, 2, 2, 1, 5, 3, 2)$, $R\,t' = (8, 7, 6, 9)$: el proyecto dura 9 y la ruta crítica pasa a ser B–E–G. Una sola multiplicación responde a la pregunta.
+
+## Algoritmo para enumerar las rutas
+
+Búsqueda en profundidad desde el nodo inicial del PERT: en cada nodo se prolonga el camino por cada arco de salida; al llegar al nodo final se anota la ruta (quitando las ficticias). El número de rutas puede crecer exponencialmente con el tamaño del grafo (la lección 13 vuelve sobre esto), pero en proyectos de clase son unas pocas decenas.
+
+## Con pmULE
+
+```python
+R = proyecto.path_matrix(dummies=False)          # DataFrame rutas × actividades
+t = datos['duration'][R.columns]
+L = R @ t                                        # duración de cada ruta
+T = L.max(); criticas = L.index[L == T]
+proyecto.paths(dummies=False)                    # rutas como listas ordenadas
+proyecto.tau(t.to_dict())                        # ‖R·t‖∞ directamente
+```
+
+Para reconstruir el grafo a partir de las rutas basta deducir el cuadro de prelaciones (predecesora inmediata = la actividad que precede justo antes en alguna ruta) y construir el proyecto con `PredecessorTable`.
+
+## Preguntas de comprobación
+
+- ¿Qué da $\lVert R\,t \rVert_1$? La suma de las duraciones de todas las rutas, sin significado útil. ¿Y $\min R\,t$? La ruta más corta, que tampoco sirve para el plazo.
+- ¿Puede una columna de $R$ ser toda ceros? No: toda actividad está en alguna ruta. ¿Toda unos? Sí: una actividad por la que pasan todas las rutas (es crítica para cualquier $t$).
+- Si se añade una prelación, ¿cuántas filas puede ganar $R$? Hasta (rutas que llegan a la predecesora) × (rutas que salen de la sucesora), lección 13.
+
+## Qué practica cada variante
+
+*matriz-y-duracion*: construir $R$, calcular $R\,t$, duración, ruta crítica y holguras de ruta. *rutas-a-grafo-svd*: de las rutas al cuadro y al grafo; primer contacto con la SVD de $R$. *escenarios*: tres vectores de duraciones a la vez con $R\,\mathcal{T}$.

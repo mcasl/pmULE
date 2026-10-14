@@ -1965,9 +1965,8 @@
   "variante": "caso-base",
   "nivel": 1,
   "subtitulo": "una línea de envasado automatizada: I0 = 760 k€, 7 años, k = 12%; VAN 394, TIR 23.9%",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_01.py",
-  "semilla": 2027701,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -1976,9 +1975,8 @@
   "variante": "vinculo-proyecto",
   "nivel": 2,
   "subtitulo": "8 actividades, 18 meses de inversión (I0 = 1150 k€), 50 k€/mes durante 48 meses, k = 10%",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_02.py",
-  "semilla": 2027702,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -1987,9 +1985,8 @@
   "variante": "alternativas",
   "nivel": 2,
   "subtitulo": "A y B (6 años) con conflicto VAN/TIR (Fisher 13.7%), C de 4 años; k = 6%",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_03.py",
-  "semilla": 2027703,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -1998,9 +1995,8 @@
   "variante": "sensibilidad",
   "nivel": 2,
   "subtitulo": "una nave logística con reparto de última milla: umbrales de precio, volumen y coste variable; escenarios; inflación 3%",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_04.py",
-  "semilla": 2027704,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -2009,9 +2005,8 @@
   "variante": "financiacion",
   "nivel": 3,
   "subtitulo": "una flota de vehículos eléctricos de alquiler: préstamo del 70% al 6% a 5 años; TIR proyecto 21.6%",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_05.py",
-  "semilla": 2027705,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -2020,9 +2015,8 @@
   "variante": "caso-base",
   "nivel": 1,
   "subtitulo": "una flota de vehículos eléctricos de alquiler: I0 = 1390 k€, 5 años, k = 8%; VAN 227, TIR 13.1%",
-  "grafo": "roy",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_06.py",
-  "semilla": 2027706,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -2031,9 +2025,8 @@
   "variante": "vinculo-proyecto",
   "nivel": 2,
   "subtitulo": "9 actividades, 15 meses de inversión (I0 = 1250 k€), 60 k€/mes durante 48 meses, k = 12%",
-  "grafo": "roy",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_07.py",
-  "semilla": 2027707,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -2042,9 +2035,8 @@
   "variante": "alternativas",
   "nivel": 2,
   "subtitulo": "A y B (6 años) con conflicto VAN/TIR (Fisher 10.3%), C de 3 años; k = 8%",
-  "grafo": "roy",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_08.py",
-  "semilla": 2027708,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -2053,9 +2045,8 @@
   "variante": "sensibilidad",
   "nivel": 2,
   "subtitulo": "una línea de envasado automatizada: umbrales de precio, volumen y coste variable; escenarios; inflación 3%",
-  "grafo": "roy",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_09.py",
-  "semilla": 2027709,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -2064,9 +2055,8 @@
   "variante": "financiacion",
   "nivel": 3,
   "subtitulo": "una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%",
-  "grafo": "roy",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_10.py",
-  "semilla": 2027710,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  }
 ]

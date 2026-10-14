@@ -39,6 +39,7 @@ REPO = AQUI.parents[1]
 SRC = REPO / "src"
 NOTEBOOKS = REPO / "notebooks"
 COLECCIONES = NOTEBOOKS / "colecciones"
+LECCIONES = COLECCIONES / "lecciones"      # <slug>.qmd, renderizadas a docs/colecciones/lecciones/<slug>.html
 DOCS = REPO / "docs"
 INDEX = DOCS / "index.md"
 CATALOGO = COLECCIONES / "catalogo.json"
@@ -151,12 +152,17 @@ def escribir_readme(resumen):
               "`python -m scripts.colecciones.examen` monta exámenes (enunciado y solución por separado) "
               "a partir de las mismas plantillas con datos nuevos.", "",
               "Para renderizar a HTML en `docs/colecciones/`: `./render_colecciones.sh` (todos) o "
-              "`./render_colecciones.sh notebooks/colecciones/05_holguras/Holguras_01.ipynb`.", ""]
+              "`./render_colecciones.sh notebooks/colecciones/05_holguras/Holguras_01.ipynb`; las lecciones "
+              "(`lecciones/*.qmd`, una por colección, con los conceptos y algoritmos) se renderizan con "
+              "`./render_lecciones.sh`.", ""]
     for plantilla, entradas in resumen:
         meta = plantilla.META
         lineas.append(f"## {meta['slug']} — {meta['titulo']}")
         lineas.append("")
         lineas.append(meta["descripcion"])
+        if (LECCIONES / f"{meta['slug']}.qmd").exists():
+            lineas.append("")
+            lineas.append(f"Lección (teoría): `lecciones/{meta['slug']}.qmd` → `docs/colecciones/lecciones/{meta['slug']}.html`.")
         lineas.append("")
         lineas.append("Variantes:")
         lineas += _variantes_md(plantilla)
@@ -177,6 +183,9 @@ def actualizar_index(resumen):
         bloque.append(f"## {meta['titulo']}")
         bloque.append("")
         bloque.append(meta["descripcion"] + "  ")
+        if (LECCIONES / f"{meta['slug']}.qmd").exists():
+            bloque.append(f"📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/{meta['slug']}.html)** — "
+                          "qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  ")
         bloque.append("")
         for e in entradas:
             bloque.append(f"[{e['nombre'].replace('_', ' ')}](colecciones/{meta['slug']}/{e['nombre']}.html) "

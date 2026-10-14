@@ -34,6 +34,7 @@ Ejercicios breves, de una sola competencia, para practicar cada paso por separad
 ## Cuadro de prelaciones
 
 Depurar un cuadro de prelaciones (redundancias, erratas que crean ciclos), construir el cuadro expandido y el de ancestros.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/01_prelaciones.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Prelaciones 01](colecciones/01_prelaciones/Prelaciones_01.html) — *redundancias* (nivel 1): 10 actividades, 2 prelaciones redundantes  
 [Prelaciones 02](colecciones/01_prelaciones/Prelaciones_02.html) — *redundancias-b* (nivel 1): 10 actividades, 2 prelaciones redundantes  
@@ -53,6 +54,7 @@ Depurar un cuadro de prelaciones (redundancias, erratas que crean ciclos), const
 ## Grafo PERT y actividades ficticias
 
 Dibujar el grafo PERT con el mínimo número de ficticias, justificar cada una, numerar los nodos y enumerar las rutas.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/02_pert.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [PERT 01](colecciones/02_pert/PERT_01.html) — *minimo-ficticias* (nivel 1): 8 actividades, 2 ficticias, 6 rutas  
 [PERT 02](colecciones/02_pert/PERT_02.html) — *paralelas* (nivel 2): 9 actividades, 3 ficticias, 7 rutas  
@@ -68,6 +70,7 @@ Dibujar el grafo PERT con el mínimo número de ficticias, justificar cada una, 
 ## Grafo Roy
 
 Dibujar el grafo Roy, compararlo con el PERT y modelar esperas y solapes entre actividades.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/03_roy.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Roy 01](colecciones/03_roy/Roy_01.html) — *roy-vs-pert* (nivel 1): 8 actividades, 2 ficticias en PERT  
 [Roy 02](colecciones/03_roy/Roy_02.html) — *roy-vs-pert-b* (nivel 1): 8 actividades, 2 ficticias en PERT  
@@ -83,6 +86,7 @@ Dibujar el grafo Roy, compararlo con el PERT y modelar esperas y solapes entre a
 ## Método de Zaderenko y calendario
 
 Calcular con la matriz de Zaderenko los tiempos tempranos y tardíos, el calendario de las actividades y el diagrama de Gantt.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/04_zaderenko.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Zaderenko 01](colecciones/04_zaderenko/Zaderenko_01.html) — *zaderenko* (nivel 1): 8 actividades, 8 nodos, 2 ficticias  
 [Zaderenko 02](colecciones/04_zaderenko/Zaderenko_02.html) — *zaderenko-b* (nivel 1): 9 actividades, 9 nodos, 1 ficticias  
@@ -102,6 +106,7 @@ Calcular con la matriz de Zaderenko los tiempos tempranos y tardíos, el calenda
 ## Holguras y camino crítico
 
 Calcular e interpretar las holguras total, libre e independiente; identificar todos los caminos críticos.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/05_holguras.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Holguras 01](colecciones/05_holguras/Holguras_01.html) — *tres-holguras* (nivel 1): 9 actividades, 1 ruta(s) crítica(s)  
 [Holguras 02](colecciones/05_holguras/Holguras_02.html) — *tres-holguras-b* (nivel 2): 10 actividades, 1 ruta(s) crítica(s)  
@@ -121,6 +126,7 @@ Calcular e interpretar las holguras total, libre e independiente; identificar to
 ## Matriz de caminos
 
 Enumerar las rutas, construir la matriz de caminos y usarla para calcular la duración del proyecto; reconstruir el grafo a partir de las rutas; rutas dominantes mediante la SVD.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/06_matriz_caminos.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Caminos 01](colecciones/06_matriz_caminos/Caminos_01.html) — *matriz-y-duracion* (nivel 1): 8 actividades, 6 rutas  
 [Caminos 02](colecciones/06_matriz_caminos/Caminos_02.html) — *matriz-y-duracion-b* (nivel 1): 8 actividades, 6 rutas  
@@ -134,6 +140,7 @@ Enumerar las rutas, construir la matriz de caminos y usarla para calcular la dur
 ## Estimaciones de duración (a, m, b)
 
 Obtener la duración media y la varianza de cada actividad a partir de sus tres estimaciones, resolver el problema inverso y comparar distribuciones.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/07_estimaciones.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Estimaciones 01](colecciones/07_estimaciones/Estimaciones_01.html) — *tres-estimaciones* (nivel 1): 7 actividades, 0 con estimaciones asimétricas  
 [Estimaciones 02](colecciones/07_estimaciones/Estimaciones_02.html) — *tres-estimaciones-b* (nivel 1): 7 actividades, 2 con estimaciones asimétricas  
@@ -147,6 +154,7 @@ Obtener la duración media y la varianza de cada actividad a partir de sus tres 
 ## Probabilidad de cumplir el plazo (aproximación normal)
 
 Varianza del proyecto por el camino crítico, probabilidad de terminar antes de un plazo o entre dos fechas y duración comprometible para una probabilidad dada.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/08_probabilidad.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Probabilidad 01](colecciones/08_probabilidad/Probabilidad_01.html) — *normal* (nivel 1): 9 actividades, 1 ruta(s) crítica(s), σ = 1.18  
 [Probabilidad 02](colecciones/08_probabilidad/Probabilidad_02.html) — *dos-rutas-criticas* (nivel 2): 9 actividades, 2 ruta(s) crítica(s), σ = 1.25  
@@ -168,6 +176,7 @@ Varianza del proyecto por el camino crítico, probabilidad de terminar antes de 
 ## Método de Monte Carlo
 
 Simular la duración del proyecto con la matriz de caminos, compararla con la aproximación normal y calcular índices de criticidad y sensibilidad.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/09_montecarlo.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [MonteCarlo 01](colecciones/09_montecarlo/MonteCarlo_01.html) — *normal* (nivel 1): 8 actividades, 5 rutas, distribución normal  
 [MonteCarlo 02](colecciones/09_montecarlo/MonteCarlo_02.html) — *triangular* (nivel 2): 9 actividades, 6 rutas, distribución triangular  
@@ -189,6 +198,7 @@ Simular la duración del proyecto con la matriz de caminos, compararla con la ap
 ## Reducción de la duración con mínimo coste
 
 Coste unitario de reducción, algoritmo de Ackoff-Sasieni paso a paso, costes indirectos y duración de coste mínimo, reducción frente a penalización.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/10_reduccion.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Reduccion 01](colecciones/10_reduccion/Reduccion_01.html) — *cur-y-ackoff* (nivel 1): 8 actividades, reducción de 3 semanas  
 [Reduccion 02](colecciones/10_reduccion/Reduccion_02.html) — *costes-indirectos* (nivel 2): 8 actividades, costes indirectos de 9 k€/semana  
@@ -208,6 +218,7 @@ Coste unitario de reducción, algoritmo de Ackoff-Sasieni paso a paso, costes in
 ## Nivelación y asignación de recursos
 
 Diagrama de cargas, nivelación por mínimos cuadrados, asignación con límite de recursos (Wiest-Levy), evaluación de desplazamientos y varios tipos de recurso.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/11_recursos.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Recursos 01](colecciones/11_recursos/Recursos_01.html) — *nivelacion* (nivel 1): 9 actividades, nivelación  
 [Recursos 02](colecciones/11_recursos/Recursos_02.html) — *asignacion* (nivel 2): 8 actividades, asignación con límite 6→8  
@@ -227,6 +238,7 @@ Diagrama de cargas, nivelación por mínimos cuadrados, asignación con límite 
 ## Método del valor ganado
 
 Diagramas de Gantt del valor planificado, ganado y coste real; CPI, SPI, EAC, VAC, TCPI; programación ganada; evolución de los indicadores en varios puntos de control.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/12_valor_ganado.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [ValorGanado 01](colecciones/12_valor_ganado/ValorGanado_01.html) — *indicadores-eac* (nivel 1): 9 actividades, un punto de control (semana 10), EAC/VAC/TCPI  
 [ValorGanado 02](colecciones/12_valor_ganado/ValorGanado_02.html) — *earned-schedule* (nivel 2): 8 actividades, un punto de control (semana 6), programación ganada  
@@ -250,6 +262,7 @@ Diagramas de Gantt del valor planificado, ganado y coste real; CPI, SPI, EAC, VA
 ## La fórmula del tiempo de compleción τ = ‖R·t‖∞
 
 Matriz de rutas R, τ como norma infinito de R·t, gradiente ∂τ/∂t, descomposición en valores singulares de R, núcleo de la matriz de incidencia e instancias de referencia.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/13_formula_compleccion.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Formula 01](colecciones/13_formula_compleccion/Formula_01.html) — *tau-norma-infinito* (nivel 1): 7 actividades, 4 rutas; τ como norma infinito  
 [Formula 02](colecciones/13_formula_compleccion/Formula_02.html) — *gradiente* (nivel 2): 9 actividades, 2 rutas críticas; gradiente con empates  
@@ -271,6 +284,7 @@ Matriz de rutas R, τ como norma infinito de R·t, gradiente ∂τ/∂t, descomp
 ## Comprensión conceptual
 
 Diseñar redes con rasgos dados, acotar la duración con datos incompletos, afirmaciones verdadero/falso con contraejemplo, programaciones que violan las prelaciones y cuestionarios tipo test exportables a Moodle (GIFT).  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/14_comprension.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Comprension 01](colecciones/14_comprension/Comprension_01.html) — *disena-una-red* (nivel 2): 6 actividades, 2 iniciales, 1 ficticias, 2 rutas críticas  
 [Comprension 02](colecciones/14_comprension/Comprension_02.html) — *datos-insuficientes* (nivel 2): 8 actividades; duraciones de D y C en intervalos; cotas de τ  
@@ -286,6 +300,7 @@ Diseñar redes con rasgos dados, acotar la duración con datos incompletos, afir
 ## Casos avanzados: PDM, calendario real y decisión económica
 
 Relaciones de precedencia generalizadas (fin-comienzo, comienzo-comienzo, fin-fin, comienzo-fin) con desfases, traducción del calendario en días laborables a fechas reales con festivos, y elección de la duración que minimiza el coste total con indirectos, penalización y prima.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/15_avanzado.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Avanzado 01](colecciones/15_avanzado/Avanzado_01.html) — *pdm-desfases* (nivel 3): 8 actividades; 4 relaciones PDM no ordinarias (1 CC, 1 FF)  
 [Avanzado 02](colecciones/15_avanzado/Avanzado_02.html) — *fechas-calendario* (nivel 2): 9 actividades; inicio 2026-09-28, 2 festivos  
@@ -297,6 +312,7 @@ Relaciones de precedencia generalizadas (fin-comienzo, comienzo-comienzo, fin-fi
 ## Gantt y grafos: ida y vuelta
 
 Construir el diagrama de Gantt a partir del grafo PERT o del Roy (leyendo el cuadro de prelaciones del dibujo) y reconstruir el cuadro, el Roy y el PERT a partir de un Gantt con flechas de prelación.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/16_gantt_grafos.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Gantt 01](colecciones/16_gantt_grafos/Gantt_01.html) — *pert-a-gantt* (nivel 1): 7 actividades, 2 ficticias; del PERT al Gantt  
 [Gantt 02](colecciones/16_gantt_grafos/Gantt_02.html) — *roy-a-gantt* (nivel 1): 8 actividades, 2 ficticias; del Roy al Gantt  
@@ -310,6 +326,7 @@ Construir el diagrama de Gantt a partir del grafo PERT o del Roy (leyendo el cua
 ## Viabilidad financiera: flujos de caja, VAN, TIR y payback
 
 Construir los flujos de caja libre de un caso de estudio (inversión, ingresos, costes, amortización, impuestos, circulante, valor residual) y evaluar con VAN, TIR y periodo de recuperación; desembolsos ligados al Gantt del proyecto; alternativas excluyentes; sensibilidad, escenarios e inflación; préstamo y flujo del accionista.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/17_viabilidad.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
 
 [Viabilidad 01](colecciones/17_viabilidad/Viabilidad_01.html) — *caso-base* (nivel 1): una línea de envasado automatizada: I0 = 760 k€, 7 años, k = 12%; VAN 394, TIR 23.9%  
 [Viabilidad 02](colecciones/17_viabilidad/Viabilidad_02.html) — *vinculo-proyecto* (nivel 2): 8 actividades, 18 meses de inversión (I0 = 1150 k€), 50 k€/mes durante 48 meses, k = 10%  

@@ -6,11 +6,13 @@ Se generan con `python -m scripts.colecciones.generador` desde la raíz del repo
 
 `catalogo.json` lista todos los ejercicios con su colección, variante y nivel; `python -m scripts.colecciones.examen` monta exámenes (enunciado y solución por separado) a partir de las mismas plantillas con datos nuevos.
 
-Para renderizar a HTML en `docs/colecciones/`: `./render_colecciones.sh` (todos) o `./render_colecciones.sh notebooks/colecciones/05_holguras/Holguras_01.ipynb`.
+Para renderizar a HTML en `docs/colecciones/`: `./render_colecciones.sh` (todos) o `./render_colecciones.sh notebooks/colecciones/05_holguras/Holguras_01.ipynb`; las lecciones (`lecciones/*.qmd`, una por colección, con los conceptos y algoritmos) se renderizan con `./render_lecciones.sh`.
 
 ## 01_prelaciones — Cuadro de prelaciones
 
 Depurar un cuadro de prelaciones (redundancias, erratas que crean ciclos), construir el cuadro expandido y el de ancestros.
+
+Lección (teoría): `lecciones/01_prelaciones.qmd` → `docs/colecciones/lecciones/01_prelaciones.html`.
 
 Variantes:
   - `redundancias` (nivel 1): cuadro con prelaciones redundantes: depurarlo, cuadro expandido y de ancestros
@@ -40,6 +42,8 @@ Variantes:
 
 Dibujar el grafo PERT con el mínimo número de ficticias, justificar cada una, numerar los nodos y enumerar las rutas.
 
+Lección (teoría): `lecciones/02_pert.qmd` → `docs/colecciones/lecciones/02_pert.html`.
+
 Variantes:
   - `minimo-ficticias` (nivel 1): dibujar con el mínimo de ficticias, justificar cada una, rutas y ancestros
   - `paralelas` (nivel 2): ídem con dos actividades de idénticas predecesoras (arcos paralelos)
@@ -62,6 +66,8 @@ Variantes:
 
 Dibujar el grafo Roy, compararlo con el PERT y modelar esperas y solapes entre actividades.
 
+Lección (teoría): `lecciones/03_roy.qmd` → `docs/colecciones/lecciones/03_roy.html`.
+
 Variantes:
   - `roy-vs-pert` (nivel 1): grafo Roy, PERT equivalente, comparación de nodos y arcos, calendario y camino crítico
   - `roy-vs-pert-b` (nivel 1): ídem con otro proyecto
@@ -83,6 +89,8 @@ Variantes:
 ## 04_zaderenko — Método de Zaderenko y calendario
 
 Calcular con la matriz de Zaderenko los tiempos tempranos y tardíos, el calendario de las actividades y el diagrama de Gantt.
+
+Lección (teoría): `lecciones/04_zaderenko.qmd` → `docs/colecciones/lecciones/04_zaderenko.html`.
 
 Variantes:
   - `zaderenko` (nivel 1): matriz de Zaderenko, tiempos de los nodos, calendario, Gantt y efecto de un retraso
@@ -112,6 +120,8 @@ Variantes:
 
 Calcular e interpretar las holguras total, libre e independiente; identificar todos los caminos críticos.
 
+Lección (teoría): `lecciones/05_holguras.qmd` → `docs/colecciones/lecciones/05_holguras.html`.
+
 Variantes:
   - `tres-holguras` (nivel 1): holguras total, libre e independiente; caminos críticos; retraso de una actividad
   - `tres-holguras-b` (nivel 2): ídem con holgura independiente distinta de la libre
@@ -140,6 +150,8 @@ Variantes:
 
 Enumerar las rutas, construir la matriz de caminos y usarla para calcular la duración del proyecto; reconstruir el grafo a partir de las rutas; rutas dominantes mediante la SVD.
 
+Lección (teoría): `lecciones/06_matriz_caminos.qmd` → `docs/colecciones/lecciones/06_matriz_caminos.html`.
+
 Variantes:
   - `matriz-y-duracion` (nivel 1): enumerar rutas, matriz de caminos, duración como máximo de R·d, sensibilidad
   - `matriz-y-duracion-b` (nivel 1): ídem con otro proyecto
@@ -159,6 +171,8 @@ Variantes:
 
 Obtener la duración media y la varianza de cada actividad a partir de sus tres estimaciones, resolver el problema inverso y comparar distribuciones.
 
+Lección (teoría): `lecciones/07_estimaciones.qmd` → `docs/colecciones/lecciones/07_estimaciones.html`.
+
 Variantes:
   - `tres-estimaciones` (nivel 1): media y varianza PERT, cálculo inverso de a, camino crítico, Beta-PERT vs triangular vs uniforme
   - `tres-estimaciones-b` (nivel 1): ídem con estimaciones asimétricas
@@ -177,6 +191,8 @@ Variantes:
 ## 08_probabilidad — Probabilidad de cumplir el plazo (aproximación normal)
 
 Varianza del proyecto por el camino crítico, probabilidad de terminar antes de un plazo o entre dos fechas y duración comprometible para una probabilidad dada.
+
+Lección (teoría): `lecciones/08_probabilidad.qmd` → `docs/colecciones/lecciones/08_probabilidad.html`.
 
 Variantes:
   - `normal` (nivel 1): varianza por la ruta crítica, P(T ≤ t), P(a < T ≤ b), duración para un percentil
@@ -209,6 +225,8 @@ Variantes:
 
 Simular la duración del proyecto con la matriz de caminos, compararla con la aproximación normal y calcular índices de criticidad y sensibilidad.
 
+Lección (teoría): `lecciones/09_montecarlo.qmd` → `docs/colecciones/lecciones/09_montecarlo.html`.
+
 Variantes:
   - `normal` (nivel 1): Monte Carlo con R·T, comparación con la aproximación normal, criticidad y sensibilidad (normal)
   - `triangular` (nivel 2): ídem con duraciones triangulares (a, m, b)
@@ -240,6 +258,8 @@ Variantes:
 
 Coste unitario de reducción, algoritmo de Ackoff-Sasieni paso a paso, costes indirectos y duración de coste mínimo, reducción frente a penalización.
 
+Lección (teoría): `lecciones/10_reduccion.qmd` → `docs/colecciones/lecciones/10_reduccion.html`.
+
 Variantes:
   - `cur-y-ackoff` (nivel 1): CUR a partir de costes normal y tope; Ackoff-Sasieni tres semanas con un paso de dos actividades
   - `costes-indirectos` (nivel 2): curva coste-duración con costes indirectos y duración de coste mínimo
@@ -268,6 +288,8 @@ Variantes:
 
 Diagrama de cargas, nivelación por mínimos cuadrados, asignación con límite de recursos (Wiest-Levy), evaluación de desplazamientos y varios tipos de recurso.
 
+Lección (teoría): `lecciones/11_recursos.qmd` → `docs/colecciones/lecciones/11_recursos.html`.
+
 Variantes:
   - `nivelacion` (nivel 1): cargas, suma de cuadrados y nivelación por mínimos cuadrados
   - `asignacion` (nivel 2): asignación Wiest-Levy con límite por tramos y con límite fijo
@@ -295,6 +317,8 @@ Variantes:
 ## 12_valor_ganado — Método del valor ganado
 
 Diagramas de Gantt del valor planificado, ganado y coste real; CPI, SPI, EAC, VAC, TCPI; programación ganada; evolución de los indicadores en varios puntos de control.
+
+Lección (teoría): `lecciones/12_valor_ganado.qmd` → `docs/colecciones/lecciones/12_valor_ganado.html`.
 
 Variantes:
   - `indicadores-eac` (nivel 1): tres Gantts, PV/EV/AC, CV/SV, CPI/SPI, tres fórmulas de EAC, VAC y TCPI
@@ -330,6 +354,8 @@ Variantes:
 
 Matriz de rutas R, τ como norma infinito de R·t, gradiente ∂τ/∂t, descomposición en valores singulares de R, núcleo de la matriz de incidencia e instancias de referencia.
 
+Lección (teoría): `lecciones/13_formula_compleccion.qmd` → `docs/colecciones/lecciones/13_formula_compleccion.html`.
+
 Variantes:
   - `tau-norma-infinito` (nivel 1): R, R·t y τ = ‖R·t‖∞; equivalencia con Zaderenko; τ como función lineal a trozos de una duración
   - `gradiente` (nivel 2): ∂τ/∂t con rutas críticas empatadas: subgradiente, diferencias finitas y suma de sensibilidades
@@ -361,6 +387,8 @@ Variantes:
 
 Diseñar redes con rasgos dados, acotar la duración con datos incompletos, afirmaciones verdadero/falso con contraejemplo, programaciones que violan las prelaciones y cuestionarios tipo test exportables a Moodle (GIFT).
 
+Lección (teoría): `lecciones/14_comprension.qmd` → `docs/colecciones/lecciones/14_comprension.html`.
+
 Variantes:
   - `disena-una-red` (nivel 2): diseñar un proyecto con rasgos dados (iniciales, ficticias, rutas críticas) y verificarlos
   - `datos-insuficientes` (nivel 2): dos duraciones en intervalos: cotas de τ, actividades siempre/nunca críticas y qué dato averiguar primero
@@ -383,6 +411,8 @@ Variantes:
 
 Relaciones de precedencia generalizadas (fin-comienzo, comienzo-comienzo, fin-fin, comienzo-fin) con desfases, traducción del calendario en días laborables a fechas reales con festivos, y elección de la duración que minimiza el coste total con indirectos, penalización y prima.
 
+Lección (teoría): `lecciones/15_avanzado.qmd` → `docs/colecciones/lecciones/15_avanzado.html`.
+
 Variantes:
   - `pdm-desfases` (nivel 3): relaciones FC/CC/FF/CF con desfases: pasos adelante y atrás con candidatos, criticidad por solape, comparación con FC+0
   - `fechas-calendario` (nivel 2): del calendario en días laborables a fechas reales: fines de semana, festivos y efecto de un festivo nuevo
@@ -398,6 +428,8 @@ Variantes:
 ## 16_gantt_grafos — Gantt y grafos: ida y vuelta
 
 Construir el diagrama de Gantt a partir del grafo PERT o del Roy (leyendo el cuadro de prelaciones del dibujo) y reconstruir el cuadro, el Roy y el PERT a partir de un Gantt con flechas de prelación.
+
+Lección (teoría): `lecciones/16_gantt_grafos.qmd` → `docs/colecciones/lecciones/16_gantt_grafos.html`.
 
 Variantes:
   - `pert-a-gantt` (nivel 1): del PERT sin tiempos (más duraciones) al cuadro, el calendario y los Gantt temprano y tardío
@@ -417,6 +449,8 @@ Variantes:
 ## 17_viabilidad — Viabilidad financiera: flujos de caja, VAN, TIR y payback
 
 Construir los flujos de caja libre de un caso de estudio (inversión, ingresos, costes, amortización, impuestos, circulante, valor residual) y evaluar con VAN, TIR y periodo de recuperación; desembolsos ligados al Gantt del proyecto; alternativas excluyentes; sensibilidad, escenarios e inflación; préstamo y flujo del accionista.
+
+Lección (teoría): `lecciones/17_viabilidad.qmd` → `docs/colecciones/lecciones/17_viabilidad.html`.
 
 Variantes:
   - `caso-base` (nivel 1): flujos de caja libre completos (ventas, costes, amortización, impuesto, circulante, residual), VAN con tabla de descuento, TIR, payback simple y descontado

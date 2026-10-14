@@ -1,0 +1,67 @@
+---
+title: "Lección 07 — Estimaciones de duración (a, m, b)"
+subtitle: "Media y varianza PERT, Beta-PERT, triangular y uniforme; quién aporta varianza"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A convertir tres estimaciones por actividad (optimista, más probable, pesimista) en una duración media y una varianza, a entender de dónde salen las fórmulas del PERT y a compararlas con otras distribuciones con los mismos extremos.
+
+## Conceptos
+
+Cuando la duración de una actividad es incierta se piden tres valores: **optimista** $a$ (si todo va bien), **más probable** $m$ (moda) y **pesimista** $b$ (si todo va mal). El método PERT clásico supone que la duración sigue una distribución **Beta** en $[a, b]$ con moda $m$ y aproxima su media y su varianza por
+
+$$D = \frac{a + 4m + b}{6}, \qquad \sigma^2 = \left(\frac{b - a}{6}\right)^2 .$$
+
+La media es una media ponderada que da cuatro veces más peso a la moda que a cada extremo; la desviación típica es un sexto del recorrido, por analogía con una normal en la que $b - a \approx 6\sigma$ cubre casi toda la probabilidad.
+
+**Beta-PERT.** La Beta concreta que cumple esa media tiene parámetros $\alpha = 1 + 4\frac{m-a}{b-a}$ y $\beta = 1 + 4\frac{b-m}{b-a}$ sobre $[a, b]$. Su varianza exacta es $\frac{(D-a)(b-D)}{7}$; para el caso simétrico ($m$ en el centro) vale $(b-a)^2/28$, algo mayor que $(b-a)^2/36$: la fórmula del PERT subestima ligeramente la varianza.
+
+**Otras distribuciones con los mismos extremos.** Para comparar:
+
+| Distribución | Media | Varianza |
+|---|---|---|
+| Beta-PERT (aprox.) | $(a + 4m + b)/6$ | $((b-a)/6)^2$ |
+| Triangular$(a, m, b)$ | $(a + m + b)/3$ | $(a^2 + m^2 + b^2 - am - ab - mb)/18$ |
+| Uniforme$[a, b]$ | $(a + b)/2$ | $(b-a)^2/12$ |
+
+La uniforme es la más prudente (mayor varianza): no concentra probabilidad cerca de la moda. La triangular da más peso a los extremos que la Beta-PERT. Cuando $m$ está descentrado, las medias también difieren: la PERT se queda más cerca de la moda.
+
+**Asimetría.** Si la cola pesimista es larga ($b - m > m - a$), la media PERT queda por encima de la moda: los retrasos posibles pesan más que los adelantos. Es la situación habitual en proyectos.
+
+**Problema inverso.** De $D = (a + 4m + b)/6$ se despeja cualquiera de los tres datos: $a = 6D - 4m - b$, etc. Sirve para reconstruir estimaciones perdidas o para preguntar «¿cuál debería ser la pesimista para que la media fuera $D$?».
+
+## Ejemplo
+
+Actividad C con $a = 2$, $m = 4$, $b = 9$:
+
+$$D = \frac{2 + 16 + 9}{6} = 4.5, \qquad \sigma^2 = \left(\frac{9 - 2}{6}\right)^2 = 1.361, \qquad \sigma = 1.167.$$
+
+La triangular daría media $(2 + 4 + 9)/3 = 5$ y varianza $(4 + 16 + 81 - 8 - 18 - 36)/18 = 2.17$; la uniforme, media 5.5 y varianza 4.08.
+
+Con las medias de todas las actividades se calcula el calendario como si fueran deterministas (lecciones 03–05); las varianzas sólo intervienen en la probabilidad de cumplir un plazo (lección 08). Una actividad de duración fija ($a = m = b$) aporta media pero varianza cero.
+
+## Qué hay que vigilar
+
+- Las fórmulas no son «la» media y varianza de la Beta: son una aproximación clásica. Para simular (lección 09) conviene muestrear la Beta-PERT real o la triangular, no una normal recortada.
+- Redondear la media a entero para usar la librería (que trabaja con duraciones enteras) es una simplificación; la varianza se conserva sin redondear.
+- Las estimaciones son opiniones: su calidad depende de quién las da y de cómo se pregunta (pedir primero la pesimista evita anclarse en la más probable).
+
+## Con pmULE
+
+```python
+datos['duration'] = datos.eval('(a + 4 * m + b) / 6')
+datos['variance'] = datos.eval('((b - a) / 6) ** 2')
+duraciones = datos['duration'].round().astype(int)
+proyecto.duration(duraciones); proyecto.display_critical_path(duraciones)
+```
+
+## Qué practica cada variante
+
+*tres-estimaciones*: medias y varianzas con los números sustituidos, calendario con las medias, reconstrucción de un dato perdido, comparación Beta-PERT / triangular / uniforme. *deterministas*: algunas actividades de duración fija; quién aporta varianza al proyecto y quién no.

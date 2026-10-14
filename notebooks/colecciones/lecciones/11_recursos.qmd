@@ -1,0 +1,63 @@
+---
+title: "Lección 11 — Recursos: cargas, nivelación y asignación"
+subtitle: "Diagrama de cargas, suma de cuadrados, nivelación con holguras, asignación con límite (Wiest-Levy), reglas de prioridad"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A ver cuántos recursos consume el proyecto en cada periodo, a repartirlos mejor sin alargar el plazo (**nivelación**) y a programar el proyecto cuando el recurso disponible no basta (**asignación**), aceptando que entonces el plazo se alargue lo menos posible.
+
+## Conceptos
+
+**Diagrama de cargas.** A partir del Gantt (inicios más tempranos) se suma, para cada periodo, el recurso que consumen las actividades en curso. El perfil resultante suele tener picos al principio (muchas actividades iniciales en paralelo) y valles al final.
+
+**Medir la irregularidad.** La suma de las cargas es fija (cada actividad consume lo suyo dure lo que dure la programación), así que para comparar perfiles se usa la **suma de cuadrados** de las cargas: es mínima cuando el perfil es plano. Mover una actividad de un periodo con carga $c_1$ a otro con carga $c_2 < c_1$ reduce la suma de cuadrados.
+
+**Nivelación.** Desplazar actividades *dentro de su holgura* para reducir la suma de cuadrados sin cambiar la duración del proyecto. Las críticas no se mueven. Heurística habitual: recorrer las actividades no críticas (de menor a mayor holgura, o de mayor a menor recurso) y probar cada desplazamiento posible; aceptar el que más reduce la suma de cuadrados; repetir hasta que ninguno mejore. Al desplazar una actividad cambian las holguras de sus sucesoras, así que hay que recalcular.
+
+**Asignación con límite.** Si en algún periodo la carga supera el recurso disponible $L$, hay que aplazar actividades. El algoritmo de **Wiest-Levy** (y, en general, los planificadores en paralelo) recorren los periodos: en cada uno, las actividades disponibles (predecesoras terminadas) se ordenan por una regla de prioridad y se admiten mientras quepan; las que no caben esperan (la librería inserta una actividad de espera 💤). Si una actividad crítica tiene que esperar, el proyecto se alarga. Reglas de prioridad habituales: menor holgura total primero (la más usada), menor duración, más recurso, orden de identificación. Ninguna garantiza el óptimo: el problema es NP-duro.
+
+**Factibilidad.** Ninguna programación es posible con menos recurso del que exige una sola actividad: el límite mínimo es $\max_i r_i$. La tabla «recurso disponible → duración» es escalonada y decreciente; con el coste del recurso y el coste por periodo se elige el nivel que minimiza el coste total.
+
+**Recursos consumibles.** Un material que se compra y se guarda impone una restricción *acumulada* (lo consumido hasta $t$ no supera lo recibido hasta $t$); un suministro que no se puede almacenar (electricidad contratada, horas de una grúa alquilada por días) impone una restricción *por periodo*, como un recurso renovable.
+
+## Ejemplo guía
+
+Operarios por actividad: A 2, B 1, C 3, D 2, E 1, F 2, G 1. Gantt de inicios tempranos y cargas:
+
+| | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A (0–3) | 2 | 2 | 2 | | | | | | | |
+| B (0–2) | 1 | 1 | | | | | | | | |
+| C (3–7) | | | | 3 | 3 | 3 | 3 | | | |
+| D (3–4) | | | | 2 | | | | | | |
+| E (2–4) | | | 1 | 1 | | | | | | |
+| F (7–10) | | | | | | | | 2 | 2 | 2 |
+| G (4–6) | | | | | 1 | 1 | | | | |
+| **Total** | 3 | 3 | 3 | **6** | 4 | 4 | 3 | 2 | 2 | 2 |
+
+Suma de cuadrados: $9 + 9 + 9 + 36 + 16 + 16 + 9 + 4 + 4 + 4 = 116$. El pico es el periodo 4 (C, D y E coinciden). D tiene holgura 3: desplazarla al periodo 7 (el 4 baja de 6 a 4, el 7 sube de 3 a 5) da cargas 3, 3, 3, 4, 4, 4, 5, 2, 2, 2 y suma de cuadrados $27 + 16·3 + 25 + 4·3 = 112$. G tiene holgura 4: desplazarla a los periodos 9–10 (los periodos 5 y 6 bajan a 3, los 9 y 10 suben a 3) deja 3, 3, 3, 4, 3, 3, 5, 2, 3, 3, suma $27 + 16 + 9 + 9 + 25 + 4 + 9 + 9 = 108$. Ningún otro movimiento dentro de las holguras mejora: la nivelación baja el máximo de 6 a 5 y la suma de cuadrados de 116 a 108 sin tocar el plazo.
+
+Con un límite de 4 operarios, en el periodo 4 no caben C (3), D (2) y E (1): con la regla «menor holgura primero» entra C (crítica, holgura 0), luego E (holgura 4, cabe: 3 + 1 = 4) y D espera al periodo 5; D termina en 5, F puede seguir empezando en 7: el plazo no cambia. Con límite 3, C ocupa todo el recurso en 4–7, D y E esperan y el proyecto se alarga.
+
+## Con pmULE
+
+```python
+gantt_df, dibujo = proyecto.gantt_cargas(datos, 'duration', 'resources', tikz=True)   # filas Total y Cuadrados
+plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=[4])
+desplazamientos, cuadrados, datos_niv, gantt_niv, dibujo = proyecto.copy().nivelar(data=datos, duration_label='duration', resource_label='resources')
+datos_asig, gantt_asig, dibujo = proyecto.copy().asignar(data=datos, duration_label='duration', resource_label='resources', maximo=[4], report=False)
+suma, dibujo = proyecto.copy().evaluar_desplazamiento(datos, 'duration', 'resources', D=3)   # un desplazamiento concreto
+```
+
+`nivelar`, `asignar` y `desplazar` modifican el proyecto (añaden esperas): trabajar sobre `proyecto.copy()`.
+
+## Qué practica cada variante
+
+*nivelacion*: cargas, suma de cuadrados y nivelación por mínimos cuadrados. *asignacion*: Wiest-Levy con límite por tramos y con límite fijo. *dos-recursos*: dos tipos de recurso y evaluación de un desplazamiento propuesto. *consumible*: restricción semanal frente a acumulada. *limite-insuficiente*: factibilidad, tabla operarios → duración y número óptimo. *reglas-prioridad*: planificador en paralelo con tres reglas frente a Wiest-Levy. *interrumpibles*: con y sin interrupción de actividades.

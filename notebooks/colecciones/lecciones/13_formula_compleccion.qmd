@@ -1,0 +1,69 @@
+---
+title: "Lección 13 — La fórmula del tiempo de compleción"
+subtitle: "τ = ‖R·t‖∞, gradiente y sensibilidad, SVD de la matriz de rutas, matriz de incidencia y núcleo"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A ver el cálculo de la duración de un proyecto como una fórmula cerrada en álgebra lineal, y a sacar de ella lo que el método de Zaderenko no da: cómo responde la duración a cada actividad (gradiente), qué rutas y actividades dominan la estructura (descomposición en valores singulares) y qué cambios de duraciones no alteran nada (núcleo). Es el contenido del artículo *The formula for the completion time* ([arXiv 2410.10252](https://arxiv.org/abs/2410.10252)).
+
+## La fórmula
+
+Con $R$ la matriz de rutas ($m$ rutas × $n$ actividades) y $t$ el vector de duraciones,
+
+$$\tau(t) = \lVert R\,t \rVert_\infty = \max_{r} \sum_i R_{ri}\, t_i .$$
+
+Es una función **convexa, lineal a trozos y positivamente homogénea** de $t$ ($\tau(\lambda t) = \lambda\tau(t)$). El cálculo hacia delante del PERT es una forma eficiente de evaluar ese máximo sin enumerar las rutas; la fórmula lo hace explícito y permite derivar, perturbar y descomponer.
+
+**Como función de una duración.** Fijadas las demás, $\tau$ en función de $t_k$ es una poligonal creciente: constante mientras ninguna ruta por $k$ sea crítica, de pendiente 1 cuando alguna lo es. El codo está en el valor de $t_k$ que iguala la ruta más larga por $k$ con la ruta crítica que no pasa por $k$.
+
+## Gradiente y sensibilidad
+
+Donde la ruta crítica es única, $\tau$ es diferenciable y
+
+$$\frac{\partial \tau}{\partial t_i} = R_{r^* i} \in \{0, 1\},$$
+
+con $r^*$ la ruta crítica: 1 si la actividad es crítica, 0 si no. La suma de las sensibilidades es el número de actividades de la ruta crítica. Cuando hay empate entre varias rutas críticas, $\tau$ no es diferenciable: cualquier combinación convexa de las filas críticas es un **subgradiente**, las derivadas direccionales son distintas al alargar que al acortar, y por diferencias finitas se ve que alargar una actividad de *una* ruta crítica cuenta 1 mientras acortarla cuenta 0 (la otra ruta sigue ahí). Con duraciones inciertas, la sensibilidad esperada es el índice de criticidad de Monte Carlo (lección 09).
+
+**Vector de márgenes.** $\tau\mathbf{1} - R\,t$ da la holgura de cada ruta; sus ceros son las críticas y sus valores pequeños las casi críticas. Las actividades presentes en las rutas casi críticas se obtienen con $R^\top$ aplicado al indicador de esas rutas. El menor retraso de una actividad no crítica que cambia la ruta crítica es el menor margen entre las rutas que la contienen, más una unidad.
+
+## Descomposición en valores singulares
+
+$R = U \Sigma V^\top$. El primer valor singular $\sigma_1$ y sus vectores $u_1$ (sobre las rutas) y $v_1$ (sobre las actividades) capturan la estructura dominante: $u_1$ ordena las rutas por «cuánto comparten con las demás» y $v_1$ ordena las actividades por «en cuántas rutas importantes están». La aproximación de rango 1, $R \approx \sigma_1 u_1 v_1^\top$, da una estimación de $\tau$:
+
+$$\tau_1(t) = \sigma_1 \cdot \max_r (u_1)_r \cdot v_1^\top t ,$$
+
+que es buena cuando $\sigma_1 \gg \sigma_2$ (una estructura claramente dominante) y mala cuando las rutas son muy distintas entre sí. El ranking por $|v_1|$ se parece al índice de criticidad, pero no lo sustituye: no usa las duraciones.
+
+## Matriz de incidencia y núcleo
+
+La **matriz de incidencia** $H$ del grafo PERT (nodos × arcos, $+1$ donde sale el arco y $-1$ donde entra) cumple $R\,H = 0$ sobre los arcos reales: cada ruta entra y sale de cada nodo intermedio el mismo número de veces. Por tanto, cualquier perturbación de las duraciones de la forma $\delta = H^\top y$ con $y$ un potencial sobre los nodos (sumar $y_j - y_i$ a la actividad $i \to j$, con $y$ nulo en los extremos) deja invariantes *todas* las duraciones de las rutas y, con ellas, $\tau$. Es la familia de cambios «invisibles» para el plazo: lo que se alarga antes de un nodo se acorta después.
+
+## Ejemplo guía
+
+$R\,t = (10, 7, 6, 6)$, $\tau = 10$, márgenes $(0, 3, 4, 4)$. Gradiente: $(1, 0, 1, 0, 0, 1, 0)$ (A, C, F). $\tau$ como función de $t_D$: constante 10 hasta $t_D = 4$ (A–D–F alcanza 10), pendiente 1 después. Alargar C en 2 ($t_C = 6$): $R\,t = (12, 7, 6, 6)$, $\tau = 12$. Acortar C en 4 ($t_C = 0$): $(6, 7, 6, 6)$, $\tau = 7$, la crítica pasa a A–D–F: el efecto de acortar no es simétrico al de alargar.
+
+Perturbación del núcleo: tomar $y = (0, 0, 1, 0, 0, 0, 0)$ sobre los nodos (nodo 3). Los arcos que entran en 3 (A) se alargan 1 y los que salen (C y la ficticia 3→5) se acortan 1: $t_A = 4$, $t_C = 3$; A–C–F sigue valiendo 10 y A–D–F 7 porque la ficticia (ahora −1) compensa en la ruta por D. Sobre actividades reales la compensación exacta exige que el nodo no tenga ficticias; si las tiene, la invariancia incluye a las ficticias.
+
+## Con pmULE
+
+```python
+R = proyecto.path_matrix(dummies=False); t = datos['duration'][R.columns]
+proyecto.tau(t.to_dict())                     # ‖R·t‖∞
+proyecto.tau_sensitivity()                    # gradiente (actividades críticas)
+U, S, Vt = proyecto.path_matrix_SVD()         # descomposición de R
+proyecto.incidence_matrix(); proyecto.nullspace()
+proyecto.svd_approximation_error()            # (ver nota)
+```
+
+Nota: la versión actual de `svd_approximation_error` usa $\sum_r (u_1)_r$ en lugar de $\max_r (u_1)_r$ y da errores muy grandes; los cuadernos de la colección calculan $\tau_1$ como arriba.
+
+## Qué practica cada variante
+
+*tau-norma-infinito*: $R$, $R\,t$, $\tau$, equivalencia con Zaderenko, $\tau$ como función de una duración. *gradiente*: subgradientes con empates, diferencias finitas, suma de sensibilidades. *svd-rango-1*: $\sigma_1/\sigma_2$, rankings por $u_1$ y $v_1$, $\tau_1$ y precisión frente al conjunto crítico. *nucleo-incidencia*: $R\,H = 0$ y perturbaciones invisibles. *patterson*: una instancia de referencia (formato RCP). *svd-vs-montecarlo*: criticidad simulada frente a $|v_1|$. *editar-R*: cómo cambia $R$ al añadir una prelación. *casi-criticas*: vector de márgenes y sensibilidad del proyecto.

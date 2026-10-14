@@ -1,0 +1,73 @@
+---
+title: "Lección 05 — Holguras y camino crítico"
+subtitle: "Holgura total, libre e independiente; holgura compartida; qué vigilar"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A calcular e interpretar las tres holguras de una actividad, a identificar todos los caminos críticos y a decidir, con ellas, qué actividades pueden retrasarse, cuánto y a costa de quién.
+
+## Conceptos
+
+Con las fechas de la lección 03 ($ES, EF, LS, LF$) y, para cada actividad $A$, sus predecesoras y sucesoras inmediatas:
+
+**Holgura total** $H_t = LS_A - ES_A = LF_A - EF_A$. Lo que puede retrasarse $A$ sin retrasar el *proyecto*, suponiendo que sus predecesoras terminan lo antes posible y que sus sucesoras aceptan empezar lo más tarde posible. Es la holgura «con permiso de los demás».
+
+**Holgura libre** $H_l = \min_{S \in \text{suc}(A)} ES_S - EF_A$ (si $A$ es final, $T - EF_A$). Lo que puede retrasarse $A$ sin retrasar el inicio más temprano de *ninguna* sucesora: sin que nadie lo note.
+
+**Holgura independiente** $H_i = \max\big(0,\ \min_{S} ES_S - \max_{P \in \text{pred}(A)} LF_P - d_A\big)$. Lo que puede retrasarse $A$ aunque sus predecesoras terminen lo más tarde posible y sus sucesoras quieran empezar lo más pronto posible: la holgura que sólo depende de $A$.
+
+Siempre $H_i \le H_l \le H_t$. Una actividad es **crítica** si $H_t = 0$ (entonces las tres son cero). Un **camino crítico** es una ruta formada por actividades críticas de principio a fin; puede haber varios.
+
+**Holgura compartida.** La holgura total no es «de» cada actividad: en una cadena de actividades no críticas, el margen es común. Si la primera lo gasta, la siguiente ya no lo tiene. Por eso la holgura total de dos actividades consecutivas no se puede sumar ni usar dos veces, y por eso la holgura libre (que sí es privativa) es la que debe mirarse antes de conceder un retraso.
+
+## Ejemplo guía
+
+| Act. | ES | EF | LS | LF | $H_t$ | mín ES suc. | $H_l$ | máx LF pred. | $H_i$ |
+|---|---|---|---|---|---|---|---|---|---|
+| A | 0 | 3 | 0 | 3 | 0 | 3 (C, D) | 0 | 0 | 0 |
+| B | 0 | 2 | 4 | 6 | 4 | 2 (E) | 0 | 0 | máx(0, 2 − 0 − 2) = 0 |
+| C | 3 | 7 | 3 | 7 | 0 | 7 | 0 | 3 | 0 |
+| D | 3 | 4 | 6 | 7 | 3 | 7 (F) | 3 | máx(3, 6) = 6 | máx(0, 7 − 6 − 1) = 0 |
+| E | 2 | 4 | 6 | 8 | 4 | 4 (G) | 0 | 6 | máx(0, 4 − 6 − 2) = 0 |
+| F | 7 | 10 | 7 | 10 | 0 | 10 | 0 | 7 | 0 |
+| G | 4 | 6 | 8 | 10 | 4 | 10 (fin) | 4 | 8 | máx(0, 10 − 8 − 2) = 0 |
+
+Lecturas:
+
+- B tiene holgura total 4 pero libre 0: puede retrasarse hasta 4 sin mover el plazo, pero cualquier retraso suyo retrasa el inicio más temprano de E. Si B se retrasa 4, E y G quedan sin holgura: B ha gastado la holgura de la cadena B–E–G.
+- D tiene libre 3: puede retrasarse 3 sin que F lo note (F espera a C hasta 7 de todos modos). Su independiente es 0 porque, si B acabara lo más tarde posible (6), D terminaría en 7, justo cuando F quiere empezar.
+- G tiene libre 4 e independiente 0: puede retrasarse 4 sin tocar el fin del proyecto, pero sólo si E no ha consumido antes su holgura.
+- Único camino crítico: A–C–F.
+
+## Cómo usarlas
+
+- *¿Qué puede retrasarse sin avisar a nadie?* Las actividades con $H_l > 0$, hasta $H_l$.
+- *¿Qué puede retrasarse sin mover el plazo, avisando a las sucesoras?* Las que tienen $H_t > H_l$, hasta $H_t$, recalculando las fechas de las sucesoras.
+- *¿Qué no admite ni un día de retraso?* Las críticas. Pero también hay no críticas que no admiten retraso *sin molestar*: las que tienen $H_t > 0$ y $H_l = 0$ (B, E).
+- *¿Qué vigilar?* Primero las críticas; entre las demás, menor holgura total y, a igualdad, menor libre. Una actividad larga con poca holgura es más peligrosa que una corta.
+
+## Con pmULE
+
+```python
+calendario = proyecto.calendar(datos['duration'])   # columnas H_total, H_libre, H_independiente
+proyecto.critical_path(datos['duration'])            # dict ruta -> actividades (todas las críticas)
+proyecto.display_critical_path(datos['duration'])
+```
+
+## Errores frecuentes
+
+- Sumar holguras totales de actividades en cadena.
+- Confundir «libre cero» con «crítica».
+- Calcular $H_l$ con el inicio *tardío* de la sucesora (eso da $H_t$).
+- Olvidar que al retrasar una actividad dentro de su holgura total cambian las fechas y holguras de sus sucesoras: hay que recalcular.
+
+## Qué practica cada variante
+
+*tres-holguras*: las tres holguras, caminos críticos, retraso de una actividad hasta su holgura total y efecto en las sucesoras. *varias-criticas*: dos o más rutas críticas. *holgura-compartida*: dos actividades consecutivas no pueden gastar las dos la misma holgura. *vigilancia*: ordenar por riesgo; no críticas sin margen; la que más puede retrasarse sin que se note. *diagnostico*: un calendario entregado con dos errores, localizados por las relaciones entre fechas y holguras. *mini-a-mano*: cinco o seis actividades con todo el cálculo paso a paso.

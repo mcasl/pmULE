@@ -1,0 +1,79 @@
+---
+title: "Lección 08 — Probabilidad de cumplir el plazo"
+subtitle: "Aproximación normal por el camino crítico, varianza de las rutas, hitos y rutas casi críticas"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A pasar de las varianzas de las actividades a la distribución de la duración del proyecto, a calcular la probabilidad de terminar antes de una fecha (o entre dos fechas), la duración que puede comprometerse con una probabilidad dada, y a entender dónde falla la aproximación.
+
+## Conceptos
+
+**Duración de una ruta.** Si las actividades son independientes, la duración de una ruta es la suma de las duraciones de sus actividades, con
+
+$$\mu_r = \sum_{i \in r} D_i, \qquad \sigma_r^2 = \sum_{i \in r} \sigma_i^2 .$$
+
+Por el **teorema central del límite**, esa suma es aproximadamente normal aunque las actividades no lo sean.
+
+**Hipótesis PERT.** La duración del proyecto se aproxima por la de la ruta crítica (la de mayor media): $T \sim N(\mu, \sigma^2)$ con $\mu$ la duración calculada con las medias y $\sigma^2$ la varianza de la ruta crítica. Si hay varias rutas críticas se toma la de mayor varianza (la más prudente).
+
+**Cálculos con la normal.** Con $z = (t - \mu)/\sigma$ y $\Phi$ la función de distribución de la normal estándar:
+
+- Probabilidad de terminar en $t$ o antes: $P(T \le t) = \Phi(z)$.
+- Entre dos fechas: $P(t_1 < T \le t_2) = \Phi(z_2) - \Phi(z_1)$.
+- Duración comprometible con probabilidad $p$: $t_p = \mu + z_p\,\sigma$, con $z_p = \Phi^{-1}(p)$ ($z_{0.90} = 1.282$, $z_{0.95} = 1.645$).
+- $P(T \le \mu) = 0.5$: comprometer la media es jugársela a cara o cruz.
+
+**Dónde falla.** El proyecto dura lo que la *más larga* de sus rutas, no lo que la crítica. Si otra ruta tiene media parecida y varianza apreciable, a veces será ella la más larga, y la duración real es *mayor* que la que dice la normal (sesgo de fusión): el PERT clásico es optimista. La lección 09 lo cuantifica con simulación. Una cota rápida: si dos rutas son independientes, $P(T \le t) = P(L_1 \le t)\,P(L_2 \le t)$, menor que cualquiera de las dos.
+
+**Hitos.** Para un hito intermedio (el fin de una actividad $X$) se hace lo mismo con las *cadenas* que llegan a $X$: media la de la más larga, varianza la de esa cadena. No depende de las actividades que no preceden a $X$.
+
+## Ejemplo guía
+
+Con desviaciones típicas $\sigma_A = 0.5$, $\sigma_B = 0.3$, $\sigma_C = 1.0$, $\sigma_D = 0.2$, $\sigma_E = 0.8$, $\sigma_F = 0.6$, $\sigma_G = 0.4$:
+
+| Ruta | $\mu_r$ | $\sigma_r^2$ |
+|---|---|---|
+| A–C–F | 3 + 4 + 3 = 10 | 0.25 + 1.00 + 0.36 = 1.61 |
+| A–D–F | 7 | 0.25 + 0.04 + 0.36 = 0.65 |
+| B–D–F | 6 | 0.09 + 0.04 + 0.36 = 0.49 |
+| B–E–G | 6 | 0.09 + 0.64 + 0.16 = 0.89 |
+
+$\mu = 10$, $\sigma = \sqrt{1.61} = 1.269$.
+
+- $P(T \le 12) = \Phi\big((12 - 10)/1.269\big) = \Phi(1.576) = 0.942$.
+- $P(9 < T \le 11) = \Phi(0.788) - \Phi(-0.788) = 0.785 - 0.215 = 0.569$.
+- Duración para el 95 %: $10 + 1.645 \times 1.269 = 12.09$ semanas.
+- Garantizar 10 semanas con el 95 % es imposible sin cambiar el proyecto: $P(T \le 10) = 0.5$.
+
+Aquí las otras rutas están lejos (7 y 6 frente a 10) y la aproximación es buena. Si la segunda ruta midiera 9 con $\sigma = 2$, la probabilidad real de terminar en 12 sería claramente menor que 0.94.
+
+## Con pmULE
+
+```python
+datos['variance'] = datos['standard_deviation'] ** 2
+mu = proyecto.duration(datos['duration'])
+sigma, tabla = proyecto.standard_deviation(durations=datos['duration'], variances=datos['variance'])
+from scipy.stats import norm
+p = norm.cdf((plazo - mu) / sigma)
+t_95 = mu + norm.ppf(0.95) * sigma
+```
+
+Para ver la varianza de *todas* las rutas: `R = proyecto.path_matrix(dummies=False)` y `R @ datos['variance'][R.columns]`.
+
+## Errores frecuentes
+
+- Sumar desviaciones típicas en lugar de varianzas.
+- Usar la varianza de una ruta que no es la crítica (o de todas las actividades del proyecto).
+- Olvidar que $P(T \le \mu) = 0.5$ y comprometer la media «porque es lo calculado».
+- Fiarse de la normal cuando hay rutas casi críticas con mucha varianza.
+
+## Qué practica cada variante
+
+*normal*: media, varianza y desviación del proyecto; $P(T \le t)$, $P(t_1 < T \le t_2)$, duración comprometible; por qué no se puede garantizar la media. *dos-rutas-criticas*: qué ruta aporta la varianza cuando hay empate. *casi-critica-variable*: una segunda ruta casi crítica mucho más variable; cota de la probabilidad y simulación. *varianza-maxima*: inverso, qué desviación admite una actividad para mantener una probabilidad. *diagnostico*: una resolución con desviaciones sumadas y ruta equivocada. *hito*: probabilidad de alcanzar un hito intermedio. *ser-critica*: dos cadenas paralelas, probabilidad de que la no crítica resulte la más larga y probabilidad exacta frente a PERT.

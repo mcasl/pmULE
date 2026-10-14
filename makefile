@@ -1,4 +1,4 @@
-.PHONY: sync dev lsp lab kernel clean hooks test test-fast golden test-colecciones colecciones
+.PHONY: sync dev lsp lab kernel clean hooks test test-fast golden test-colecciones colecciones lecciones
 sync:
 	uv sync --frozen
 
@@ -40,3 +40,7 @@ test-colecciones: dev
 
 colecciones: dev
 	.venv/bin/python -m scripts.colecciones.generador
+
+# Lecciones (teoría de cada colección): notebooks/colecciones/lecciones/*.qmd -> docs/colecciones/lecciones/
+lecciones:
+	./render_lecciones.sh

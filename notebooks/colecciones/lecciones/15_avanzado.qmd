@@ -1,0 +1,57 @@
+---
+title: "Lección 15 — Casos avanzados: PDM, calendario real y decisión económica"
+subtitle: "Relaciones FC/CC/FF/CF con desfases, fechas con fines de semana y festivos, duración de coste total mínimo"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+Tres extensiones del modelo básico que aparecen en cualquier proyecto real: prelaciones que no son «fin-comienzo», la traducción de un calendario en días laborables a fechas de verdad, y la elección de la duración cuando intervienen a la vez costes directos, indirectos, penalizaciones y primas.
+
+## Método de diagramación por precedencias (PDM)
+
+Entre una predecesora $P$ y una sucesora $A$ puede haber cuatro tipos de relación, cada una con un **desfase** $\ell$ (positivo o nulo; a veces negativo):
+
+| Tipo | Condición | Sobre el inicio más temprano de A |
+|---|---|---|
+| FC (fin-comienzo) | $ES_A \ge EF_P + \ell$ | $EF_P + \ell$ |
+| CC (comienzo-comienzo) | $ES_A \ge ES_P + \ell$ | $ES_P + \ell$ |
+| FF (fin-fin) | $EF_A \ge EF_P + \ell$ | $EF_P + \ell - d_A$ |
+| CF (comienzo-fin) | $EF_A \ge ES_P + \ell$ | $ES_P + \ell - d_A$ |
+
+FC + 0 es la prelación ordinaria; FC + $\ell$ es una espera (curado, secado, transporte); CC y FF permiten **solapar** actividades (A puede empezar $\ell$ días después de que empiece P; o A no puede terminar hasta $\ell$ días después de que termine P); CF es rara (se usa para relevos: el nuevo turno no puede acabar hasta que el antiguo haya empezado).
+
+**Paso hacia delante.** En orden topológico, $ES_A$ es el máximo de todos los candidatos de la tabla (y 0 si no hay ninguno); $EF_A = ES_A + d_A$. **Paso hacia atrás:** cada relación acota a la predecesora: FC: $LF_P \le LS_A - \ell$; CC: $LS_P \le LS_A - \ell$; FF: $LF_P \le LF_A - \ell$; CF: $LS_P \le LF_A - \ell$. $LF$ es el mínimo de los candidatos (la duración del proyecto si no hay sucesoras) y $LS = LF - d$. Se supone que las actividades no se interrumpen.
+
+**La paradoja del PDM.** Con relaciones CC o FF una actividad puede ser crítica (holgura cero) y, sin embargo, poder alargarse sin retrasar el proyecto: en una CC sólo su *inicio* es crítico; en una FF sólo su *fin*. Conviene distinguir qué extremo de cada actividad está en el camino crítico.
+
+*Ejemplo.* P dura 6 y A dura 4 con una relación CC + 2: A puede empezar en $ES_P + 2$ aunque P siga en marcha; si además hay FF + 1, A no puede terminar antes de $EF_P + 1$. Con $ES_P = 0$: $ES_A = \max(2, 6 + 1 - 4) = 3$, $EF_A = 7$. Con una FC + 0 clásica sería $ES_A = 6$, $EF_A = 10$: el solape ahorra tres días.
+
+## Fechas de calendario
+
+El calendario del proyecto cuenta periodos laborables; para fijar fechas hay que saltar fines de semana y festivos. Si el día laborable 0 es la fecha de inicio, el día laborable $k$ es «la fecha de inicio más $k$ días laborables», y una actividad con $ES$ y duración $d$ ocupa los laborables $ES, \dots, ES + d - 1$: su último día trabajado es el laborable $EF - 1$. Con `numpy`: `np.busday_offset(inicio, k, roll='forward', holidays=festivos)`.
+
+Consecuencias que conviene tener claras: la duración en días laborables no cambia por los festivos (sólo se estira el calendario natural); un festivo nuevo desplaza un día natural *todas* las fechas posteriores, críticas o no, porque no consume días laborables de nadie; y la fecha de fin depende de cuántos días no laborables caen dentro del horizonte, estén donde estén.
+
+## Decisión económica completa
+
+Coste total de ejecutar el proyecto en $T$ periodos:
+
+$$C(T) = C_{\text{dir}}(T) + c_i\, T + p \cdot \max(0, T - T_c) - b \cdot \max(0, T_c - T),$$
+
+con $C_{\text{dir}}(T)$ el coste directo (normal más el sobrecoste acumulado de Ackoff-Sasieni para llegar a $T$, lección 10), $c_i$ el coste indirecto por periodo, $p$ la penalización por periodo de retraso sobre el plazo contractual $T_c$ y $b$ la prima por periodo de adelanto. Es convexa a trozos: se evalúa para cada $T$ entre la duración normal y la tope y se toma el mínimo.
+
+**Análisis marginal.** Reducir de $T + 1$ a $T$ cuesta el sobrecoste del paso de Ackoff y ahorra $c_i$ más $p$ (si $T + 1 > T_c$, la semana eliminada era de retraso) o más $b$ (si $T + 1 \le T_c$, se gana una semana de adelanto). Como $p$ suele ser mayor que $b$, el ahorro marginal cae de golpe al cruzar el plazo y la reducción suele detenerse ahí; y como el sobrecoste de Ackoff crece paso a paso, hay un único punto de corte. La prima mínima que justificaría una semana más de reducción es el sobrecoste de ese paso menos $c_i$.
+
+## Con pmULE
+
+La librería trabaja con relaciones FC + 0; el PDM se resuelve con un pequeño algoritmo de pasos adelante y atrás escrito en el cuaderno (función `calendario_pdm`), o modelando esperas y solapes con actividades auxiliares (lección 03). Las fechas se obtienen con `numpy.busday_offset` sobre el calendario de `proyecto.calendar`. La curva de coste se construye con `proyecto.ackoff(..., reduction=100)` para obtener todos los pasos hasta la duración tope.
+
+## Qué practica cada variante
+
+*pdm-desfases*: pasos adelante y atrás con los candidatos de cada actividad, relaciones activas, criticidad por solape y comparación con todo FC + 0. *fechas-calendario*: de días laborables a fechas, días naturales frente a laborables y efecto de un festivo nuevo. *decision-economica*: tabla de coste total por duración con las cuatro componentes, duración óptima, análisis marginal y prima necesaria.

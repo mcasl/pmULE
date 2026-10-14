@@ -1,0 +1,46 @@
+---
+title: "Lección 14 — Comprensión conceptual"
+subtitle: "Diseñar redes con rasgos dados, razonar con datos incompletos, verdadero/falso, programaciones inválidas y preguntas tipo test"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+Esta colección no introduce algoritmos nuevos: pone a prueba si se han entendido los de las lecciones 01–06. Las preguntas van al revés de lo habitual (del resultado a los datos, de la afirmación al contraejemplo) y enseñan a *razonar* con el calendario en lugar de calcularlo mecánicamente.
+
+## Ideas que se ponen a prueba
+
+**Monotonía de la duración.** $\tau = \lVert R\,t \rVert_\infty$ es creciente en cada duración: alargar una actividad nunca acorta el proyecto, acortarla nunca lo alarga. Consecuencia útil con datos incompletos: si de algunas actividades sólo se conoce un intervalo $[t_i^{\min}, t_i^{\max}]$, la duración del proyecto está entre $\tau(t^{\min})$ y $\tau(t^{\max})$, y basta evaluar los dos extremos. Una actividad es crítica *para cualquier valor* si está en toda ruta que pueda ser la más larga; nunca lo es si ninguna ruta por ella puede serlo.
+
+**Qué dato reduce más la incertidumbre.** La incertidumbre de una actividad crítica se traslada entera a $\tau$; la de una actividad con holgura sólo cuenta cuando agota la holgura. Conocer primero la duración de la crítica estrecha más el intervalo.
+
+**Relaciones que todo calendario cumple.** $EF = ES + d$, $LF = LS + d$, $H_t = LS - ES$, $0 \le H_i \le H_l \le H_t$, $ES_A \ge EF_P$ para toda predecesora, $LF_A \le LS_S$ para toda sucesora. Un calendario entregado que viole alguna está mal: son el instrumento para encontrar errores.
+
+**Afirmaciones típicas y su valor de verdad.**
+
+- «Una actividad con holgura libre cero es crítica»: falsa (puede tener holgura total positiva; sólo ocurre que su sucesora empieza justo cuando ella termina).
+- «Si una crítica se retrasa $x$, el proyecto se retrasa $x$»: verdadera.
+- «Acortar una actividad crítica siempre acorta el proyecto»: falsa si hay varias rutas críticas y la actividad no es común a todas.
+- «La holgura total nunca es menor que la libre»: verdadera.
+- «Todo proyecto tiene al menos una ruta crítica»: verdadera (el máximo de un conjunto finito se alcanza).
+- «Un PERT sin ficticias es un proyecto sin prelaciones compartidas»: falsa (las ficticias aparecen con prelaciones *parcialmente* compartidas o con arcos paralelos).
+- «La suma de las holguras libres de una ruta es como mucho el margen de esa ruta»: verdadera (son huecos disjuntos).
+
+**Programación válida.** Un plan (semana de inicio de cada actividad) es válido si ninguna actividad empieza antes de que terminen todas sus predecesoras. La corrección mínima se hace en orden topológico: cada actividad empieza en el máximo entre su fecha propuesta y el fin de sus predecesoras ya corregidas; así sólo se mueven las que lo necesitan y sus sucesoras. Un plan de inicios tardíos no tiene margen: cualquier retraso va al plazo; uno de inicios tempranos conserva holgura a cambio de necesitar antes recursos y dinero.
+
+**Diseñar una red con rasgos dados.** Para tener varias rutas críticas hay que igualar sumas de duraciones en rutas paralelas; las ficticias aparecen cuando dos actividades comparten parte de sus predecesoras; las iniciales se controlan dejando actividades sin predecesoras. El método es proponer, comprobar con la librería y corregir. La solución nunca es única: multiplicar todas las duraciones por una constante o renombrar actividades conserva todos los rasgos.
+
+**Preguntas tipo test.** Un buen distractor es un error típico, no un número al azar: la suma de todas las duraciones en lugar de la ruta más larga; la holgura libre en lugar de la total; contar las ficticias como rutas; usar la varianza en lugar de la desviación típica en $z$. El formato GIFT de Moodle (`::título::pregunta {=correcta ~incorrecta ~incorrecta #retroalimentación}`) permite importar el cuestionario directamente.
+
+## Ejemplo guía
+
+Con las duraciones del ejemplo guía, si de C sólo se sabe que dura entre 2 y 6 y de E entre 1 y 5: $\tau(t^{\min}) = \max(3+2+3, 7, 6, 3+1+2) = 8$ y $\tau(t^{\max}) = \max(12, 7, 6, 2+5+2) = 12$. Ninguna actividad es crítica para cualquier valor: con $t_C = 2$ y $t_E = 5$ la ruta más larga es B–E–G (9 > 8), y con $t_C = 6$ y $t_E = 1$ es A–C–F; según los valores mandan A, C, F o B, E, G. D no es crítica nunca: A–D–F = 7 y B–D–F = 6 no alcanzan a A–C–F, que vale al menos 8. Conocer $t_C$ reduce más el intervalo que conocer $t_E$.
+
+## Qué practica cada variante
+
+*disena-una-red*: construir un proyecto con un número dado de iniciales, ficticias y rutas críticas y verificarlo. *datos-insuficientes*: cotas de $\tau$, actividades siempre/nunca críticas, qué dato averiguar primero. *verdadero-falso*: seis afirmaciones con contraejemplo calculado. *comparar-planificaciones*: violaciones de prelaciones, corrección mínima y margen restante. *tipo-test*: cinco preguntas con distractores razonados y exportación GIFT.
