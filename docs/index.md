@@ -307,6 +307,21 @@ Construir el diagrama de Gantt a partir del grafo PERT o del Roy (leyendo el cua
 [Gantt 07](colecciones/16_gantt_grafos/Gantt_07.html) — *gantt-a-roy* (nivel 2): 7 actividades, 2 ficticias en PERT; del Gantt al Roy  
 [Gantt 08](colecciones/16_gantt_grafos/Gantt_08.html) — *gantt-a-pert* (nivel 2): 7 actividades, 1 ficticias en PERT; del Gantt al PERT  
 
+## Viabilidad financiera: flujos de caja, VAN, TIR y payback
+
+Construir los flujos de caja libre de un caso de estudio (inversión, ingresos, costes, amortización, impuestos, circulante, valor residual) y evaluar con VAN, TIR y periodo de recuperación; desembolsos ligados al Gantt del proyecto; alternativas excluyentes; sensibilidad, escenarios e inflación; préstamo y flujo del accionista.  
+
+[Viabilidad 01](colecciones/17_viabilidad/Viabilidad_01.html) — *caso-base* (nivel 1): una línea de envasado automatizada: I0 = 760 k€, 7 años, k = 12%; VAN 394, TIR 23.9%  
+[Viabilidad 02](colecciones/17_viabilidad/Viabilidad_02.html) — *vinculo-proyecto* (nivel 2): 8 actividades, 18 meses de inversión (I0 = 1150 k€), 50 k€/mes durante 48 meses, k = 10%  
+[Viabilidad 03](colecciones/17_viabilidad/Viabilidad_03.html) — *alternativas* (nivel 2): A y B (6 años) con conflicto VAN/TIR (Fisher 13.7%), C de 4 años; k = 6%  
+[Viabilidad 04](colecciones/17_viabilidad/Viabilidad_04.html) — *sensibilidad* (nivel 2): una nave logística con reparto de última milla: umbrales de precio, volumen y coste variable; escenarios; inflación 3%  
+[Viabilidad 05](colecciones/17_viabilidad/Viabilidad_05.html) — *financiacion* (nivel 3): una flota de vehículos eléctricos de alquiler: préstamo del 70% al 6% a 5 años; TIR proyecto 21.6%  
+[Viabilidad 06](colecciones/17_viabilidad/Viabilidad_06.html) — *caso-base* (nivel 1): una flota de vehículos eléctricos de alquiler: I0 = 1390 k€, 5 años, k = 8%; VAN 227, TIR 13.1%  
+[Viabilidad 07](colecciones/17_viabilidad/Viabilidad_07.html) — *vinculo-proyecto* (nivel 2): 9 actividades, 15 meses de inversión (I0 = 1250 k€), 60 k€/mes durante 48 meses, k = 12%  
+[Viabilidad 08](colecciones/17_viabilidad/Viabilidad_08.html) — *alternativas* (nivel 2): A y B (6 años) con conflicto VAN/TIR (Fisher 10.3%), C de 3 años; k = 8%  
+[Viabilidad 09](colecciones/17_viabilidad/Viabilidad_09.html) — *sensibilidad* (nivel 2): una línea de envasado automatizada: umbrales de precio, volumen y coste variable; escenarios; inflación 3%  
+[Viabilidad 10](colecciones/17_viabilidad/Viabilidad_10.html) — *financiacion* (nivel 3): una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%  
+
 ## Exámenes montados con las plantillas
 
 Generados con `python -m scripts.colecciones.examen` (enunciado y solución por separado, datos nuevos).  
