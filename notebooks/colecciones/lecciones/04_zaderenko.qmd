@@ -3,11 +3,33 @@ title: "Lección 04 — El método de Zaderenko y el calendario"
 subtitle: "Tiempos tempranos y tardíos de los nodos, calendario de las actividades, Gantt y plazos impuestos"
 lang: es
 toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
 format:
   html:
     theme: cosmo
     embed-resources: true
+jupyter: python3
 ---
+
+```{python}
+#| include: false
+import os, sys, warnings
+warnings.filterwarnings('ignore')
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
+import pandas as pd
+from pmule import PredecessorTable, pinta_tikz, plot_cargas
+datos = pd.DataFrame({'predecessor': ['---', '---', 'A', 'A,B', 'B', 'C,D', 'E'], 'duration': [3, 2, 4, 1, 2, 3, 2],
+                      'resources': [2, 1, 3, 2, 1, 2, 1]}, index=list('ABCDEFG'))
+datos.index.name = 'activity'
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()
+```
 
 ## Qué se aprende
 
@@ -58,6 +80,17 @@ Matriz de Zaderenko del PERT de la lección 02 (B: 1→2, A: 1→3, E: 2→4, @:
 Candidatos de los tiempos tempranos: $t_5 = \max(t_2 + 0, t_3 + 0) = \max(2, 3) = 3$; $t_6 = \max(t_3 + 4, t_5 + 1) = \max(7, 4) = 7$; $t_7 = \max(t_4 + 2, t_6 + 3) = \max(6, 10) = 10$. Tardíos: $t^*_6 = 10 - 3 = 7$; $t^*_5 = 7 - 1 = 6$; $t^*_3 = \min(t^*_5 - 0, t^*_6 - 4) = \min(6, 3) = 3$; $t^*_2 = \min(t^*_4 - 2, t^*_5 - 0) = \min(6, 6) = 6$; $t^*_1 = \min(6 - 2, 3 - 3) = 0$.
 
 Calendario de D (5 → 6, $d = 1$): $ES = t_5 = 3$, $EF = 4$, $LF = t^*_6 = 7$, $LS = 6$, $H = 3$. Nodos críticos: 1, 3, 6, 7; camino crítico A–C–F.
+
+```{python}
+#| fig-cap: "Grafo PERT con los tiempos de los nodos (temprano | tardío) y el camino crítico"
+proyecto.pert(durations=datos['duration'], ranksep=1)
+```
+
+```{python}
+#| fig-cap: "Gantt de inicios más tempranos con flechas de prelación; última columna, holgura total"
+_g, _dibujo = proyecto.gantt(datos, 'duration', holguras=True, tikz=True, params=dict(inner_text=None))
+pinta_tikz(_dibujo)
+```
 
 **Efecto de un retraso.** Si una actividad se alarga $x$ unidades: el plazo no cambia si $x \le H_{\text{total}}$ y se retrasa $x - H$ si $x > H$. Alargar D 2 unidades (holgura 3) no cambia nada; alargarla 5 retrasa el proyecto 2.
 

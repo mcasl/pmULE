@@ -3,11 +3,33 @@ title: "Lección 11 — Recursos: cargas, nivelación y asignación"
 subtitle: "Diagrama de cargas, suma de cuadrados, nivelación con holguras, asignación con límite (Wiest-Levy), reglas de prioridad"
 lang: es
 toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
 format:
   html:
     theme: cosmo
     embed-resources: true
+jupyter: python3
 ---
+
+```{python}
+#| include: false
+import os, sys, warnings
+warnings.filterwarnings('ignore')
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
+import pandas as pd
+from pmule import PredecessorTable, pinta_tikz, plot_cargas
+datos = pd.DataFrame({'predecessor': ['---', '---', 'A', 'A,B', 'B', 'C,D', 'E'], 'duration': [3, 2, 4, 1, 2, 3, 2],
+                      'resources': [2, 1, 3, 2, 1, 2, 1]}, index=list('ABCDEFG'))
+datos.index.name = 'activity'
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()
+```
 
 ## Qué se aprende
 
@@ -42,7 +64,20 @@ Operarios por actividad: A 2, B 1, C 3, D 2, E 1, F 2, G 1. Gantt de inicios tem
 | G (4–6) | | | | | 1 | 1 | | | | |
 | **Total** | 3 | 3 | 3 | **6** | 4 | 4 | 3 | 2 | 2 | 2 |
 
-Suma de cuadrados: $9 + 9 + 9 + 36 + 16 + 16 + 9 + 4 + 4 + 4 = 116$. El pico es el periodo 4 (C, D y E coinciden). D tiene holgura 3: desplazarla al periodo 7 (el 4 baja de 6 a 4, el 7 sube de 3 a 5) da cargas 3, 3, 3, 4, 4, 4, 5, 2, 2, 2 y suma de cuadrados $27 + 16·3 + 25 + 4·3 = 112$. G tiene holgura 4: desplazarla a los periodos 9–10 (los periodos 5 y 6 bajan a 3, los 9 y 10 suben a 3) deja 3, 3, 3, 4, 3, 3, 5, 2, 3, 3, suma $27 + 16 + 9 + 9 + 25 + 4 + 9 + 9 = 108$. Ningún otro movimiento dentro de las holguras mejora: la nivelación baja el máximo de 6 a 5 y la suma de cuadrados de 116 a 108 sin tocar el plazo.
+Suma de cuadrados: $9 + 9 + 9 + 36 + 16 + 16 + 9 + 4 + 4 + 4 = 116$.
+
+```{python}
+#| fig-cap: "Gantt con los operarios de cada actividad; filas Total (carga por periodo) y Cuadrados"
+_g, _dibujo = proyecto.copy().gantt_cargas(datos, 'duration', 'resources', report=False, tikz=True)
+pinta_tikz(_dibujo)
+```
+
+```{python}
+#| fig-cap: "Diagrama de cargas"
+plot_cargas(gantt_df=_g, limite_maximo_recursos=None)
+```
+
+ El pico es el periodo 4 (C, D y E coinciden). D tiene holgura 3: desplazarla al periodo 7 (el 4 baja de 6 a 4, el 7 sube de 3 a 5) da cargas 3, 3, 3, 4, 4, 4, 5, 2, 2, 2 y suma de cuadrados $27 + 16·3 + 25 + 4·3 = 112$. G tiene holgura 4: desplazarla a los periodos 9–10 (los periodos 5 y 6 bajan a 3, los 9 y 10 suben a 3) deja 3, 3, 3, 4, 3, 3, 5, 2, 3, 3, suma $27 + 16 + 9 + 9 + 25 + 4 + 9 + 9 = 108$. Ningún otro movimiento dentro de las holguras mejora: la nivelación baja el máximo de 6 a 5 y la suma de cuadrados de 116 a 108 sin tocar el plazo.
 
 Con un límite de 4 operarios, en el periodo 4 no caben C (3), D (2) y E (1): con la regla «menor holgura primero» entra C (crítica, holgura 0), luego E (holgura 4, cabe: 3 + 1 = 4) y D espera al periodo 5; D termina en 5, F puede seguir empezando en 7: el plazo no cambia. Con límite 3, C ocupa todo el recurso en 4–7, D y E esperan y el proyecto se alarga.
 

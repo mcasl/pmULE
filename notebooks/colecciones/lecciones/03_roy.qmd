@@ -3,11 +3,33 @@ title: "Lección 03 — El grafo Roy (método de los potenciales)"
 subtitle: "Actividades en los nodos, cálculo hacia delante y hacia atrás, esperas y solapes"
 lang: es
 toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
 format:
   html:
     theme: cosmo
     embed-resources: true
+jupyter: python3
 ---
+
+```{python}
+#| include: false
+import os, sys, warnings
+warnings.filterwarnings('ignore')
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
+import pandas as pd
+from pmule import PredecessorTable, pinta_tikz, plot_cargas
+datos = pd.DataFrame({'predecessor': ['---', '---', 'A', 'A,B', 'B', 'C,D', 'E'], 'duration': [3, 2, 4, 1, 2, 3, 2],
+                      'resources': [2, 1, 3, 2, 1, 2, 1]}, index=list('ABCDEFG'))
+datos.index.name = 'activity'
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()
+```
 
 ## Qué se aprende
 
@@ -51,6 +73,11 @@ El orden topológico es imprescindible: no se puede calcular $ES_A$ hasta tener 
 | G | 2 | E | 4 | 6 | — | 10 | 8 | 4 |
 
 $T = 10$; críticas (holgura 0): A, C, F. Son exactamente los mismos números que da el PERT con los tiempos de los nodos (lección 04): $ES_A$ es el tiempo temprano del nodo del que sale A y $LF_A$ el tiempo tardío del nodo al que llega.
+
+```{python}
+#| fig-cap: "Grafo Roy del proyecto guía: en cada nodo, inicio más temprano, duración e inicio más tardío; en rojo el camino crítico"
+proyecto.roy(durations=datos['duration'], ranksep=1.2, nodesep=1.2)
+```
 
 **Predecesora dominante.** En D, la predecesora que fija su inicio es A ($EF_A = 3 > EF_B = 2$): un retraso de B de hasta 1 unidad no mueve a D. Saber qué predecesora domina en cada máximo es lo que permite predecir, sin recalcular, qué retrasos importan.
 
