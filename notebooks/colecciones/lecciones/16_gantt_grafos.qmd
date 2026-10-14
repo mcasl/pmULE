@@ -3,11 +3,34 @@ title: "Lección 16 — Gantt y grafos: ida y vuelta"
 subtitle: "Del PERT o el Roy al diagrama de Gantt, y del Gantt con flechas al cuadro, al Roy y al PERT"
 lang: es
 toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
 format:
   html:
     theme: cosmo
     embed-resources: true
+jupyter: python3
 ---
+
+```{python}
+#| include: false
+import os, sys, warnings
+warnings.filterwarnings('ignore')
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
+import pandas as pd
+from pmule import PredecessorTable, pinta_tikz
+datos = pd.DataFrame({'predecessor': ['---', '---', 'A', 'A,B', 'B', 'C,D', 'E'], 'duration': [3, 2, 4, 1, 2, 3, 2]},
+                     index=list('ABCDEFG'))
+datos.index.name = 'activity'
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()
+calendario = proyecto.calendar(datos['duration'])
+```
 
 ## Qué se aprende
 
@@ -38,19 +61,46 @@ Si el Gantt **no** lleva flechas, el cuadro *no* queda determinado: sólo se sab
 
 ## Ejemplo guía
 
-Gantt de inicios tempranos del proyecto guía (semanas):
+Los dos grafos del proyecto guía, dibujados por la librería:
 
-| | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| A | ■ | ■ | ■ | | | | | | | |
-| B | ■ | ■ | | | | | | | | |
-| C | | | | ■ | ■ | ■ | ■ | | | |
-| D | | | | ■ | | | | | | |
-| E | | | ■ | ■ | | | | | | |
-| F | | | | | | | | ■ | ■ | ■ |
-| G | | | | | ■ | ■ | | | | |
+```{python}
+#| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"
+proyecto.pert(durations=datos['duration'], ranksep=1)
+```
+
+```{python}
+#| fig-cap: "Grafo Roy con fechas y camino crítico"
+proyecto.roy(durations=datos['duration'], ranksep=1.2, nodesep=1.2)
+```
+
+Gantt de inicios más tempranos (semanas), con una flecha por prelación inmediata y la holgura total en la última columna:
+
+```{python}
+#| fig-cap: "Gantt de inicios más tempranos"
+_g, _dibujo = proyecto.gantt(datos, 'duration', holguras=True, tikz=True, params=dict(inner_text=None))
+pinta_tikz(_dibujo)
+```
 
 Flechas: A → C, A → D, B → D, B → E, C → F, D → F, E → G (rojas: A → C y C → F). Huecos: D termina en 4 y F empieza en 7 (holgura libre 3); G termina en 6 y el proyecto en 10 (libre 4); B termina en 2 y E empieza en 2 (libre 0, aunque su holgura total es 4). Gantt tardío: B en 5–6, E en 7–8, G en 9–10, D en 7; las esperas insertadas son 4 para B ($LS_B = 4$, inicial), 0 para E ($LS_E - LF_B = 6 - 6$), 0 para D ($LS_D - \max(LF_A, LF_B) = 6 - 6$) y 0 para G ($LS_G - LF_E = 8 - 8$). Se ve que la espera de E y la de D son cero aunque sus holguras totales sean 4 y 3: la holgura la ha consumido B.
+
+```{python}
+#| fig-cap: "Gantt de inicios más tardíos (las filas 💤 son las esperas insertadas)"
+filas = {}
+for a, fila in datos.iterrows():
+    ps = sorted(prelaciones.immediate_predecessor[a])
+    espera = int(calendario.loc[a, 'inicio_mas_tardio'] - (calendario.loc[ps, 'fin_mas_tardio'].max() if ps else 0))
+    if espera > 0:
+        filas['💤' + a] = {'predecessor': fila['predecessor'], 'duration': espera}
+        filas[a] = {'predecessor': '💤' + a, 'duration': int(fila['duration'])}
+    else:
+        filas[a] = {'predecessor': fila['predecessor'], 'duration': int(fila['duration'])}
+datos_tardio = pd.DataFrame(filas).T
+datos_tardio.index.name = 'activity'
+datos_tardio['duration'] = datos_tardio['duration'].astype(int)
+proyecto_tardio = PredecessorTable.from_dataframe_of_strings(datos_tardio, activity='activity', predecessor='predecessor').create_project()
+_g, _dibujo = proyecto_tardio.gantt(datos_tardio, 'duration', holguras=False, tikz=True, params=dict(inner_text=None))
+pinta_tikz(_dibujo)
+```
 
 ## Con pmULE
 

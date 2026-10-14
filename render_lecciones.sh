@@ -1,12 +1,20 @@
 #!/usr/bin/env sh
 # Renderiza las lecciones (notebooks/colecciones/lecciones/*.qmd, una por colección, con la
 # teoría: conceptos, algoritmos, ejemplo guía y uso de la librería) a
-# docs/colecciones/lecciones/<slug>.html. No ejecutan código.
+# docs/colecciones/lecciones/<slug>.html. Las que llevan celdas {python} se ejecutan (figuras de pmULE).
 #
 # Uso:  ./render_lecciones.sh                                   # todas
 #       ./render_lecciones.sh notebooks/colecciones/lecciones/05_holguras.qmd
 set -eu
 cd "$(dirname "$0")"
+
+# Algunas lecciones ejecutan código (figuras de la librería): mismo Python que render_colecciones.sh
+if [ -z "${VIRTUAL_ENV:-}" ] && [ -f ".venv/bin/activate" ]; then
+    # shellcheck disable=SC1091
+    . .venv/bin/activate
+fi
+QUARTO_PYTHON="${QUARTO_PYTHON:-$(command -v python3)}"
+export QUARTO_PYTHON
 
 if [ $# -gt 0 ]; then
     lecciones="$*"

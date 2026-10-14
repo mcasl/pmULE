@@ -3,11 +3,33 @@ title: "Lección 02 — El grafo PERT y las actividades ficticias"
 subtitle: "Actividades como arcos, sucesos como nodos, ficticias, numeración y rutas"
 lang: es
 toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
 format:
   html:
     theme: cosmo
     embed-resources: true
+jupyter: python3
 ---
+
+```{python}
+#| include: false
+import os, sys, warnings
+warnings.filterwarnings('ignore')
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
+import pandas as pd
+from pmule import PredecessorTable, pinta_tikz, plot_cargas
+datos = pd.DataFrame({'predecessor': ['---', '---', 'A', 'A,B', 'B', 'C,D', 'E'], 'duration': [3, 2, 4, 1, 2, 3, 2],
+                      'resources': [2, 1, 3, 2, 1, 2, 1]}, index=list('ABCDEFG'))
+datos.index.name = 'activity'
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()
+```
 
 ## Qué se aprende
 
@@ -47,6 +69,11 @@ Con el cuadro de la lección 01 (A, B iniciales; C ← A; D ← A, B; E ← B; F
 | 4 → 7 | G |
 
 D necesita las dos ficticias porque comparte A con C (que sale del nodo 3) y B con E (que sale del nodo 2), y no puede salir ni del 3 ni del 2 sin heredar una prelación de más.
+
+```{python}
+#| fig-cap: "El grafo PERT del proyecto guía dibujado por la librería (ficticias discontinuas)"
+proyecto.pert(durations=False, ranksep=1)
+```
 
 Rutas (sin contar ficticias como actividades): A–C–F (10), A–D–F (7), B–D–F (6), B–E–G (6). Ruta crítica: A–C–F, duración 10.
 
