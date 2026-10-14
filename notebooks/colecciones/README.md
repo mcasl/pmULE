@@ -413,3 +413,25 @@ Variantes:
 - `Gantt_06` [roy-a-gantt, nivel 1] — 7 actividades, 1 ficticias; del Roy al Gantt
 - `Gantt_07` [gantt-a-roy, nivel 2] — 7 actividades, 2 ficticias en PERT; del Gantt al Roy
 - `Gantt_08` [gantt-a-pert, nivel 2] — 7 actividades, 1 ficticias en PERT; del Gantt al PERT
+
+## 17_viabilidad — Viabilidad financiera: flujos de caja, VAN, TIR y payback
+
+Construir los flujos de caja libre de un caso de estudio (inversión, ingresos, costes, amortización, impuestos, circulante, valor residual) y evaluar con VAN, TIR y periodo de recuperación; desembolsos ligados al Gantt del proyecto; alternativas excluyentes; sensibilidad, escenarios e inflación; préstamo y flujo del accionista.
+
+Variantes:
+  - `caso-base` (nivel 1): flujos de caja libre completos (ventas, costes, amortización, impuesto, circulante, residual), VAN con tabla de descuento, TIR, payback simple y descontado
+  - `vinculo-proyecto` (nivel 2): desembolsos mensuales desde el Gantt, ingresos al terminar; VAN mensual, coste de un retraso y reducción con Ackoff frente al valor de un mes
+  - `alternativas` (nivel 2): proyectos excluyentes con conflicto VAN/TIR, tasa de Fisher, perfiles de VAN y vidas distintas (anualidad equivalente)
+  - `sensibilidad` (nivel 2): umbrales de precio, volumen y coste (VAN = 0), diagrama de araña, escenarios e inflación (tasa real/nominal)
+  - `financiacion` (nivel 3): cuadro de amortización del préstamo, flujo del accionista con escudo fiscal, TIR del proyecto frente a la del accionista y apalancamiento
+
+- `Viabilidad_01` [caso-base, nivel 1] — una línea de envasado automatizada: I0 = 760 k€, 7 años, k = 12%; VAN 394, TIR 23.9%
+- `Viabilidad_02` [vinculo-proyecto, nivel 2] — 8 actividades, 18 meses de inversión (I0 = 1150 k€), 50 k€/mes durante 48 meses, k = 10%
+- `Viabilidad_03` [alternativas, nivel 2] — A y B (6 años) con conflicto VAN/TIR (Fisher 13.7%), C de 4 años; k = 6%
+- `Viabilidad_04` [sensibilidad, nivel 2] — una nave logística con reparto de última milla: umbrales de precio, volumen y coste variable; escenarios; inflación 3%
+- `Viabilidad_05` [financiacion, nivel 3] — una flota de vehículos eléctricos de alquiler: préstamo del 70% al 6% a 5 años; TIR proyecto 21.6%
+- `Viabilidad_06` [caso-base, nivel 1] — una flota de vehículos eléctricos de alquiler: I0 = 1390 k€, 5 años, k = 8%; VAN 227, TIR 13.1%
+- `Viabilidad_07` [vinculo-proyecto, nivel 2] — 9 actividades, 15 meses de inversión (I0 = 1250 k€), 60 k€/mes durante 48 meses, k = 12%
+- `Viabilidad_08` [alternativas, nivel 2] — A y B (6 años) con conflicto VAN/TIR (Fisher 10.3%), C de 3 años; k = 8%
+- `Viabilidad_09` [sensibilidad, nivel 2] — una línea de envasado automatizada: umbrales de precio, volumen y coste variable; escenarios; inflación 3%
+- `Viabilidad_10` [financiacion, nivel 3] — una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%
