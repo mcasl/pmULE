@@ -1,0 +1,78 @@
+---
+title: "Lección 09 — Simulación Monte Carlo"
+subtitle: "Réplicas con la matriz de caminos, percentiles, criticidad, convergencia y correlación"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A estimar la distribución completa de la duración del proyecto simulando las duraciones de las actividades, a usar la matriz de caminos para que cada réplica sea un producto matricial, a leer percentiles y probabilidades de la muestra, a medir la **criticidad** de rutas y actividades y a saber cuántas réplicas hacen falta.
+
+## Conceptos
+
+**Idea.** En lugar de suponer que $T$ es normal, se sortean $N$ vectores de duraciones $t^{(1)}, \dots, t^{(N)}$ según la distribución de cada actividad, se calcula el proyecto con cada uno y se mira cómo se reparten las $N$ duraciones obtenidas.
+
+**Con la matriz de caminos.** Si $\mathcal{T}$ es la matriz $n \times N$ con una réplica por columna, $R\,\mathcal{T}$ tiene en la fila $r$ y columna $k$ la duración de la ruta $r$ en la réplica $k$, y
+
+$$T^{(k)} = \max_r (R\,\mathcal{T})_{rk}$$
+
+es la duración del proyecto en esa réplica. Toda la simulación es un producto de matrices y un máximo por columnas: con cinco réplicas se hace a mano; con diez mil, en milisegundos.
+
+**Qué se lee de la muestra $T^{(1..N)}$.**
+
+- Media y desviación típica muestrales.
+- $P(T \le t) \approx$ fracción de réplicas con $T^{(k)} \le t$.
+- Percentil $p$: el valor que no superan el $p$ % de las réplicas; la duración comprometible con probabilidad $p$.
+- Histograma: la forma real de la distribución (suele ser asimétrica, con cola derecha).
+
+**Sesgo de fusión.** La media simulada es mayor o igual que la duración calculada con las medias, porque $E[\max] \ge \max E$: cuando varias rutas compiten, en cada réplica gana la que haya salido más larga. Por eso el PERT clásico es optimista, y tanto más cuantas más rutas casi críticas haya.
+
+**Índice de criticidad.** De una ruta: fracción de réplicas en las que es la más larga. De una actividad: fracción de réplicas en las que está en la ruta más larga (suma de los índices de las rutas que la contienen). Una actividad con holgura positiva puede tener criticidad alta si su ruta es casi crítica y variable: es la que conviene vigilar aunque el calendario determinista no la señale.
+
+**Distribuciones.** Normal (media, σ), triangular $(a, m, b)$, Beta-PERT (lección 07), fija (varianza cero) o cualquier otra: Monte Carlo no exige que sean iguales ni simétricas. Las duraciones negativas de una normal se recortan a cero.
+
+**Convergencia.** El error típico de una proporción estimada es $\sqrt{p(1-p)/N}$ y el de la media $s/\sqrt{N}$: para afinar un decimal más hacen falta cien veces más réplicas. Los percentiles extremos (p95, p99) convergen más despacio que la media.
+
+**Correlación.** Si varias actividades dependen de una causa común (meteorología, un mismo equipo), sus duraciones están correlacionadas positivamente: se simula sorteando un factor común por réplica que multiplica a todas ellas. La media de $T$ apenas cambia; la dispersión crece y la probabilidad de cumplir el plazo baja. Suponer independencia es optimista.
+
+## Ejemplo guía a mano (tres réplicas)
+
+Duraciones normales con las medias del ejemplo guía y las σ de la lección 08; tres réplicas (redondeadas):
+
+| Act. | réplica 1 | réplica 2 | réplica 3 |
+|---|---|---|---|
+| A | 3.4 | 2.6 | 3.1 |
+| B | 2.2 | 1.8 | 2.0 |
+| C | 3.2 | 5.1 | 4.4 |
+| D | 1.1 | 0.9 | 1.0 |
+| E | 2.9 | 1.5 | 2.6 |
+| F | 2.7 | 3.4 | 3.0 |
+| G | 2.3 | 1.7 | 2.1 |
+
+$R\,\mathcal{T}$ (rutas en filas): A–C–F = (9.3, 11.1, 10.5); A–D–F = (7.2, 6.9, 7.1); B–D–F = (6.0, 6.1, 6.0); B–E–G = (7.4, 5.0, 6.7). Máximos por columna: $T = (9.3, 11.1, 10.5)$; media 10.3, la ruta A–C–F es la más larga en las tres réplicas (criticidad 100 %, criticidad 0 % para las demás). Con tres réplicas no se puede concluir nada más; con diez mil, la criticidad de B–E–G saldría pequeña pero no nula.
+
+## Con pmULE
+
+```python
+R = proyecto.path_matrix(dummies=False)
+rng = np.random.default_rng(1)
+muestras = pd.DataFrame(rng.normal(mu.values, sigma.values, size=(N, len(mu))), columns=mu.index).clip(lower=0)
+rutas_mc = muestras[R.columns] @ R.T          # N × rutas
+T_mc = rutas_mc.max(axis='columns')
+T_mc.quantile([0.5, 0.9, 0.95]); (T_mc <= plazo).mean()
+criticidad_rutas = rutas_mc.idxmax(axis='columns').value_counts(normalize=True)
+criticidad_act = R.loc[rutas_mc.idxmax(axis='columns')].mean()
+
+# o con la librería (una distribución por actividad; 'pert' es una normal recortada)
+res = proyecto.monte_carlo({'A': ('normal', 3, 0.5), 'B': ('triangular', 1, 2, 3), ...}, n_samples=10000, seed=1)
+res.summary(); res.sensitivity_mean       # criticidad de las actividades
+```
+
+## Qué practica cada variante
+
+*normal*, *triangular*, *beta-pert*: réplicas con $R\,\mathcal{T}$, descriptores, comparación con la normal del camino crítico, criticidad de rutas y actividades. *a-mano*: cinco réplicas con lápiz. *mixtas*: distribuciones distintas por actividad con `monte_carlo`. *convergencia*: error típico de la media y del percentil 90 en función de $N$. *correlacionadas*: factor común y su efecto. *percentiles*: leer P10…P95, probabilidad de penalización, retraso esperado y margen a comprometer.

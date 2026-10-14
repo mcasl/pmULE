@@ -1,0 +1,97 @@
+---
+title: "Lección 01 — El cuadro de prelaciones"
+subtitle: "Prelaciones inmediatas, redundancias, ciclos, cuadro expandido y cuadro de ancestros"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+Todo lo que viene después (grafos, calendario, holguras, recursos, costes) se apoya en una sola tabla: el **cuadro de prelaciones**. Esta lección enseña a construirlo bien y a depurarlo: a distinguir una prelación *inmediata* de una que se deduce por transitividad, a detectar erratas que crean ciclos y a obtener de él los dos cuadros derivados que usan los algoritmos: el expandido y el de ancestros.
+
+## Conceptos
+
+**Actividad.** Un trabajo con principio y fin que consume tiempo (y, en general, recursos). Se nombra con una letra o un código.
+
+**Prelación (o precedencia) inmediata.** Decimos que $P$ es predecesora inmediata de $A$ cuando $A$ no puede empezar hasta que $P$ ha terminado *y* esa condición no se deduce de otras. El cuadro de prelaciones inmediatas tiene una fila por actividad con la lista de sus predecesoras inmediatas; las **actividades iniciales** no tienen ninguna y las **finales** no aparecen como predecesoras de nadie.
+
+**Relación de orden.** La prelación es una relación de orden parcial estricto: es *transitiva* (si $A \prec B$ y $B \prec C$, entonces $A \prec C$) y *antisimétrica* (no puede ser $A \prec B$ y $B \prec A$). De aquí salen las dos patologías que hay que buscar:
+
+- Una **prelación redundante** es una que ya está implicada por transitividad. Si $A \prec B$ y $B \prec C$, anotar también $A \prec C$ no es un error lógico, pero estorba: añade arcos al grafo, puede exigir ficticias innecesarias y oculta la estructura real.
+- Un **ciclo** ($A \prec B \prec C \prec A$) es un error: ninguna de las tres podría empezar nunca. Suele venir de una errata al transcribir.
+
+**Cuadro de prelaciones expandido.** Para cada actividad, *todas* las que la preceden, inmediatas o no (la clausura transitiva). Es lo que necesita el algoritmo que dibuja el PERT para decidir dónde hacen falta ficticias.
+
+**Cuadro de ancestros** (o de antecesoras). La misma información vista como matriz $M$ de ceros y unos: $M_{ij} = 1$ si la actividad $i$ precede (inmediata o transitivamente) a la actividad $j$. Con él, comprobar si una prelación es redundante es inmediato: $P \prec A$ es redundante si existe otra predecesora inmediata $Q$ de $A$ con $M_{PQ} = 1$.
+
+## Algoritmos
+
+### Depurar redundancias (reducción transitiva)
+
+Para cada actividad $A$ y cada predecesora inmediata $P$ anotada: si $P$ es antecesora de *otra* predecesora inmediata $Q$ de $A$, tachar $P$ de la fila de $A$. Lo que queda es la **reducción transitiva** del grafo: el menor conjunto de prelaciones que genera el mismo orden.
+
+Ejemplo. Cuadro recibido: C ← A; D ← A, B, C; F ← C, D. La prelación A → D es redundante porque A → C → D ya la implica. La fila de D queda D ← B, C.
+
+### Detectar un ciclo
+
+Se recorre el cuadro buscando un **orden topológico**: se toman las actividades sin predecesoras pendientes, se eliminan de las listas de las demás, y se repite. Si en algún momento no queda ninguna actividad libre y aún quedan actividades, hay un ciclo, y las que quedan son las implicadas. La librería lo hace al construir el proyecto (`create_project` falla con un mensaje que nombra las actividades del ciclo); con `networkx`, `nx.find_cycle(G)` lo localiza.
+
+### Cuadro expandido y de ancestros
+
+Con el orden topológico ya calculado, se recorre en ese orden y para cada actividad se toma la unión de sus predecesoras inmediatas y de los conjuntos expandidos de esas predecesoras:
+
+$$\text{Anc}(A) = \bigcup_{P \in \text{pred}(A)} \big(\{P\} \cup \text{Anc}(P)\big).$$
+
+Es un cálculo lineal en el número de arcos.
+
+## Ejemplo guía
+
+En las lecciones usaremos el mismo proyecto pequeño:
+
+| Actividad | Predecesoras | Duración |
+|---|---|---|
+| A | — | 3 |
+| B | — | 2 |
+| C | A | 4 |
+| D | A, B | 1 |
+| E | B | 2 |
+| F | C, D | 3 |
+| G | E | 2 |
+
+Iniciales: A y B. Finales: F y G. Cuadro expandido: Anc(C) = {A}, Anc(D) = {A, B}, Anc(E) = {B}, Anc(F) = {C, D, A, B}, Anc(G) = {E, B}. No hay prelaciones redundantes: por ejemplo, en la fila de F, C no es antecesora de D ni D de C.
+
+Si alguien hubiera escrito F ← A, C, D, la A sobraría (A ∈ Anc(C)). Si hubiera escrito A ← F por error, se formaría el ciclo A → C → F → A.
+
+## Con pmULE
+
+```python
+from pmule import PredecessorTable
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()          # falla si hay un ciclo
+prelaciones.start_activities, prelaciones.end_activities
+prelaciones.display_immediate_linkage_matrix()   # cuadro expandido
+proyecto.distant_predecessor(format='DataFrame') # cuadro de ancestros
+```
+
+Las redundancias se encuentran comparando el grafo de prelaciones con su reducción transitiva:
+
+```python
+import networkx as nx
+G = nx.DiGraph([(p, a) for a, ps in prelaciones.immediate_predecessor.items() for p in ps])
+redundantes = set(G.edges) - set(nx.transitive_reduction(G).edges)
+```
+
+## Errores frecuentes
+
+- Anotar como inmediatas prelaciones que son consecuencia de otras (el cuadro «funciona», pero el grafo se llena de ficticias).
+- Confundir «B va después de A» (orden temporal observado) con «B necesita que A termine» (prelación real).
+- Dar por buena una tabla con nombres distintos para la misma actividad (`a`, `A`, `A `): antes de nada hay que normalizar.
+- No comprobar que cada predecesora citada existe como actividad.
+
+## Qué practica cada variante
+
+*redundancias*: depurar un cuadro con prelaciones de más y construir los cuadros expandido y de ancestros. *ciclo*: una errata crea un ciclo; localizarlo y corregirlo. *texto*: las prelaciones vienen en prosa y hay que tabularlas. *grafo-erroneo*: un PERT dibujado con una prelación de más y otra de menos, detectadas comparando cuadros de ancestros. *numeracion-nodos*: numerar los nodos del PERT respetando $i < j$ y contar las numeraciones válidas. *datos-sucios*: normalizar una tabla mal transcrita con reglas.

@@ -1,0 +1,80 @@
+---
+title: "Lección 10 — Reducción de la duración con mínimo coste"
+subtitle: "Coste unitario de reducción, algoritmo de Ackoff-Sasieni, costes indirectos, penalizaciones y programación lineal"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A acortar un proyecto gastando lo menos posible: qué actividades acelerar, en qué orden, cuándo hay que acortar dos a la vez y cuándo deja de compensar.
+
+## Conceptos
+
+**Duración normal y duración tope.** Cada actividad tiene una duración normal $d$ (coste normal $c$) y una duración tope $d^{\text{tope}}$ por debajo de la cual no puede bajar por mucho que se gaste (coste tope $c^{\text{tope}}$). Entre ambas se supone que el coste crece linealmente.
+
+**Coste unitario de reducción (CUR).** Lo que cuesta acortar la actividad una unidad de tiempo:
+
+$$CUR = \frac{c^{\text{tope}} - c}{d - d^{\text{tope}}} .$$
+
+Una actividad con $d = d^{\text{tope}}$ no es acelerable ($CUR = \infty$).
+
+**Principio.** El proyecto sólo se acorta acortando *todas* sus rutas críticas a la vez. Si hay una sola, se acorta la actividad crítica más barata; si hay varias, hay que acortar una actividad común a todas (si la hay y es barata) o una de cada ruta (y el coste es la suma). Al acortar, otras rutas se vuelven críticas y el paso siguiente es más caro: la curva coste-duración es convexa.
+
+**Algoritmo de Ackoff-Sasieni** (una unidad de tiempo por paso):
+
+1. Calcular la duración y las rutas críticas con las duraciones actuales.
+2. Listar las opciones que acortan *todas* las rutas críticas: cada actividad común con margen (coste su CUR) y cada combinación de actividades, una por ruta, con margen (coste la suma de sus CUR).
+3. Elegir la opción de menor coste, acortar esas actividades una unidad y anotar el coste del paso.
+4. Repetir hasta alcanzar la reducción pedida o hasta que ninguna ruta crítica pueda acortarse (duración tope del proyecto).
+
+La actividad acortada puede dejar de ser crítica más adelante (si otra ruta pasa a dominar); el algoritmo no deshace decisiones, por lo que es una heurística: en general es óptimo paso a paso pero puede no serlo para la reducción total (ver programación lineal).
+
+**Hasta dónde reducir.** Con **costes indirectos** de $c_i$ por unidad de tiempo, cada paso compensa mientras su sobrecoste sea menor que $c_i$; la duración óptima minimiza coste directo + indirecto. Con una **penalización** de $p$ por unidad de retraso sobre un plazo, compensa reducir mientras el sobrecoste del paso sea menor que $p$, sólo hasta el plazo. Con una **prima** por adelanto, igual pero con la prima. En todos los casos la regla es la misma: comparar el coste marginal de la semana con lo que ahorra.
+
+**Programación lineal.** El problema exacto es: minimizar $\sum_i CUR_i\, x_i$ sujeto a $R\,(d - x) \le T_{\text{obj}}$ (ninguna ruta supera el objetivo) y $0 \le x_i \le d_i - d_i^{\text{tope}}$. Con la matriz de caminos es un programa lineal pequeño (`scipy.optimize.linprog`). Su óptimo es una cota inferior del coste de cualquier reducción entera; con datos enteros suele coincidir con Ackoff-Sasieni, pero no siempre.
+
+## Ejemplo guía
+
+Topes y CUR: A (tope 2, CUR 4), B (1, 2), C (2, 3), D (1, ∞), E (1, 1), F (2, 5), G (1, 2). Duración normal 10, ruta crítica A–C–F.
+
+| Paso | Duración | Rutas críticas | Opciones (coste) | Elegida | Coste |
+|---|---|---|---|---|---|
+| 1 | 10 | A–C–F | A (4), C (3), F (5) | C | 3 |
+| 2 | 9 | A–C–F | A (4), C (3), F (5) | C | 3 |
+| 3 | 8 | A–C–F (C ya en su tope) | A (4), F (5) | A | 4 |
+
+Tras tres pasos el proyecto dura 7 con un sobrecoste de 10; ahora A–C–F y A–D–F miden 7 las dos. Un cuarto paso tendría que acortar A (común, 4) o F (común, 5): A está en su tope (2), así que F (5). Con costes indirectos de 4 por semana, compensan los tres primeros pasos (3, 3, 4 ≤ 4) y no el cuarto (5 > 4): duración óptima 7.
+
+## Con pmULE
+
+```python
+tabla, pasos, duraciones_reducidas, margen = proyecto.ackoff(
+    durations=datos['duration'], min_durations=datos['cap_duration'],
+    costs=datos['ucr'], reduction=3, report=False)
+# pasos: {0: ['C'], 1: ['C'], 2: ['A']}; tabla: CUR por ruta y duración de cada ruta tras cada paso
+```
+
+El programa lineal, con la matriz de caminos:
+
+```python
+from scipy.optimize import linprog
+R = proyecto.path_matrix(dummies=False); acts = list(R.columns)
+res = linprog(c=cur[acts], A_ub=-R.values, b_ub=T_obj - R.values @ d[acts],
+              bounds=[(0, d[a] - tope[a]) for a in acts], method='highs')
+```
+
+## Errores frecuentes
+
+- Acortar la actividad más barata del proyecto aunque no esté en todas las rutas críticas (no reduce nada).
+- No recalcular las rutas críticas después de cada paso.
+- Seguir reduciendo cuando el sobrecoste del paso supera lo que se ahorra.
+- Usar un CUR medio cuando el coste por tramos es creciente (hay que usar el coste marginal).
+
+## Qué practica cada variante
+
+*cur-y-ackoff*: CUR y reducción de tres semanas con un paso de dos actividades. *costes-indirectos*: curva coste-duración y duración óptima. *penalizacion*: plazo con penalización. *barata-no-optima*: la crítica más barata no sirve si no es común. *desaceleracion*: relajar el plazo y deshacer el paso más caro. *programacion-lineal*: el óptimo exacto frente al voraz. *cur-por-tramos*: coste marginal creciente y por qué funciona el paso a paso si el coste es convexo.

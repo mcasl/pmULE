@@ -1,0 +1,76 @@
+---
+title: "Lección 12 — El método del valor ganado"
+subtitle: "PV, EV, AC; variaciones e índices; previsiones EAC, VAC y TCPI; programación ganada"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A medir, en un punto de control, si el proyecto va en plazo y en coste con tres cifras (valor planificado, valor ganado y coste real), a derivar de ellas índices y previsiones del coste y la duración finales, y a distinguir un problema de coste de uno de plazo.
+
+## Conceptos
+
+**Presupuesto por actividad** (BAC, *budget at completion*). El coste planificado de cada actividad; su suma es el BAC del proyecto. Salvo que se diga otra cosa, se reparte uniformemente a lo largo de la duración planificada.
+
+En un punto de control (semana $t$):
+
+- **Valor planificado** $PV$: lo que, según el plan, debería haberse gastado hasta $t$. Por actividad, $PV_i = BAC_i \times$ (fracción de su duración que debería haberse ejecutado en $t$ según el calendario de inicios más tempranos). Es la curva S del plan.
+- **Valor ganado** $EV$: el valor del trabajo *realmente hecho*, medido en euros del presupuesto: $EV_i = BAC_i \times$ (porcentaje realizado). No depende de lo gastado ni del calendario: sólo del avance físico.
+- **Coste real** $AC$: lo gastado hasta $t$.
+
+**Variaciones.** $CV = EV - AC$ (coste: negativa es sobrecoste); $SV = EV - PV$ (plazo: negativa es retraso).
+
+**Índices.** $CPI = EV / AC$ (euros de valor por euro gastado; $< 1$ sobrecoste); $SPI = EV / PV$ (ritmo de avance respecto al plan; $< 1$ retraso). Son adimensionales y comparables entre proyectos.
+
+**Previsiones del coste final** (EAC, *estimate at completion*), según lo que se suponga del resto:
+
+- (a) el resto costará lo presupuestado: $EAC = AC + (BAC - EV)$;
+- (b) se mantiene la eficiencia en coste: $EAC = AC + (BAC - EV)/CPI = BAC / CPI$;
+- (c) el retraso también encarece: $EAC = AC + (BAC - EV)/(CPI \cdot SPI)$.
+
+$VAC = BAC - EAC$ (variación final prevista) y $TCPI = (BAC - EV)/(BAC - AC)$: la eficiencia que haría falta en lo que queda para terminar en presupuesto. Un TCPI muy por encima del CPI actual es una señal de que el presupuesto no se cumplirá.
+
+**Programación ganada** (*earned schedule*). El SPI clásico tiene un defecto: al terminar el proyecto $EV = PV = BAC$ y $SPI = 1$ aunque se haya acabado tarde. La corrección mide el retraso en tiempo: $ES$ = la semana en que el plan preveía alcanzar el valor $EV$ actual (interpolando en la curva PV); $SPI(t) = ES / t$; duración prevista $= $ duración planificada $/ SPI(t)$.
+
+**Diagnóstico.** Las cuatro combinaciones de CPI y SPI por encima o por debajo de 1 son situaciones distintas: se puede ir rápido gastando de más, o despacio y barato. Y un SPI bajo sólo amenaza el plazo si las actividades retrasadas son críticas (o agotan su holgura): el valor ganado agrega todo y hay que bajar al detalle por actividad para saber qué hacer.
+
+## Ejemplo guía
+
+BAC: A 30, B 20, C 40, D 10, E 20, F 30, G 20 (total 170). Control en la semana 5. Según el calendario temprano, en la semana 5 A, B, D y E han terminado, C lleva 2 de 4 y G 1 de 2; F no ha empezado. Realizado y gastado:
+
+| Act. | BAC | plan en t = 5 | PV | % realizado | EV | AC |
+|---|---|---|---|---|---|---|
+| A | 30 | 3/3 | 30 | 100 | 30 | 33 |
+| B | 20 | 2/2 | 20 | 100 | 20 | 20 |
+| C | 40 | 2/4 | 20 | 25 | 10 | 14 |
+| D | 10 | 1/1 | 10 | 100 | 10 | 10 |
+| E | 20 | 2/2 | 20 | 100 | 20 | 22 |
+| F | 30 | 0 | 0 | 0 | 0 | 0 |
+| G | 20 | 1/2 | 10 | 50 | 10 | 9 |
+| **Total** | 170 | | **110** | | **100** | **108** |
+
+$CV = 100 - 108 = -8$; $SV = 100 - 110 = -10$; $CPI = 100/108 = 0.926$; $SPI = 100/110 = 0.909$. Sobrecoste pequeño y retraso: la actividad que retrasa es C (crítica, lleva la mitad de lo previsto), así que el plazo peligra; G también va algo retrasada pero tiene holgura.
+
+Previsiones: (a) $108 + 70 = 178$; (b) $170/0.926 = 183.6$; (c) $108 + 70/(0.926 \times 0.909) = 191.2$. $TCPI = 70/62 = 1.13$: habría que rendir un 13 % mejor que lo presupuestado en lo que queda.
+
+Programación ganada: el PV acumulado valía 100 en algún punto entre las semanas 4 (PV = 90: A 30, B 20, D 10, E 20, C 10) y 5 (110): $ES = 4 + (100 - 90)/(110 - 90) = 4.5$; $SPI(t) = 4.5/5 = 0.9$; duración prevista $10/0.9 = 11.1$ semanas.
+
+## Con pmULE
+
+```python
+vg = EarnedValue(proyecto)
+gantts = vg.calcula_gantts(datos, planned_durations_label='duration', actual_durations_label='actual_duration',
+                           PV_label='BAC', AC_label='AC', percentage_complete_label='performed', tikz=True)
+pinta_tikz(gantts['gantt_PV']); pinta_tikz(gantts['gantt_EV']); pinta_tikz(gantts['gantt_AC'])
+acumulados = gantts['acumulados']            # PV, EV, AC por semana
+plot_curvas_valor_ganado(gantts)             # curvas S
+```
+
+## Qué practica cada variante
+
+*indicadores-eac*: Gantts de PV, EV y AC, variaciones, índices, tres EAC, VAC y TCPI. *earned-schedule*: ES, SPI(t) y duración prevista frente al SPI clásico. *tendencia*: tres puntos de control y evolución de los índices. *coste-bien-plazo-mal* y *plazo-bien-coste-mal*: lectura de las combinaciones de CPI y SPI. *diagnostico*: una resolución con CPI y SPI intercambiados. *inverso-desde-curvas*: sólo las curvas S. *coste-no-uniforme*: perfiles de desembolso no uniformes y su efecto sobre PV y SPI. *vigilar*: índices por actividad cruzados con la holgura.

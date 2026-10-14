@@ -1,0 +1,93 @@
+---
+title: "Lección 17 — Viabilidad financiera"
+subtitle: "Flujos de caja libre, VAN, TIR y periodo de recuperación; alternativas, sensibilidad, inflación y financiación"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A decidir si una inversión merece la pena: construir sus flujos de caja año a año, descontarlos y resumirlos en tres cifras (VAN, TIR, payback), y a saber qué dice y qué calla cada una. Después, a comparar alternativas, a medir cuánto pueden fallar las previsiones y a ver qué cambia cuando parte de la inversión se financia con deuda.
+
+## El flujo de caja libre
+
+Para cada año $t = 0, 1, \dots, n$ del proyecto:
+
+| Partida | Cálculo |
+|---|---|
+| Ventas | unidades × precio |
+| − Costes variables | unidades × coste variable unitario |
+| − Costes fijos | |
+| = EBITDA | resultado antes de amortización, intereses e impuestos |
+| − Amortización | lineal: (inversión − valor residual) / n |
+| = BAI | beneficio antes de impuestos |
+| − Impuesto | tipo × BAI (si BAI > 0) |
+| = BDI | beneficio después de impuestos |
+| + Amortización | no es un pago: se devuelve |
+| − Inversión en activo fijo | en $t = 0$ |
+| − Variación del circulante | lo que las ventas del año inmovilizan (existencias, clientes); se recupera al final |
+| + Valor residual | lo que se obtiene al final por los activos |
+| = **FCL** | flujo de caja libre |
+
+Dos ideas clave: se cuentan *cobros y pagos*, no ingresos y gastos (por eso la amortización se resta para calcular el impuesto y se vuelve a sumar), y el dinero de distintos años no es comparable sin descontar.
+
+## Los tres criterios
+
+**Valor actual neto.** Con la tasa de descuento $k$ (el coste de oportunidad del capital):
+
+$$VAN = \sum_{t=0}^{n} \frac{FCL_t}{(1 + k)^t} .$$
+
+Si $VAN > 0$ el proyecto devuelve la inversión, remunera el capital al $k$ y además crea $VAN$ euros de valor; es viable. Es el criterio de referencia: mide valor absoluto y es aditivo.
+
+**Tasa interna de rentabilidad.** La tasa que anula el VAN: $\sum FCL_t / (1 + TIR)^t = 0$. Se resuelve numéricamente (bisección). Con flujos convencionales (un desembolso y luego cobros) existe y es única, y «VAN > 0» equivale a «TIR > k». Es una medida relativa (rentabilidad por euro y año) y supone reinversión de los flujos a la propia TIR.
+
+**Periodo de recuperación (payback).** Tiempo hasta que el acumulado de flujos vuelve a cero; interpolando dentro del año en que cambia de signo. El **descontado** usa los flujos actualizados y es mayor. Mide liquidez y exposición temporal, pero ignora lo que ocurre después de la recuperación y (en su versión simple) el valor del tiempo: criterio complementario, nunca único.
+
+## Ejemplo
+
+Inversión 100 en $t = 0$, flujos 30, 40, 50 en los tres años siguientes, $k = 10\,\%$.
+
+| $t$ | FCL | $(1{,}1)^{-t}$ | Valor actual | Acumulado | Acum. descontado |
+|---|---|---|---|---|---|
+| 0 | −100 | 1 | −100 | −100 | −100 |
+| 1 | 30 | 0.909 | 27.3 | −70 | −72.7 |
+| 2 | 40 | 0.826 | 33.1 | −30 | −39.6 |
+| 3 | 50 | 0.751 | 37.6 | 20 | −2.1 |
+
+$VAN = -2.1$: no viable al 10 %. TIR ≈ 8.9 % (< 10 %). Payback simple: en el año 3 (acumulado −30 → +20), $2 + 30/50 = 2.6$ años. Payback descontado: no se alcanza en la vida del proyecto.
+
+## Alternativas excluyentes
+
+El VAN y la TIR pueden ordenar distinto dos proyectos (uno cobra pronto, otro tarde): los perfiles de VAN frente a $k$ se cruzan en la **tasa de Fisher**, que es la TIR del flujo diferencial $A - B$. Por debajo de ella se prefiere el proyecto de flujos tardíos; por encima, el de flujos tempranos. Manda el VAN: el objetivo es maximizar euros de valor, no porcentajes. Con vidas distintas se compara la **anualidad equivalente** $VAN \cdot k / (1 - (1 + k)^{-n})$ (o cadenas de repeticiones hasta un horizonte común).
+
+## Sensibilidad, escenarios e inflación
+
+- **Umbral** de una variable: el valor que hace $VAN = 0$ con las demás fijas (bisección sobre el modelo). Expresado en variación porcentual respecto al caso base dice a qué variable es más sensible el proyecto (normalmente el precio y el volumen).
+- **Escenarios**: combinaciones simultáneas de desviaciones (pesimista, base, optimista); el análisis de una variable cada vez las subestima.
+- **Inflación**: con flujos en euros constantes se descuenta a la tasa real; con flujos en euros corrientes, a la nominal: $(1 + k_{\text{nom}}) = (1 + k_{\text{real}})(1 + \pi)$ (relación de Fisher). Mezclar flujos corrientes con tasa real infla el VAN. Aun haciéndolo bien, los dos VAN no coinciden del todo porque la amortización y el valor residual son nominales fijos y el circulante crece con las ventas nominales: la inflación perjudica al proyecto vía impuestos.
+
+## Financiación y apalancamiento
+
+Si una fracción de la inversión se financia con un préstamo al tipo $i$ con cuota constante $C = P\,i / (1 - (1 + i)^{-n_p})$, el cuadro de amortización reparte cada cuota en intereses (sobre el capital vivo) y amortización. El **flujo del accionista** es $FCL$ + préstamo recibido − cuotas + ahorro fiscal de los intereses (tipo × intereses). Su TIR supera a la del proyecto cuando la rentabilidad del proyecto es mayor que el coste de la deuda después de impuestos, $i(1 - t)$: apalancamiento positivo. Si la deuda cuesta más que lo que rinde el proyecto, el apalancamiento se vuelve contra el accionista. En los dos casos concentra el riesgo: las cuotas se pagan aunque las ventas fallen.
+
+## Vínculo con el proyecto planificado
+
+Los desembolsos de la fase de inversión no son un bloque en $t = 0$: salen del Gantt (el BAC de cada actividad repartido entre sus periodos; la fila *Total* del Gantt es el desembolso de cada mes) y los ingresos empiezan cuando el proyecto termina. Con periodos mensuales se usa la tasa mensual equivalente $k_m = (1 + k)^{1/12} - 1$. Un retraso de la ejecución desplaza los ingresos y destruye VAN; cada mes de adelanto vale aproximadamente lo mismo, y ese valor es el precio máximo que merece la pena pagar por acortar el proyecto (Ackoff-Sasieni, lección 10): se reduce mientras el sobrecoste del paso sea menor que el VAN que gana adelantar un mes.
+
+## Con Python
+
+```python
+def van(flujos, k): return sum(f / (1 + k) ** t for t, f in enumerate(flujos))
+from scipy.optimize import brentq
+tir = brentq(lambda k: van(flujos, k), -0.99, 10)
+```
+
+Los cuadernos de la colección incluyen `van`, `tir`, `payback`, `tabla_descuento` y `anualidad_equivalente`; los desembolsos ligados al proyecto se obtienen con `proyecto.gantt(datos, 'duration', 'coste_mensual', total='ambas', acumulado=True)`.
+
+## Qué practica cada variante
+
+*caso-base*: tabla de flujos completa, VAN con tabla de descuento, TIR y perfil, paybacks y supuesto frágil. *vinculo-proyecto*: desembolsos desde el Gantt, VAN mensual, coste de un retraso y reducción con Ackoff frente al valor de un mes. *alternativas*: conflicto VAN/TIR, tasa de Fisher y anualidad equivalente. *sensibilidad*: umbrales, araña, escenarios e inflación. *financiacion*: cuadro del préstamo, flujo del accionista, TIR del proyecto frente a la del accionista y apalancamiento.

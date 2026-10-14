@@ -1,0 +1,78 @@
+---
+title: "Lección 04 — El método de Zaderenko y el calendario"
+subtitle: "Tiempos tempranos y tardíos de los nodos, calendario de las actividades, Gantt y plazos impuestos"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+A calcular los tiempos de los **sucesos** del PERT con la matriz de Zaderenko, a pasar de los tiempos de los nodos al **calendario** de las actividades, a dibujar el Gantt y a razonar sobre el efecto de un retraso o de un plazo impuesto.
+
+## Conceptos
+
+**Tiempo más temprano de un nodo**, $t_j$: el instante en que, como muy pronto, pueden haber terminado todas las actividades que llegan a $j$. **Tiempo más tardío**, $t^*_j$: el instante en que, como muy tarde, debe alcanzarse $j$ para que el proyecto termine en $T$. En el nodo inicial $t_1 = t^*_1 = 0$; en el final $t_n = t^*_n = T$.
+
+**Matriz de Zaderenko.** Una matriz cuadrada con una fila y una columna por nodo; en la casilla $(i, j)$ se escribe la duración de la actividad $i \to j$ (0 para las ficticias; vacía si no hay arco). Con la numeración $i < j$ es triangular superior. Se le añade una columna a la derecha para los tiempos tempranos y una fila debajo para los tardíos.
+
+**Fórmulas.**
+
+$$t_j = \max_{i \to j}\,(t_i + d_{ij}), \qquad t^*_i = \min_{i \to j}\,(t^*_j - d_{ij}).$$
+
+**Calendario de una actividad** $i \to j$ con duración $d$:
+
+$$ES = t_i,\quad EF = t_i + d,\quad LF = t^*_j,\quad LS = t^*_j - d,\quad H_{\text{total}} = LS - ES = t^*_j - t_i - d.$$
+
+**Camino crítico.** Nodos con $t_j = t^*_j$ y, entre ellos, actividades con holgura total cero. Una ficticia también puede ser crítica (une dos nodos críticos sin margen).
+
+**Diagrama de Gantt.** Una barra por actividad desde $ES$ hasta $EF$ (Gantt de inicios más tempranos) o desde $LS$ hasta $LF$ (de inicios más tardíos). Con flechas de prelación entre el fin de cada predecesora y el inicio de la sucesora se ve dónde hay margen (hueco entre flecha y barra) y dónde no.
+
+## Algoritmo
+
+1. Rellenar la matriz con las duraciones de los arcos.
+2. **Tiempos tempranos, columna a columna de izquierda a derecha:** $t_1 = 0$; para cada columna $j$, mirar las casillas ocupadas de esa columna, sumar a cada una el tiempo temprano de su fila y quedarse con el máximo.
+3. **Tiempos tardíos, fila a fila de abajo arriba:** $t^*_n = t_n$; para cada fila $i$, mirar las casillas ocupadas de esa fila, restar a cada tiempo tardío de su columna la duración de la casilla y quedarse con el mínimo.
+4. Calendario: aplicar las fórmulas de arriba a cada arco real.
+
+La numeración creciente garantiza que al calcular una columna ya están calculadas las filas de las que depende, y al revés para las filas.
+
+## Ejemplo guía
+
+Matriz de Zaderenko del PERT de la lección 02 (B: 1→2, A: 1→3, E: 2→4, @: 2→5, @: 3→5, C: 3→6, D: 5→6, G: 4→7, F: 6→7):
+
+| | 1 | 2 | 3 | 4 | 5 | 6 | 7 | $t_j$ |
+|---|---|---|---|---|---|---|---|---|
+| **1** | | 2 | 3 | | | | | 0 |
+| **2** | | | | 2 | 0 | | | 2 |
+| **3** | | | | | 0 | 4 | | 3 |
+| **4** | | | | | | | 2 | 4 |
+| **5** | | | | | | 1 | | 3 |
+| **6** | | | | | | | 3 | 7 |
+| **7** | | | | | | | | 10 |
+| $t^*_i$ | 0 | 6 | 3 | 8 | 6 | 7 | 10 | |
+
+Candidatos de los tiempos tempranos: $t_5 = \max(t_2 + 0, t_3 + 0) = \max(2, 3) = 3$; $t_6 = \max(t_3 + 4, t_5 + 1) = \max(7, 4) = 7$; $t_7 = \max(t_4 + 2, t_6 + 3) = \max(6, 10) = 10$. Tardíos: $t^*_6 = 10 - 3 = 7$; $t^*_5 = 7 - 1 = 6$; $t^*_3 = \min(t^*_5 - 0, t^*_6 - 4) = \min(6, 3) = 3$; $t^*_2 = \min(t^*_4 - 2, t^*_5 - 0) = \min(6, 6) = 6$; $t^*_1 = \min(6 - 2, 3 - 3) = 0$.
+
+Calendario de D (5 → 6, $d = 1$): $ES = t_5 = 3$, $EF = 4$, $LF = t^*_6 = 7$, $LS = 6$, $H = 3$. Nodos críticos: 1, 3, 6, 7; camino crítico A–C–F.
+
+**Efecto de un retraso.** Si una actividad se alarga $x$ unidades: el plazo no cambia si $x \le H_{\text{total}}$ y se retrasa $x - H$ si $x > H$. Alargar D 2 unidades (holgura 3) no cambia nada; alargarla 5 retrasa el proyecto 2.
+
+**Plazo impuesto.** Si el cliente exige terminar en $T' < T$, se toma $t^*_n = T'$ y se repite el paso hacia atrás: todos los tiempos tardíos bajan $T - T'$ y las holguras también. Las actividades con holgura negativa son las de las rutas que exceden el plazo; hay que acortar alguna en cada una de esas rutas.
+
+## Con pmULE
+
+```python
+proyecto.zaderenko(durations=datos['duration'])               # matriz con tiempos
+proyecto.calculate_pert(durations=datos['duration'])['nodes'] # early / late por nodo
+calendario = proyecto.calendar(datos['duration'])
+gantt_df, dibujo = proyecto.gantt(datos, 'duration', holguras=True, tikz=True)
+pinta_tikz(dibujo)
+```
+
+## Qué practica cada variante
+
+*zaderenko*: matriz, tiempos de los nodos, calendario, Gantt y efecto de un retraso. *matriz-dada*: inverso, de la matriz rellena al cuadro de prelaciones y al grafo. *prediccion*: predecir sin calcular si un retraso cambia el plazo y comprobarlo. *plazo-impuesto*: tardíos desde el plazo, holguras negativas y actividad común a las rutas que lo exceden. *gantt-dado*: sólo se conoce el Gantt; deducir iniciales, predecesoras posibles y «ajustadas» y una ruta crítica.
