@@ -2179,8 +2179,30 @@ class ProjectGraph:
             return np.asarray(spec, dtype=float)
         return np.array([float(spec)])
 
+    def _vectores_limite(self, resource_labels, maximos):
+        """{recurso: vector de límites desde el periodo 1} a partir de ``maximos``
+        (escalar, lista con un valor por recurso, dict o DataFrame; ver ``asignar_multi``)."""
+        K = len(resource_labels)
+        if isinstance(maximos, pd.DataFrame):
+            specs = {rl: maximos[rl] for rl in resource_labels}
+        elif isinstance(maximos, dict):
+            falta = [rl for rl in resource_labels if rl not in maximos]
+            if falta:
+                raise ValueError(f"Error: faltan límites para {falta}")
+            specs = {rl: maximos[rl] for rl in resource_labels}
+        elif isinstance(maximos, (list, tuple, np.ndarray)):
+            if len(maximos) != K:
+                raise ValueError(
+                    "Error: una lista de maximos debe tener un valor por recurso; "
+                    "para límites variables en el tiempo use un dict o un DataFrame")
+            specs = dict(zip(resource_labels, maximos))
+        else:
+            specs = {rl: maximos for rl in resource_labels}
+        vectors = {rl: self._limit_vector(specs[rl], rl) for rl in resource_labels}
+        return vectors
+
     def asignar_multi(self, data, duration_label="duration", resource_labels=None,
-                      maximos=None, report=False, tikz=False, params=None):
+                      maximos=None, report=False, tikz=False, params=None, dibujar=True):
         """Asignación de recursos con límites en VARIOS recursos a la vez.
 
         Esquema en paralelo (parallel schedule generation), sin interrupciones:
@@ -2205,6 +2227,8 @@ class ProjectGraph:
             se interpreta desde el periodo 1; el último valor se prolonga.
         report : si True, muestra la traza con Markdown (como ``asignar``).
         tikz : si True, dibuja también el Gantt TikZ de cada recurso.
+        dibujar : si False no construye los Gantt (``gantts``/``dibujos`` vacíos, ``proyecto``
+            None y ``data`` sin filas de espera): mucho más rápido para bucles y simulaciones.
 
         Returns
         -------
@@ -2227,23 +2251,7 @@ class ProjectGraph:
                 raise ValueError(f"Error: Resource label '{rl}' not in data columns")
         K = len(resource_labels)
 
-        # límites por recurso
-        if isinstance(maximos, pd.DataFrame):
-            specs = {rl: maximos[rl] for rl in resource_labels}
-        elif isinstance(maximos, dict):
-            falta = [rl for rl in resource_labels if rl not in maximos]
-            if falta:
-                raise ValueError(f"Error: faltan límites para {falta}")
-            specs = {rl: maximos[rl] for rl in resource_labels}
-        elif isinstance(maximos, (list, tuple, np.ndarray)):
-            if len(maximos) != K:
-                raise ValueError(
-                    "Error: una lista de maximos debe tener un valor por recurso; "
-                    "para límites variables en el tiempo use un dict o un DataFrame")
-            specs = dict(zip(resource_labels, maximos))
-        else:
-            specs = {rl: maximos for rl in resource_labels}
-        vectors = {rl: self._limit_vector(specs[rl], rl) for rl in resource_labels}
+        vectors = self._vectores_limite(resource_labels, maximos)
 
         preds = self._real_predecessors()
         acts = sorted(preds)
@@ -2259,47 +2267,15 @@ class ProjectGraph:
                         f"Error: la actividad {a} requiere más '{rl}' ({dem[a][k]:g}) "
                         f"que el máximo permitido ({vectors[rl].max():g})")
 
-        # prioridad: LS del CPM sin recursos
-        cal = self.calendar(pd.Series(dur))
-        ls = {a: cal.loc[a, "inicio_mas_tardio"] for a in acts}
-        orden = sorted(acts, key=lambda a: (ls[a], dur[a], a))
-
+        # planificador en paralelo (prioridad: LS del CPM sin recursos)
+        orden = _orden_topologico(preds)
         n0 = max(len(v) for v in vectors.values())
         horizonte = n0 + sum(dur.values()) + 1
         maxd = max(dur.values(), default=0)
         ancho = horizonte + maxd + 1
-        limite = np.empty((K, ancho))
-        for k, rl in enumerate(resource_labels):
-            v = vectors[rl]
-            limite[k, :len(v)] = v[:ancho]
-            limite[k, len(v):] = v[-1]
-        carga = np.zeros((K, ancho))
-
-        inicio, fin, traza = {}, {}, []
-        t = 0
-        pendientes = set(acts)
-        while pendientes:
-            if t > horizonte:
-                raise ValueError(
-                    "Error: el proyecto no es factible con los límites de recursos indicados")
-            elegibles = [a for a in orden if a in pendientes
-                         and all(p in fin and fin[p] <= t for p in preds[a])]
-            for a in elegibles:
-                d = dur[a]
-                if d == 0:
-                    inicio[a], fin[a] = t, t
-                    pendientes.discard(a)
-                    continue
-                exceso = (carga[:, t:t + d] + dem[a][:, None] > limite[:, t:t + d] + 1e-9)
-                bloqueo = [resource_labels[k] for k in range(K) if exceso[k].any()]
-                if not bloqueo:
-                    carga[:, t:t + d] += dem[a][:, None]
-                    inicio[a], fin[a] = t, t + d
-                    pendientes.discard(a)
-                    traza.append((t + 1, a, "empieza", ""))
-                else:
-                    traza.append((t + 1, a, "espera", ", ".join(bloqueo)))
-            t += 1
+        limite = _matriz_limite([vectors[rl] for rl in resource_labels], ancho)
+        inicio, fin, traza, carga = _planificar_paralelo(
+            preds, orden, dur, dem, limite, horizonte, resource_labels)
 
         duracion = max(fin.values(), default=0)
         traza = pd.DataFrame(traza, columns=["periodo", "actividad", "decision", "bloqueada_por"])
@@ -2316,21 +2292,21 @@ class ProjectGraph:
                                columns=resource_labels)
         cargas.index.name = limites.index.name = "periodo"
 
-        # Gantt con las esperas, sobre una copia (desplazar muta el grafo)
-        proyecto = self.copy()
-        my_data = data.copy()
-        if len(esperas):
-            # orden cronológico, y alfabético dentro de cada periodo (como asignar)
-            shifts = {a: int(esperas[a]) for a in sorted(esperas.index, key=lambda x: (inicio[x], x))}
-            my_data, _, _ = proyecto.desplazar(
-                my_data, duration_label, resource_labels[0], report=False,
-                cuadrados=False, **shifts)
-        gantts, dibujos = {}, {}
-        for rl in resource_labels:
-            gantts[rl], dibujos[rl] = proyecto.gantt(
-                data=my_data, duration_label=duration_label, resource_label=rl,
-                holguras=True, total="fila", tikz=tikz, params=params,
-                extra_rows=limites[[rl]].T.rename(index={rl: "Máximo"}))
+        proyecto, my_data, gantts, dibujos = None, data.copy(), {}, {}
+        if dibujar:
+            # Gantt con las esperas, sobre una copia (desplazar muta el grafo)
+            proyecto = self.copy()
+            if len(esperas):
+                # orden cronológico, y alfabético dentro de cada periodo (como asignar)
+                shifts = {a: int(esperas[a]) for a in sorted(esperas.index, key=lambda x: (inicio[x], x))}
+                my_data, _, _ = proyecto.desplazar(
+                    my_data, duration_label, resource_labels[0], report=False,
+                    cuadrados=False, **shifts)
+            for rl in resource_labels:
+                gantts[rl], dibujos[rl] = proyecto.gantt(
+                    data=my_data, duration_label=duration_label, resource_label=rl,
+                    holguras=True, total="fila", tikz=tikz, params=params,
+                    extra_rows=limites[[rl]].T.rename(index={rl: "Máximo"}))
 
         if report:
             for periodo, grupo in traza.groupby("periodo"):
@@ -2341,6 +2317,386 @@ class ProjectGraph:
 
         return AsignacionMulti(my_data, inicios, fines, esperas, duracion, cargas,
                                limites, traza, gantts, dibujos, proyecto)
+
+    # ------------------------------------------------------------------
+    # Crashing con recursos limitados
+    # ------------------------------------------------------------------
+
+    def _preparar_crashing(self, data, duration_label, resource_labels, maximos,
+                           min_durations, costs, demanda_extra):
+        """Datos normalizados para ``crashing_recursos`` y ``crashing_recursos_exacto``."""
+        resource_labels = [resource_labels] if isinstance(resource_labels, str) else list(resource_labels)
+        if not resource_labels:
+            raise ValueError("Error: Debe indicar resource_labels")
+        if maximos is None:
+            raise ValueError("Error: Debe introducir maximos (un límite por recurso)")
+        for col in [duration_label] + resource_labels:
+            if col not in data.columns:
+                raise ValueError(f"Error: la columna '{col}' no está en data")
+        K = len(resource_labels)
+        vectors = self._vectores_limite(resource_labels, maximos)
+        preds = self._real_predecessors()
+        orden = _orden_topologico(preds)
+        faltan = [a for a in orden if a not in data.index]
+        if faltan:
+            raise ValueError(f"Error: faltan filas en data para {faltan}")
+        dur0 = {a: int(data.loc[a, duration_label]) for a in orden}
+        min_durations = pd.Series(min_durations, dtype=float)
+        costs = pd.Series(costs, dtype=float)
+        mind = {a: int(min_durations.get(a, dur0[a])) for a in orden}
+        ucr = {a: float(costs.get(a, np.inf)) for a in orden}
+        for a in orden:
+            if mind[a] > dur0[a]:
+                raise ValueError(f"Error: la duración mínima de {a} supera a la normal")
+        base = {a: np.array([float(data.loc[a, rl]) for rl in resource_labels]) for a in orden}
+        extra = {a: np.zeros(K) for a in orden}
+        if demanda_extra is not None:
+            if isinstance(demanda_extra, pd.DataFrame):
+                demanda_extra = {a: demanda_extra.loc[a, resource_labels].to_numpy(dtype=float)
+                                 for a in demanda_extra.index}
+            for a, v in dict(demanda_extra).items():
+                if a not in extra:
+                    continue
+                if isinstance(v, dict):
+                    extra[a] = np.array([float(v.get(rl, 0.0)) for rl in resource_labels])
+                else:
+                    extra[a] = np.asarray(v, dtype=float).reshape(K)
+        maxlim = np.array([vectors[rl].max() for rl in resource_labels])
+        for a in orden:
+            if np.any(base[a] > maxlim + 1e-9):
+                raise ValueError(f"Error: la actividad {a} requiere más recurso que el máximo permitido")
+        n0 = max(len(v) for v in vectors.values())
+        horizonte = n0 + sum(dur0.values()) + 1
+        ancho = horizonte + max(dur0.values(), default=0) + 1
+        limite = _matriz_limite([vectors[rl] for rl in resource_labels], ancho)
+        return dict(etiquetas=resource_labels, K=K, preds=preds, orden=orden, dur0=dur0, mind=mind,
+                    ucr=ucr, base=base, extra=extra, maxlim=maxlim, horizonte=horizonte,
+                    limite=limite, vectors=vectors)
+
+    @staticmethod
+    def _corte_minimo(arcos, criticas, fuentes, sumideros, coste, reducible):
+        """Corte de coste mínimo (por actividades) de la red de arcos ajustados."""
+        INF = 1e12
+        G = nx.DiGraph()
+        for a in criticas:
+            G.add_edge((a, "in"), (a, "out"), capacity=coste[a] if reducible(a) else INF)
+        for b, antes in arcos.items():
+            for a in antes:
+                G.add_edge((a, "out"), (b, "in"), capacity=INF)
+        for a in fuentes:
+            G.add_edge("fuente", (a, "in"), capacity=INF)
+        for a in sumideros:
+            G.add_edge((a, "out"), "sumidero", capacity=INF)
+        valor, (S, T_) = nx.minimum_cut(G, "fuente", "sumidero")
+        if valor >= INF / 2:
+            return None
+        return sorted(a for a in criticas if (a, "in") in S and (a, "out") in T_)
+
+    def cadena_critica_recursos(self, data, duration_label, resource_labels, maximos):
+        """Cadena crítica con recursos del plan que produce ``asignar_multi``.
+
+        Son las actividades desde las que se llega al final del proyecto por «arcos ajustados»:
+        la siguiente empieza justo cuando termina la anterior, porque la primera es su predecesora
+        o porque libera el recurso por el que la segunda esperaba.  Devuelve un dict con
+        ``duracion`` (con recursos), ``duracion_sin_recursos`` (CPM), ``actividades`` (lista) y
+        ``arcos`` (DataFrame ``de``, ``a``, ``motivo``: 'precedencia' o 'recurso').
+        """
+        resource_labels = [resource_labels] if isinstance(resource_labels, str) else list(resource_labels)
+        vectors = self._vectores_limite(resource_labels, maximos)
+        preds = self._real_predecessors()
+        orden = _orden_topologico(preds)
+        dur = {a: int(data.loc[a, duration_label]) for a in orden}
+        dem = {a: np.array([float(data.loc[a, rl]) for rl in resource_labels]) for a in orden}
+        n0 = max(len(v) for v in vectors.values())
+        horizonte = n0 + sum(dur.values()) + 1
+        ancho = horizonte + max(dur.values(), default=0) + 1
+        limite = _matriz_limite([vectors[rl] for rl in resource_labels], ancho)
+        ini, fin, traza, _ = _planificar_paralelo(preds, orden, dur, dem, limite, horizonte, resource_labels)
+        T = max(fin.values(), default=0)
+        criticas, arcos = _cadena_critica(preds, ini, fin, traza, dem, T, resource_labels)
+        filas = [dict(de=a, a=b, motivo="precedencia" if a in preds[b] else "recurso")
+                 for b in sorted(arcos) for a in sorted(arcos[b])]
+        return dict(duracion=T, duracion_sin_recursos=_cpm_puro(preds, dur, orden)[2],
+                    actividades=sorted(criticas),
+                    arcos=pd.DataFrame(filas, columns=["de", "a", "motivo"]))
+
+    def crashing_recursos(self, data, duration_label, resource_labels, maximos,
+                          min_durations, costs, objetivo=None, reduccion=None,
+                          demanda_extra=None, max_pasos=200, combinaciones=2,
+                          dibujar=False):
+        """Reducción de la duración (crashing) de un proyecto con recursos limitados.
+
+        Con límites de recursos, el camino crítico deja de ser lo que manda: la duración
+        la fija la **cadena crítica con recursos** (caminos de precedencia más esperas por
+        recurso).  Acortar la actividad de menor coste unitario de reducción (Ackoff)
+        puede no acortar nada.  En cada paso este método:
+
+        1. planifica con ``asignar_multi`` (planificador en paralelo),
+        2. halla la cadena crítica con recursos,
+        3. evalúa como candidatos el corte de coste mínimo de esa cadena, cada actividad
+           reducible por separado y (``combinaciones=2``) cada pareja,
+        4. se queda con el candidato más barato que de verdad acorta la duración
+           **ya replanificada**; si ninguno la acorta, se detiene.
+
+        Dos modelos de reducción: con dinero y la demanda constante (por defecto: horas
+        extra, mejor equipo) o con recurso (``demanda_extra``: unidades más de cada
+        recurso por periodo recortado, de modo que acortar consume el recurso escaso).
+
+        Parameters
+        ----------
+        data : DataFrame con la duración normal y una columna por recurso (demanda normal).
+        min_durations, costs : duración mínima y coste unitario de reducción por actividad
+            (``inf`` = no reducible).
+        objetivo | reduccion : duración a alcanzar, o nº de periodos a recortar.  Si no se
+            da ninguno se reduce mientras sea posible.
+        demanda_extra : DataFrame (actividades × recursos), dict {act: {recurso: u}} o
+            {act: lista}; demanda adicional por periodo recortado.
+
+        Returns
+        -------
+        CrashingRecursos
+        """
+        if objetivo is not None and reduccion is not None:
+            raise ValueError("Indique solo objetivo o reduccion")
+        m = self._preparar_crashing(data, duration_label, resource_labels, maximos,
+                                    min_durations, costs, demanda_extra)
+        etiquetas, preds, orden = m["etiquetas"], m["preds"], m["orden"]
+        dur0, mind, ucr, base, extra = m["dur0"], m["mind"], m["ucr"], m["base"], m["extra"]
+        acts = list(orden)
+
+        def evaluar(red):
+            dur = {a: dur0[a] - red[a] for a in acts}
+            dem = {a: base[a] + extra[a] * red[a] for a in acts}
+            if any(np.any(dem[a] > m["maxlim"] + 1e-9) for a in acts):
+                return None
+            try:
+                ini, fin, traza, _ = _planificar_paralelo(preds, orden, dur, dem, m["limite"],
+                                                          m["horizonte"], etiquetas)
+            except ValueError:
+                return None
+            return dict(T=max(fin.values(), default=0), ini=ini, fin=fin, traza=traza, dur=dur, dem=dem)
+
+        import itertools
+        red = {a: 0 for a in acts}
+        ev = evaluar(red)
+        if ev is None:
+            raise ValueError("Error: el proyecto no es factible con los límites de recursos indicados")
+        T0 = ev["T"]
+        coste_acum, filas, motivo = 0.0, [], "máximo de pasos"
+        for paso in range(1, max_pasos + 1):
+            T = ev["T"]
+            if objetivo is not None and T <= objetivo:
+                motivo = "objetivo alcanzado"
+                break
+            if reduccion is not None and T <= T0 - reduccion:
+                motivo = "reducción alcanzada"
+                break
+            criticas, arcos = _cadena_critica(preds, ev["ini"], ev["fin"], ev["traza"], ev["dem"], T, etiquetas)
+            reducible = lambda a: dur0[a] - red[a] > mind[a] and np.isfinite(ucr[a])
+            reducibles = [a for a in sorted(criticas) if reducible(a)]
+            if not reducibles:
+                motivo = "ninguna actividad de la cadena crítica es reducible"
+                break
+            candidatos = [(a,) for a in reducibles]
+            if combinaciones >= 2:
+                candidatos += list(itertools.combinations(reducibles, 2))
+            fuentes = [a for a in criticas if not arcos[a]]
+            sumideros = [a for a in criticas if ev["fin"][a] == T]
+            corte = self._corte_minimo(arcos, criticas, fuentes, sumideros, ucr, reducible)
+            if corte and all(reducible(a) for a in corte) and tuple(corte) not in candidatos:
+                candidatos.append(tuple(corte))
+            mejor, evaluados, sin_mejora = None, 0, 0
+            for cand in candidatos:
+                red2 = dict(red)
+                for a in cand:
+                    red2[a] += 1
+                ev2 = evaluar(red2)
+                if ev2 is None:
+                    continue
+                evaluados += 1
+                if ev2["T"] >= T:
+                    if len(cand) == 1:
+                        sin_mejora += 1
+                    continue
+                clave = (sum(ucr[a] for a in cand), -(T - ev2["T"]), cand)
+                if mejor is None or clave < mejor[0]:
+                    mejor = (clave, cand, red2, ev2)
+            if mejor is None:
+                motivo = "ninguna reducción de una unidad acorta el plazo con estos recursos"
+                break
+            (coste_paso, _, _), cand, red, ev_nuevo = mejor
+            coste_acum += coste_paso
+            try:
+                durs = pd.Series(ev["dur"])
+                _, mej, _, _ = self.ackoff(durs, pd.Series(mind, dtype=float), pd.Series(ucr, dtype=float),
+                                           reduction=1, report=False)
+                libre = sorted(set(itertools.chain.from_iterable(mej.values())))
+            except Exception:
+                libre = []
+            filas.append(dict(paso=paso, actividades=", ".join(cand), coste_paso=coste_paso,
+                              coste_acumulado=coste_acum, duracion_antes=T, duracion_despues=ev_nuevo["T"],
+                              cadena_critica=", ".join(sorted(criticas)),
+                              ackoff_sin_recursos=", ".join(libre),
+                              candidatos_evaluados=evaluados, reducciones_sin_efecto=sin_mejora,
+                              _cand=cand))
+            ev = ev_nuevo
+        pasos = pd.DataFrame(filas)
+        if len(pasos):
+            pasos = pasos.drop(columns="_cand").set_index("paso")
+        else:
+            pasos = pd.DataFrame(columns=["actividades", "coste_paso", "coste_acumulado", "duracion_antes",
+                                          "duracion_despues", "cadena_critica", "ackoff_sin_recursos",
+                                          "candidatos_evaluados", "reducciones_sin_efecto"])
+            pasos.index.name = "paso"
+        duraciones = pd.Series(ev["dur"]).sort_index()
+        demanda = pd.DataFrame(ev["dem"], index=etiquetas).T.sort_index()
+        asignacion = None
+        if dibujar:
+            d2 = data.copy()
+            d2[duration_label] = duraciones.reindex(d2.index).fillna(d2[duration_label]).astype(int)
+            for rl in etiquetas:
+                d2[rl] = demanda[rl].reindex(d2.index).fillna(d2[rl])
+            asignacion = self.asignar_multi(d2, duration_label, etiquetas, maximos)
+        return CrashingRecursos(pasos, duraciones, pd.Series(red).sort_index(), demanda, T0, ev["T"],
+                                coste_acum, motivo, pd.Series(ev["ini"]).sort_index(), asignacion)
+
+    def crashing_recursos_exacto(self, data, duration_label, resource_labels, maximos,
+                                 min_durations, costs, objetivo, demanda_extra=None,
+                                 time_limit=60.0):
+        """Óptimo exacto (MILP indexado en el tiempo, HiGHS) del crashing con recursos.
+
+        Minimiza el coste de reducción tal que existe una planificación factible (precedencias
+        y límites de todos los recursos en cada periodo) de duración ≤ ``objetivo``, eligiendo a
+        la vez la duración de cada actividad y su inicio.  Pensado para proyectos pequeños (≈10
+        actividades): sirve de referencia para medir la calidad de ``crashing_recursos``.
+        Requiere duraciones ≥ 1.  Devuelve un dict ``estado`` ('óptimo', 'infactible',
+        'límite de tiempo'), ``coste``, ``duraciones`` e ``inicios`` (o None si no hay solución).
+        """
+        from scipy.optimize import milp, LinearConstraint, Bounds
+        from scipy.sparse import lil_matrix
+        m = self._preparar_crashing(data, duration_label, resource_labels, maximos,
+                                    min_durations, costs, demanda_extra)
+        etiquetas, preds, orden, K = m["etiquetas"], m["preds"], m["orden"], m["K"]
+        dur0, mind, ucr, base, extra, limite = m["dur0"], m["mind"], m["ucr"], m["base"], m["extra"], m["limite"]
+        if min(dur0.values()) < 1:
+            raise ValueError("crashing_recursos_exacto requiere duraciones ≥ 1")
+        H = int(objetivo)
+        var, por_act = [], {a: [] for a in orden}
+        for a in orden:
+            opciones = range(max(mind[a], 1), dur0[a] + 1) if np.isfinite(ucr[a]) else [dur0[a]]
+            for d in opciones:
+                dem = base[a] + extra[a] * (dur0[a] - d)
+                if np.any(dem > m["maxlim"] + 1e-9):
+                    continue
+                for t in range(0, H - d + 1):
+                    por_act[a].append(len(var))
+                    var.append((a, d, t, dem))
+        if any(not v for v in por_act.values()):
+            return dict(estado="infactible", coste=None, duraciones=None, inicios=None)
+        nv = len(var)
+        c = np.array([ucr[a] * (dur0[a] - d) if np.isfinite(ucr[a]) else 0.0 for a, d, t, _ in var])
+        asign = lil_matrix((len(orden), nv))
+        for i, a in enumerate(orden):
+            for j in por_act[a]:
+                asign[i, j] = 1.0
+        filas_prec = [(p, a) for a in orden for p in preds[a] if p in por_act]
+        prec = lil_matrix((max(len(filas_prec), 1), nv))
+        for i, (p, a) in enumerate(filas_prec):
+            for j in por_act[a]:
+                prec[i, j] += var[j][2]
+            for j in por_act[p]:
+                prec[i, j] -= var[j][2] + var[j][1]
+        res_m = lil_matrix((K * H, nv))
+        for j, (a, d, t, dem) in enumerate(var):
+            for tau in range(t, t + d):
+                for k in range(K):
+                    if dem[k]:
+                        res_m[k * H + tau, j] = dem[k]
+        ub = np.array([limite[k, tau] for k in range(K) for tau in range(H)])
+        restricciones = [LinearConstraint(asign.tocsr(), 1, 1),
+                         LinearConstraint(prec.tocsr(), 0, np.inf)]
+        if K * H:
+            restricciones.append(LinearConstraint(res_m.tocsr(), -np.inf, ub))
+        r = milp(c, constraints=restricciones, integrality=np.ones(nv), bounds=Bounds(0, 1),
+                 options=dict(time_limit=time_limit))
+        if r.x is None:
+            return dict(estado="infactible" if r.status == 2 else "sin solución", coste=None,
+                        duraciones=None, inicios=None)
+        elegidas = [var[j] for j in range(nv) if r.x[j] > 0.5]
+        return dict(estado="óptimo" if r.status == 0 else "límite de tiempo", coste=float(r.fun),
+                    duraciones=pd.Series({a: d for a, d, t, _ in elegidas}).sort_index(),
+                    inicios=pd.Series({a: t for a, d, t, _ in elegidas}).sort_index())
+
+    # ------------------------------------------------------------------
+    # Monte Carlo con recursos limitados
+    # ------------------------------------------------------------------
+
+    def monte_carlo_recursos(self, distributions, data, resource_labels, maximos,
+                             n_samples=1000, seed=None):
+        """Distribución de la duración con y sin límites de recursos (RCPSP estocástico).
+
+        En cada réplica se simulan las duraciones (redondeadas a periodos enteros, mínimo 1), se calcula la
+        duración sin recursos (CPM) y se **replanifica** con los límites (planificador en
+        paralelo de ``asignar_multi``).  Además de las dos distribuciones mide, por actividad,
+        el índice de criticidad sin recursos (holgura nula en el CPM) y con recursos (pertenencia
+        a la cadena crítica con recursos), y con qué frecuencia cada recurso bloquea alguna actividad.
+
+        ``data`` aporta solo las columnas de demanda (una por recurso).
+        """
+        resource_labels = [resource_labels] if isinstance(resource_labels, str) else list(resource_labels)
+        if maximos is None:
+            raise ValueError("Error: Debe introducir maximos (un límite por recurso)")
+        for rl in resource_labels:
+            if rl not in data.columns:
+                raise ValueError(f"Error: la columna '{rl}' no está en data")
+        vectors = self._vectores_limite(resource_labels, maximos)
+        preds = self._real_predecessors()
+        orden = _orden_topologico(preds)
+        faltan = [a for a in orden if a not in data.index]
+        if faltan:
+            raise ValueError(f"Error: faltan filas en data para {faltan}")
+        dem = {a: np.array([float(data.loc[a, rl]) for rl in resource_labels]) for a in orden}
+        maxlim = np.array([vectors[rl].max() for rl in resource_labels])
+        for a in orden:
+            if np.any(dem[a] > maxlim + 1e-9):
+                raise ValueError(f"Error: la actividad {a} requiere más recurso que el máximo permitido")
+        rng = np.random.default_rng(seed)
+        D = np.zeros((n_samples, len(orden)))
+        for j, a in enumerate(orden):
+            if a not in distributions:
+                raise ValueError(f"Falta la distribución de la duración de {a}")
+            D[:, j] = _make_sampler(rng, distributions[a])(n_samples)
+        D = np.maximum(np.rint(D), 1.0).astype(int)      # el planificador trabaja en periodos enteros
+        n0 = max(len(v) for v in vectors.values())
+        ancho = n0 + int(D.sum(axis=1).max()) + int(D.max()) + 2
+        limite = _matriz_limite([vectors[rl] for rl in resource_labels], ancho)
+        tau_libre = np.zeros(n_samples)
+        tau_rec = np.zeros(n_samples)
+        crit_libre = {a: 0 for a in orden}
+        crit_rec = {a: 0 for a in orden}
+        bloqueos = {rl: 0 for rl in resource_labels}
+        for i in range(n_samples):
+            dur = {a: int(D[i, j]) for j, a in enumerate(orden)}
+            ES, LS, Tl = _cpm_puro(preds, dur, orden)
+            ini, fin, traza, _ = _planificar_paralelo(preds, orden, dur, dem, limite,
+                                                      n0 + sum(dur.values()) + 1, resource_labels, ls=LS)
+            Tr = max(fin.values(), default=0)
+            tau_libre[i], tau_rec[i] = Tl, Tr
+            for a in orden:
+                crit_libre[a] += ES[a] == LS[a]
+            criticas, _ = _cadena_critica(preds, ini, fin, traza, dem, Tr, resource_labels)
+            for a in criticas:
+                crit_rec[a] += 1
+            vistos = set()
+            for _, _, decision, recursos in traza:
+                if decision == "espera":
+                    vistos.update(recursos.split(", "))
+            for rl in vistos:
+                bloqueos[rl] += 1
+        criticidad = pd.DataFrame({"sin recursos": pd.Series(crit_libre) / n_samples,
+                                   "con recursos": pd.Series(crit_rec) / n_samples}).sort_index()
+        return MonteCarloRecursosResult(tau_libre, tau_rec, criticidad,
+                                        pd.Series(bloqueos) / n_samples, n_samples, seed)
 
     def standard_deviation(self, durations, variances, report=False):
         varianza = {key: 0 for key in self.activities}
@@ -2993,6 +3349,125 @@ def _make_sampler(rng, spec):
     raise ValueError(f"Distribución desconocida: {kind!r}")
 
 
+
+def _orden_topologico(preds):
+    """Orden topológico (determinista) de un dict {actividad: {predecesoras}}."""
+    pend = {a: set(p) & set(preds) for a, p in preds.items()}
+    orden = []
+    while pend:
+        lista = sorted(a for a, p in pend.items() if not p)
+        if not lista:
+            raise ValueError("El grafo tiene un ciclo")
+        for a in lista:
+            orden.append(a)
+            del pend[a]
+        for p in pend.values():
+            p.difference_update(lista)
+    return orden
+
+
+def _cpm_puro(preds, dur, orden):
+    """(ES, LS, T) del CPM sin recursos para duraciones ``dur`` (dict)."""
+    ES, EF = {}, {}
+    for a in orden:
+        ES[a] = max((EF[x] for x in preds[a] if x in EF), default=0)
+        EF[a] = ES[a] + dur[a]
+    T = max(EF.values(), default=0)
+    succ = {a: [] for a in orden}
+    for a in orden:
+        for x in preds[a]:
+            if x in succ:
+                succ[x].append(a)
+    LS = {}
+    for a in reversed(orden):
+        LS[a] = min((LS[x] for x in succ[a]), default=T) - dur[a]
+    return ES, LS, T
+
+
+def _matriz_limite(vectores, ancho):
+    """Límites por recurso y periodo (K × ancho); el último valor de cada vector se prolonga."""
+    lim = np.empty((len(vectores), ancho))
+    for k, v in enumerate(vectores):
+        v = np.asarray(v, dtype=float)[:ancho]
+        lim[k, :len(v)] = v
+        lim[k, len(v):] = v[-1]
+    return lim
+
+
+def _planificar_paralelo(preds, orden, dur, dem, limite, horizonte, etiquetas, ls=None):
+    """Planificador en paralelo, sin interrupciones, con varios recursos.
+
+    ``dur``: {actividad: int}; ``dem``: {actividad: array K}; ``limite``: K × ancho
+    (ancho ≥ horizonte + max duración + 1).  Prioridad: menor ``ls`` (por defecto el
+    del CPM sin recursos), menor duración, nombre.  Devuelve (inicio, fin, traza, carga)
+    con ``traza`` = lista de (periodo, actividad, 'empieza'|'espera', recursos que bloquean).
+    """
+    K = limite.shape[0]
+    if ls is None:
+        ls = _cpm_puro(preds, dur, orden)[1]
+    prior = sorted(orden, key=lambda a: (ls[a], dur[a], a))
+    carga = np.zeros_like(limite)
+    inicio, fin, traza = {}, {}, []
+    pendientes = set(orden)
+    t = 0
+    while pendientes:
+        if t > horizonte:
+            raise ValueError("Error: el proyecto no es factible con los límites de recursos indicados")
+        elegibles = [a for a in prior if a in pendientes
+                     and all(x in fin and fin[x] <= t for x in preds[a])]
+        for a in elegibles:
+            d = dur[a]
+            if d == 0:
+                inicio[a], fin[a] = t, t
+                pendientes.discard(a)
+                continue
+            exceso = (carga[:, t:t + d] + dem[a][:, None] > limite[:, t:t + d] + 1e-9)
+            bloqueo = [etiquetas[k] for k in range(K) if exceso[k].any()]
+            if not bloqueo:
+                carga[:, t:t + d] += dem[a][:, None]
+                inicio[a], fin[a] = t, t + d
+                pendientes.discard(a)
+                traza.append((t + 1, a, "empieza", ""))
+            else:
+                traza.append((t + 1, a, "espera", ", ".join(bloqueo)))
+        t += 1
+    return inicio, fin, traza, carga
+
+
+def _cadena_critica(preds, inicio, fin, traza, dem, T, etiquetas):
+    """Actividades de la cadena crítica con recursos y sus arcos «ajustados».
+
+    a → b es un arco ajustado si ``a`` termina justo cuando empieza ``b`` y, o bien ``a``
+    es predecesora de ``b``, o bien ``b`` esperaba por un recurso que ``a`` usa y que
+    se liberó al terminar ``a``.  La cadena crítica son las actividades desde las que se
+    llega al final del proyecto (τ) por arcos ajustados.
+    """
+    bloqueo_previo = {}
+    for periodo, a, decision, recursos in traza:
+        if decision == "espera" and periodo == inicio[a]:       # semana justo anterior al inicio
+            bloqueo_previo[a] = set(recursos.split(", "))
+    idx = {r: k for k, r in enumerate(etiquetas)}
+    acts = list(inicio)
+    listo = {a: max((fin[x] for x in preds[a] if x in fin), default=0) for a in acts}
+    arcos = {a: set() for a in acts}              # arcos[b] = {a : a → b ajustado}
+    for b in acts:
+        for a in acts:
+            if a == b or fin[a] != inicio[b] or fin[a] == inicio[a]:
+                continue
+            if a in preds[b]:
+                arcos[b].add(a)
+            elif inicio[b] > listo[b] and any(dem[a][idx[r]] > 0 for r in bloqueo_previo.get(b, ())):
+                arcos[b].add(a)
+    criticas = {a for a in acts if fin[a] == T and fin[a] > inicio[a]}
+    pila = list(criticas)
+    while pila:
+        b = pila.pop()
+        for a in arcos[b]:
+            if a not in criticas:
+                criticas.add(a)
+                pila.append(a)
+    return criticas, {b: arcos[b] & criticas for b in criticas}
+
 # ---------------------------------------------------------------------------
 # AsignacionMulti
 # ---------------------------------------------------------------------------
@@ -3096,6 +3571,71 @@ class MonteCarloVANResult:
     def __repr__(self) -> str:
         return (f"MonteCarloVANResult(n={self.n_samples}, VAN̄={self.van_mean:.1f}, "
                 f"σ={self.van_std:.1f}, P(VAN<0)={self.prob_negativo:.1%})")
+
+
+class CrashingRecursos:
+    """Resultado de ``ProjectGraph.crashing_recursos``.
+
+    ``pasos`` (DataFrame por paso: actividades reducidas, coste, duración antes y después, cadena
+    crítica con recursos, lo que habría elegido Ackoff sin recursos y cuántas reducciones
+    individuales no tuvieron efecto), ``duraciones`` y ``reducciones`` finales, ``demanda`` final,
+    ``duracion_inicial``/``duracion_final`` (con recursos), ``coste_total``, ``motivo_parada``,
+    ``inicios`` y, si se pidió, ``asignacion`` (AsignacionMulti del plan final).
+    """
+
+    def __init__(self, pasos, duraciones, reducciones, demanda, duracion_inicial, duracion_final,
+                 coste_total, motivo_parada, inicios, asignacion=None):
+        self.pasos = pasos
+        self.duraciones = duraciones
+        self.reducciones = reducciones
+        self.demanda = demanda
+        self.duracion_inicial = duracion_inicial
+        self.duracion_final = duracion_final
+        self.coste_total = coste_total
+        self.motivo_parada = motivo_parada
+        self.inicios = inicios
+        self.asignacion = asignacion
+
+    def __repr__(self):
+        return (f"CrashingRecursos({self.duracion_inicial}→{self.duracion_final}, coste={self.coste_total:g}, "
+                f"pasos={len(self.pasos)}, {self.motivo_parada})")
+
+
+class MonteCarloRecursosResult:
+    """Resultado de ``ProjectGraph.monte_carlo_recursos``.
+
+    ``tau_libre_samples`` (CPM) y ``tau_recursos_samples`` (replanificada con los límites),
+    ``criticidad`` (DataFrame actividades × {sin recursos, con recursos}), ``bloqueos`` (fracción de
+    réplicas en que cada recurso hace esperar a alguna actividad).
+    """
+
+    def __init__(self, tau_libre, tau_recursos, criticidad, bloqueos, n_samples, seed):
+        self.tau_libre_samples = np.asarray(tau_libre, dtype=float)
+        self.tau_recursos_samples = np.asarray(tau_recursos, dtype=float)
+        self.criticidad = criticidad
+        self.bloqueos = bloqueos
+        self.n_samples = n_samples
+        self.seed = seed
+
+    @property
+    def retraso_samples(self):
+        return self.tau_recursos_samples - self.tau_libre_samples
+
+    def prob_superar(self, plazo, con_recursos=True):
+        x = self.tau_recursos_samples if con_recursos else self.tau_libre_samples
+        return float((x > plazo).mean())
+
+    def summary(self):
+        def fila(x):
+            return {"media": x.mean(), "desv. típica": x.std(ddof=1), "q05": np.quantile(x, 0.05),
+                    "q50": np.quantile(x, 0.5), "q95": np.quantile(x, 0.95)}
+        return pd.DataFrame({"sin recursos": fila(self.tau_libre_samples),
+                             "con recursos": fila(self.tau_recursos_samples),
+                             "retraso por recursos": fila(self.retraso_samples)}).T
+
+    def __repr__(self):
+        return (f"MonteCarloRecursosResult(n={self.n_samples}, τ libre={self.tau_libre_samples.mean():.2f}, "
+                f"τ con recursos={self.tau_recursos_samples.mean():.2f})")
 
 
 # ---------------------------------------------------------------------------

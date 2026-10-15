@@ -194,6 +194,7 @@ Simular la duración del proyecto con la matriz de caminos, compararla con la ap
 [MonteCarlo 14](colecciones/09_montecarlo/MonteCarlo_14.html) — *convergencia* (nivel 3): 8 actividades; convergencia de la media y del percentil 90 con N  
 [MonteCarlo 15](colecciones/09_montecarlo/MonteCarlo_15.html) — *correlacionadas* (nivel 3): 9 actividades; 4 expuestas a un factor común (σ_F = 0.15)  
 [MonteCarlo 16](colecciones/09_montecarlo/MonteCarlo_16.html) — *percentiles* (nivel 2): 9 actividades; plazo del cliente 33; percentiles y retraso esperado  
+[MonteCarlo 17](colecciones/09_montecarlo/MonteCarlo_17.html) — *recursos-limitados* (nivel 3): 8 actividades triangulares; límite 3 operarios, plazo 19  
 
 ## Reducción de la duración con mínimo coste
 
@@ -214,6 +215,7 @@ Coste unitario de reducción, algoritmo de Ackoff-Sasieni paso a paso, costes in
 [Reduccion 12](colecciones/10_reduccion/Reduccion_12.html) — *desaceleracion* (nivel 2): 8 actividades; deshacer la reducción más cara al relajar el plazo  
 [Reduccion 13](colecciones/10_reduccion/Reduccion_13.html) — *programacion-lineal* (nivel 3): 9 actividades; reducir 3 semanas: Ackoff 3 k€ frente a PL 3 k€  
 [Reduccion 14](colecciones/10_reduccion/Reduccion_14.html) — *cur-por-tramos* (nivel 3): 9 actividades; CUR por tramos, reducir 3 semanas  
+[Reduccion 15](colecciones/10_reduccion/Reduccion_15.html) — *crashing-recursos* (nivel 3): 9 actividades; límite 3 operarios, reducir dos semanas (Ackoff sin recursos falla)  
 
 ## Nivelación y asignación de recursos
 

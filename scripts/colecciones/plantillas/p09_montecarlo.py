@@ -627,6 +627,97 @@ def _percentiles(rng):
     return celdas, f"{n} actividades; plazo del cliente {plazo_cliente}; percentiles y retraso esperado"
 
 
+def _recursos_limitados(rng):
+    """Monte Carlo con un límite de operarios: la duración con recursos es mayor y más dispersa que la libre."""
+    n = int(rng.choice([8, 9]))
+    estado = {}
+
+    def acepta(i):
+        if not (0 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10 and 10 <= i["T"] <= 24 and (i["D"] >= 2).all()):
+            return False
+        nombres = list(i["D"].index)
+        op = P.recursos(rng, nombres, hi=3).rename("operarios")
+        L = int(op.max())
+        fa, fb = {}, {}
+        for a in nombres:
+            d = int(i["D"][a])
+            fa[a] = max(1, d - int(rng.integers(1, 3)))
+            fb[a] = d + int(rng.integers(1, 4))
+        df = P.tabla_base(i, a=pd.Series(fa), m=i["D"], b=pd.Series(fb), operarios=op)
+        dists = {a: ("triangular", fa[a], int(i["D"][a]), fb[a]) for a in nombres}
+        try:
+            r = i["proyecto"].copy().monte_carlo_recursos(dists, df[["operarios"]].copy(),
+                                                         ["operarios"], [L], n_samples=300, seed=5)
+        except Exception:
+            return False
+        libre = r.tau_libre_samples
+        plazo = int(np.ceil(np.quantile(libre, 0.85)))
+        if not (r.prob_superar(plazo, con_recursos=False) <= 0.18 and r.prob_superar(plazo) >= 0.55):
+            return False
+        estado.update(df=df, L=L, plazo=plazo)
+        return True
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])),
+                    max_intentos=8000)
+    df, L, plazo = estado["df"], estado["L"], estado["plazo"]
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duración de cada actividad (mínima *a*, más probable *m* "
+                 "y máxima *b*, en semanas, distribución triangular) y operarios necesarios se adjunta. Cada actividad "
+                 f"necesita un número fijo de operarios durante toda su duración y la empresa dispone como máximo de {L} "
+                 f"operarios por semana. El contrato exige terminar en **{plazo} semanas**.")]
+    celdas.append(preguntas([
+        "Calcule con las duraciones más probables la duración del proyecto sin límite de recursos y con el límite de "
+        "operarios (algoritmo de asignación).",
+        "Simule 2000 réplicas: en cada una sortee las duraciones, calcule la duración sin recursos y **replanifique** "
+        "con el límite. Compare media, desviación típica y percentil 90 de ambas distribuciones.",
+        f"Estime la probabilidad de cumplir el plazo de {plazo} semanas ignorando los recursos y respetándolos. "
+        "¿Qué conclusión sacaría un director que solo mirase el camino crítico?",
+        "Calcule el índice de criticidad de cada actividad sin y con recursos, y la frecuencia con que el límite de "
+        "operarios retrasa alguna actividad. ¿Qué actividades pasan a mandar al introducir el límite?",
+        "¿Cómo cambia la probabilidad de cumplir si se amplía el límite en un operario? Decida si merece la pena."]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"limite = [{L}]\n"
+                       f"plazo = {plazo}\n"
+                       "datos_proyecto['duration'] = datos_proyecto['m']\n"
+                       "demanda = datos_proyecto[['predecessor', 'duration', 'operarios']]\n"
+                       "dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}"))
+    celdas += apartado(1)
+    celdas.append(code("duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
+                       "res0 = proyecto.copy().asignar_multi(demanda.copy(), 'duration', ['operarios'], limite)\n"
+                       "Markdown(f'Con las duraciones más probables: {duracion_libre} semanas sin límite y {res0.duracion} semanas con {limite[0]} operarios.')"))
+    celdas += apartado(2)
+    celdas.append(code('#| tbl-cap: "Distribución de la duración con y sin límite de recursos"\n#| label: tbl-mcRecursos\n'
+                       "mc = proyecto.copy().monte_carlo_recursos(dists, demanda[['operarios']].copy(), ['operarios'], limite, n_samples=2000, seed=11)\n"
+                       "mc.summary().round(2)"))
+    celdas.append(code("Markdown(f'La media sube de {mc.tau_libre_samples.mean():.2f} a {mc.tau_recursos_samples.mean():.2f} semanas '\n"
+                       "         f'y la desviación típica pasa de {mc.tau_libre_samples.std():.2f} a {mc.tau_recursos_samples.std():.2f}. '\n"
+                       "         'El límite añade esperas que dependen de qué actividades coinciden en cada réplica.')"))
+    celdas += apartado(3)
+    celdas.append(code("p_libre = 1 - mc.prob_superar(plazo, con_recursos=False)\n"
+                       "p_res = 1 - mc.prob_superar(plazo)\n"
+                       "Markdown(f'P(T ≤ {plazo}) = {p_libre:.3f} sin recursos y {p_res:.3f} con el límite de operarios. '\n"
+                       "         'Quien solo mirase el camino crítico creería que el plazo es seguro cuando en realidad el riesgo real es mucho mayor.')"))
+    celdas += apartado(4)
+    celdas.append(code('#| tbl-cap: "Criticidad sin y con recursos"\n#| label: tbl-criticidadRecursos\n'
+                       "(mc.criticidad * 100).round(1).sort_values(mc.criticidad.columns[-1], ascending=False)"))
+    celdas.append(code('#| tbl-cap: "Frecuencia con que cada recurso bloquea alguna actividad"\n#| label: tbl-bloqueos\n'
+                       "(mc.bloqueos * 100).round(1).to_frame('% de réplicas')"))
+    celdas.append(md("La criticidad con recursos incluye actividades que no son críticas en el CPM pero forman parte de la cadena "
+                     "de esperas por el recurso: pasan a mandar al introducir el límite."))
+    celdas += apartado(5)
+    celdas.append(code("mc2 = proyecto.copy().monte_carlo_recursos(dists, demanda[['operarios']].copy(), ['operarios'], [limite[0] + 1], n_samples=2000, seed=11)\n"
+                       "p_res2 = 1 - mc2.prob_superar(plazo)\n"
+                       "Markdown(f'Con {limite[0] + 1} operarios P(T ≤ {plazo}) pasa de {p_res:.3f} a {p_res2:.3f}; la media baja de '\n"
+                       "         f'{mc.tau_recursos_samples.mean():.2f} a {mc2.tau_recursos_samples.mean():.2f} semanas. Merece la pena si el valor de '\n"
+                       "         'asegurar el plazo (penalizaciones evitadas × probabilidad ganada) supera el coste del operario adicional.')"))
+    return celdas, f"{n} actividades triangulares; límite {L} operarios, plazo {plazo}"
+
+
 VARIANTES = [
     Variante("normal", 1, "Monte Carlo con R·T, comparación con la aproximación normal, criticidad y sensibilidad (normal)",
              lambda rng: _base(1, rng)),
@@ -639,6 +730,8 @@ VARIANTES = [
              _correlacionadas),
     Variante("percentiles", 2, "leer la distribución simulada: percentiles, probabilidad de penalización, retraso esperado y margen a comprometer",
              _percentiles),
+    Variante("recursos-limitados", 3, "Monte Carlo con un límite de operarios: la duración con recursos es mayor y más dispersa; criticidad y bloqueos",
+             _recursos_limitados),
 ]
 
 

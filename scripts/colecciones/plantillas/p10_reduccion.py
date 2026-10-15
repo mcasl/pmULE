@@ -670,6 +670,124 @@ def _cur_por_tramos(rng):
     return celdas, f"{n} actividades; CUR por tramos, reducir {r} semanas"
 
 
+def _crashing_recursos(rng):
+    """Recursos limitados + crashing: Ackoff sin recursos puede elegir una actividad que no acorta el proyecto."""
+    n = int(rng.choice([8, 9]))
+    estado = {}
+
+    def acepta(i):
+        if not (0 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10 and 10 <= i["T"] <= 22):
+            return False
+        nombres = list(i["D"].index)
+        op = P.recursos(rng, nombres, hi=3).rename("operarios")
+        L = int(op.max())
+        tope, cn, ct, ucr = P.costes_reduccion(rng, i["D"])
+        ucr = ucr.replace(0.0, np.inf)
+        if int(np.isfinite(ucr).sum()) < 4:
+            return False
+        df = P.tabla_base(i, duration=i["D"], operarios=op, cap_duration=tope, ucr=ucr)
+        pr = i["proyecto"]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                res = pr.copy().asignar_multi(df[["predecessor", "duration", "operarios"]].copy(), "duration", ["operarios"], [L])
+            T_res = int(res.duracion)
+            if not (1 <= T_res - int(i["T"]) <= 4):
+                return False
+            pasos, dur = _pasos_ackoff(i, i["D"], tope, ucr, reduction=2)
+            with contextlib.redirect_stdout(io.StringIO()):
+                r_ack = pr.copy().asignar_multi(df[["predecessor", "operarios"]].assign(duration=dur), "duration", ["operarios"], [L])
+            if int(r_ack.duracion) < T_res:          # Ackoff debe fallar del todo (no acorta nada con recursos)
+                return False
+            with contextlib.redirect_stdout(io.StringIO()):
+                cr = pr.copy().crashing_recursos(df[["predecessor", "duration", "operarios"]].copy(), "duration", ["operarios"], [L],
+                                                 tope, ucr, reduccion=2)
+            if cr.duracion_final > T_res - 2:
+                return False
+            with contextlib.redirect_stdout(io.StringIO()):
+                libre = pr.copy().asignar_multi(df[["predecessor", "duration", "operarios"]].copy(), "duration", ["operarios"], [L + 1])
+            if int(libre.duracion) >= T_res:
+                return False
+        except Exception:
+            return False
+        estado.update(df=df, L=L, T_res=T_res)
+        return True
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])),
+                    max_intentos=8000)
+    df, L, T_res = estado["df"], estado["L"], estado["T_res"]
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duración normal y tope (semanas), operarios por "
+                 "actividad y coste unitario de reducción (k€/semana) se adjunta. Cada actividad necesita un número fijo "
+                 f"de operarios durante toda su duración y la empresa dispone como máximo de {L} operarios en cada semana. "
+                 "Las actividades con CUR infinito no pueden acelerarse. Se quiere reducir la duración del proyecto "
+                 "**dos semanas** respetando el límite de operarios.")]
+    celdas.append(preguntas([
+        "Determine la duración del proyecto sin límite de recursos y con el límite de operarios (algoritmo de asignación). "
+        "Indique la cadena crítica con recursos: qué actividades fijan la duración y qué esperas por recurso intervienen.",
+        "Aplique el algoritmo de Ackoff-Sasieni ignorando los recursos para reducir dos semanas, aplique esas reducciones "
+        "y replanifique con el límite de operarios. ¿Se ha conseguido reducir la duración del proyecto con recursos? ¿Por qué?",
+        "Reduzca ahora dos semanas teniendo en cuenta el límite: pruebe en cada paso los candidatos (cortes de la cadena "
+        "crítica con recursos, actividades sueltas y parejas) y elija el más barato que de verdad acorte el proyecto "
+        "replanificado. Compare el sobrecoste con el del apartado anterior.",
+        "Suponga que acelerar una actividad exige un operario más por cada semana recortada (modelo con recurso). "
+        "¿Cambia la solución?",
+        f"Alternativa: contratar un operario más (límite {L + 1}) sin acelerar nada. ¿Qué duración se obtiene? "
+        "¿Compensa frente a acelerar?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"limite = [{L}]\n"
+                       "base = datos_proyecto[['predecessor', 'duration', 'operarios']]"))
+    celdas += apartado(1)
+    celdas.append(code("duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
+                       "res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], limite)\n"
+                       "cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], limite)\n"
+                       "Markdown(f'Sin límite: {duracion_libre} semanas. Con {limite[0]} operarios: {res0.duracion} semanas. '\n"
+                       "         f'Cadena crítica con recursos: {\", \".join(sorted(cadena[\"actividades\"]))}.')"))
+    celdas.append(code('#| tbl-cap: "Arcos de la cadena crítica con recursos"\n#| label: tbl-cadena\n'
+                       "cadena['arcos'].rename(columns={'de': 'de', 'a': 'a', 'motivo': 'motivo (precedencia o recurso)'})"))
+    celdas.append(md("Los arcos de *recurso* son esperas: una actividad no puede empezar porque otra que usa los mismos "
+                     "operarios aún no ha terminado. La duración la fija esa cadena (precedencias más esperas), no el camino crítico."))
+    celdas += apartado(2)
+    celdas.append(code("tabla_ack, pasos_ack, dur_ack, margen = proyecto.ackoff(durations=datos_proyecto['duration'],\n"
+                       "    min_durations=datos_proyecto['cap_duration'], costs=datos_proyecto['ucr'], reduction=2, report=False)\n"
+                       "coste_ack = float(sum(datos_proyecto.loc[a, 'ucr'] for acts in pasos_ack.values() for a in acts))\n"
+                       "res_ack = proyecto.copy().asignar_multi(base.assign(duration=dur_ack), 'duration', ['operarios'], limite)\n"
+                       "Markdown(f'Ackoff sin recursos reduce el proyecto a {proyecto.duration(dur_ack)} semanas (coste {coste_ack:.0f} k€), '\n"
+                       "         f'pero con el límite de operarios la duración es {res_ack.duracion} semanas (antes {res0.duracion}). '\n"
+                       "         'Ackoff eligió por el camino crítico sin recursos, y eso no acorta la cadena crítica con recursos: '\n"
+                       "         'el dinero se gasta sin acortar lo que de verdad manda.')"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Crashing con recursos limitados"\n#| label: tbl-crashing\n'
+                       "cr = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], limite,\n"
+                       "                                       datos_proyecto['cap_duration'], datos_proyecto['ucr'], reduccion=2)\n"
+                       "cr.pasos[['actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]"))
+    celdas.append(code("Markdown(f'Duración {res0.duracion} → {cr.duracion_final} semanas con un sobrecoste de {cr.coste_total:.0f} k€, '\n"
+                       "         f'frente a {coste_ack:.0f} k€ de Ackoff sin recursos, que no consiguió reducir la duración con recursos '\n"
+                       "         f'(quedó en {res_ack.duracion}).')"))
+    celdas += apartado(4)
+    celdas.append(code("extra = {a: {'operarios': 1} for a in datos_proyecto.index if np.isfinite(datos_proyecto.loc[a, 'ucr'])}\n"
+                       "cr_b = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], limite,\n"
+                       "                                         datos_proyecto['cap_duration'], datos_proyecto['ucr'], reduccion=2,\n"
+                       "                                         demanda_extra=extra)\n"
+                       "if cr_b.duracion_final <= res0.duracion - 2:\n"
+                       "    cierre = 'Aun consumiendo el recurso, el límite todavía permite la reducción pedida, con otras actividades o con un coste distinto.'\n"
+                       "else:\n"
+                       "    cierre = 'Como acelerar consume el recurso escaso, el límite frena también las reducciones: no se alcanza lo pedido sin ampliar el recurso.'\n"
+                       "Markdown(f'Modelo con recurso: parada «{cr_b.motivo_parada}», duración final {cr_b.duracion_final} semanas, '\n"
+                       "         f'sobrecoste {cr_b.coste_total:.0f} k€. {cierre}')"))
+    celdas += apartado(5)
+    celdas.append(code("mas = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [limite[0] + 1])\n"
+                       "Markdown(f'Con {limite[0] + 1} operarios, sin acelerar nada: {mas.duracion} semanas (antes {res0.duracion}). '\n"
+                       "         f'Se ahorran {res0.duracion - mas.duracion} semana(s). Reducir {res0.duracion - cr.duracion_final} semanas acelerando cuesta '\n"
+                       "         f'{cr.coste_total:.0f} k€. Compensa contratar si el coste del operario adicional durante esas semanas es menor que ese sobrecoste '\n"
+                       "         '(y la comparación es justa solo con el mismo número de semanas ahorradas).')"))
+    return celdas, f"{n} actividades; límite {L} operarios, reducir dos semanas (Ackoff sin recursos falla)"
+
+
 VARIANTES = [
     Variante("cur-y-ackoff", 1, "CUR a partir de costes normal y tope; Ackoff-Sasieni tres semanas con un paso de dos actividades",
              lambda rng: _base(1, rng)),
@@ -681,6 +799,8 @@ VARIANTES = [
              _programacion_lineal),
     Variante("cur-por-tramos", 3, "CUR creciente por tramos: Ackoff con coste marginal frente a un CUR medio; por qué funciona si el coste es convexo",
              _cur_por_tramos),
+    Variante("crashing-recursos", 3, "reducir la duración con un límite de operarios: Ackoff sin recursos falla; cadena crítica con recursos, modelo con recurso y contratar frente a acelerar",
+             _crashing_recursos),
 ]
 
 
