@@ -469,3 +469,27 @@ Variantes:
 - `Viabilidad_08` [alternativas, nivel 2] — A y B (6 años) con conflicto VAN/TIR (Fisher 10.3%), C de 3 años; k = 8%
 - `Viabilidad_09` [sensibilidad, nivel 2] — una línea de envasado automatizada: umbrales de precio, volumen y coste variable; escenarios; inflación 3%
 - `Viabilidad_10` [financiacion, nivel 3] — una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%
+
+## 18_casos — Casos de decisión con varios implicados
+
+Situaciones en las que proveedor, cliente, contratista, inspector, otros jefes de proyecto, gerencia o el comité envían mensajes que cambian los datos o piden algo; hay que cuantificar cada uno (calendario, Ackoff, probabilidad, recursos, valor ganado, Monte Carlo, VAN), decidir y redactar la respuesta a cada implicado.
+
+Lección (teoría): `lecciones/18_casos.qmd` → `docs/colecciones/lecciones/18_casos.html`.
+
+Variantes:
+  - `reforma-laboratorio` (nivel 3): retraso de un proveedor crítico, exigencia del inspector, oferta de reducción (Ackoff), coste del retraso para el cliente, tope presupuestario, incertidumbre y negociaciones sin coste
+  - `recursos-compartidos` (nivel 2): otra jefa de proyecto pide operarios prestados: planificador en paralelo con límite por periodo, ventanas con y sin retraso, penalizaciones de dos proyectos, subcontratación y óptimo de empresa frente a óptimo local
+  - `comite-valor-ganado` (nivel 3): avance declarado por el contratista frente al estimado en obra: PV/EV/AC, índices y semáforo con las dos versiones, EAC, TCPI, previsión de plazo, certificación y verificación del avance
+  - `oferta-comercial` (nivel 2): qué plazo prometer: PERT frente a Monte Carlo (sesgo de fusión, criticidad), coste esperado de penalizaciones y bonificaciones por plazo ofertado, exigencia del 90 % y su precio
+  - `comite-inversion` (nivel 3): caso de inversión con mensajes contradictorios: escenarios y umbrales, contrato a precio fijo como seguro (VAN esperado y peor caso), apalancamiento y separación inversión/financiación
+
+- `Caso_01` [reforma-laboratorio, nivel 3] — reforma del laboratorio: 4 semanas de retraso, alquiler 6 k€/sem, bolsa 11 k€
+- `Caso_02` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 1 operario en 2–4 (2 sem. de retraso) frente a 3–5
+- `Caso_03` [comite-valor-ganado, nivel 3] — comité y valor ganado: D declarada al 75 % frente al 30 % real; SPI 1.00 → 0.88
+- `Caso_04` [oferta-comercial, nivel 2] — oferta comercial: media 19, P(≤19) = 0.28 por Monte Carlo, plazo 90 % 22.8; óptimo 21
+- `Caso_05` [comite-inversion, nivel 3] — comité de inversión: una flota de vehículos eléctricos de alquiler; VAN 203 k€ (14%), precio −20% con prob. 25%
+- `Caso_06` [reforma-laboratorio, nivel 3] — reforma del laboratorio: 3 semanas de retraso, alquiler 4 k€/sem, bolsa 4 k€
+- `Caso_07` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 2 operarios en 2–4 (2 sem. de retraso) frente a 3–5
+- `Caso_08` [comite-valor-ganado, nivel 3] — comité y valor ganado: C declarada al 67 % frente al 40 % real; SPI 1.00 → 0.82
+- `Caso_09` [oferta-comercial, nivel 2] — oferta comercial: media 16, P(≤16) = 0.32 por Monte Carlo, plazo 90 % 18.8; óptimo 17
+- `Caso_10` [comite-inversion, nivel 3] — comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%

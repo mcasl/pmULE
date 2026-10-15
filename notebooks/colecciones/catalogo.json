@@ -2058,5 +2058,105 @@
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_10.py",
   "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
+ },
+ {
+  "nombre": "Caso_01",
+  "coleccion": "18_casos",
+  "variante": "reforma-laboratorio",
+  "nivel": 3,
+  "subtitulo": "reforma del laboratorio: 4 semanas de retraso, alquiler 6 k€/sem, bolsa 11 k€",
+  "ruta": "notebooks/colecciones/18_casos/Caso_01.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_02",
+  "coleccion": "18_casos",
+  "variante": "recursos-compartidos",
+  "nivel": 2,
+  "subtitulo": "recursos compartidos: préstamo de 1 operario en 2–4 (2 sem. de retraso) frente a 3–5",
+  "ruta": "notebooks/colecciones/18_casos/Caso_02.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_03",
+  "coleccion": "18_casos",
+  "variante": "comite-valor-ganado",
+  "nivel": 3,
+  "subtitulo": "comité y valor ganado: D declarada al 75 % frente al 30 % real; SPI 1.00 → 0.88",
+  "ruta": "notebooks/colecciones/18_casos/Caso_03.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_04",
+  "coleccion": "18_casos",
+  "variante": "oferta-comercial",
+  "nivel": 2,
+  "subtitulo": "oferta comercial: media 19, P(≤19) = 0.28 por Monte Carlo, plazo 90 % 22.8; óptimo 21",
+  "ruta": "notebooks/colecciones/18_casos/Caso_04.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_05",
+  "coleccion": "18_casos",
+  "variante": "comite-inversion",
+  "nivel": 3,
+  "subtitulo": "comité de inversión: una flota de vehículos eléctricos de alquiler; VAN 203 k€ (14%), precio −20% con prob. 25%",
+  "ruta": "notebooks/colecciones/18_casos/Caso_05.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_06",
+  "coleccion": "18_casos",
+  "variante": "reforma-laboratorio",
+  "nivel": 3,
+  "subtitulo": "reforma del laboratorio: 3 semanas de retraso, alquiler 4 k€/sem, bolsa 4 k€",
+  "ruta": "notebooks/colecciones/18_casos/Caso_06.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_07",
+  "coleccion": "18_casos",
+  "variante": "recursos-compartidos",
+  "nivel": 2,
+  "subtitulo": "recursos compartidos: préstamo de 2 operarios en 2–4 (2 sem. de retraso) frente a 3–5",
+  "ruta": "notebooks/colecciones/18_casos/Caso_07.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_08",
+  "coleccion": "18_casos",
+  "variante": "comite-valor-ganado",
+  "nivel": 3,
+  "subtitulo": "comité y valor ganado: C declarada al 67 % frente al 40 % real; SPI 1.00 → 0.82",
+  "ruta": "notebooks/colecciones/18_casos/Caso_08.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_09",
+  "coleccion": "18_casos",
+  "variante": "oferta-comercial",
+  "nivel": 2,
+  "subtitulo": "oferta comercial: media 16, P(≤16) = 0.32 por Monte Carlo, plazo 90 % 18.8; óptimo 17",
+  "ruta": "notebooks/colecciones/18_casos/Caso_09.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_10",
+  "coleccion": "18_casos",
+  "variante": "comite-inversion",
+  "nivel": 3,
+  "subtitulo": "comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%",
+  "ruta": "notebooks/colecciones/18_casos/Caso_10.py",
+  "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
  }
 ]
