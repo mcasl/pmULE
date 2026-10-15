@@ -1380,6 +1380,28 @@
   "titulo_coleccion": "Nivelación y asignación de recursos"
  },
  {
+  "nombre": "Recursos_15",
+  "coleccion": "11_recursos",
+  "variante": "limites-simultaneos",
+  "nivel": 3,
+  "subtitulo": "8 actividades; 4 operarios y 2 equipos a la vez",
+  "grafo": "pert",
+  "ruta": "notebooks/colecciones/11_recursos/Recursos_15.py",
+  "semilla": 2027115,
+  "titulo_coleccion": "Nivelación y asignación de recursos"
+ },
+ {
+  "nombre": "Recursos_16",
+  "coleccion": "11_recursos",
+  "variante": "limites-simultaneos",
+  "nivel": 3,
+  "subtitulo": "8 actividades; 4 operarios y 2 equipos a la vez",
+  "grafo": "roy",
+  "ruta": "notebooks/colecciones/11_recursos/Recursos_16.py",
+  "semilla": 2027116,
+  "titulo_coleccion": "Nivelación y asignación de recursos"
+ },
+ {
   "nombre": "ValorGanado_01",
   "coleccion": "12_valor_ganado",
   "variante": "indicadores-eac",

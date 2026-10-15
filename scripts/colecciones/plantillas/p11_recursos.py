@@ -642,6 +642,136 @@ def _interrumpibles(rng):
     return celdas, f"{n} actividades; {limite} operarios; interrumpir o no interrumpir"
 
 
+def _limites_simultaneos(rng):
+    """Dos recursos con límite a la vez: asignación simultánea (asignar_multi) frente a aplicar
+    el algoritmo de un solo recurso y comprobar el otro."""
+    n = int(rng.choice([8, 9]))
+    estado = {}
+
+    def acepta(i):
+        if not (0 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10 and 9 <= i["T"] <= 20):
+            return False
+        nombres = list(i["D"].index)
+        op = P.recursos(rng, nombres, hi=4).rename("operarios")
+        eq = pd.Series(rng.integers(0, 3, size=len(nombres)), index=nombres, name="equipos")
+        if eq.max() < 2 or (eq > 0).sum() < 4:
+            return False
+        L1 = int(op.max()) + int(rng.integers(0, 2))
+        L2 = int(eq.max())
+        df = P.tabla_base(i, duration=i["D"], operarios=op, equipos=eq)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                res = i["proyecto"].copy().asignar_multi(df.copy(), "duration", ["operarios", "equipos"], [L1, L2])
+        except Exception:
+            return False
+        if not (1 <= res.duracion - int(i["T"]) <= 4):
+            return False
+        espera = res.traza[res.traza.decision == "espera"]
+        bloqueos = set(", ".join(espera.bloqueada_por).replace(" ", "").split(","))
+        if not {"operarios", "equipos"} <= bloqueos:
+            return False
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                p1 = i["proyecto"].copy()
+                d1, _, _ = p1.asignar(data=df.copy(), duration_label="duration", resource_label="operarios",
+                                      maximo=[L1], report=False)
+                g2, _ = p1.gantt_cargas(d1, "duration", "equipos", report=False, tikz=False)
+        except Exception:
+            return False
+        c2 = g2.data.loc["Total"].drop("H_total", errors="ignore").astype(float)
+        if c2.max() <= L2:           # aplicar solo operarios debe violar el límite de equipos
+            return False
+        estado.update(df=df, L1=L1, L2=L2)
+        return True
+
+    info = P.buscar(rng, acepta, n=n, n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])),
+                    max_intentos=8000)
+    df, L1, L2 = estado["df"], estado["L1"], estado["L2"]
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duraciones (semanas) y recursos necesarios "
+                 "se adjunta. Cada actividad necesita un número fijo de operarios y de equipos (grúas, andamios…) "
+                 f"durante toda su duración. La empresa dispone como máximo de {L1} operarios y {L2} equipos "
+                 "en cada semana, **a la vez**.")]
+    celdas.append(preguntas([
+        "Dibuje las cargas de operarios y de equipos con todas las actividades en su inicio más temprano. "
+        "¿En qué semanas se supera cada límite?",
+        "Aplique el algoritmo de asignación comprobando los dos recursos a la vez (una actividad solo empieza si cabe "
+        "en ambos en todas las semanas que ocuparía). Indique el calendario resultante, la duración del proyecto "
+        "y, para cada actividad que espera, qué recurso se lo impide.",
+        "Aplique ahora el algoritmo de asignación solo a los operarios, ignorando los equipos, y compruebe qué "
+        "ocurre con los equipos. ¿Qué enseña esto sobre resolver los recursos de uno en uno?",
+        "¿Qué recurso es el cuello de botella? Construya la tabla de duración del proyecto al ampliar cada límite "
+        "hasta dos unidades y recomiende qué ampliar primero."]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n'
+                       + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       "duracion_minima = proyecto.duration(datos_proyecto['duration'])\n"
+                       "recursos = ['operarios', 'equipos']\n"
+                       f"limites = [{L1}, {L2}]"))
+    celdas += apartado(1)
+    celdas.append(code('#| fig-cap: "Cargas de operarios con los inicios más tempranos"\n#| label: fig-cargasOperarios\n'
+                       "gantt_op, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)\n"
+                       "plot_cargas(gantt_df=gantt_op, limite_maximo_recursos=limites[0])"))
+    celdas.append(code('#| fig-cap: "Cargas de equipos con los inicios más tempranos"\n#| label: fig-cargasEquipos\n'
+                       "gantt_eq, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'equipos', report=False, tikz=True, params=GANTT_PARAMS)\n"
+                       "plot_cargas(gantt_df=gantt_eq, limite_maximo_recursos=limites[1])"))
+    celdas.append(code("cargas_op = gantt_op.data.loc['Total'].drop('H_total').astype(float)\n"
+                       "cargas_eq = gantt_eq.data.loc['Total'].drop('H_total').astype(float)\n"
+                       "exceso_op = [int(t) for t, c in cargas_op.items() if c > limites[0]]\n"
+                       "exceso_eq = [int(t) for t, c in cargas_eq.items() if c > limites[1]]\n"
+                       "Markdown(f'Operarios (límite {limites[0]}): se supera en las semanas {exceso_op or \"ninguna\"}. '\n"
+                       "         f'Equipos (límite {limites[1]}): se supera en las semanas {exceso_eq or \"ninguna\"}.')"))
+    celdas += apartado(2)
+    celdas.append(code("resultado = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', recursos, limites)\n"
+                       "calendario = pd.DataFrame({'inicio (semana)': resultado.inicios + 1, 'fin (semana)': resultado.fines,\n"
+                       "                          'espera (semanas)': resultado.esperas}).fillna(0).astype(int)\n"
+                       "calendario"))
+    celdas.append(code("esperas = resultado.traza[resultado.traza.decision == 'espera']\n"
+                       "esperas = esperas.rename(columns={'bloqueada_por': 'recurso que se satura'})\n"
+                       "esperas[['periodo', 'actividad', 'recurso que se satura']].reset_index(drop=True)"))
+    celdas.append(code('#| fig-cap: "Cargas de operarios tras la asignación simultánea"\n#| label: fig-asignacionOperarios\n'
+                       "plot_cargas(gantt_df=resultado.gantts['operarios'], limite_maximo_recursos=list(resultado.limites['operarios']))"))
+    celdas.append(code('#| fig-cap: "Cargas de equipos tras la asignación simultánea"\n#| label: fig-asignacionEquipos\n'
+                       "plot_cargas(gantt_df=resultado.gantts['equipos'], limite_maximo_recursos=list(resultado.limites['equipos']))"))
+    celdas.append(code("Markdown(f'La duración pasa de {duracion_minima} a {resultado.duracion} semanas. Cada actividad que espera lo hace '\n"
+                       "         'porque, en alguna de las semanas que ocuparía, sumada a lo ya comprometido superaría el límite de '\n"
+                       "         'al menos uno de los dos recursos: el que aparece en la tabla.')"))
+    celdas += apartado(3)
+    celdas.append(code("p_solo = proyecto.copy()\n"
+                       "datos_solo, gantt_solo, dibujo = p_solo.asignar(data=datos_proyecto.copy(), duration_label='duration',\n"
+                       "                                                resource_label='operarios', maximo=[limites[0]], report=False)\n"
+                       "gantt_eq_solo, dibujo = p_solo.gantt_cargas(datos_solo, 'duration', 'equipos', report=False, tikz=False)\n"
+                       "cargas_eq_solo = gantt_eq_solo.data.loc['Total'].drop('H_total').astype(float)\n"
+                       "exceso = [int(t) for t, c in cargas_eq_solo.items() if c > limites[1]]\n"
+                       "Markdown(f'Solo con operarios la duración es {len(gantt_solo.data.columns.drop(\"H_total\"))} semanas, pero los equipos llegan a '\n"
+                       "         f'{int(cargas_eq_solo.max())} (límite {limites[1]}) en las semanas {exceso}. '\n"
+                       "         'Resolver un recurso desplaza actividades y puede crear picos en el otro: hay que comprobar todos a la vez, '\n"
+                       "         'y corregir uno a uno no garantiza converger a un calendario factible.')"))
+    celdas += apartado(4)
+    celdas.append(code("filas = {}\n"
+                       "for a in range(3):\n"
+                       "    for b in range(3):\n"
+                       "        r = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', recursos, [limites[0] + a, limites[1] + b])\n"
+                       "        filas[(limites[0] + a, limites[1] + b)] = r.duracion\n"
+                       "tabla = pd.Series(filas).unstack()\n"
+                       "tabla.index.name, tabla.columns.name = 'operarios', 'equipos'\n"
+                       "tabla"))
+    celdas.append(code("mejora_op = tabla.iloc[0, 0] - tabla.iloc[1, 0]\n"
+                       "mejora_eq = tabla.iloc[0, 0] - tabla.iloc[0, 1]\n"
+                       "if mejora_op > mejora_eq:\n"
+                       "    texto = 'ampliar los operarios: un operario más ahorra más semanas que un equipo más'\n"
+                       "elif mejora_eq > mejora_op:\n"
+                       "    texto = 'ampliar los equipos: un equipo más ahorra más semanas que un operario más'\n"
+                       "else:\n"
+                       "    texto = 'ampliar uno solo de los recursos no basta: la mejora llega al ampliar los dos'\n"
+                       "Markdown(f'Con un recurso más: operarios −{mejora_op} semana(s), equipos −{mejora_eq} semana(s). Conviene {texto}. '\n"
+                       "         'Cuando ambos están saturados a la vez, ampliar uno solo mueve el cuello de botella al otro.')"))
+    return celdas, f"{n} actividades; {L1} operarios y {L2} equipos a la vez"
+
+
 VARIANTES = [
     Variante("nivelacion", 1, "cargas, suma de cuadrados y nivelación por mínimos cuadrados", lambda rng: _base(1, rng)),
     Variante("asignacion", 2, "asignación Wiest-Levy con límite por tramos y con límite fijo", lambda rng: _base(2, rng)),
@@ -655,6 +785,8 @@ VARIANTES = [
              _reglas_prioridad),
     Variante("interrumpibles", 3, "misma regla con y sin interrupciones permitidas: duración, actividades interrumpidas y costes ocultos",
              _interrumpibles),
+    Variante("limites-simultaneos", 3, "dos recursos con límite a la vez: asignación simultánea (calendario, recurso que bloquea) frente a resolver uno solo",
+             _limites_simultaneos),
 ]
 
 
