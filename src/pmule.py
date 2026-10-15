@@ -2928,6 +2928,64 @@ class ProjectGraph:
         return MonteCarloValorGanadoResult(t_control, T_plan, float(bac_s.sum()), pv, ev, ac, spi, cpi,
                                            tau, tau_pred, coste_final, eac_pred, n_samples, seed)
 
+    def monte_carlo_valor_ganado_recursos(self, distributions, plan, data, resource_labels, maximos, bac,
+                                          t_control, n_samples=1000, seed=None):
+        """Previsión de duración por valor ganado con duraciones aleatorias y límite de recursos.
+
+        Se ejecuta el proyecto réplica a réplica (duraciones sorteadas y replanificación con los
+        límites) y se evalúa el SPI en ``t_control`` con dos líneas base construidas con las
+        duraciones previstas ``plan``: la **ingenua** (calendario más temprano, sin recursos) y la
+        **realista** (calendario con el límite de recursos).  La previsión T_plan/SPI se compara con la
+        duración real de cada réplica.  Devuelve ``MonteCarloValorGanadoRecursosResult``.
+        """
+        resource_labels = [resource_labels] if isinstance(resource_labels, str) else list(resource_labels)
+        vectors = self._vectores_limite(resource_labels, maximos)
+        preds = self._real_predecessors()
+        orden = _orden_topologico(preds)
+        bac_s = pd.Series(bac, dtype=float).reindex(orden)
+        B = bac_s.to_numpy()
+        plan = pd.Series(plan, dtype=float).reindex(orden)
+        dem = {a: np.array([float(data.loc[a, rl]) for rl in resource_labels]) for a in orden}
+        n0 = max(len(v) for v in vectors.values())
+        # líneas base
+        Dp = plan.to_numpy()[None, :]
+        ES_l, EF_l = self._calendarios_simulados(Dp, orden)
+        T_libre = float(EF_l.max())
+        dp = {a: int(round(plan[a])) for a in orden}
+        ancho = n0 + sum(dp.values()) + max(dp.values()) + 2
+        limite = _matriz_limite([vectors[rl] for rl in resource_labels], ancho)
+        ini_p, fin_p, _, _ = _planificar_paralelo(preds, orden, dp, dem, limite, n0 + sum(dp.values()) + 1, resource_labels)
+        ES_r = np.array([ini_p[a] for a in orden], dtype=float)
+        T_rec = float(max(fin_p.values()))
+        Dpv = np.array([dp[a] for a in orden], dtype=float)
+        pv_l = float((B * np.clip((t_control - ES_l[0]) / Dp[0], 0.0, 1.0)).sum())
+        pv_r = float((B * np.clip((t_control - ES_r) / Dpv, 0.0, 1.0)).sum())
+        # ejecuciones
+        rng = np.random.default_rng(seed)
+        D = np.zeros((n_samples, len(orden)))
+        for j, a in enumerate(orden):
+            D[:, j] = _make_sampler(rng, distributions[a])(n_samples)
+        D = np.maximum(np.rint(D), 1.0).astype(int)
+        ancho = n0 + int(D.sum(axis=1).max()) + int(D.max()) + 2
+        limite = _matriz_limite([vectors[rl] for rl in resource_labels], ancho)
+        tau = np.zeros(n_samples)
+        ev = np.zeros(n_samples)
+        for i in range(n_samples):
+            dur = {a: int(D[i, j]) for j, a in enumerate(orden)}
+            LS = _cpm_puro(preds, dur, orden)[1]
+            ini, fin, _, _ = _planificar_paralelo(preds, orden, dur, dem, limite,
+                                                  n0 + sum(dur.values()) + 1, resource_labels, ls=LS)
+            tau[i] = max(fin.values(), default=0)
+            ES = np.array([ini[a] for a in orden], dtype=float)
+            ev[i] = float((B * np.clip((t_control - ES) / D[i], 0.0, 1.0)).sum())
+        with np.errstate(divide="ignore", invalid="ignore"):
+            spi_l = ev / pv_l if pv_l > 0 else np.full(n_samples, np.nan)
+            spi_r = ev / pv_r if pv_r > 0 else np.full(n_samples, np.nan)
+            pred_l = T_libre / spi_l
+            pred_r = T_rec / spi_r
+        return MonteCarloValorGanadoRecursosResult(t_control, T_libre, T_rec, pv_l, pv_r, ev, spi_l, spi_r,
+                                                   tau, pred_l, pred_r, n_samples, seed)
+
     def valor_ganado_recursos(self, data, duration_label, resource_labels, maximos, bac):
         """Valor ganado cuando la línea base ignora los recursos y la ejecución los respeta.
 
@@ -3977,6 +4035,43 @@ class MonteCarloValorGanadoResult:
     def __repr__(self):
         return (f"MonteCarloValorGanadoResult(t={self.t_control}, n={self.n_samples}, "
                 f"SPI medio={np.nanmean(self.spi):.3f})")
+
+
+class MonteCarloValorGanadoRecursosResult:
+    """SPI y previsión de duración con dos líneas base (sin y con recursos) y ejecución con límites."""
+
+    def __init__(self, t_control, T_libre, T_recursos, pv_libre, pv_recursos, ev, spi_libre, spi_recursos,
+                 tau, pred_libre, pred_recursos, n_samples, seed):
+        self.t_control, self.T_libre, self.T_recursos = t_control, T_libre, T_recursos
+        self.pv_libre, self.pv_recursos, self.ev = pv_libre, pv_recursos, ev
+        self.spi_libre, self.spi_recursos = spi_libre, spi_recursos
+        self.tau_samples = tau
+        self.pred_libre_samples, self.pred_recursos_samples = pred_libre, pred_recursos
+        self.n_samples, self.seed = n_samples, seed
+
+    def calidad_prevision(self):
+        """Sesgo, error absoluto medio y correlación de T/SPI con cada línea base."""
+        def medidas(pred):
+            m = np.isfinite(pred)
+            e = pred[m] - self.tau_samples[m]
+            c = np.corrcoef(self.tau_samples[m], pred[m])[0, 1] if pred[m].std() > 0 else np.nan
+            return {"sesgo": float(e.mean()), "error absoluto medio": float(np.abs(e).mean()),
+                    "correlación": float(c)}
+        return pd.DataFrame({"línea base sin recursos": medidas(self.pred_libre_samples),
+                             "línea base con recursos": medidas(self.pred_recursos_samples)}).T
+
+    def summary(self):
+        def fila(x):
+            x = x[np.isfinite(x)]
+            return {"media": x.mean(), "desv. típica": x.std(ddof=1), "P10": np.quantile(x, .1), "P90": np.quantile(x, .9)}
+        return pd.DataFrame({"SPI sin recursos": fila(self.spi_libre), "SPI con recursos": fila(self.spi_recursos),
+                             "duración real": fila(self.tau_samples),
+                             "T/SPI sin recursos": fila(self.pred_libre_samples),
+                             "T/SPI con recursos": fila(self.pred_recursos_samples)}).T
+
+    def __repr__(self):
+        return (f"MonteCarloValorGanadoRecursosResult(t={self.t_control}, n={self.n_samples}, "
+                f"SPI sin recursos={np.nanmean(self.spi_libre):.3f}, con recursos={np.nanmean(self.spi_recursos):.3f})")
 
 
 # ---------------------------------------------------------------------------

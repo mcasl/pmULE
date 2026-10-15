@@ -265,6 +265,7 @@ Diagramas de Gantt del valor planificado, ganado y coste real; CPI, SPI, EAC, VA
 [ValorGanado 18](colecciones/12_valor_ganado/ValorGanado_18.html) — *vigilar* (nivel 2): 9 actividades; qué vigilar cruzando SPI/CPI por actividad con la holgura  
 [ValorGanado 19](colecciones/12_valor_ganado/ValorGanado_19.html) — *prevision-incertidumbre* (nivel 3): duraciones triangulares y costes inciertos; controles en las semanas [6, 12, 17]  
 [ValorGanado 20](colecciones/12_valor_ganado/ValorGanado_20.html) — *ev-recursos* (nivel 3): límite de 3 operarios y línea base sin recursos  
+[ValorGanado 21](colecciones/12_valor_ganado/ValorGanado_21.html) — *ev-recursos-incertidumbre* (nivel 3): límite de 3 operarios; dos líneas base; control en la semana 11  
 
 ## La fórmula del tiempo de compleción τ = ‖R·t‖∞
 

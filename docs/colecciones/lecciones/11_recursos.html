@@ -4049,6 +4049,7 @@ window.Quarto = {
 <p><strong>Medir la irregularidad.</strong> La suma de las cargas es fija (cada actividad consume lo suyo dure lo que dure la programación), así que para comparar perfiles se usa la <strong>suma de cuadrados</strong> de las cargas: es mínima cuando el perfil es plano. Mover una actividad de un periodo con carga <span class="math inline">\(c_1\)</span> a otro con carga <span class="math inline">\(c_2 &lt; c_1\)</span> reduce la suma de cuadrados.</p>
 <p><strong>Nivelación.</strong> Desplazar actividades <em>dentro de su holgura</em> para reducir la suma de cuadrados sin cambiar la duración del proyecto. Las críticas no se mueven. Heurística habitual: recorrer las actividades no críticas (de menor a mayor holgura, o de mayor a menor recurso) y probar cada desplazamiento posible; aceptar el que más reduce la suma de cuadrados; repetir hasta que ninguno mejore. Al desplazar una actividad cambian las holguras de sus sucesoras, así que hay que recalcular.</p>
 <p><strong>Asignación con límite.</strong> Si en algún periodo la carga supera el recurso disponible <span class="math inline">\(L\)</span>, hay que aplazar actividades. El algoritmo de <strong>Wiest-Levy</strong> (y, en general, los planificadores en paralelo) recorren los periodos: en cada uno, las actividades disponibles (predecesoras terminadas) se ordenan por una regla de prioridad y se admiten mientras quepan; las que no caben esperan (la librería inserta una actividad de espera 💤). Si una actividad crítica tiene que esperar, el proyecto se alarga. Reglas de prioridad habituales: menor holgura total primero (la más usada), menor duración, más recurso, orden de identificación. Ninguna garantiza el óptimo: el problema es NP-duro.</p>
+<p><strong>Varios recursos a la vez.</strong> Con <span class="math inline">\(K\)</span> recursos cada actividad tiene un vector de demanda <span class="math inline">\((r_1,\dots,r_K)\)</span> y cada periodo un vector de límites <span class="math inline">\((L_1,\dots,L_K)\)</span>. El esquema es el mismo; solo cambia la prueba de cabida: una actividad empieza si, <strong>para todos los recursos y en todas las semanas que ocuparía</strong>, la carga ya comprometida más su demanda no supera el límite. Basta que uno se sature para que espere, y distintos recursos pueden mandar en tramos distintos del calendario (el cuello de botella cambia). Resolver los recursos de uno en uno no sirve: al desplazar actividades por un recurso se crean picos en el otro.</p>
 <p><strong>Factibilidad.</strong> Ninguna programación es posible con menos recurso del que exige una sola actividad: el límite mínimo es <span class="math inline">\(\max_i r_i\)</span>. La tabla «recurso disponible → duración» es escalonada y decreciente; con el coste del recurso y el coste por periodo se elige el nivel que minimiza el coste total.</p>
 <p><strong>Recursos consumibles.</strong> Un material que se compra y se guarda impone una restricción <em>acumulada</em> (lo consumido hasta <span class="math inline">\(t\)</span> no supera lo recibido hasta <span class="math inline">\(t\)</span>); un suministro que no se puede almacenar (electricidad contratada, horas de una grúa alquilada por días) impone una restricción <em>por periodo</em>, como un recurso renovable.</p>
 </section>
@@ -4179,7 +4180,7 @@ window.Quarto = {
 </tbody>
 </table>
 <p>Suma de cuadrados: <span class="math inline">\(9 + 9 + 9 + 36 + 16 + 16 + 9 + 4 + 4 + 4 = 116\)</span>.</p>
-<div id="f602ed74" class="cell" data-execution_count="2">
+<div id="89e71378" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -4189,7 +4190,7 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<div id="78979fd8" class="cell" data-execution_count="3">
+<div id="0aee27c3" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -4210,10 +4211,16 @@ window.Quarto = {
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>datos_asig, gantt_asig, dibujo <span class="op">=</span> proyecto.copy().asignar(data<span class="op">=</span>datos, duration_label<span class="op">=</span><span class="st">&#39;duration&#39;</span>, resource_label<span class="op">=</span><span class="st">&#39;resources&#39;</span>, maximo<span class="op">=</span>[<span class="dv">4</span>], report<span class="op">=</span><span class="va">False</span>)</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>suma, dibujo <span class="op">=</span> proyecto.copy().evaluar_desplazamiento(datos, <span class="st">&#39;duration&#39;</span>, <span class="st">&#39;resources&#39;</span>, D<span class="op">=</span><span class="dv">3</span>)   <span class="co"># un desplazamiento concreto</span></span></code></pre></div><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></div>
 <p><code>nivelar</code>, <code>asignar</code> y <code>desplazar</code> modifican el proyecto (añaden esperas): trabajar sobre <code>proyecto.copy()</code>.</p>
+<p>Para varios recursos con límite simultáneo:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> proyecto.asignar_multi(datos, <span class="st">&#39;duration&#39;</span>, [<span class="st">&#39;operarios&#39;</span>, <span class="st">&#39;equipos&#39;</span>], [<span class="dv">4</span>, <span class="dv">2</span>])</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>res.duracion      <span class="co"># duración con recursos</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>res.traza         <span class="co"># por periodo: quién empieza, quién espera y qué recurso lo bloquea</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>res.gantts[<span class="st">&#39;equipos&#39;</span>]   <span class="co"># Gantt de cada recurso con las esperas 💤 y la fila Máximo</span></span></code></pre></div><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>asignar_multi</code> no modifica el proyecto (trabaja sobre una copia, disponible en <code>res.proyecto</code>).</p>
 </section>
 <section id="qué-practica-cada-variante" class="level2">
 <h2 class="anchored" data-anchor-id="qué-practica-cada-variante">Qué practica cada variante</h2>
-<p><em>nivelacion</em>: cargas, suma de cuadrados y nivelación por mínimos cuadrados. <em>asignacion</em>: Wiest-Levy con límite por tramos y con límite fijo. <em>dos-recursos</em>: dos tipos de recurso y evaluación de un desplazamiento propuesto. <em>consumible</em>: restricción semanal frente a acumulada. <em>limite-insuficiente</em>: factibilidad, tabla operarios → duración y número óptimo. <em>reglas-prioridad</em>: planificador en paralelo con tres reglas frente a Wiest-Levy. <em>interrumpibles</em>: con y sin interrupción de actividades.</p>
+<p><em>nivelacion</em>: cargas, suma de cuadrados y nivelación por mínimos cuadrados. <em>asignacion</em>: Wiest-Levy con límite por tramos y con límite fijo. <em>dos-recursos</em>: dos tipos de recurso y evaluación de un desplazamiento propuesto. <em>consumible</em>: restricción semanal frente a acumulada. <em>limite-insuficiente</em>: factibilidad, tabla operarios → duración y número óptimo. <em>reglas-prioridad</em>: planificador en paralelo con tres reglas frente a Wiest-Levy. <em>interrumpibles</em>: con y sin interrupción de actividades. <em>limites-simultaneos</em>: dos recursos con límite a la vez (<code>asignar_multi</code>), recurso que bloquea cada espera y cuello de botella.</p>
 
 
 </section>

@@ -160,5 +160,27 @@ class TestValorGanadoRecursos(unittest.TestCase):
         self.assertTrue(np.allclose(t["SPI"].dropna(), 1.0))
 
 
+class TestValorGanadoMCRecursos(unittest.TestCase):
+
+    def test_determinista_con_recursos_la_linea_base_realista_es_exacta(self):
+        r = pg().monte_carlo_valor_ganado_recursos(CTE, DATA["duration"], DATA[["R"]], ["R"], [1], BAC,
+                                                  t_control=6, n_samples=20, seed=0)
+        self.assertEqual(r.T_libre, 10)
+        self.assertEqual(r.T_recursos, 12)
+        self.assertTrue(np.allclose(r.spi_recursos, 1.0))
+        self.assertTrue(np.allclose(r.pred_recursos_samples, 12))
+        self.assertTrue(np.all(r.spi_libre < 1.0))
+        self.assertTrue(np.allclose(r.tau_samples, 12))
+
+    def test_con_dispersion_la_linea_base_realista_predice_mejor(self):
+        dist = {a: ("triangular", max(1, d - 1), d, d + 2) for a, d in DATA["duration"].items()}
+        r = pg().monte_carlo_valor_ganado_recursos(dist, DATA["duration"], DATA[["R"]], ["R"], [1], BAC,
+                                                  t_control=6, n_samples=500, seed=2)
+        q = r.calidad_prevision()
+        self.assertLess(q.loc["línea base con recursos", "error absoluto medio"],
+                        q.loc["línea base sin recursos", "error absoluto medio"])
+        self.assertEqual(r.summary().shape[0], 5)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4012,6 +4012,7 @@ window.Quarto = {
   <li><a href="#conceptos" id="toc-conceptos" class="nav-link" data-scroll-target="#conceptos">Conceptos</a></li>
   <li><a href="#ejemplo-guía-a-mano-tres-réplicas" id="toc-ejemplo-guía-a-mano-tres-réplicas" class="nav-link" data-scroll-target="#ejemplo-guía-a-mano-tres-réplicas">Ejemplo guía a mano (tres réplicas)</a></li>
   <li><a href="#con-pmule" id="toc-con-pmule" class="nav-link" data-scroll-target="#con-pmule">Con pmULE</a></li>
+  <li><a href="#con-recursos-limitados" id="toc-con-recursos-limitados" class="nav-link" data-scroll-target="#con-recursos-limitados">Con recursos limitados</a></li>
   <li><a href="#qué-practica-cada-variante" id="toc-qué-practica-cada-variante" class="nav-link" data-scroll-target="#qué-practica-cada-variante">Qué practica cada variante</a></li>
   </ul>
 </nav>
@@ -4136,9 +4137,13 @@ window.Quarto = {
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> proyecto.monte_carlo({<span class="st">&#39;A&#39;</span>: (<span class="st">&#39;normal&#39;</span>, <span class="dv">3</span>, <span class="fl">0.5</span>), <span class="st">&#39;B&#39;</span>: (<span class="st">&#39;triangular&#39;</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>), ...}, n_samples<span class="op">=</span><span class="dv">10000</span>, seed<span class="op">=</span><span class="dv">1</span>)</span>
 <span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>res.summary()<span class="op">;</span> res.sensitivity_mean       <span class="co"># criticidad de las actividades</span></span></code></pre></div><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
+<section id="con-recursos-limitados" class="level2">
+<h2 class="anchored" data-anchor-id="con-recursos-limitados">Con recursos limitados</h2>
+<p><code>monte_carlo_recursos</code> sortea las duraciones, calcula la duración sin límite (CPM) y <strong>replanifica</strong> con los límites en cada réplica (<code>asignar_multi</code>). La duración con recursos es mayor y más dispersa, la probabilidad de cumplir un plazo puede caer de casi segura a casi imposible, la criticidad con recursos incluye actividades que no son críticas en el CPM, y <code>bloqueos</code> indica con qué frecuencia cada recurso retrasa alguna actividad.</p>
+</section>
 <section id="qué-practica-cada-variante" class="level2">
 <h2 class="anchored" data-anchor-id="qué-practica-cada-variante">Qué practica cada variante</h2>
-<p><em>normal</em>, <em>triangular</em>, <em>beta-pert</em>: réplicas con <span class="math inline">\(R\,\mathcal{T}\)</span>, descriptores, comparación con la normal del camino crítico, criticidad de rutas y actividades. <em>a-mano</em>: cinco réplicas con lápiz. <em>mixtas</em>: distribuciones distintas por actividad con <code>monte_carlo</code>. <em>convergencia</em>: error típico de la media y del percentil 90 en función de <span class="math inline">\(N\)</span>. <em>correlacionadas</em>: factor común y su efecto. <em>percentiles</em>: leer P10…P95, probabilidad de penalización, retraso esperado y margen a comprometer.</p>
+<p><em>normal</em>, <em>triangular</em>, <em>beta-pert</em>: réplicas con <span class="math inline">\(R\,\mathcal{T}\)</span>, descriptores, comparación con la normal del camino crítico, criticidad de rutas y actividades. <em>a-mano</em>: cinco réplicas con lápiz. <em>mixtas</em>: distribuciones distintas por actividad con <code>monte_carlo</code>. <em>convergencia</em>: error típico de la media y del percentil 90 en función de <span class="math inline">\(N\)</span>. <em>correlacionadas</em>: factor común y su efecto. <em>percentiles</em>: leer P10…P95, probabilidad de penalización, retraso esperado y margen a comprometer. <em>recursos-limitados</em>: Monte Carlo con límite de operarios, probabilidad de cumplir con y sin recursos, criticidad y bloqueos.</p>
 
 
 </section>

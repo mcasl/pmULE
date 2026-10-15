@@ -4012,6 +4012,7 @@ window.Quarto = {
   <li><a href="#conceptos" id="toc-conceptos" class="nav-link" data-scroll-target="#conceptos">Conceptos</a></li>
   <li><a href="#ejemplo-guía" id="toc-ejemplo-guía" class="nav-link" data-scroll-target="#ejemplo-guía">Ejemplo guía</a></li>
   <li><a href="#con-pmule" id="toc-con-pmule" class="nav-link" data-scroll-target="#con-pmule">Con pmULE</a></li>
+  <li><a href="#valor-ganado-con-incertidumbre-y-con-recursos" id="toc-valor-ganado-con-incertidumbre-y-con-recursos" class="nav-link" data-scroll-target="#valor-ganado-con-incertidumbre-y-con-recursos">Valor ganado con incertidumbre y con recursos</a></li>
   <li><a href="#qué-practica-cada-variante" id="toc-qué-practica-cada-variante" class="nav-link" data-scroll-target="#qué-practica-cada-variante">Qué practica cada variante</a></li>
   </ul>
 </nav>
@@ -4173,9 +4174,13 @@ window.Quarto = {
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>acumulados <span class="op">=</span> gantts[<span class="st">&#39;acumulados&#39;</span>]            <span class="co"># PV, EV, AC por semana</span></span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>plot_curvas_valor_ganado(gantts)             <span class="co"># curvas S</span></span></code></pre></div><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
+<section id="valor-ganado-con-incertidumbre-y-con-recursos" class="level2">
+<h2 class="anchored" data-anchor-id="valor-ganado-con-incertidumbre-y-con-recursos">Valor ganado con incertidumbre y con recursos</h2>
+<p><code>monte_carlo_valor_ganado</code> simula las duraciones y los costes reales y calcula SPI y CPI en una fecha de control; las previsiones clásicas (T/SPI, BAC/CPI) se comparan con lo que ocurre en cada réplica (sesgo, error, correlación): son mejores cuanto más avanzado está el proyecto, y una alarma por umbral de SPI tiene sensibilidad y falsas alarmas. <code>valor_ganado_recursos</code> toma una línea base sin recursos y una ejecución con límite: el SPI cae desde la primera espera aunque nadie trabaje peor. La línea base debe incluir los recursos. <code>monte_carlo_valor_ganado_recursos</code> lo mide con las dos cosas a la vez (duraciones aleatorias y límite): compara la previsión T/SPI con una línea base ingenua y con una realista.</p>
+</section>
 <section id="qué-practica-cada-variante" class="level2">
 <h2 class="anchored" data-anchor-id="qué-practica-cada-variante">Qué practica cada variante</h2>
-<p><em>indicadores-eac</em>: Gantts de PV, EV y AC, variaciones, índices, tres EAC, VAC y TCPI. <em>earned-schedule</em>: ES, SPI(t) y duración prevista frente al SPI clásico. <em>tendencia</em>: tres puntos de control y evolución de los índices. <em>coste-bien-plazo-mal</em> y <em>plazo-bien-coste-mal</em>: lectura de las combinaciones de CPI y SPI. <em>diagnostico</em>: una resolución con CPI y SPI intercambiados. <em>inverso-desde-curvas</em>: sólo las curvas S. <em>coste-no-uniforme</em>: perfiles de desembolso no uniformes y su efecto sobre PV y SPI. <em>vigilar</em>: índices por actividad cruzados con la holgura.</p>
+<p><em>indicadores-eac</em>: Gantts de PV, EV y AC, variaciones, índices, tres EAC, VAC y TCPI. <em>earned-schedule</em>: ES, SPI(t) y duración prevista frente al SPI clásico. <em>tendencia</em>: tres puntos de control y evolución de los índices. <em>coste-bien-plazo-mal</em> y <em>plazo-bien-coste-mal</em>: lectura de las combinaciones de CPI y SPI. <em>diagnostico</em>: una resolución con CPI y SPI intercambiados. <em>inverso-desde-curvas</em>: sólo las curvas S. <em>coste-no-uniforme</em>: perfiles de desembolso no uniformes y su efecto sobre PV y SPI. <em>vigilar</em>: índices por actividad cruzados con la holgura. <em>prevision-incertidumbre</em>: calidad de T/SPI y BAC/CPI con duraciones y costes aleatorios y fiabilidad de una alarma de SPI. <em>ev-recursos</em>: línea base sin recursos y ejecución con límite de operarios. <em>ev-recursos-incertidumbre</em>: límite de operarios y duraciones triangulares; qué línea base da mejor previsión.</p>
 
 
 </section>

@@ -4012,6 +4012,8 @@ window.Quarto = {
   <li><a href="#conceptos" id="toc-conceptos" class="nav-link" data-scroll-target="#conceptos">Conceptos</a></li>
   <li><a href="#ejemplo-guía" id="toc-ejemplo-guía" class="nav-link" data-scroll-target="#ejemplo-guía">Ejemplo guía</a></li>
   <li><a href="#con-pmule" id="toc-con-pmule" class="nav-link" data-scroll-target="#con-pmule">Con pmULE</a></li>
+  <li><a href="#reducir-con-recursos-limitados" id="toc-reducir-con-recursos-limitados" class="nav-link" data-scroll-target="#reducir-con-recursos-limitados">Reducir con recursos limitados</a></li>
+  <li><a href="#reducir-con-duraciones-inciertas" id="toc-reducir-con-duraciones-inciertas" class="nav-link" data-scroll-target="#reducir-con-duraciones-inciertas">Reducir con duraciones inciertas</a></li>
   <li><a href="#errores-frecuentes" id="toc-errores-frecuentes" class="nav-link" data-scroll-target="#errores-frecuentes">Errores frecuentes</a></li>
   <li><a href="#qué-practica-cada-variante" id="toc-qué-practica-cada-variante" class="nav-link" data-scroll-target="#qué-practica-cada-variante">Qué practica cada variante</a></li>
   </ul>
@@ -4125,6 +4127,14 @@ window.Quarto = {
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> linprog(c<span class="op">=</span>cur[acts], A_ub<span class="op">=-</span>R.values, b_ub<span class="op">=</span>T_obj <span class="op">-</span> R.values <span class="op">@</span> d[acts],</span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>              bounds<span class="op">=</span>[(<span class="dv">0</span>, d[a] <span class="op">-</span> tope[a]) <span class="cf">for</span> a <span class="kw">in</span> acts], method<span class="op">=</span><span class="st">&#39;highs&#39;</span>)</span></code></pre></div><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
+<section id="reducir-con-recursos-limitados" class="level2">
+<h2 class="anchored" data-anchor-id="reducir-con-recursos-limitados">Reducir con recursos limitados</h2>
+<p>Con un límite de recursos, el camino crítico deja de mandar: la duración la fija la <strong>cadena crítica con recursos</strong> (precedencias más esperas por recurso). Acortar la actividad con menor CUR (Ackoff-Sasieni sin recursos) puede no acortar nada, e incluso hay anomalías (acortar una actividad puede alargar el proyecto). <code>crashing_recursos</code> replanifica tras cada candidato (cortes de la cadena, actividades sueltas, parejas) y se queda con el más barato que de verdad acorta; <code>crashing_recursos_exacto</code> da el óptimo por programación entera para comparar, y <code>cadena_critica_recursos</code> muestra los arcos de precedencia y de recurso. Con <code>demanda_extra</code>, acelerar consume el recurso escaso. Sin recursos el problema es una programación lineal con óptimo entero (matriz de incidencia); con recursos aparece la brecha de integralidad. Alternativa: ampliar el recurso en lugar de acelerar.</p>
+</section>
+<section id="reducir-con-duraciones-inciertas" class="level2">
+<h2 class="anchored" data-anchor-id="reducir-con-duraciones-inciertas">Reducir con duraciones inciertas</h2>
+<p><code>monte_carlo_crashing</code> sortea las duraciones una vez y aplica a cada réplica las reducciones de Ackoff-Sasieni paso a paso (números aleatorios comunes): da la probabilidad de cumplir el plazo, la duración media y el coste en función de los periodos recortados. Reducir las duraciones esperadas hasta el plazo solo da una probabilidad moderada de cumplir; la seguridad cuesta reducciones adicionales y los últimos puntos de probabilidad son los más caros.</p>
+</section>
 <section id="errores-frecuentes" class="level2">
 <h2 class="anchored" data-anchor-id="errores-frecuentes">Errores frecuentes</h2>
 <ul>
@@ -4136,7 +4146,7 @@ window.Quarto = {
 </section>
 <section id="qué-practica-cada-variante" class="level2">
 <h2 class="anchored" data-anchor-id="qué-practica-cada-variante">Qué practica cada variante</h2>
-<p><em>cur-y-ackoff</em>: CUR y reducción de tres semanas con un paso de dos actividades. <em>costes-indirectos</em>: curva coste-duración y duración óptima. <em>penalizacion</em>: plazo con penalización. <em>barata-no-optima</em>: la crítica más barata no sirve si no es común. <em>desaceleracion</em>: relajar el plazo y deshacer el paso más caro. <em>programacion-lineal</em>: el óptimo exacto frente al voraz. <em>cur-por-tramos</em>: coste marginal creciente y por qué funciona el paso a paso si el coste es convexo.</p>
+<p><em>cur-y-ackoff</em>: CUR y reducción de tres semanas con un paso de dos actividades. <em>costes-indirectos</em>: curva coste-duración y duración óptima. <em>penalizacion</em>: plazo con penalización. <em>barata-no-optima</em>: la crítica más barata no sirve si no es común. <em>desaceleracion</em>: relajar el plazo y deshacer el paso más caro. <em>programacion-lineal</em>: el óptimo exacto frente al voraz. <em>cur-por-tramos</em>: coste marginal creciente y por qué funciona el paso a paso si el coste es convexo. <em>crashing-recursos</em>: límite de operarios, Ackoff sin recursos que no acorta, cadena crítica con recursos, modelo con recurso y contratar frente a acelerar. <em>crashing-incertidumbre</em>: probabilidad de cumplir el plazo, coste de la seguridad y reducción determinista frente a probabilística.</p>
 
 
 </section>

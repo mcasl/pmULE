@@ -341,6 +341,7 @@ Variantes:
   - `vigilar` (nivel 2): SPI y CPI por actividad cruzados con la holgura: qué amenaza el plazo, qué el presupuesto y qué vigilar
   - `prevision-incertidumbre` (nivel 3): SPI y CPI con duraciones y costes aleatorios: calidad de T/SPI y BAC/CPI en cada fecha de control y fiabilidad de una alarma
   - `ev-recursos` (nivel 3): línea base sin recursos y ejecución con límite de operarios: el SPI cae desde la primera espera
+  - `ev-recursos-incertidumbre` (nivel 3): límite de operarios y duraciones triangulares: SPI y T/SPI con línea base sin recursos frente a línea base con recursos
 
 - `ValorGanado_01` [indicadores-eac, nivel 1] — 9 actividades, un punto de control (semana 10), EAC/VAC/TCPI
 - `ValorGanado_02` [earned-schedule, nivel 2] — 8 actividades, un punto de control (semana 6), programación ganada
@@ -362,6 +363,7 @@ Variantes:
 - `ValorGanado_18` [vigilar, nivel 2] — 9 actividades; qué vigilar cruzando SPI/CPI por actividad con la holgura
 - `ValorGanado_19` [prevision-incertidumbre, nivel 3] — duraciones triangulares y costes inciertos; controles en las semanas [6, 12, 17]
 - `ValorGanado_20` [ev-recursos, nivel 3] — límite de 3 operarios y línea base sin recursos
+- `ValorGanado_21` [ev-recursos-incertidumbre, nivel 3] — límite de 3 operarios; dos líneas base; control en la semana 11
 
 ## 13_formula_compleccion — La fórmula del tiempo de compleción τ = ‖R·t‖∞
 
