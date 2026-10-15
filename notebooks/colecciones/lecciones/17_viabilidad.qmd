@@ -78,6 +78,10 @@ Si una fracción de la inversión se financia con un préstamo al tipo $i$ con c
 
 Los desembolsos de la fase de inversión no son un bloque en $t = 0$: salen del Gantt (el BAC de cada actividad repartido entre sus periodos; la fila *Total* del Gantt es el desembolso de cada mes) y los ingresos empiezan cuando el proyecto termina. Con periodos mensuales se usa la tasa mensual equivalente $k_m = (1 + k)^{1/12} - 1$. Un retraso de la ejecución desplaza los ingresos y destruye VAN; cada mes de adelanto vale aproximadamente lo mismo, y ese valor es el precio máximo que merece la pena pagar por acortar el proyecto (Ackoff-Sasieni, lección 10): se reduce mientras el sobrecoste del paso sea menor que el VAN que gana adelantar un mes.
 
+## Incertidumbre: la distribución del VAN
+
+Si las duraciones son aleatorias, el VAN también lo es: cada réplica da un calendario (el proyecto termina cuando acaba el último camino), unos desembolsos con fechas distintas y un inicio de cobros distinto. `proyecto.monte_carlo_van(...)` simula las duraciones (y opcionalmente el ingreso y los costes), calcula el VAN de cada réplica en forma cerrada y devuelve la distribución: media, desviación, $P(\text{VAN} < 0)$, percentiles y CVaR. Tres ideas que conviene ver en los números: (1) el VAN medio es **menor** que el VAN determinista, porque la duración media del proyecto supera la del plan (fusión de caminos casi críticos) y cada mes de retraso desplaza un flujo descontado; (2) la incertidumbre del ingreso, lineal en el VAN, ensancha la distribución pero no mueve la media; (3) alargar una actividad con holgura puede mejorar el VAN, porque solo difiere el pago de su presupuesto. Reducir una incertidumbre rara vez sube mucho el VAN medio: lo que compra es seguridad (menor $P(\text{VAN} < 0)$ y mejor cola).
+
 ## Con Python
 
 ```python
@@ -90,4 +94,4 @@ Los cuadernos de la colección incluyen `van`, `tir`, `payback`, `tabla_descuent
 
 ## Qué practica cada variante
 
-*caso-base*: tabla de flujos completa, VAN con tabla de descuento, TIR y perfil, paybacks y supuesto frágil. *vinculo-proyecto*: desembolsos desde el Gantt, VAN mensual, coste de un retraso y reducción con Ackoff frente al valor de un mes. *alternativas*: conflicto VAN/TIR, tasa de Fisher y anualidad equivalente. *sensibilidad*: umbrales, araña, escenarios e inflación. *financiacion*: cuadro del préstamo, flujo del accionista, TIR del proyecto frente a la del accionista y apalancamiento.
+*caso-base*: tabla de flujos completa, VAN con tabla de descuento, TIR y perfil, paybacks y supuesto frágil. *vinculo-proyecto*: desembolsos desde el Gantt, VAN mensual, coste de un retraso y reducción con Ackoff frente al valor de un mes. *alternativas*: conflicto VAN/TIR, tasa de Fisher y anualidad equivalente. *sensibilidad*: umbrales, araña, escenarios e inflación. *financiacion*: cuadro del préstamo, flujo del accionista, TIR del proyecto frente a la del accionista y apalancamiento. *van-montecarlo*: distribución del VAN con duraciones triangulares e ingreso incierto, efecto de cada incertidumbre, tornado y valor de reducirla (`monte_carlo_van`).

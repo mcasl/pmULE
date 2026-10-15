@@ -665,6 +665,150 @@ def _financiacion(rng):
     return celdas, f"{caso['tema']}: préstamo del {alfa:.0%} al {i:.0%} a {n_p} años; TIR proyecto {res['tir']:.1%}"
 
 
+def _van_montecarlo(rng):
+    """VAN con duraciones triangulares e ingreso incierto: distribución del VAN (monte_carlo_van),
+    descomposición de efectos, tornado y valor de reducir cada incertidumbre."""
+    estado = {}
+
+    def acepta(i):
+        if not (1 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10 and 10 <= i["T"] <= 18):
+            return False
+        nombres = list(i["D"].index)
+        BAC = pd.Series(rng.integers(2, 9, size=len(nombres)) * 25, index=nombres, name="BAC")
+        a, m, b = P.tres_estimaciones_triangular(rng, i["D"])
+        if ((b - a) < 2).sum() > len(nombres) // 2:
+            return False
+        k = float(rng.choice([0.08, 0.10, 0.12]))
+        N = int(rng.choice([36, 48, 60]))
+        pg = i["proyecto"]
+        fijas = {x: ("uniform", float(d), float(d)) for x, d in i["D"].items()}
+        v0 = pg.monte_carlo_van(fijas, BAC, 0.0, N, k, n_samples=1, seed=0).van_samples[0]
+        v1 = pg.monte_carlo_van(fijas, BAC, 1.0, N, k, n_samples=1, seed=0).van_samples[0]
+        coste, serie = -v0, v1 - v0
+        F0 = coste / serie                                  # ingreso mensual que anula el VAN determinista
+        F = float(np.ceil(F0 * float(rng.choice([1.10, 1.18, 1.28])) / 5) * 5)
+        delta = float(np.round(0.3 * F / 5) * 5)
+        dist = {x: ("triangular", float(a[x]), float(m[x]), float(b[x])) for x in nombres}
+        res = pg.monte_carlo_van(dist, BAC, ("triangular", F - delta, F, F + delta), N, k, n_samples=3000, seed=0)
+        van_det = F * serie - coste
+        if van_det <= 0 or not (0.08 <= res.prob_negativo <= 0.45):
+            return False
+        if res.van_mean > van_det - 0.01 * abs(van_det):    # las duraciones inciertas deben bajar la media
+            return False
+        estado.update(BAC=BAC, a=a, m=m, b=b, k=k, N=N, F=F, delta=delta)
+        return True
+
+    info = P.buscar(rng, acepta, n=int(rng.choice([8, 9])), n_inicio=int(rng.choice([2, 3])), n_fin=int(rng.choice([1, 2])),
+                    max_intentos=6000)
+    D, T, cal = info["D"], int(info["T"]), info["calendario"]
+    BAC, a, m, b = estado["BAC"], estado["a"], estado["m"], estado["b"]
+    k, N, F, delta = estado["k"], estado["N"], estado["F"], estado["delta"]
+    I0 = float(BAC.sum())
+    df = P.tabla_base(info, duration=D, a=a, m=m, b=b, BAC=BAC)
+    celdas = [md("# Enunciado"),
+              md("Una empresa va a ejecutar el proyecto de inversión cuyo cuadro de prelaciones se adjunta, con la duración "
+                 "esperada de cada actividad (meses), sus tres estimaciones (optimista $a$, más probable $m$, pesimista $b$, "
+                 "con distribución triangular) y su presupuesto (BAC, k€). El coste de cada actividad se desembolsa "
+                 "uniformemente a lo largo de su duración. Cuando el proyecto termina, la instalación genera un flujo de caja "
+                 f"neto mensual de {F:.0f} k€ durante {N} meses, pero ese flujo es incierto: entre {F - delta:.0f} y "
+                 f"{F + delta:.0f} k€ (triangular simétrica). La empresa descuenta al {k:.0%} anual.")]
+    celdas.append(preguntas([
+        "Con las duraciones esperadas, calcule el calendario, el camino crítico y el VAN determinista del proyecto "
+        "(flujo mensual, tasa mensual equivalente).",
+        "Simule 5 000 réplicas: duraciones triangulares e ingreso mensual incierto. De cada réplica obtenga la duración "
+        "del proyecto y su VAN. Dibuje los histogramas y calcule la media, la desviación típica, P(VAN < 0) y el percentil 5 %.",
+        "¿Por qué la media del VAN simulado no coincide con el VAN determinista? Separe los dos efectos simulando "
+        "por separado solo la incertidumbre de las duraciones y solo la del ingreso.",
+        "¿Qué variables explican la variabilidad del VAN? Calcule la correlación de Spearman del VAN con cada duración y "
+        "con el ingreso, y compárela con el índice de criticidad de cada actividad. ¿Hay alguna actividad cuya demora "
+        "*mejore* el VAN? ¿Por qué?",
+        "La empresa puede (a) encargar un estudio de mercado que fije el ingreso en su valor central, o (b) contratar a "
+        "un subcontratista que fije la duración de la actividad más influyente en su valor esperado. Evalúe qué cambia "
+        "con cada opción (y con ambas) en la media, la desviación y P(VAN < 0), y qué compra realmente cada una."]))
+    celdas.append(code('#| tbl-cap: "Datos del proyecto"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code(FINANZAS))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"F, delta, N, k = {F}, {delta}, {N}, {k}\n"
+                       "k_mensual = (1 + k) ** (1 / 12) - 1\n"
+                       "I0 = float(datos_proyecto['BAC'].sum())"))
+    celdas += apartado(1)
+    celdas.append(code('#| tbl-cap: "Calendario con las duraciones esperadas (meses)"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "duracion = int(proyecto.duration(datos_proyecto['duration']))\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el camino crítico", label="fig-grafo")
+    celdas.append(code("pagos = pd.Series(0.0, index=range(1, duracion + 1))\n"
+                       "for act, fila in datos_proyecto.iterrows():\n"
+                       "    es, d = int(calendario.loc[act, 'inicio_mas_temprano']), int(fila['duration'])\n"
+                       "    for mes in range(es + 1, es + d + 1):\n"
+                       "        pagos[mes] += fila['BAC'] / d\n"
+                       "flujos = [0.0] + [-float(x) for x in pagos] + [F] * N\n"
+                       "VAN_det = van(flujos, k_mensual)\n"
+                       "criticas = calendario.index[calendario['H_total'] == 0].tolist()\n"
+                       "Markdown(f'Duración {duracion} meses; actividades críticas: {\", \".join(criticas)}. Inversión Σ BAC = {I0:.0f} k€. '\n"
+                       "         f'Con k mensual = {k_mensual:.4%}, el VAN determinista es {VAN_det:.1f} k€.')"))
+    celdas += apartado(2)
+    celdas.append(code("distribuciones = {act: ('triangular', float(f['a']), float(f['m']), float(f['b'])) for act, f in datos_proyecto.iterrows()}\n"
+                       "ingreso = ('triangular', F - delta, F, F + delta)\n"
+                       "mc = proyecto.monte_carlo_van(distribuciones, datos_proyecto['BAC'], ingreso, N, k, n_samples=5000, seed=2025)\n"
+                       "resumen = mc.summary().round(2)\n"
+                       "resumen"))
+    celdas.append(code('#| fig-cap: "Distribución de la duración del proyecto y del VAN (5 000 réplicas)"\n#| label: fig-histogramas\n'
+                       "import matplotlib.pyplot as plt\n"
+                       "fig, ejes = plt.subplots(1, 2, figsize=(10, 3.6))\n"
+                       "ejes[0].hist(mc.tau_samples, bins=range(int(mc.tau_samples.min()), int(mc.tau_samples.max()) + 2), color='#4c78a8', edgecolor='white')\n"
+                       "ejes[0].axvline(duracion, color='k', ls='--', label=f'determinista ({duracion})'); ejes[0].set_xlabel('duración (meses)'); ejes[0].legend()\n"
+                       "ejes[1].hist(mc.van_samples, bins=40, color='#4c78a8', edgecolor='white')\n"
+                       "ejes[1].axvline(VAN_det, color='k', ls='--', label='VAN determinista'); ejes[1].axvline(0, color='#c44', label='VAN = 0')\n"
+                       "ejes[1].set_xlabel('VAN (k€)'); ejes[1].legend(); plt.tight_layout()"))
+    celdas.append(code("Markdown(f'La duración media es {mc.tau_samples.mean():.2f} meses frente a {duracion} del plan; el VAN medio es {mc.van_mean:.1f} k€ '\n"
+                       "         f'(determinista {VAN_det:.1f}), con desviación {mc.van_std:.1f}. P(VAN < 0) = {mc.prob_negativo:.1%} y el percentil 5 % es {mc.cuantil(0.05):.1f} k€.')"))
+    celdas += apartado(3)
+    celdas.append(code("fijas = {act: ('uniform', float(f['duration']), float(f['duration'])) for act, f in datos_proyecto.iterrows()}\n"
+                       "solo_duraciones = proyecto.monte_carlo_van(distribuciones, datos_proyecto['BAC'], F, N, k, n_samples=5000, seed=2025)\n"
+                       "solo_ingreso = proyecto.monte_carlo_van(fijas, datos_proyecto['BAC'], ingreso, N, k, n_samples=5000, seed=2025)\n"
+                       "filas = {'VAN determinista': (VAN_det, 0.0, float(VAN_det < 0))}\n"
+                       "for nombre, r in {'solo duraciones inciertas': solo_duraciones, 'solo ingreso incierto': solo_ingreso, 'ambas': mc}.items():\n"
+                       "    filas[nombre] = (r.van_mean, r.van_std, r.prob_negativo)\n"
+                       "tabla = pd.DataFrame(filas, index=['VAN medio', 'desviación', 'P(VAN < 0)']).T\n"
+                       "display(tabla.round(3))\n"
+                       "ee_ing, ee_dur = 2 * solo_ingreso.van_std / np.sqrt(5000), 2 * solo_duraciones.van_std / np.sqrt(5000)\n"
+                       "Markdown(f'La incertidumbre del ingreso (simétrica y lineal en el VAN) ensancha la distribución pero no mueve la media: '\n"
+                       "         f'{solo_ingreso.van_mean:.1f} ± {ee_ing:.1f} (dos errores estándar de simulación) frente a {VAN_det:.1f}. Las duraciones sí la bajan, hasta '\n"
+                       "         f'{solo_duraciones.van_mean:.1f} ± {ee_dur:.1f}: el proyecto termina cuando termina el último camino, así que la duración media es '\n"
+                       "         f'{solo_duraciones.tau_samples.mean():.2f} > {duracion} (caminos casi críticos que se fusionan) y cada mes de retraso retrasa un flujo descontado. '\n"
+                       "         'Es el mismo sesgo de la aproximación normal, ahora medido en k€.')"))
+    celdas += apartado(4)
+    celdas.append(code("tornado = mc.tornado()\n"
+                       "criticidad = proyecto.monte_carlo(distribuciones, n_samples=5000, seed=2025).sensitivity_mean\n"
+                       "comparacion = pd.DataFrame({'Spearman con el VAN': tornado['Spearman con el VAN']})\n"
+                       "comparacion['índice de criticidad'] = [criticidad.get(v.split()[-1], np.nan) if v.startswith('duración') else np.nan for v in comparacion.index]\n"
+                       "display(comparacion.round(3))\n"
+                       "positivas = [v for v, r in tornado['Spearman con el VAN'].items() if r > 0.02 and v.startswith('duración')]\n"
+                       "Markdown(f'Mandan el ingreso y las actividades con alto índice de criticidad (su retraso retrasa el cobro). '\n"
+                       "         f'Con correlación positiva apreciable: {positivas or \"ninguna\"}. Una actividad con holgura que se alarga no retrasa el cobro y '\n"
+                       "         'desplaza el pago de su BAC hacia meses más descontados, por lo que puede mejorar ligeramente el VAN; el efecto es pequeño.')"))
+    celdas += apartado(5)
+    celdas.append(code("influyente = tornado.index[[v.startswith('duración') for v in tornado.index]][0].split()[-1]\n"
+                       "centrada = dict(distribuciones); centrada[influyente] = ('uniform', float(datos_proyecto.loc[influyente, 'duration']), float(datos_proyecto.loc[influyente, 'duration']))\n"
+                       "opciones = {'sin hacer nada': mc,\n"
+                       "            '(a) fijar el ingreso': proyecto.monte_carlo_van(distribuciones, datos_proyecto['BAC'], F, N, k, n_samples=5000, seed=2025),\n"
+                       "            f'(b) fijar la duración de {influyente}': proyecto.monte_carlo_van(centrada, datos_proyecto['BAC'], ingreso, N, k, n_samples=5000, seed=2025),\n"
+                       "            '(a) y (b)': proyecto.monte_carlo_van(centrada, datos_proyecto['BAC'], F, N, k, n_samples=5000, seed=2025)}\n"
+                       "tabla_op = pd.DataFrame({n: (r.van_mean, r.van_std, r.prob_negativo, r.cvar(0.05)) for n, r in opciones.items()},\n"
+                       "                        index=['VAN medio', 'desviación', 'P(VAN < 0)', 'CVaR 5 %']).T\n"
+                       "display(tabla_op.round(3))\n"
+                       "mejor_riesgo = tabla_op.drop(index=['sin hacer nada', '(a) y (b)'])['P(VAN < 0)'].idxmin()\n"
+                       "Markdown(f'La actividad más influyente es {influyente}. Fijar el ingreso o una duración cambia poco el VAN medio '\n"
+                       "         f'({tabla_op.loc[\"sin hacer nada\", \"VAN medio\"]:.1f} → entre {tabla_op[\"VAN medio\"].drop(\"sin hacer nada\").min():.1f} y {tabla_op[\"VAN medio\"].drop(\"sin hacer nada\").max():.1f}): '\n"
+                       "         f'lo que compra es seguridad. La opción que más reduce P(VAN < 0) es {mejor_riesgo}. Si la empresa es neutral al riesgo, solo vale la pena pagar '\n"
+                       "         'por lo que sube la media; si le preocupa la cola (P(VAN < 0), CVaR), se paga por reducir dispersión.')"))
+    return celdas, f"{len(D)} actividades, {T} meses, I0 = {I0:.0f} k€, ingreso {F:.0f} ± {delta:.0f} k€/mes durante {N} meses, k = {k:.0%}; distribución del VAN"
+
+
 VARIANTES = [
     Variante("caso-base", 1, "flujos de caja libre completos (ventas, costes, amortización, impuesto, circulante, residual), VAN con tabla de descuento, TIR, payback simple y descontado",
              _caso_base),
@@ -676,6 +820,8 @@ VARIANTES = [
              _sensibilidad),
     Variante("financiacion", 3, "cuadro de amortización del préstamo, flujo del accionista con escudo fiscal, TIR del proyecto frente a la del accionista y apalancamiento",
              _financiacion),
+    Variante("van-montecarlo", 3, "duraciones triangulares e ingreso incierto: distribución del VAN (Monte Carlo), P(VAN<0), efecto de cada incertidumbre, tornado y valor de reducirla",
+             _van_montecarlo),
 ]
 
 
