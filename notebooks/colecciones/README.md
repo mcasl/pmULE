@@ -236,6 +236,7 @@ Variantes:
   - `convergencia` (nivel 3): cuántas réplicas hacen falta: error típico de la media y del percentil 90
   - `correlacionadas` (nivel 3): un factor común correlaciona las duraciones expuestas: misma media, más dispersión, menos probabilidad de cumplir
   - `percentiles` (nivel 2): leer la distribución simulada: percentiles, probabilidad de penalización, retraso esperado y margen a comprometer
+  - `recursos-limitados` (nivel 3): Monte Carlo con un límite de operarios: la duración con recursos es mayor y más dispersa; criticidad y bloqueos
 
 - `MonteCarlo_01` [normal, nivel 1] — 8 actividades, 5 rutas, distribución normal
 - `MonteCarlo_02` [triangular, nivel 2] — 9 actividades, 6 rutas, distribución triangular
@@ -253,6 +254,7 @@ Variantes:
 - `MonteCarlo_14` [convergencia, nivel 3] — 8 actividades; convergencia de la media y del percentil 90 con N
 - `MonteCarlo_15` [correlacionadas, nivel 3] — 9 actividades; 4 expuestas a un factor común (σ_F = 0.15)
 - `MonteCarlo_16` [percentiles, nivel 2] — 9 actividades; plazo del cliente 33; percentiles y retraso esperado
+- `MonteCarlo_17` [recursos-limitados, nivel 3] — 8 actividades triangulares; límite 3 operarios, plazo 19
 
 ## 10_reduccion — Reducción de la duración con mínimo coste
 
@@ -268,6 +270,7 @@ Variantes:
   - `desaceleracion` (nivel 2): reducido el proyecto, el plazo se relaja: qué paso deshacer (el más caro) y por qué la curva coste-duración es convexa
   - `programacion-lineal` (nivel 3): reducción óptima por programación lineal con la matriz de caminos frente al voraz de Ackoff-Sasieni
   - `cur-por-tramos` (nivel 3): CUR creciente por tramos: Ackoff con coste marginal frente a un CUR medio; por qué funciona si el coste es convexo
+  - `crashing-recursos` (nivel 3): reducir la duración con un límite de operarios: Ackoff sin recursos falla; cadena crítica con recursos, modelo con recurso y contratar frente a acelerar
 
 - `Reduccion_01` [cur-y-ackoff, nivel 1] — 8 actividades, reducción de 3 semanas
 - `Reduccion_02` [costes-indirectos, nivel 2] — 8 actividades, costes indirectos de 9 k€/semana
@@ -283,6 +286,7 @@ Variantes:
 - `Reduccion_12` [desaceleracion, nivel 2] — 8 actividades; deshacer la reducción más cara al relajar el plazo
 - `Reduccion_13` [programacion-lineal, nivel 3] — 9 actividades; reducir 3 semanas: Ackoff 3 k€ frente a PL 3 k€
 - `Reduccion_14` [cur-por-tramos, nivel 3] — 9 actividades; CUR por tramos, reducir 3 semanas
+- `Reduccion_15` [crashing-recursos, nivel 3] — 9 actividades; límite 3 operarios, reducir dos semanas (Ackoff sin recursos falla)
 
 ## 11_recursos — Nivelación y asignación de recursos
 

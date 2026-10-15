@@ -73,6 +73,10 @@ res = proyecto.monte_carlo({'A': ('normal', 3, 0.5), 'B': ('triangular', 1, 2, 3
 res.summary(); res.sensitivity_mean       # criticidad de las actividades
 ```
 
+## Con recursos limitados
+
+`monte_carlo_recursos` sortea las duraciones, calcula la duración sin límite (CPM) y **replanifica** con los límites en cada réplica (`asignar_multi`). La duración con recursos es mayor y más dispersa, la probabilidad de cumplir un plazo puede caer de casi segura a casi imposible, la criticidad con recursos incluye actividades que no son críticas en el CPM, y `bloqueos` indica con qué frecuencia cada recurso retrasa alguna actividad.
+
 ## Qué practica cada variante
 
-*normal*, *triangular*, *beta-pert*: réplicas con $R\,\mathcal{T}$, descriptores, comparación con la normal del camino crítico, criticidad de rutas y actividades. *a-mano*: cinco réplicas con lápiz. *mixtas*: distribuciones distintas por actividad con `monte_carlo`. *convergencia*: error típico de la media y del percentil 90 en función de $N$. *correlacionadas*: factor común y su efecto. *percentiles*: leer P10…P95, probabilidad de penalización, retraso esperado y margen a comprometer.
+*normal*, *triangular*, *beta-pert*: réplicas con $R\,\mathcal{T}$, descriptores, comparación con la normal del camino crítico, criticidad de rutas y actividades. *a-mano*: cinco réplicas con lápiz. *mixtas*: distribuciones distintas por actividad con `monte_carlo`. *convergencia*: error típico de la media y del percentil 90 en función de $N$. *correlacionadas*: factor común y su efecto. *percentiles*: leer P10…P95, probabilidad de penalización, retraso esperado y margen a comprometer. *recursos-limitados*: Monte Carlo con límite de operarios, probabilidad de cumplir con y sin recursos, criticidad y bloqueos.

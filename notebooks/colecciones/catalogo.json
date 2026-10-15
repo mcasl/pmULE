@@ -1100,6 +1100,17 @@
   "titulo_coleccion": "Método de Monte Carlo"
  },
  {
+  "nombre": "MonteCarlo_17",
+  "coleccion": "09_montecarlo",
+  "variante": "recursos-limitados",
+  "nivel": 3,
+  "subtitulo": "8 actividades triangulares; límite 3 operarios, plazo 19",
+  "grafo": "pert",
+  "ruta": "notebooks/colecciones/09_montecarlo/MonteCarlo_17.py",
+  "semilla": 2026917,
+  "titulo_coleccion": "Método de Monte Carlo"
+ },
+ {
   "nombre": "Reduccion_01",
   "coleccion": "10_reduccion",
   "variante": "cur-y-ackoff",
@@ -1236,6 +1247,16 @@
   "nivel": 3,
   "subtitulo": "9 actividades; CUR por tramos, reducir 3 semanas",
   "ruta": "notebooks/colecciones/10_reduccion/Reduccion_14.py",
+  "semilla": null,
+  "titulo_coleccion": "Reducción de la duración con mínimo coste"
+ },
+ {
+  "nombre": "Reduccion_15",
+  "coleccion": "10_reduccion",
+  "variante": "crashing-recursos",
+  "nivel": 3,
+  "subtitulo": "9 actividades; límite 3 operarios, reducir dos semanas (Ackoff sin recursos falla)",
+  "ruta": "notebooks/colecciones/10_reduccion/Reduccion_15.py",
   "semilla": null,
   "titulo_coleccion": "Reducción de la duración con mínimo coste"
  },
@@ -2085,9 +2106,8 @@
   "variante": "van-montecarlo",
   "nivel": 3,
   "subtitulo": "8 actividades, 18 meses, I0 = 1075 k€, ingreso 30 ± 10 k€/mes durante 60 meses, k = 10%; distribución del VAN",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_11.py",
-  "semilla": 2027711,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
@@ -2096,9 +2116,8 @@
   "variante": "van-montecarlo",
   "nivel": 3,
   "subtitulo": "8 actividades, 18 meses, I0 = 950 k€, ingreso 30 ± 10 k€/mes durante 48 meses, k = 8%; distribución del VAN",
-  "grafo": "roy",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_12.py",
-  "semilla": 2027712,
+  "semilla": null,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
