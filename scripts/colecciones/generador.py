@@ -61,7 +61,7 @@ def semilla_de(semilla, indice, k):
 def generar_ejercicio(plantilla, k, rng, con_contexto=True):
     """Genera las celdas de un ejercicio (sin escribirlo). Devuelve (celdas, subtitulo, variante)."""
     celdas, subtitulo, variante = plantilla.generar(k, rng)
-    if con_contexto and rng.random() < PROB_CONTEXTO:
+    if con_contexto and plantilla.META.get("contexto", True) and rng.random() < PROB_CONTEXTO:
         celdas = contextos.inyectar(celdas, rng)
     return celdas, subtitulo, variante
 

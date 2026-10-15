@@ -1,0 +1,55 @@
+---
+title: "Lección 18 — Casos de decisión con varios implicados"
+subtitle: "Cuantificar cada mensaje, construir la tabla de opciones, decidir con incertidumbre y comunicar a cada parte"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+Las lecciones anteriores enseñan herramientas aisladas: un calendario, un algoritmo de reducción, una probabilidad, un VAN. En un proyecto real las herramientas no llegan solas: llegan **mensajes** de un proveedor que se retrasa, de un inspector que impone una condición, de otro jefe de proyecto que pide operarios, de un contratista que declara un avance, de un director comercial que quiere prometer una fecha, de un consejero que exige una regla. Cada mensaje cambia los datos, pide algo o pone una restricción, y los intereses de quienes los envían no coinciden. Esta colección entrena la secuencia completa: leer los mensajes, traducir cada uno a un cambio en el modelo, cuantificarlo, construir una tabla de opciones con el coste para cada parte, elegir una opción defendible y escribir la respuesta a cada implicado.
+
+## El método en seis pasos
+
+1. **Separar los mensajes por tipo.** Unos *cambian los datos* (una duración, una prelación, un porcentaje de avance, un precio); otros *piden algo* (operarios, una certificación, una fecha); otros *ponen una restricción* (un tope presupuestario, un 90 % de probabilidad, una regla de la casa); y otros *ofrecen* (una entrega parcial, un contrato, una reducción a un precio). Conviene listarlos en una tabla: quién, qué tipo, qué variable del modelo toca.
+2. **Reconstruir la situación de partida** con la herramienta que corresponda (calendario y camino crítico, cargas, valor ganado, PERT, flujos de caja) antes de aplicar ningún cambio. Sin línea base no se puede medir el efecto de nada.
+3. **Aplicar cada cambio por separado y después todos juntos.** Los efectos no siempre se suman: dos retrasos sobre la misma ruta sí; un retraso sobre una ruta con holgura, no. Un porcentaje de avance distinto cambia EV pero no PV ni AC, y por eso mueve a la vez CPI y SPI. Un préstamo de operarios en una semana de pico retrasa; en otra, no.
+4. **Construir la tabla de opciones.** Una fila por opción (no hacer nada, aceptar la oferta, negociar, pagar la reducción, subcontratar, firmar el contrato…) y una columna por cada parte afectada (mi proyecto, el otro proyecto, la empresa, el cliente) más el total. Las opciones «gratis» (cambios de secuencia, entregas parciales, inspecciones en dos fases) van también en la tabla: suelen ser las mejores y nadie las ve hasta que se escriben.
+5. **Meter la incertidumbre.** Una duración media no es un plazo (lección 08); la mejor opción en media no es necesariamente la más robusta. Se recalcula la tabla con probabilidades (probabilidad de cumplir, retraso esperado, coste esperado, peor caso) y se mira si cambia el orden de las opciones. Las medidas sin coste que recortan plazo ganan valor cuando hay incertidumbre, porque dejan margen.
+6. **Decidir y comunicar.** Una decisión defendible es la que se apoya en la tabla, declara qué prefiere (coste esperado, peor caso, cumplimiento de una regla) y asigna el riesgo que queda a alguien que lo acepta por escrito. Cada implicado recibe un mensaje corto con lo que le afecta: el número que le importa, lo que se le pide y cuándo se le volverá a informar.
+
+## Las herramientas que entran en juego
+
+**Retrasos y prelaciones nuevas** (lecciones 04 y 05). Un retraso $x$ en una actividad con holgura total $H$ retrasa el proyecto $\max(0, x - H)$. Una prelación nueva que coloca una actividad detrás de otra crítica la convierte en crítica y añade su duración entera al plazo. Dos cambios sobre la misma ruta se suman; sobre rutas distintas, manda el mayor exceso.
+
+**Reducción con coste** (lección 10). Ackoff-Sasieni da el coste mínimo de recuperar 1, 2, …, $r$ semanas. Puesto frente al coste de cada semana de retraso (alquiler, penalización, lucro cesante) sale el número óptimo de semanas a recuperar: se recupera mientras el coste marginal de la semana sea menor que lo que cuesta no recuperarla. Un tope presupuestario introduce una restricción aparte: la mejor opción puede no ser la que cabe en la bolsa, y entonces hay dos respuestas y hay que decir cuál se elige y por qué.
+
+**Probabilidad y robustez** (lecciones 08 y 09). Para cada opción, la duración media y la desviación típica del camino crítico dan $P(T \le \text{plazo})$ y el retraso esperado $E[\max(0, T - \text{plazo})] = \sigma\,[\varphi(z) - z\,\Phi(-z)]$ con $z = (\text{plazo} - T)/\sigma$. El coste esperado de una opción es su sobrecoste cierto más el coste por semana multiplicado por el retraso esperado. Cuando hay rutas casi críticas, Monte Carlo corrige el optimismo del PERT (sesgo de fusión) y el índice de criticidad dice qué actividades no críticas vigilar.
+
+**Plazo que se promete.** Con las réplicas de la simulación, para cada plazo candidato $D$: penalización esperada $p\,E[(\tau - D)^+]$, bonificación esperada $b\,E[(D - \tau)^+]$ y coste comercial de ofertar más plazo. El plazo óptimo en media está donde la penalización marginal evitada iguala el coste marginal de una semana más de oferta; una exigencia del tipo «90 % de probabilidad» es una preferencia por el riesgo, y su precio es la diferencia de coste esperado entre los dos plazos.
+
+**Recursos compartidos** (lección 11). Un préstamo de $q$ operarios en una ventana de semanas es un límite de recursos *por periodo*: $L$ fuera de la ventana y $L - q$ dentro. Un planificador en paralelo con límite por periodo (la misma idea que Wiest-Levy: en cada semana entran, por orden de holgura, las actividades disponibles que caben; aquí comprobando que caben en *todas* las semanas que ocuparían, porque el límite cambia de una semana a otra y una actividad no se interrumpe) dice qué actividades esperan y cuánto se alarga el proyecto; repetido para todas las ventanas posibles, dice en cuáles el préstamo sale gratis en plazo. La tabla de opciones compara el coste para cada proyecto y para la empresa: el óptimo local (cada jefe de proyecto defiende su plazo) y el global (el director de operaciones) no coinciden.
+
+**Valor ganado y medida del avance** (lección 12). Los índices son tan buenos como el porcentaje de avance que los alimenta: un porcentaje declarado por quien cobra por él es un conflicto de interés. Se calculan PV, EV, AC, CPI, SPI, EAC y TCPI con las dos versiones (la declarada y la verificada), se mira qué cambia (sólo EV, y por tanto los dos índices a la vez) y se estima el retraso de una actividad crítica directamente: semanas trabajadas menos semanas ganadas (avance × duración planificada), si el resto se hace al ritmo previsto. Certificar sólo lo verificado, con acta de discrepancia, es el criterio que protege a las dos partes.
+
+**Inversión con riesgo** (lección 17). Cada mensaje es un escenario (precio, volumen, coste variable) con su VAN; los umbrales dicen a qué variable es más sensible el proyecto. Un contrato a precio fijo es un seguro: tiene una prima (VAN que se pierde si el mercado aguanta) y una indemnización (pérdida que evita si cae); en valor esperado casi nunca compensa, pero puede ser lo que hace cumplir una regla sobre el peor caso. La financiación cambia la TIR del accionista (apalancamiento) y el riesgo, no el valor del proyecto: la decisión de invertir se toma sobre el flujo de caja libre.
+
+## Ejemplo guía
+
+Con el proyecto de las lecciones anteriores (A 3, B 2, C 4 ← A, D 1 ← A y B, E 2 ← B, F 3 ← C y D, G 2 ← E; $T = 10$, crítica A–C–F) llegan dos mensajes: el proveedor de C tardará 2 semanas más, y el cliente exige que G no empiece hasta que termine F. Por separado: C es crítica, así que su retraso va entero al plazo ($T = 12$); G tras F pone a G en el camino crítico y añade su duración: $T = 12$ también (A–C–F–G). Juntos: $T = 14$, porque los dos cambios caen sobre la misma ruta. Si el contratista ofrece acortar A a 3 k€/semana (tope 1) y F a 5 k€/semana (tope 2) y cada semana de retraso cuesta 4 k€, Ackoff recupera 1 semana por 3 k€ (A), 2 por 6 k€ (A, A) y 3 por 11 k€ (A, A, F); la cuarta no se puede recuperar (A y F están en su tope, C y G no se acortan). El coste total (reducción + retraso) es 16, 15, 14 y 15 k€ para 0, 1, 2 y 3 semanas: lo óptimo es recuperar 2 y asumir 2 de retraso. Si además G puede solaparse una semana con F (relación comienzo-comienzo), se recupera 1 semana sin gastar y la tabla cambia: 12, 11, 10 y 11 k€; sigue conviniendo pagar 2 semanas, pero el coste total baja de 14 a 10 k€ y el retraso queda en 1 semana. La respuesta al cliente dice la nueva fecha y su probabilidad; la del contratista, qué se le encarga; la del proveedor, qué se le exige a cambio de aceptar el retraso.
+
+## Cómo se construye la respuesta a cada implicado
+
+Un mensaje por implicado, de tres o cuatro líneas, con esta estructura: (1) el dato que le afecta, en sus unidades (semanas, k€, probabilidad); (2) lo que se le pide o se le concede; (3) cuándo y cómo se le volverá a informar. Lo que no debe faltar: a quien impone una condición, la alternativa que se le propone y la pregunta de si la acepta; a quien asume un riesgo, la cifra del riesgo y la petición de que lo acepte por escrito; al cliente, una fecha con una probabilidad, nunca «con seguridad».
+
+## Lo que suele fallar antes
+
+Casi todos los casos tienen un origen común que la última pregunta pide identificar: un interesado que no participó en la planificación (el inspector, el usuario final, el jefe de producción), un riesgo visible que no tenía respuesta preparada (la actividad crítica con mayor varianza en manos de un proveedor externo, un recurso compartido sin regla de prioridad, un avance medido por quien cobra), y una regla o un presupuesto fijados sin relación con los números del proyecto (una bolsa de imprevistos menor que el coste de una semana de rescate, un 90 % exigido sin saber lo que cuesta).
+
+## Qué practica cada variante
+
+*reforma-laboratorio*: retraso de un proveedor crítico y nueva prelación del inspector, Ackoff frente al coste del retraso y al tope de gerencia, probabilidad y coste esperado, negociaciones sin coste (entrega parcial, inspección en dos fases) y decisión con reserva contingente. *recursos-compartidos*: préstamo de operarios como límite por periodo, ventanas con y sin retraso, penalizaciones de dos proyectos, subcontratación con preaviso, óptimo de empresa frente a óptimo local. *comite-valor-ganado*: avance declarado frente a verificado, índices y semáforo con las dos versiones, EAC y TCPI, estimación directa del retraso, criterio de certificación. *oferta-comercial*: PERT frente a Monte Carlo, sesgo de fusión y criticidad, coste esperado de penalizaciones y bonificaciones por plazo ofertado, precio de la exigencia del 90 %. *comite-inversion*: escenarios y umbrales, contrato a precio fijo como seguro (VAN esperado y peor caso), apalancamiento y separación entre la decisión de invertir y la de financiar.

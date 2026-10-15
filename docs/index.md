@@ -339,6 +339,22 @@ Construir los flujos de caja libre de un caso de estudio (inversión, ingresos, 
 [Viabilidad 09](colecciones/17_viabilidad/Viabilidad_09.html) — *sensibilidad* (nivel 2): una línea de envasado automatizada: umbrales de precio, volumen y coste variable; escenarios; inflación 3%  
 [Viabilidad 10](colecciones/17_viabilidad/Viabilidad_10.html) — *financiacion* (nivel 3): una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%  
 
+## Casos de decisión con varios implicados
+
+Situaciones en las que proveedor, cliente, contratista, inspector, otros jefes de proyecto, gerencia o el comité envían mensajes que cambian los datos o piden algo; hay que cuantificar cada uno (calendario, Ackoff, probabilidad, recursos, valor ganado, Monte Carlo, VAN), decidir y redactar la respuesta a cada implicado.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/18_casos.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
+
+[Caso 01](colecciones/18_casos/Caso_01.html) — *reforma-laboratorio* (nivel 3): reforma del laboratorio: 4 semanas de retraso, alquiler 6 k€/sem, bolsa 11 k€  
+[Caso 02](colecciones/18_casos/Caso_02.html) — *recursos-compartidos* (nivel 2): recursos compartidos: préstamo de 1 operario en 2–4 (2 sem. de retraso) frente a 3–5  
+[Caso 03](colecciones/18_casos/Caso_03.html) — *comite-valor-ganado* (nivel 3): comité y valor ganado: D declarada al 75 % frente al 30 % real; SPI 1.00 → 0.88  
+[Caso 04](colecciones/18_casos/Caso_04.html) — *oferta-comercial* (nivel 2): oferta comercial: media 19, P(≤19) = 0.28 por Monte Carlo, plazo 90 % 22.8; óptimo 21  
+[Caso 05](colecciones/18_casos/Caso_05.html) — *comite-inversion* (nivel 3): comité de inversión: una flota de vehículos eléctricos de alquiler; VAN 203 k€ (14%), precio −20% con prob. 25%  
+[Caso 06](colecciones/18_casos/Caso_06.html) — *reforma-laboratorio* (nivel 3): reforma del laboratorio: 3 semanas de retraso, alquiler 4 k€/sem, bolsa 4 k€  
+[Caso 07](colecciones/18_casos/Caso_07.html) — *recursos-compartidos* (nivel 2): recursos compartidos: préstamo de 2 operarios en 2–4 (2 sem. de retraso) frente a 3–5  
+[Caso 08](colecciones/18_casos/Caso_08.html) — *comite-valor-ganado* (nivel 3): comité y valor ganado: C declarada al 67 % frente al 40 % real; SPI 1.00 → 0.82  
+[Caso 09](colecciones/18_casos/Caso_09.html) — *oferta-comercial* (nivel 2): oferta comercial: media 16, P(≤16) = 0.32 por Monte Carlo, plazo 90 % 18.8; óptimo 17  
+[Caso 10](colecciones/18_casos/Caso_10.html) — *comite-inversion* (nivel 3): comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%  
+
 ## Exámenes montados con las plantillas
 
 Generados con `python -m scripts.colecciones.examen` (enunciado y solución por separado, datos nuevos).  
