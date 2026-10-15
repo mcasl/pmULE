@@ -1630,6 +1630,17 @@
   "titulo_coleccion": "Método del valor ganado"
  },
  {
+  "nombre": "ValorGanado_21",
+  "coleccion": "12_valor_ganado",
+  "variante": "ev-recursos-incertidumbre",
+  "nivel": 3,
+  "subtitulo": "límite de 3 operarios; dos líneas base; control en la semana 11",
+  "grafo": "pert",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_21.py",
+  "semilla": 2027221,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
   "nombre": "Formula_01",
   "coleccion": "13_formula_compleccion",
   "variante": "tau-norma-infinito",
@@ -2275,9 +2286,8 @@
   "variante": "contingencia-planta",
   "nivel": 3,
   "subtitulo": "límite de 3 operarios, plazo mes 16, penalización 6 k€/mes y VAN",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/18_casos/Caso_11.py",
-  "semilla": 2027811,
+  "semilla": null,
   "titulo_coleccion": "Casos de decisión con varios implicados"
  }
 ]

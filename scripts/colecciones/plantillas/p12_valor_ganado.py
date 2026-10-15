@@ -960,6 +960,93 @@ def _ev_recursos(rng):
     return celdas, f"límite de {L} operarios y línea base sin recursos"
 
 
+def _ev_recursos_incertidumbre(rng):
+    """Valor ganado con límite de operarios y duraciones inciertas: qué línea base permite prever mejor."""
+    estado = {}
+
+    def acepta(i):
+        if not (0 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10 and 10 <= i["T"] <= 22):
+            return False
+        nombres = list(i["D"].index)
+        a, m, b = P.tres_estimaciones_triangular(rng, i["D"])
+        if ((b - a) < 2).sum() > len(nombres) // 2:
+            return False
+        op = P.recursos(rng, nombres, hi=3).rename("operarios")
+        L = int(op.max())
+        BAC = pd.Series(rng.integers(2, 9, size=len(nombres)) * 25, index=nombres, name="BAC")
+        df = P.tabla_base(i, duration=i["D"], a=a, m=m, b=b, operarios=op, BAC=BAC)
+        dist = {x: ("triangular", float(a[x]), float(m[x]), float(b[x])) for x in nombres}
+        T = int(i["T"])
+        tc = max(3, int(round(T * 0.5)))
+        try:
+            r = i["proyecto"].monte_carlo_valor_ganado_recursos(dist, i["D"], df[["operarios"]], ["operarios"], [L], BAC,
+                                                                tc, n_samples=400, seed=1)
+        except Exception:
+            return False
+        if not (2 <= r.T_recursos - r.T_libre <= 5):
+            return False
+        q = r.calidad_prevision()
+        if q.loc["línea base con recursos", "error absoluto medio"] > q.loc["línea base sin recursos", "error absoluto medio"] - 0.8:
+            return False
+        estado.update(df=df, L=L, tc=tc)
+        return True
+
+    info = P.buscar(rng, acepta, n=int(rng.choice([8, 9])), n_inicio=int(rng.choice([2, 3])),
+                    n_fin=int(rng.choice([1, 2])), max_intentos=8000)
+    df, L, tc = estado["df"], estado["L"], estado["tc"]
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, estimaciones de duración (mínima *a*, más probable *m* y "
+                 "máxima *b*, semanas, distribución triangular; *duration* es la duración esperada), operarios necesarios y "
+                 "presupuesto (BAC, k€) se adjunta; el coste se reparte uniformemente en cada actividad. La empresa dispone de "
+                 f"**{L} operarios** por semana y las actividades se ejecutan en cuanto el límite lo permite. Se barajan dos líneas "
+                 "base con las duraciones esperadas: la *ingenua* (calendario más temprano, sin recursos) y la *realista* "
+                 "(calendario respetando el límite de operarios).")]
+    celdas.append(preguntas([
+        "Calcule la duración y el PV de cada línea base y explique en qué se diferencian.",
+        f"Simule 3 000 ejecuciones (duraciones triangulares, replanificando con el límite de operarios) y calcule el SPI en "
+        f"la semana {tc} con cada línea base. Describa sus distribuciones.",
+        "Prevea la duración con T/SPI con cada línea base y compárela con la duración real de cada ejecución: sesgo, error "
+        "absoluto medio y correlación. ¿Qué línea base permite prever mejor y por qué?",
+        "Repita el análisis en tres fechas de control. ¿Cómo evoluciona el error de cada línea base con el avance del proyecto?"]))
+    celdas.append(code('#| tbl-cap: "Datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"limite, t_control = [{L}], {tc}\n"
+                       "BAC = datos_proyecto['BAC']\n"
+                       "dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}\n"
+                       "demanda = datos_proyecto[['operarios']]"))
+    celdas += apartado(1)
+    celdas.append(code("r = proyecto.monte_carlo_valor_ganado_recursos(dists, datos_proyecto['duration'], demanda, ['operarios'], limite, BAC, t_control, n_samples=3000, seed=11)\n"
+                       "Markdown(f'Línea base ingenua: {r.T_libre:.0f} semanas, PV({t_control}) = {r.pv_libre:.1f} k€. '\n"
+                       "         f'Línea base realista: {r.T_recursos:.0f} semanas, PV({t_control}) = {r.pv_recursos:.1f} k€. '\n"
+                       "         'La realista programa las esperas por falta de operarios; la ingenua las ignora y parte de un plan imposible.')"))
+    celdas += apartado(2)
+    celdas.append(code('#| tbl-cap: "SPI, duración real y previsión T/SPI con cada línea base"\n#| label: tbl-spiRecursos\n'
+                       "r.summary().round(3)"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Calidad de la previsión de duración"\n#| label: tbl-calidadRecursos\n'
+                       "calidad = r.calidad_prevision().round(3)\n"
+                       "calidad"))
+    celdas.append(code("mejor = calidad['error absoluto medio'].idxmin()\n"
+                       "Markdown(f'Mejor previsión: {mejor} (error absoluto medio {calidad.loc[mejor, \"error absoluto medio\"]:.2f} semanas). '\n"
+                       "         'Con la línea base ingenua el SPI cae por debajo de 1 aunque el equipo trabaje como se esperaba, y T/SPI sobrestima la duración; '\n"
+                       "         'la realista mide solo las desviaciones que no estaban ya previstas.')"))
+    celdas += apartado(4)
+    celdas.append(code("filas = {}\n"
+                       "for t in sorted({max(2, round(t_control * 0.5)), t_control, round(t_control * 1.5)}):\n"
+                       "    rr = proyecto.monte_carlo_valor_ganado_recursos(dists, datos_proyecto['duration'], demanda, ['operarios'], limite, BAC, t, n_samples=3000, seed=11)\n"
+                       "    q = rr.calidad_prevision()['error absoluto medio']\n"
+                       "    filas[t] = {'sin recursos': q['línea base sin recursos'], 'con recursos': q['línea base con recursos']}\n"
+                       "evolucion = pd.DataFrame(filas).T.rename_axis('semana de control')\n"
+                       "display(evolucion.round(3))\n"
+                       "peor = (evolucion['sin recursos'] > evolucion['con recursos']).all()\n"
+                       "Markdown(('La línea base ingenua da peor previsión en todas las fechas de control. ' if peor else 'La línea base ingenua da peor previsión en las primeras fechas. ') +\n"
+                       "         'Su error es sobre todo sistemático (sesgo), porque compara con un plan imposible; el de la realista es ruido de las duraciones y no desaparece del todo hasta el final.')"))
+    return celdas, f"límite de {L} operarios; dos líneas base; control en la semana {tc}"
+
+
 VARIANTES = [
     Variante("indicadores-eac", 1, "tres Gantts, PV/EV/AC, CV/SV, CPI/SPI, tres fórmulas de EAC, VAC y TCPI", lambda rng: _base(1, rng)),
     Variante("earned-schedule", 2, "programación ganada: ES, SPI(t), previsión de duración frente a la de SPI", lambda rng: _base(2, rng)),
@@ -977,6 +1064,8 @@ VARIANTES = [
              _prevision_incertidumbre),
     Variante("ev-recursos", 3, "línea base sin recursos y ejecución con límite de operarios: el SPI cae desde la primera espera",
              _ev_recursos),
+    Variante("ev-recursos-incertidumbre", 3, "límite de operarios y duraciones triangulares: SPI y T/SPI con línea base sin recursos frente a línea base con recursos",
+             _ev_recursos_incertidumbre),
 ]
 
 
