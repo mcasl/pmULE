@@ -340,6 +340,8 @@ Construir los flujos de caja libre de un caso de estudio (inversión, ingresos, 
 [Viabilidad 08](colecciones/17_viabilidad/Viabilidad_08.html) — *alternativas* (nivel 2): A y B (6 años) con conflicto VAN/TIR (Fisher 10.3%), C de 3 años; k = 8%  
 [Viabilidad 09](colecciones/17_viabilidad/Viabilidad_09.html) — *sensibilidad* (nivel 2): una línea de envasado automatizada: umbrales de precio, volumen y coste variable; escenarios; inflación 3%  
 [Viabilidad 10](colecciones/17_viabilidad/Viabilidad_10.html) — *financiacion* (nivel 3): una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%  
+[Viabilidad 11](colecciones/17_viabilidad/Viabilidad_11.html) — *van-montecarlo* (nivel 3): 8 actividades, 18 meses, I0 = 1075 k€, ingreso 30 ± 10 k€/mes durante 60 meses, k = 10%; distribución del VAN  
+[Viabilidad 12](colecciones/17_viabilidad/Viabilidad_12.html) — *van-montecarlo* (nivel 3): 8 actividades, 18 meses, I0 = 950 k€, ingreso 30 ± 10 k€/mes durante 48 meses, k = 8%; distribución del VAN  
 
 ## Casos de decisión con varios implicados
 

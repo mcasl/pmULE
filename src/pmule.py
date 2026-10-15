@@ -2810,39 +2810,6 @@ class ProjectGraph:
         """
         rng = np.random.default_rng(seed)
 
-        # ── Construir samplers ──────────────────────────────────────
-        def make_sampler(spec):
-            if callable(spec):
-                import inspect
-                sig = inspect.signature(spec)
-                if "size" in sig.parameters:
-                    return lambda n, _spec=spec: _spec(size=n)
-                else:
-                    return lambda n, _spec=spec: np.array([_spec() for _ in range(n)])
-            kind, *args = spec
-            kind = kind.lower()
-            if kind == "normal":
-                mu, sigma = args
-                return lambda n: rng.normal(mu, sigma, n)
-            elif kind == "uniform":
-                a, b = args
-                return lambda n: rng.uniform(a, b, n)
-            elif kind == "triangular":
-                low, mode, high = args
-                return lambda n: rng.triangular(low, mode, high, n)
-            elif kind == "lognormal":
-                mu, sigma = args
-                return lambda n: rng.lognormal(mu, sigma, n)
-            elif kind == "pert":
-                # PERT beta: mean = (a + 4m + b) / 6, std = (b - a) / 6
-                a, m, b = args
-                mu_pert = (a + 4 * m + b) / 6.0
-                sigma_pert = (b - a) / 6.0
-                # clip to [a, b]
-                return lambda n: np.clip(rng.normal(mu_pert, sigma_pert, n), a, b)
-            else:
-                raise ValueError(f"Distribución desconocida: {kind!r}")
-
         # ── Simular (vectorizado) ──────────────────────────────────
         # T: (n_samples × n_act) muestras; R: (n_paths × n_act) rutas.
         # Longitudes de ruta P = T @ Rᵀ → (n_samples × n_paths); τ = max fila.
@@ -2857,7 +2824,7 @@ class ProjectGraph:
         T = np.zeros((n_samples, len(acts)))
         for j, a in enumerate(acts):
             if a in distributions:
-                T[:, j] = make_sampler(distributions[a])(n_samples)
+                T[:, j] = _make_sampler(rng, distributions[a])(n_samples)
 
         P = T @ R.T
         tau_samples = P.max(axis=1)
@@ -2876,6 +2843,154 @@ class ProjectGraph:
             n_samples=n_samples,
             seed=seed,
         )
+
+
+    def _calendarios_simulados(self, D, acts):
+        """Inicios y fines más tempranos de cada réplica (vectorizado).
+
+        ``D`` tiene forma (n_réplicas × n_actividades) con las columnas en el orden
+        ``acts``.  Devuelve (ES, EF) con la misma forma.
+        """
+        preds = self._real_predecessors()
+        col = {a: j for j, a in enumerate(acts)}
+        pendientes = {a: set(preds.get(a, ())) & set(acts) for a in acts}
+        orden = []
+        while pendientes:
+            listas = sorted(a for a, p in pendientes.items() if not p)
+            if not listas:
+                raise ValueError("El grafo tiene un ciclo")
+            for a in listas:
+                orden.append(a)
+                del pendientes[a]
+            for p in pendientes.values():
+                p.difference_update(listas)
+        ES = np.zeros_like(D)
+        EF = np.zeros_like(D)
+        for a in orden:
+            j = col[a]
+            ps = [col[x] for x in preds.get(a, ()) if x in col]
+            ES[:, j] = EF[:, ps].max(axis=1) if ps else 0.0
+            EF[:, j] = ES[:, j] + D[:, j]
+        return ES, EF
+
+    def monte_carlo_van(
+        self,
+        distributions: dict,
+        bac,
+        ingreso_mensual,
+        n_meses: int,
+        tasa_anual: float,
+        n_samples: int = 10_000,
+        seed: int = None,
+        bac_distributions: dict = None,
+        plazo=None,
+        penalizacion_mensual: float = 0.0,
+        redondear: bool = True,
+    ) -> "MonteCarloVANResult":
+        """Distribución del VAN de un proyecto de inversión con duraciones aleatorias.
+
+        Modelo (el mismo del caso «vínculo con el proyecto» de la colección 17): el
+        coste de cada actividad (``bac``) se desembolsa uniformemente a lo largo de su
+        duración, empezando en su inicio más temprano; cuando el proyecto termina
+        (τ) empieza un flujo de ``ingreso_mensual`` durante ``n_meses`` meses. Los
+        meses se descuentan a la tasa mensual equivalente (1 + k_m)¹² = 1 + tasa_anual.
+        Cada réplica simula las duraciones, calcula su calendario y su VAN en forma
+        cerrada (series geométricas), todo vectorizado.
+
+        Parameters
+        ----------
+        distributions : {actividad: especificación} duraciones (ver ``monte_carlo``).
+        bac : dict | Series  presupuesto de cada actividad.
+        ingreso_mensual : número o especificación de distribución (incertidumbre de
+            mercado, un valor por réplica).
+        n_meses : meses de explotación.
+        tasa_anual : tasa de descuento anual.
+        bac_distributions : opcional, {actividad: especificación} del **factor
+            multiplicativo** del BAC (p. ej. ``("triangular", 0.9, 1.0, 1.4)``).
+        plazo, penalizacion_mensual : penalización por mes de retraso sobre el plazo,
+            pagada en el mes τ.
+        redondear : si True (por defecto) las duraciones simuladas se redondean a
+            meses enteros (mínimo 1), coherente con la hipótesis de duraciones enteras;
+            entonces, con duraciones constantes, el VAN coincide con el del flujo mensual.
+
+        Returns
+        -------
+        MonteCarloVANResult
+        """
+        rng = np.random.default_rng(seed)
+        R_df = self.path_matrix(dummies=False)
+        acts = list(R_df.columns)
+        bac = pd.Series(bac, dtype=float)
+        falta = [a for a in acts if a not in bac.index]
+        if falta:
+            raise ValueError(f"Faltan BAC para las actividades {falta}")
+        D = np.zeros((n_samples, len(acts)))
+        for j, a in enumerate(acts):
+            if a not in distributions:
+                raise ValueError(f"Falta la distribución de la duración de {a}")
+            D[:, j] = _make_sampler(rng, distributions[a])(n_samples)
+        if redondear:
+            D = np.maximum(np.rint(D), 1.0)
+        B = np.tile(bac.reindex(acts).to_numpy(), (n_samples, 1))
+        if bac_distributions:
+            for j, a in enumerate(acts):
+                if a in bac_distributions:
+                    B[:, j] *= _make_sampler(rng, bac_distributions[a])(n_samples)
+        if isinstance(ingreso_mensual, (int, float, np.integer, np.floating)):
+            F = np.full(n_samples, float(ingreso_mensual))
+        else:
+            F = _make_sampler(rng, ingreso_mensual)(n_samples)
+
+        ES, EF = self._calendarios_simulados(D, acts)
+        tau = EF.max(axis=1)
+        km = (1.0 + tasa_anual) ** (1.0 / 12.0) - 1.0
+        v = 1.0 / (1.0 + km)
+        serie = lambda inicio, n: v ** (inicio + 1.0) * (1.0 - v ** n) / (1.0 - v)  # Σ_{m=inicio+1}^{inicio+n} v^m
+        coste = (B / D * serie(ES, D)).sum(axis=1)
+        ingreso = F * serie(tau, float(n_meses))
+        penal = 0.0
+        if plazo is not None and penalizacion_mensual:
+            penal = penalizacion_mensual * np.maximum(tau - plazo, 0.0) * v ** tau
+        van = ingreso - coste - penal
+        return MonteCarloVANResult(van, tau, D, B, F, acts, n_samples, seed)
+
+
+def _make_sampler(rng, spec):
+    """Sampler ``f(n) -> array`` a partir de una especificación de distribución.
+
+    ``spec``: callable ``f() -> float`` (o ``f(size=N) -> array``) o tupla
+    ``("normal", mu, sigma)``, ``("uniform", a, b)``, ``("triangular", low, mode, high)``,
+    ``("lognormal", mu, sigma)``, ``("pert", a, m, b)`` (normal PERT recortada a [a, b]).
+    """
+    if callable(spec):
+        import inspect
+        sig = inspect.signature(spec)
+        if "size" in sig.parameters:
+            return lambda n, _spec=spec: _spec(size=n)
+        return lambda n, _spec=spec: np.array([_spec() for _ in range(n)])
+    kind, *args = spec
+    kind = kind.lower()
+    if kind == "normal":
+        mu, sigma = args
+        return lambda n: rng.normal(mu, sigma, n)
+    elif kind == "uniform":
+        a, b = args
+        return lambda n: rng.uniform(a, b, n)
+    elif kind == "triangular":
+        low, mode, high = args
+        if low == high:                      # distribución degenerada: constante
+            return lambda n: np.full(n, float(low))
+        return lambda n: rng.triangular(low, mode, high, n)
+    elif kind == "lognormal":
+        mu, sigma = args
+        return lambda n: rng.lognormal(mu, sigma, n)
+    elif kind == "pert":
+        # PERT beta: mean = (a + 4m + b) / 6, std = (b - a) / 6
+        a, m, b = args
+        mu_pert = (a + 4 * m + b) / 6.0
+        sigma_pert = (b - a) / 6.0
+        return lambda n: np.clip(rng.normal(mu_pert, sigma_pert, n), a, b)
+    raise ValueError(f"Distribución desconocida: {kind!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -2915,6 +3030,72 @@ class AsignacionMulti:
     def __repr__(self):
         return (f"AsignacionMulti(duracion={self.duracion}, "
                 f"recursos={list(self.cargas.columns)}, esperas={self.esperas.to_dict()})")
+
+
+class MonteCarloVANResult:
+    """Resultado de ``ProjectGraph.monte_carlo_van``.
+
+    Atributos: ``van_samples``, ``tau_samples`` (duración del proyecto de cada
+    réplica), ``duraciones`` y ``bac`` (réplicas × actividades), ``ingreso_samples``,
+    ``actividades``, ``n_samples``, ``seed``.
+    """
+
+    def __init__(self, van_samples, tau_samples, duraciones, bac, ingreso_samples,
+                 actividades, n_samples, seed):
+        self.van_samples = np.asarray(van_samples, dtype=float)
+        self.tau_samples = np.asarray(tau_samples, dtype=float)
+        self.duraciones = duraciones
+        self.bac = bac
+        self.ingreso_samples = ingreso_samples
+        self.actividades = list(actividades)
+        self.n_samples = n_samples
+        self.seed = seed
+
+    @property
+    def van_mean(self) -> float:
+        return float(self.van_samples.mean())
+
+    @property
+    def van_std(self) -> float:
+        return float(self.van_samples.std(ddof=1))
+
+    @property
+    def prob_negativo(self) -> float:
+        """P(VAN < 0)."""
+        return float((self.van_samples < 0).mean())
+
+    def cuantil(self, p: float) -> float:
+        return float(np.quantile(self.van_samples, p))
+
+    def cvar(self, alpha: float = 0.05) -> float:
+        """Media del VAN en el ``alpha`` peor de los casos (cola inferior)."""
+        corte = np.quantile(self.van_samples, alpha)
+        return float(self.van_samples[self.van_samples <= corte].mean())
+
+    def summary(self) -> "pd.DataFrame":
+        d = {"media": self.van_mean, "desv. típica": self.van_std,
+             "q05": self.cuantil(0.05), "q50": self.cuantil(0.50), "q95": self.cuantil(0.95),
+             "P(VAN<0)": self.prob_negativo, "CVaR 5%": self.cvar(0.05)}
+        return pd.DataFrame(d, index=["VAN"])
+
+    def tornado(self) -> "pd.DataFrame":
+        """Correlación de Spearman del VAN con la duración de cada actividad (y con el
+        ingreso y los BAC si son aleatorios), ordenada por valor absoluto."""
+        cols = {f"duración {a}": self.duraciones[:, j] for j, a in enumerate(self.actividades)}
+        if np.ptp(self.ingreso_samples) > 0:
+            cols["ingreso mensual"] = self.ingreso_samples
+        for j, a in enumerate(self.actividades):
+            if np.ptp(self.bac[:, j]) > 0:
+                cols[f"coste {a}"] = self.bac[:, j]
+        df = pd.DataFrame(cols)
+        df = df.loc[:, df.std() > 0]
+        rho = df.rank().corrwith(pd.Series(self.van_samples).rank())
+        out = rho.to_frame("Spearman con el VAN")
+        return out.reindex(out["Spearman con el VAN"].abs().sort_values(ascending=False).index)
+
+    def __repr__(self) -> str:
+        return (f"MonteCarloVANResult(n={self.n_samples}, VAN̄={self.van_mean:.1f}, "
+                f"σ={self.van_std:.1f}, P(VAN<0)={self.prob_negativo:.1%})")
 
 
 # ---------------------------------------------------------------------------

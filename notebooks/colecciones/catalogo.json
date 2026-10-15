@@ -1385,9 +1385,8 @@
   "variante": "limites-simultaneos",
   "nivel": 3,
   "subtitulo": "8 actividades; 4 operarios y 2 equipos a la vez",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/11_recursos/Recursos_15.py",
-  "semilla": 2027115,
+  "semilla": null,
   "titulo_coleccion": "Nivelación y asignación de recursos"
  },
  {
@@ -1396,9 +1395,8 @@
   "variante": "limites-simultaneos",
   "nivel": 3,
   "subtitulo": "8 actividades; 4 operarios y 2 equipos a la vez",
-  "grafo": "roy",
   "ruta": "notebooks/colecciones/11_recursos/Recursos_16.py",
-  "semilla": 2027116,
+  "semilla": null,
   "titulo_coleccion": "Nivelación y asignación de recursos"
  },
  {
@@ -2079,6 +2077,28 @@
   "subtitulo": "una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%",
   "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_10.py",
   "semilla": null,
+  "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
+ },
+ {
+  "nombre": "Viabilidad_11",
+  "coleccion": "17_viabilidad",
+  "variante": "van-montecarlo",
+  "nivel": 3,
+  "subtitulo": "8 actividades, 18 meses, I0 = 1075 k€, ingreso 30 ± 10 k€/mes durante 60 meses, k = 10%; distribución del VAN",
+  "grafo": "pert",
+  "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_11.py",
+  "semilla": 2027711,
+  "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
+ },
+ {
+  "nombre": "Viabilidad_12",
+  "coleccion": "17_viabilidad",
+  "variante": "van-montecarlo",
+  "nivel": 3,
+  "subtitulo": "8 actividades, 18 meses, I0 = 950 k€, ingreso 30 ± 10 k€/mes durante 48 meses, k = 8%; distribución del VAN",
+  "grafo": "roy",
+  "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_12.py",
+  "semilla": 2027712,
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {

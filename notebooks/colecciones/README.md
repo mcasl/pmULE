@@ -461,6 +461,7 @@ Variantes:
   - `alternativas` (nivel 2): proyectos excluyentes con conflicto VAN/TIR, tasa de Fisher, perfiles de VAN y vidas distintas (anualidad equivalente)
   - `sensibilidad` (nivel 2): umbrales de precio, volumen y coste (VAN = 0), diagrama de araña, escenarios e inflación (tasa real/nominal)
   - `financiacion` (nivel 3): cuadro de amortización del préstamo, flujo del accionista con escudo fiscal, TIR del proyecto frente a la del accionista y apalancamiento
+  - `van-montecarlo` (nivel 3): duraciones triangulares e ingreso incierto: distribución del VAN (Monte Carlo), P(VAN<0), efecto de cada incertidumbre, tornado y valor de reducirla
 
 - `Viabilidad_01` [caso-base, nivel 1] — una línea de envasado automatizada: I0 = 760 k€, 7 años, k = 12%; VAN 394, TIR 23.9%
 - `Viabilidad_02` [vinculo-proyecto, nivel 2] — 8 actividades, 18 meses de inversión (I0 = 1150 k€), 50 k€/mes durante 48 meses, k = 10%
@@ -472,6 +473,8 @@ Variantes:
 - `Viabilidad_08` [alternativas, nivel 2] — A y B (6 años) con conflicto VAN/TIR (Fisher 10.3%), C de 3 años; k = 8%
 - `Viabilidad_09` [sensibilidad, nivel 2] — una línea de envasado automatizada: umbrales de precio, volumen y coste variable; escenarios; inflación 3%
 - `Viabilidad_10` [financiacion, nivel 3] — una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%
+- `Viabilidad_11` [van-montecarlo, nivel 3] — 8 actividades, 18 meses, I0 = 1075 k€, ingreso 30 ± 10 k€/mes durante 60 meses, k = 10%; distribución del VAN
+- `Viabilidad_12` [van-montecarlo, nivel 3] — 8 actividades, 18 meses, I0 = 950 k€, ingreso 30 ± 10 k€/mes durante 48 meses, k = 8%; distribución del VAN
 
 ## 18_casos — Casos de decisión con varios implicados
 
