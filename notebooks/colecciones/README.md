@@ -298,6 +298,7 @@ Variantes:
   - `limite-insuficiente` (nivel 2): factibilidad del límite; tabla operarios → duración y número óptimo de operarios
   - `reglas-prioridad` (nivel 3): planificador en paralelo con tres reglas de prioridad (holgura, SPT, más recurso) frente a Wiest-Levy
   - `interrumpibles` (nivel 3): misma regla con y sin interrupciones permitidas: duración, actividades interrumpidas y costes ocultos
+  - `limites-simultaneos` (nivel 3): dos recursos con límite a la vez: asignación simultánea (calendario, recurso que bloquea) frente a resolver uno solo
 
 - `Recursos_01` [nivelacion, nivel 1] — 9 actividades, nivelación
 - `Recursos_02` [asignacion, nivel 2] — 8 actividades, asignación con límite 6→8
@@ -313,6 +314,8 @@ Variantes:
 - `Recursos_12` [limite-insuficiente, nivel 2] — 9 actividades; factibilidad y duración en función de los operarios
 - `Recursos_13` [reglas-prioridad, nivel 3] — 9 actividades; 5 operarios; tres reglas de prioridad frente a Wiest-Levy
 - `Recursos_14` [interrumpibles, nivel 3] — 8 actividades; 5 operarios; interrumpir o no interrumpir
+- `Recursos_15` [limites-simultaneos, nivel 3] — 8 actividades; 4 operarios y 2 equipos a la vez
+- `Recursos_16` [limites-simultaneos, nivel 3] — 8 actividades; 4 operarios y 2 equipos a la vez
 
 ## 12_valor_ganado — Método del valor ganado
 

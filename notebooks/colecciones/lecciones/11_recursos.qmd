@@ -45,6 +45,8 @@ A ver cuántos recursos consume el proyecto en cada periodo, a repartirlos mejor
 
 **Asignación con límite.** Si en algún periodo la carga supera el recurso disponible $L$, hay que aplazar actividades. El algoritmo de **Wiest-Levy** (y, en general, los planificadores en paralelo) recorren los periodos: en cada uno, las actividades disponibles (predecesoras terminadas) se ordenan por una regla de prioridad y se admiten mientras quepan; las que no caben esperan (la librería inserta una actividad de espera 💤). Si una actividad crítica tiene que esperar, el proyecto se alarga. Reglas de prioridad habituales: menor holgura total primero (la más usada), menor duración, más recurso, orden de identificación. Ninguna garantiza el óptimo: el problema es NP-duro.
 
+**Varios recursos a la vez.** Con $K$ recursos cada actividad tiene un vector de demanda $(r_1,\dots,r_K)$ y cada periodo un vector de límites $(L_1,\dots,L_K)$. El esquema es el mismo; solo cambia la prueba de cabida: una actividad empieza si, **para todos los recursos y en todas las semanas que ocuparía**, la carga ya comprometida más su demanda no supera el límite. Basta que uno se sature para que espere, y distintos recursos pueden mandar en tramos distintos del calendario (el cuello de botella cambia). Resolver los recursos de uno en uno no sirve: al desplazar actividades por un recurso se crean picos en el otro.
+
 **Factibilidad.** Ninguna programación es posible con menos recurso del que exige una sola actividad: el límite mínimo es $\max_i r_i$. La tabla «recurso disponible → duración» es escalonada y decreciente; con el coste del recurso y el coste por periodo se elige el nivel que minimiza el coste total.
 
 **Recursos consumibles.** Un material que se compra y se guarda impone una restricción *acumulada* (lo consumido hasta $t$ no supera lo recibido hasta $t$); un suministro que no se puede almacenar (electricidad contratada, horas de una grúa alquilada por días) impone una restricción *por periodo*, como un recurso renovable.
@@ -93,6 +95,17 @@ suma, dibujo = proyecto.copy().evaluar_desplazamiento(datos, 'duration', 'resour
 
 `nivelar`, `asignar` y `desplazar` modifican el proyecto (añaden esperas): trabajar sobre `proyecto.copy()`.
 
+Para varios recursos con límite simultáneo:
+
+```python
+res = proyecto.asignar_multi(datos, 'duration', ['operarios', 'equipos'], [4, 2])
+res.duracion      # duración con recursos
+res.traza         # por periodo: quién empieza, quién espera y qué recurso lo bloquea
+res.gantts['equipos']   # Gantt de cada recurso con las esperas 💤 y la fila Máximo
+```
+
+`asignar_multi` no modifica el proyecto (trabaja sobre una copia, disponible en `res.proyecto`).
+
 ## Qué practica cada variante
 
-*nivelacion*: cargas, suma de cuadrados y nivelación por mínimos cuadrados. *asignacion*: Wiest-Levy con límite por tramos y con límite fijo. *dos-recursos*: dos tipos de recurso y evaluación de un desplazamiento propuesto. *consumible*: restricción semanal frente a acumulada. *limite-insuficiente*: factibilidad, tabla operarios → duración y número óptimo. *reglas-prioridad*: planificador en paralelo con tres reglas frente a Wiest-Levy. *interrumpibles*: con y sin interrupción de actividades.
+*nivelacion*: cargas, suma de cuadrados y nivelación por mínimos cuadrados. *asignacion*: Wiest-Levy con límite por tramos y con límite fijo. *dos-recursos*: dos tipos de recurso y evaluación de un desplazamiento propuesto. *consumible*: restricción semanal frente a acumulada. *limite-insuficiente*: factibilidad, tabla operarios → duración y número óptimo. *reglas-prioridad*: planificador en paralelo con tres reglas frente a Wiest-Levy. *interrumpibles*: con y sin interrupción de actividades. *limites-simultaneos*: dos recursos con límite a la vez (`asignar_multi`), recurso que bloquea cada espera y cuello de botella.

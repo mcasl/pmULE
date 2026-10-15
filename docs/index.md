@@ -234,6 +234,8 @@ Diagrama de cargas, nivelación por mínimos cuadrados, asignación con límite 
 [Recursos 12](colecciones/11_recursos/Recursos_12.html) — *limite-insuficiente* (nivel 2): 9 actividades; factibilidad y duración en función de los operarios  
 [Recursos 13](colecciones/11_recursos/Recursos_13.html) — *reglas-prioridad* (nivel 3): 9 actividades; 5 operarios; tres reglas de prioridad frente a Wiest-Levy  
 [Recursos 14](colecciones/11_recursos/Recursos_14.html) — *interrumpibles* (nivel 3): 8 actividades; 5 operarios; interrumpir o no interrumpir  
+[Recursos 15](colecciones/11_recursos/Recursos_15.html) — *limites-simultaneos* (nivel 3): 8 actividades; 4 operarios y 2 equipos a la vez  
+[Recursos 16](colecciones/11_recursos/Recursos_16.html) — *limites-simultaneos* (nivel 3): 8 actividades; 4 operarios y 2 equipos a la vez  
 
 ## Método del valor ganado
 
