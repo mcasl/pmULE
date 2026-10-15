@@ -792,6 +792,174 @@ def _vigilar(rng):
     return celdas, f"{n} actividades; qué vigilar cruzando SPI/CPI por actividad con la holgura"
 
 
+def _prevision_incertidumbre(rng):
+    """Valor ganado con duraciones y costes aleatorios: cuánto se puede fiar de SPI y CPI en cada fecha de control."""
+    estado = {}
+
+    def acepta(i):
+        if not (1 <= i["n_dummies"] <= 4 and 5 <= i["n_rutas"] <= 10 and 12 <= i["T"] <= 24):
+            return False
+        nombres = list(i["D"].index)
+        a, m, b = P.tres_estimaciones_triangular(rng, i["D"])
+        if ((b - a) < 2).sum() > len(nombres) // 2:
+            return False
+        BAC = pd.Series(rng.integers(2, 9, size=len(nombres)) * 25, index=nombres, name="BAC")
+        dist = {x: ("triangular", float(a[x]), float(m[x]), float(b[x])) for x in nombres}
+        fc = {x: ("triangular", 0.9, 1.0, 1.4) for x in nombres}
+        T = int(i["T"])
+        puntos = [max(2, round(T * f)) for f in (0.25, 0.5, 0.75)]
+        try:
+            mae = [i["proyecto"].monte_carlo_valor_ganado(dist, m, BAC, t, n_samples=600, seed=1, factor_coste=fc)
+                   .calidad_prevision().loc["duración", "error absoluto medio"] for t in puntos]
+        except Exception:
+            return False
+        if not (mae[2] < mae[0] and mae[0] > 0.3):
+            return False
+        r = i["proyecto"].monte_carlo_valor_ganado(dist, m, BAC, puntos[1], n_samples=600, seed=1, factor_coste=fc)
+        umbral = float(np.round(np.quantile(r.spi, 0.3), 2))
+        ret = r.tau_samples > r.T_plan
+        al = r.spi < umbral
+        if not (0.6 <= umbral <= 1.05 and 0.3 <= ret.mean() <= 0.9 and al.sum() > 30
+                and ret[al].mean() - ret[~al].mean() >= 0.1):
+            return False
+        estado.update(a=a, m=m, b=b, BAC=BAC, puntos=puntos, umbral=umbral)
+        return True
+
+    info = P.buscar(rng, acepta, n=int(rng.choice([8, 9])), n_inicio=int(rng.choice([2, 3])),
+                    n_fin=int(rng.choice([1, 2])), max_intentos=6000)
+    a, m, b, BAC, puntos, umbral = estado["a"], estado["m"], estado["b"], estado["BAC"], estado["puntos"], estado["umbral"]
+    T = int(info["T"])
+    df = P.tabla_base(info, duration=info["D"], a=a, m=m, b=b, BAC=BAC)
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, estimaciones de duración (mínima *a*, más probable *m* y "
+                 "máxima *b*, semanas, distribución triangular) y presupuesto (BAC, k€) se adjunta. Se toma como línea base el "
+                 "calendario más temprano con las duraciones más probables *m*; el coste se reparte uniformemente en cada "
+                 "actividad. Los costes reales de cada actividad pueden desviarse: factor multiplicativo triangular (0,9; 1,0; 1,4).")]
+    celdas.append(preguntas([
+        "Calcule la línea base: duración prevista y valor planificado (PV) en cada fecha de control.",
+        f"Simule 3 000 ejecuciones y evalúe SPI y CPI en las semanas {puntos[0]}, {puntos[1]} y {puntos[2]}. Describa la "
+        "distribución de ambos índices en cada fecha.",
+        "En cada fecha, prevea la duración con T/SPI y el coste con BAC/CPI y compárelos con lo que ocurre de verdad en cada "
+        "ejecución: sesgo, error absoluto medio y correlación. ¿Cómo cambia la calidad de la previsión con el avance?",
+        f"Un jefe de proyecto activa una alarma si SPI < {umbral:.2f}. En la fecha intermedia, ¿qué probabilidad de terminar con retraso "
+        "hay con y sin alarma? ¿Qué proporción de proyectos con retraso avisa la alarma (sensibilidad) y qué proporción de "
+        "alarmas son falsas?"]))
+    celdas.append(code('#| tbl-cap: "Datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"puntos = {puntos}\n"
+                       f"umbral = {umbral}\n"
+                       "dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}\n"
+                       "factor_coste = {a: ('triangular', 0.9, 1.0, 1.4) for a in datos_proyecto.index}\n"
+                       "plan = datos_proyecto['m']"))
+    celdas += apartado(1)
+    celdas.append(code("T_plan = proyecto.duration(plan)\n"
+                       "Markdown(f'Línea base: {T_plan} semanas, BAC = {datos_proyecto[\"BAC\"].sum():.0f} k€.')"))
+    celdas += apartado(2)
+    celdas.append(code("resultados = {t: proyecto.monte_carlo_valor_ganado(dists, plan, datos_proyecto['BAC'], t, n_samples=3000, seed=11, factor_coste=factor_coste)\n"
+                       "              for t in puntos}\n"
+                       "pd.concat({f'semana {t}': r.summary().round(3) for t, r in resultados.items()})"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Calidad de las previsiones en cada fecha de control"\n#| label: tbl-calidad\n'
+                       "pd.concat({f'semana {t}': r.calidad_prevision().round(3) for t, r in resultados.items()})"))
+    celdas.append(code("mae = {t: r.calidad_prevision().loc['duración', 'error absoluto medio'] for t, r in resultados.items()}\n"
+                       "Markdown('El error absoluto medio de la previsión de duración pasa de ' + ' a '.join(f'{v:.2f}' for v in mae.values()) +\n"
+                       "         ' semanas al avanzar el proyecto: cuanto más hecho, menos queda por incertidumbre; y T/SPI es sesgado al principio, '\n"
+                       "         'porque el avance temprano incluye la parte aún no afectada por los retrasos de las actividades futuras.')"))
+    celdas += apartado(4)
+    celdas.append(code("r = resultados[puntos[1]]\n"
+                       "retraso = r.tau_samples > r.T_plan\n"
+                       "alarma = r.spi < umbral\n"
+                       "p_con, p_sin = retraso[alarma].mean(), retraso[~alarma].mean()\n"
+                       "sens = alarma[retraso].mean()\n"
+                       "falsas = (~retraso[alarma]).mean()\n"
+                       "Markdown(f'P(retraso | alarma) = {p_con:.3f}; P(retraso | sin alarma) = {p_sin:.3f}; sensibilidad = {sens:.3f}; '\n"
+                       "         f'alarmas falsas = {falsas:.3f}. La alarma discrimina, pero no es infalible: el SPI en una fecha es una señal con ruido.')"))
+    return celdas, f"duraciones triangulares y costes inciertos; controles en las semanas {puntos}"
+
+
+def _ev_recursos(rng):
+    """Línea base que ignora los recursos: el SPI cae desde la primera espera aunque nadie trabaje peor."""
+    estado = {}
+
+    def acepta(i):
+        if not (0 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10 and 10 <= i["T"] <= 24):
+            return False
+        nombres = list(i["D"].index)
+        op = P.recursos(rng, nombres, hi=3).rename("operarios")
+        L = int(op.max())
+        BAC = pd.Series(rng.integers(2, 9, size=len(nombres)) * 25, index=nombres, name="BAC")
+        df = P.tabla_base(i, duration=i["D"], operarios=op, BAC=BAC)
+        try:
+            t = i["proyecto"].valor_ganado_recursos(df, "duration", ["operarios"], [L], BAC)
+        except Exception:
+            return False
+        Tp, Tr = t.attrs["T_plan"], t.attrs["T_real"]
+        if not (2 <= Tr - Tp <= 5):
+            return False
+        tc = int(round(Tp / 2))
+        if not (t.loc[tc, "SPI"] <= 0.93):
+            return False
+        estado.update(df=df, L=L, tc=tc)
+        return True
+
+    info = P.buscar(rng, acepta, n=int(rng.choice([8, 9])), n_inicio=int(rng.choice([2, 3])),
+                    n_fin=int(rng.choice([1, 2])), max_intentos=8000)
+    df, L, tc = estado["df"], estado["L"], estado["tc"]
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, duración (semanas), operarios necesarios y presupuesto "
+                 "(BAC, k€) de cada actividad se adjunta; el coste se reparte uniformemente en cada actividad. La línea base se "
+                 "preparó con el calendario más temprano, sin mirar los recursos, pero la empresa dispone como máximo de "
+                 f"**{L} operarios** por semana: las actividades se ejecutan con el algoritmo de asignación (cada una empieza en "
+                 "cuanto puede), sin que nadie trabaje más lento de lo previsto. El coste real coincide con el presupuesto.")]
+    celdas.append(preguntas([
+        "Calcule la línea base (duración y PV semana a semana) y el calendario real con el límite de operarios.",
+        "Calcule EV, SPI y la duración prevista T/SPI semana a semana. ¿Desde qué semana cae el SPI por debajo de 1 y qué "
+        "actividad es la primera en esperar?",
+        f"En la semana {tc} (mitad de la línea base) ¿qué duración prevé el SPI? Compárela con la duración real. ¿Qué previsión "
+        "es la acertada y por qué?",
+        "¿Qué debería haber hecho el equipo al preparar la línea base? Calcule el SPI semana a semana con la línea base que "
+        "respeta el límite de operarios y explique la diferencia."]))
+    celdas.append(code('#| tbl-cap: "Datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"limite = [{L}]\n"
+                       f"t_control = {tc}\n"
+                       "BAC = datos_proyecto['BAC']"))
+    celdas += apartado(1)
+    celdas.append(code("tabla = proyecto.valor_ganado_recursos(datos_proyecto, 'duration', ['operarios'], limite, BAC)\n"
+                       "res = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operarios'], limite)\n"
+                       "T_plan, T_real = tabla.attrs['T_plan'], tabla.attrs['T_real']\n"
+                       "Markdown(f'Línea base {T_plan:.0f} semanas; con {limite[0]} operarios el calendario real dura {T_real:.0f}.')"))
+    celdas += apartado(2)
+    celdas.append(code('#| tbl-cap: "PV, EV, SPI y duración prevista semana a semana"\n#| label: tbl-valorGanado\n'
+                       "tabla.round(3)"))
+    celdas.append(code("primera = tabla.index[tabla['SPI'] < 0.999].min()\n"
+                       "esperas = res.traza[res.traza.decision == 'espera'].sort_values('periodo')\n"
+                       "primera_actividad = esperas.iloc[0]['actividad']\n"
+                       "Markdown(f'El SPI cae por debajo de 1 en la semana {primera}; la primera actividad que espera es {primera_actividad} '\n"
+                       "         f'(semana {int(esperas.iloc[0][\"periodo\"])}).')"))
+    celdas += apartado(3)
+    celdas.append(code("fila = tabla.loc[t_control]\n"
+                       "Markdown(f'En la semana {t_control}: SPI = {fila[\"SPI\"]:.3f}, duración prevista T/SPI = {fila[\"duración prevista\"]:.1f} semanas; '\n"
+                       "         f'duración real {T_real:.0f}: el SPI {\"sobrestima\" if fila[\"duración prevista\"] > T_real else \"subestima\"} el retraso. '\n"
+                       "         'Supone que la fracción del plan que se logra cada semana se mantiene hasta el final, cuando el límite de recursos '\n"
+                       "         'solo frena algunos tramos del proyecto.')"))
+    celdas += apartado(4)
+    celdas.append(code("tabla2 = tabla[['PV', 'EV']].copy()\n"
+                       "tabla2['PV con recursos'] = tabla['EV']        # línea base replanificada con el límite\n"
+                       "tabla2['SPI con línea base realista'] = tabla2['EV'] / tabla2['PV con recursos']\n"
+                       "display(tabla2.round(3))\n"
+                       "Markdown('Con la línea base calculada respetando el límite de operarios el SPI es 1 en todas las semanas: los problemas de recursos '\n"
+                       "         'se detectan al planificar (con la asignación), no al controlar. Un SPI < 1 desde la primera espera es síntoma de una '\n"
+                       "         'línea base irrealista, no de un equipo lento.')"))
+    return celdas, f"límite de {L} operarios y línea base sin recursos"
+
+
 VARIANTES = [
     Variante("indicadores-eac", 1, "tres Gantts, PV/EV/AC, CV/SV, CPI/SPI, tres fórmulas de EAC, VAC y TCPI", lambda rng: _base(1, rng)),
     Variante("earned-schedule", 2, "programación ganada: ES, SPI(t), previsión de duración frente a la de SPI", lambda rng: _base(2, rng)),
@@ -805,6 +973,10 @@ VARIANTES = [
              _coste_no_uniforme),
     Variante("vigilar", 2, "SPI y CPI por actividad cruzados con la holgura: qué amenaza el plazo, qué el presupuesto y qué vigilar",
              _vigilar),
+    Variante("prevision-incertidumbre", 3, "SPI y CPI con duraciones y costes aleatorios: calidad de T/SPI y BAC/CPI en cada fecha de control y fiabilidad de una alarma",
+             _prevision_incertidumbre),
+    Variante("ev-recursos", 3, "línea base sin recursos y ejecución con límite de operarios: el SPI cae desde la primera espera",
+             _ev_recursos),
 ]
 
 

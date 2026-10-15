@@ -1105,9 +1105,8 @@
   "variante": "recursos-limitados",
   "nivel": 3,
   "subtitulo": "8 actividades triangulares; límite 3 operarios, plazo 19",
-  "grafo": "pert",
   "ruta": "notebooks/colecciones/09_montecarlo/MonteCarlo_17.py",
-  "semilla": 2026917,
+  "semilla": null,
   "titulo_coleccion": "Método de Monte Carlo"
  },
  {
@@ -1257,6 +1256,16 @@
   "nivel": 3,
   "subtitulo": "9 actividades; límite 3 operarios, reducir dos semanas (Ackoff sin recursos falla)",
   "ruta": "notebooks/colecciones/10_reduccion/Reduccion_15.py",
+  "semilla": null,
+  "titulo_coleccion": "Reducción de la duración con mínimo coste"
+ },
+ {
+  "nombre": "Reduccion_16",
+  "coleccion": "10_reduccion",
+  "variante": "crashing-incertidumbre",
+  "nivel": 3,
+  "subtitulo": "duraciones triangulares; plazo de 18 semanas; reducción y probabilidad",
+  "ruta": "notebooks/colecciones/10_reduccion/Reduccion_16.py",
   "semilla": null,
   "titulo_coleccion": "Reducción de la duración con mínimo coste"
  },
@@ -1597,6 +1606,26 @@
   "nivel": 2,
   "subtitulo": "9 actividades; qué vigilar cruzando SPI/CPI por actividad con la holgura",
   "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_18.py",
+  "semilla": null,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
+  "nombre": "ValorGanado_19",
+  "coleccion": "12_valor_ganado",
+  "variante": "prevision-incertidumbre",
+  "nivel": 3,
+  "subtitulo": "duraciones triangulares y costes inciertos; controles en las semanas [6, 12, 17]",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_19.py",
+  "semilla": null,
+  "titulo_coleccion": "Método del valor ganado"
+ },
+ {
+  "nombre": "ValorGanado_20",
+  "coleccion": "12_valor_ganado",
+  "variante": "ev-recursos",
+  "nivel": 3,
+  "subtitulo": "límite de 3 operarios y línea base sin recursos",
+  "ruta": "notebooks/colecciones/12_valor_ganado/ValorGanado_20.py",
   "semilla": null,
   "titulo_coleccion": "Método del valor ganado"
  },
@@ -2121,6 +2150,26 @@
   "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
  },
  {
+  "nombre": "Viabilidad_13",
+  "coleccion": "17_viabilidad",
+  "variante": "recursos-van",
+  "nivel": 3,
+  "subtitulo": "límite de 3 operarios, ingresos de 65 k€/mes durante 36 meses",
+  "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_13.py",
+  "semilla": null,
+  "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
+ },
+ {
+  "nombre": "Viabilidad_14",
+  "coleccion": "17_viabilidad",
+  "variante": "crashing-van",
+  "nivel": 3,
+  "subtitulo": "ingresos de 35 k€/mes durante 36 meses; reducción mes a mes con Ackoff",
+  "ruta": "notebooks/colecciones/17_viabilidad/Viabilidad_14.py",
+  "semilla": null,
+  "titulo_coleccion": "Viabilidad financiera: flujos de caja, VAN, TIR y payback"
+ },
+ {
   "nombre": "Caso_01",
   "coleccion": "18_casos",
   "variante": "reforma-laboratorio",
@@ -2218,6 +2267,17 @@
   "subtitulo": "comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%",
   "ruta": "notebooks/colecciones/18_casos/Caso_10.py",
   "semilla": null,
+  "titulo_coleccion": "Casos de decisión con varios implicados"
+ },
+ {
+  "nombre": "Caso_11",
+  "coleccion": "18_casos",
+  "variante": "contingencia-planta",
+  "nivel": 3,
+  "subtitulo": "límite de 3 operarios, plazo mes 16, penalización 6 k€/mes y VAN",
+  "grafo": "pert",
+  "ruta": "notebooks/colecciones/18_casos/Caso_11.py",
+  "semilla": 2027811,
   "titulo_coleccion": "Casos de decisión con varios implicados"
  }
 ]

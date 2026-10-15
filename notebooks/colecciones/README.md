@@ -271,6 +271,7 @@ Variantes:
   - `programacion-lineal` (nivel 3): reducción óptima por programación lineal con la matriz de caminos frente al voraz de Ackoff-Sasieni
   - `cur-por-tramos` (nivel 3): CUR creciente por tramos: Ackoff con coste marginal frente a un CUR medio; por qué funciona si el coste es convexo
   - `crashing-recursos` (nivel 3): reducir la duración con un límite de operarios: Ackoff sin recursos falla; cadena crítica con recursos, modelo con recurso y contratar frente a acelerar
+  - `crashing-incertidumbre` (nivel 3): reducir con duraciones triangulares: la reducción determinista hasta el plazo da poca probabilidad; coste de la seguridad
 
 - `Reduccion_01` [cur-y-ackoff, nivel 1] — 8 actividades, reducción de 3 semanas
 - `Reduccion_02` [costes-indirectos, nivel 2] — 8 actividades, costes indirectos de 9 k€/semana
@@ -287,6 +288,7 @@ Variantes:
 - `Reduccion_13` [programacion-lineal, nivel 3] — 9 actividades; reducir 3 semanas: Ackoff 3 k€ frente a PL 3 k€
 - `Reduccion_14` [cur-por-tramos, nivel 3] — 9 actividades; CUR por tramos, reducir 3 semanas
 - `Reduccion_15` [crashing-recursos, nivel 3] — 9 actividades; límite 3 operarios, reducir dos semanas (Ackoff sin recursos falla)
+- `Reduccion_16` [crashing-incertidumbre, nivel 3] — duraciones triangulares; plazo de 18 semanas; reducción y probabilidad
 
 ## 11_recursos — Nivelación y asignación de recursos
 
@@ -337,6 +339,8 @@ Variantes:
   - `inverso-desde-curvas` (nivel 2): sólo las curvas S: índices semana a semana, cuándo empezó el retraso y el sobrecoste, EAC y programación ganada
   - `coste-no-uniforme` (nivel 3): perfiles de desembolso (inicio/final/uniforme): PV correcto frente a uniforme y efecto sobre el SPI
   - `vigilar` (nivel 2): SPI y CPI por actividad cruzados con la holgura: qué amenaza el plazo, qué el presupuesto y qué vigilar
+  - `prevision-incertidumbre` (nivel 3): SPI y CPI con duraciones y costes aleatorios: calidad de T/SPI y BAC/CPI en cada fecha de control y fiabilidad de una alarma
+  - `ev-recursos` (nivel 3): línea base sin recursos y ejecución con límite de operarios: el SPI cae desde la primera espera
 
 - `ValorGanado_01` [indicadores-eac, nivel 1] — 9 actividades, un punto de control (semana 10), EAC/VAC/TCPI
 - `ValorGanado_02` [earned-schedule, nivel 2] — 8 actividades, un punto de control (semana 6), programación ganada
@@ -356,6 +360,8 @@ Variantes:
 - `ValorGanado_16` [inverso-desde-curvas, nivel 2] — 9 actividades (ocultas); curvas S hasta la semana 14 de 20
 - `ValorGanado_17` [coste-no-uniforme, nivel 3] — 8 actividades; perfiles de desembolso no uniformes; control en la semana 8
 - `ValorGanado_18` [vigilar, nivel 2] — 9 actividades; qué vigilar cruzando SPI/CPI por actividad con la holgura
+- `ValorGanado_19` [prevision-incertidumbre, nivel 3] — duraciones triangulares y costes inciertos; controles en las semanas [6, 12, 17]
+- `ValorGanado_20` [ev-recursos, nivel 3] — límite de 3 operarios y línea base sin recursos
 
 ## 13_formula_compleccion — La fórmula del tiempo de compleción τ = ‖R·t‖∞
 
@@ -466,6 +472,8 @@ Variantes:
   - `sensibilidad` (nivel 2): umbrales de precio, volumen y coste (VAN = 0), diagrama de araña, escenarios e inflación (tasa real/nominal)
   - `financiacion` (nivel 3): cuadro de amortización del préstamo, flujo del accionista con escudo fiscal, TIR del proyecto frente a la del accionista y apalancamiento
   - `van-montecarlo` (nivel 3): duraciones triangulares e ingreso incierto: distribución del VAN (Monte Carlo), P(VAN<0), efecto de cada incertidumbre, tornado y valor de reducirla
+  - `recursos-van` (nivel 3): límite de operarios y VAN: retraso de ingresos, coste de ampliar la cuadrilla y flujo mínimo con y sin límite
+  - `crashing-van` (nivel 3): duración óptima por VAN: reducir mes a mes con Ackoff, coste frente a ingresos adelantados y umbral de flujo
 
 - `Viabilidad_01` [caso-base, nivel 1] — una línea de envasado automatizada: I0 = 760 k€, 7 años, k = 12%; VAN 394, TIR 23.9%
 - `Viabilidad_02` [vinculo-proyecto, nivel 2] — 8 actividades, 18 meses de inversión (I0 = 1150 k€), 50 k€/mes durante 48 meses, k = 10%
@@ -479,6 +487,8 @@ Variantes:
 - `Viabilidad_10` [financiacion, nivel 3] — una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%
 - `Viabilidad_11` [van-montecarlo, nivel 3] — 8 actividades, 18 meses, I0 = 1075 k€, ingreso 30 ± 10 k€/mes durante 60 meses, k = 10%; distribución del VAN
 - `Viabilidad_12` [van-montecarlo, nivel 3] — 8 actividades, 18 meses, I0 = 950 k€, ingreso 30 ± 10 k€/mes durante 48 meses, k = 8%; distribución del VAN
+- `Viabilidad_13` [recursos-van, nivel 3] — límite de 3 operarios, ingresos de 65 k€/mes durante 36 meses
+- `Viabilidad_14` [crashing-van, nivel 3] — ingresos de 35 k€/mes durante 36 meses; reducción mes a mes con Ackoff
 
 ## 18_casos — Casos de decisión con varios implicados
 
@@ -492,6 +502,7 @@ Variantes:
   - `comite-valor-ganado` (nivel 3): avance declarado por el contratista frente al estimado en obra: PV/EV/AC, índices y semáforo con las dos versiones, EAC, TCPI, previsión de plazo, certificación y verificación del avance
   - `oferta-comercial` (nivel 2): qué plazo prometer: PERT frente a Monte Carlo (sesgo de fusión, criticidad), coste esperado de penalizaciones y bonificaciones por plazo ofertado, exigencia del 90 % y su precio
   - `comite-inversion` (nivel 3): caso de inversión con mensajes contradictorios: escenarios y umbrales, contrato a precio fijo como seguro (VAN esperado y peor caso), apalancamiento y separación inversión/financiación
+  - `contingencia-planta` (nivel 3): plan de contingencia: límite de operarios, duraciones triangulares, aceleración con recursos, penalización del cliente y VAN; cuatro opciones con Monte Carlo
 
 - `Caso_01` [reforma-laboratorio, nivel 3] — reforma del laboratorio: 4 semanas de retraso, alquiler 6 k€/sem, bolsa 11 k€
 - `Caso_02` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 1 operario en 2–4 (2 sem. de retraso) frente a 3–5
@@ -503,3 +514,4 @@ Variantes:
 - `Caso_08` [comite-valor-ganado, nivel 3] — comité y valor ganado: C declarada al 67 % frente al 40 % real; SPI 1.00 → 0.82
 - `Caso_09` [oferta-comercial, nivel 2] — oferta comercial: media 16, P(≤16) = 0.32 por Monte Carlo, plazo 90 % 18.8; óptimo 17
 - `Caso_10` [comite-inversion, nivel 3] — comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%
+- `Caso_11` [contingencia-planta, nivel 3] — límite de 3 operarios, plazo mes 16, penalización 6 k€/mes y VAN

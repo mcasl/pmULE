@@ -72,6 +72,10 @@ res = linprog(c=cur[acts], A_ub=-R.values, b_ub=T_obj - R.values @ d[acts],
 
 Con un límite de recursos, el camino crítico deja de mandar: la duración la fija la **cadena crítica con recursos** (precedencias más esperas por recurso). Acortar la actividad con menor CUR (Ackoff-Sasieni sin recursos) puede no acortar nada, e incluso hay anomalías (acortar una actividad puede alargar el proyecto). `crashing_recursos` replanifica tras cada candidato (cortes de la cadena, actividades sueltas, parejas) y se queda con el más barato que de verdad acorta; `crashing_recursos_exacto` da el óptimo por programación entera para comparar, y `cadena_critica_recursos` muestra los arcos de precedencia y de recurso. Con `demanda_extra`, acelerar consume el recurso escaso. Sin recursos el problema es una programación lineal con óptimo entero (matriz de incidencia); con recursos aparece la brecha de integralidad. Alternativa: ampliar el recurso en lugar de acelerar.
 
+## Reducir con duraciones inciertas
+
+`monte_carlo_crashing` sortea las duraciones una vez y aplica a cada réplica las reducciones de Ackoff-Sasieni paso a paso (números aleatorios comunes): da la probabilidad de cumplir el plazo, la duración media y el coste en función de los periodos recortados. Reducir las duraciones esperadas hasta el plazo solo da una probabilidad moderada de cumplir; la seguridad cuesta reducciones adicionales y los últimos puntos de probabilidad son los más caros.
+
 ## Errores frecuentes
 
 - Acortar la actividad más barata del proyecto aunque no esté en todas las rutas críticas (no reduce nada).
@@ -81,4 +85,4 @@ Con un límite de recursos, el camino crítico deja de mandar: la duración la f
 
 ## Qué practica cada variante
 
-*cur-y-ackoff*: CUR y reducción de tres semanas con un paso de dos actividades. *costes-indirectos*: curva coste-duración y duración óptima. *penalizacion*: plazo con penalización. *barata-no-optima*: la crítica más barata no sirve si no es común. *desaceleracion*: relajar el plazo y deshacer el paso más caro. *programacion-lineal*: el óptimo exacto frente al voraz. *cur-por-tramos*: coste marginal creciente y por qué funciona el paso a paso si el coste es convexo. *crashing-recursos*: límite de operarios, Ackoff sin recursos que no acorta, cadena crítica con recursos, modelo con recurso y contratar frente a acelerar.
+*cur-y-ackoff*: CUR y reducción de tres semanas con un paso de dos actividades. *costes-indirectos*: curva coste-duración y duración óptima. *penalizacion*: plazo con penalización. *barata-no-optima*: la crítica más barata no sirve si no es común. *desaceleracion*: relajar el plazo y deshacer el paso más caro. *programacion-lineal*: el óptimo exacto frente al voraz. *cur-por-tramos*: coste marginal creciente y por qué funciona el paso a paso si el coste es convexo. *crashing-recursos*: límite de operarios, Ackoff sin recursos que no acorta, cadena crítica con recursos, modelo con recurso y contratar frente a acelerar. *crashing-incertidumbre*: probabilidad de cumplir el plazo, coste de la seguridad y reducción determinista frente a probabilística.

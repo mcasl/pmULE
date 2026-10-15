@@ -809,6 +809,178 @@ def _van_montecarlo(rng):
     return celdas, f"{len(D)} actividades, {T} meses, I0 = {I0:.0f} k€, ingreso {F:.0f} ± {delta:.0f} k€/mes durante {N} meses, k = {k:.0%}; distribución del VAN"
 
 
+def _recursos_van(rng):
+    """Límite de operarios y VAN: el retraso de los ingresos, ¿compensa ampliar la cuadrilla?"""
+    estado = {}
+
+    def acepta(i):
+        if not (0 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10 and 10 <= i["T"] <= 24):
+            return False
+        nombres = list(i["D"].index)
+        op = P.recursos(rng, nombres, hi=3).rename("operarios")
+        L = int(op.max())
+        BAC = pd.Series(rng.integers(2, 9, size=len(nombres)) * 25, index=nombres, name="BAC")
+        k = float(rng.choice([0.08, 0.10, 0.12]))
+        N = int(rng.choice([36, 48, 60]))
+        df = P.tabla_base(i, duration=i["D"], operarios=op, BAC=BAC)
+        pg = i["proyecto"]
+        try:
+            e0 = pg.van_recursos(df, "duration", ["operarios"], [L], BAC, 0.0, N, k, ampliaciones=1)
+            e1 = pg.van_recursos(df, "duration", ["operarios"], [L], BAC, 1.0, N, k, ampliaciones=1)
+        except Exception:
+            return False
+        d_lib, d_lim = e0["escenarios"].loc["sin límite", "duración"], e0["escenarios"].loc["con límite", "duración"]
+        if not (1 <= d_lim - d_lib <= 3):
+            return False
+        if e0["ampliaciones"].loc[1, "duración"] >= d_lim:
+            return False
+        a = e0["escenarios"]["VAN"]
+        b = e1["escenarios"]["VAN"] - a
+        F = float(np.ceil((-a["sin límite"] / b["sin límite"]) * float(rng.choice([1.15, 1.25, 1.4])) / 5) * 5)
+        r = pg.van_recursos(df, "duration", ["operarios"], [L], BAC, F, N, k, ampliaciones=1)
+        mejora = float(r["ampliaciones"].loc[1, "VAN"] - r["ampliaciones"].loc[0, "VAN"])
+        e = r["escenarios"]["VAN"]
+        if mejora <= 15 or e["con límite"] <= 0 or e["sin límite"] - e["con límite"] < 20:
+            return False
+        c = float(np.round(mejora * float(rng.choice([0.5, 0.8, 1.3])) / d_lim * 2) / 2)
+        if c <= 0:
+            return False
+        estado.update(df=df, L=L, k=k, N=N, F=F, c=c)
+        return True
+
+    info = P.buscar(rng, acepta, n=int(rng.choice([8, 9])), n_inicio=int(rng.choice([2, 3])),
+                    n_fin=int(rng.choice([1, 2])), max_intentos=6000)
+    df, L, k, N, F, c = estado["df"], estado["L"], estado["k"], estado["N"], estado["F"], estado["c"]
+    celdas = [md("# Enunciado"),
+              md("Una empresa va a ejecutar el proyecto de inversión cuyo cuadro de prelaciones, duración (meses), operarios "
+                 "necesarios y presupuesto (BAC, k€) de cada actividad se adjunta. El coste de cada actividad se desembolsa "
+                 "uniformemente a lo largo de su duración. Cuando el proyecto termina, la instalación genera un flujo de caja "
+                 f"neto de {F:.0f} k€ al mes durante {N} meses. La empresa descuenta al {k:.0%} anual y dispone como máximo "
+                 f"de **{L} operarios** al mes. Contratar un operario más cuesta **{c:.1f} k€ por mes** mientras dure el proyecto.")]
+    celdas.append(preguntas([
+        "Calcule la duración y el VAN del proyecto sin tener en cuenta el límite de operarios.",
+        "Aplique el algoritmo de asignación con el límite de operarios. ¿Cuánto se alarga el proyecto y cuánto cuesta en VAN? "
+        "Separe el efecto sobre el VAN de los costes y el de los ingresos y explique cuál domina.",
+        f"¿Compensa contratar un operario más (límite {L + 1})? Construya la tabla de duración y VAN al ampliar el límite "
+        "en 0, 1, 2 y 3 operarios y compare la mejora del VAN con el coste de contratar (sin descontar, por simplicidad).",
+        "Calcule el flujo mensual mínimo (umbral del VAN = 0) con y sin el límite. ¿Cuánto sube el umbral por culpa del límite?"]))
+    celdas.append(code('#| tbl-cap: "Datos del proyecto"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"F, N, k, L, coste_operario = {F}, {N}, {k}, {L}, {c}\n"
+                       "BAC = datos_proyecto['BAC']"))
+    celdas += apartado(1)
+    celdas.append(code('#| tbl-cap: "VAN sin y con límite de operarios"\n#| label: tbl-escenarios\n'
+                       "res = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, F, N, k, ampliaciones=3)\n"
+                       "escenarios = res['escenarios'].round(2)\n"
+                       "escenarios"))
+    celdas.append(code("Markdown(f'Sin límite: {escenarios.loc[\"sin límite\", \"duración\"]:.0f} meses y VAN {escenarios.loc[\"sin límite\", \"VAN\"]:.1f} k€.')"))
+    celdas += apartado(2)
+    celdas.append(code("dif = escenarios.loc['con límite'] - escenarios.loc['sin límite']\n"
+                       "Markdown(f'Con {L} operarios el proyecto dura {escenarios.loc[\"con límite\", \"duración\"]:.0f} meses (+{dif[\"duración\"]:.0f}); '\n"
+                       "         f'el VAN pasa de {escenarios.loc[\"sin límite\", \"VAN\"]:.1f} a {escenarios.loc[\"con límite\", \"VAN\"]:.1f} k€ ({dif[\"VAN\"]:.1f}). '\n"
+                       "         f'Efecto en los ingresos: {dif[\"VAN ingresos\"]:.1f} k€ (se cobran más tarde); en los costes: {-dif[\"VAN costes\"]:.1f} k€ '\n"
+                       "         '(las actividades que esperan se pagan más tarde y el coste se descuenta más). El retraso de los ingresos domina.')"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Duración y VAN al ampliar el límite de operarios"\n#| label: tbl-ampliaciones\n'
+                       "amp = res['ampliaciones'].copy()\n"
+                       "amp['coste de contratar'] = amp.index * coste_operario * amp['duración']\n"
+                       "amp['VAN neto de contratar'] = amp['VAN'] - amp['coste de contratar']\n"
+                       "amp.round(2)"))
+    celdas.append(code("mejor = amp['VAN neto de contratar'].idxmax()\n"
+                       "Markdown(f'La mejor opción es ampliar el límite en {mejor} operario(s): VAN neto {amp.loc[mejor, \"VAN neto de contratar\"]:.1f} k€ '\n"
+                       "         f'frente a {amp.loc[0, \"VAN neto de contratar\"]:.1f} k€ sin ampliar. Se compara la mejora del VAN por adelantar los ingresos '\n"
+                       "         'con lo que cuesta mantener a los operarios todo el proyecto.')"))
+    celdas += apartado(4)
+    celdas.append(code("e0 = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, 0.0, N, k, ampliaciones=0)['escenarios']['VAN']\n"
+                       "e1 = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, 1.0, N, k, ampliaciones=0)['escenarios']['VAN']\n"
+                       "umbral = -e0 / (e1 - e0)          # el VAN es lineal en F\n"
+                       "Markdown(f'Flujo mensual mínimo: {umbral[\"sin límite\"]:.2f} k€ sin límite y {umbral[\"con límite\"]:.2f} k€ con límite '\n"
+                       "         f'(+{umbral[\"con límite\"] - umbral[\"sin límite\"]:.2f} k€ al mes): el límite exige más ingresos para recuperar lo mismo.')"))
+    return celdas, f"límite de {L} operarios, ingresos de {F:.0f} k€/mes durante {N} meses"
+
+
+def _crashing_van(rng):
+    """Duración óptima por VAN: cuánto compensa acelerar cuando acelerar adelanta los ingresos."""
+    estado = {}
+
+    def acepta(i):
+        if not (1 <= i["n_dummies"] <= 4 and 5 <= i["n_rutas"] <= 10 and 10 <= i["T"] <= 20 and (i["D"] >= 2).all()):
+            return False
+        nombres = list(i["D"].index)
+        tope, cn, ct, ucr = P.costes_reduccion(rng, i["D"])
+        ucr = ucr.replace(0.0, np.inf)
+        BAC = pd.Series(rng.integers(2, 9, size=len(nombres)) * 25, index=nombres, name="BAC")
+        k = float(rng.choice([0.08, 0.10, 0.12]))
+        N = int(rng.choice([36, 48, 60]))
+        df = P.tabla_base(i, duration=i["D"], cap_duration=tope, ucr=ucr, BAC=BAC)
+        pg = i["proyecto"]
+        try:
+            t0 = pg.crashing_van(df, "duration", tope, ucr, BAC, 0.0, N, k, reduccion_max=8)
+            t1 = pg.crashing_van(df, "duration", tope, ucr, BAC, 1.0, N, k, reduccion_max=8)
+        except Exception:
+            return False
+        if t0.index.max() < 4:
+            return False
+        a, b = t0["VAN"], t1["VAN"] - t0["VAN"]
+        for F in np.arange(10, 400, 5.0):
+            r = int((a + F * b).idxmax())
+            v = a + F * b
+            if 2 <= r <= t0.index.max() - 1 and v[r] > v[0] + 5 and v[0] > 0:
+                estado.update(df=df, k=k, N=N, F=float(F))
+                return True
+        return False
+
+    info = P.buscar(rng, acepta, n=int(rng.choice([8, 9])), n_inicio=int(rng.choice([2, 3])),
+                    n_fin=int(rng.choice([1, 2])), max_intentos=6000)
+    df, k, N, F = estado["df"], estado["k"], estado["N"], estado["F"]
+    celdas = [md("# Enunciado"),
+              md("Una empresa va a ejecutar el proyecto de inversión cuyo cuadro de prelaciones, duración normal y tope (meses), "
+                 "coste unitario de reducción (CUR, k€ por mes recortado) y presupuesto (BAC, k€) se adjunta. El coste de cada "
+                 "actividad se desembolsa uniformemente a lo largo de su duración; el coste de reducción se suma a su presupuesto. "
+                 f"Cuando el proyecto termina, la instalación genera {F:.0f} k€ al mes durante {N} meses. La empresa descuenta "
+                 f"al {k:.0%} anual. Las actividades con CUR infinito no se pueden acelerar.")]
+    celdas.append(preguntas([
+        "Calcule la duración y el VAN del proyecto sin reducir.",
+        "Aplique el algoritmo de Ackoff-Sasieni mes a mes. Para cada mes recortado, calcule el coste acumulado de reducción, "
+        "la duración resultante y el VAN.",
+        "¿Cuántos meses conviene recortar? Compare con la reducción a mínimo coste directo (no recortar) y con recortar al máximo.",
+        "Calcule el flujo mensual mínimo para que compense recortar uno, dos, … meses. ¿Cómo cambia la decisión si el flujo "
+        "real fuera un 30 % menor?"]))
+    celdas.append(code('#| tbl-cap: "Datos del proyecto"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"F, N, k = {F}, {N}, {k}\n"
+                       "BAC = datos_proyecto['BAC']\n"
+                       "tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']"))
+    celdas += apartado(1)
+    celdas.append(code("tabla = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, F, N, k, reduccion_max=8)\n"
+                       "Markdown(f'Sin reducir: {tabla.loc[0, \"duración\"]:.0f} meses y VAN {tabla.loc[0, \"VAN\"]:.1f} k€.')"))
+    celdas += apartado(2)
+    celdas.append(code('#| tbl-cap: "Reducción mes a mes: coste, duración y VAN"\n#| label: tbl-crashingVan\n'
+                       "tabla.round(2)"))
+    celdas += apartado(3)
+    celdas.append(code("optimo = int(tabla['VAN'].idxmax())\n"
+                       "Markdown(f'Conviene recortar {optimo} mes(es): duración {tabla.loc[optimo, \"duración\"]:.0f} meses, '\n"
+                       "         f'VAN {tabla.loc[optimo, \"VAN\"]:.1f} k€ (sin recortar {tabla.loc[0, \"VAN\"]:.1f}; recortando al máximo '\n"
+                       "         f'{tabla[\"VAN\"].iloc[-1]:.1f}). El óptimo no es la duración de mínimo coste directo ni la mínima: es donde lo que '\n"
+                       "         'cuesta el siguiente mes recortado iguala lo que vale cobrarlo un mes antes.')"))
+    celdas += apartado(4)
+    celdas.append(code("t0 = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, 0.0, N, k, reduccion_max=8)['VAN']\n"
+                       "t1 = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, 1.0, N, k, reduccion_max=8)['VAN']\n"
+                       "pend = t1 - t0                      # el VAN es lineal en F\n"
+                       "umbral = ((t0.loc[0] - t0) / (pend - pend.loc[0])).drop(0).rename('flujo mínimo (k€/mes)')\n"
+                       "display(umbral.round(2).to_frame())\n"
+                       "v2 = t0 + 0.7 * F * pend\n"
+                       "Markdown(f'Con un flujo un 30 % menor ({0.7 * F:.1f} k€/mes) conviene recortar {int(v2.idxmax())} mes(es): '\n"
+                       "         'cuanto menor es el ingreso, menos vale adelantarlo y antes se detiene la reducción.')"))
+    return celdas, f"ingresos de {F:.0f} k€/mes durante {N} meses; reducción mes a mes con Ackoff"
+
+
 VARIANTES = [
     Variante("caso-base", 1, "flujos de caja libre completos (ventas, costes, amortización, impuesto, circulante, residual), VAN con tabla de descuento, TIR, payback simple y descontado",
              _caso_base),
@@ -822,6 +994,10 @@ VARIANTES = [
              _financiacion),
     Variante("van-montecarlo", 3, "duraciones triangulares e ingreso incierto: distribución del VAN (Monte Carlo), P(VAN<0), efecto de cada incertidumbre, tornado y valor de reducirla",
              _van_montecarlo),
+    Variante("recursos-van", 3, "límite de operarios y VAN: retraso de ingresos, coste de ampliar la cuadrilla y flujo mínimo con y sin límite",
+             _recursos_van),
+    Variante("crashing-van", 3, "duración óptima por VAN: reducir mes a mes con Ackoff, coste frente a ingresos adelantados y umbral de flujo",
+             _crashing_van),
 ]
 
 
