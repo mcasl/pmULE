@@ -2137,6 +2137,211 @@ class ProjectGraph:
                                     extra_rows=maximo.T)
         return my_data, gantt_df, dibujo
 
+    # ------------------------------------------------------------------
+    # Asignación con varios recursos limitados
+    # ------------------------------------------------------------------
+
+    def _real_predecessors(self):
+        """Predecesoras inmediatas de cada actividad real, deducidas del grafo.
+
+        Una actividad real ``a`` (arco u→v) necesita terminadas todas las
+        actividades reales que terminan en u, atravesando las ficticias
+        (``@…``) que llegan a u.  No modifica el grafo.
+        """
+        G = self.pert_graph
+        finishing = {}
+        for node in nx.topological_sort(G):
+            acc = set()
+            for u, _, attr in G.in_edges(node, data=True):
+                act = attr["activity"]
+                if act[0] == "@":
+                    acc |= finishing[u]
+                else:
+                    acc.add(act)
+            finishing[node] = acc
+        preds = {}
+        for u, _, attr in G.edges(data=True):
+            act = attr["activity"]
+            if act[0] != "@":
+                preds[act] = set(finishing[u])
+        return preds
+
+    @staticmethod
+    def _limit_vector(spec, label):
+        """Límite de un recurso por periodo → (vector desde el periodo 1, n)."""
+        if isinstance(spec, pd.Series):
+            if spec.index.min() != 1:
+                raise ValueError(
+                    f"Error: el límite de '{label}' debe estar indexado desde el periodo 1")
+            vec = spec.sort_index().reindex(range(1, int(spec.index.max()) + 1)).ffill()
+            return vec.to_numpy(dtype=float)
+        if isinstance(spec, (list, tuple, np.ndarray)):
+            return np.asarray(spec, dtype=float)
+        return np.array([float(spec)])
+
+    def asignar_multi(self, data, duration_label="duration", resource_labels=None,
+                      maximos=None, report=False, tikz=False, params=None):
+        """Asignación de recursos con límites en VARIOS recursos a la vez.
+
+        Esquema en paralelo (parallel schedule generation), sin interrupciones:
+        se recorren los periodos 1, 2, 3… y en cada uno se consideran las
+        actividades no empezadas cuyas predecesoras ya han terminado, por
+        prioridad (menor ``LS`` del CPM sin recursos, luego menor duración,
+        luego nombre).  Una actividad empieza si, **para todos los recursos y
+        en todos los periodos que ocuparía**, la carga ya comprometida más su
+        demanda no supera el límite; si algún recurso se satura, espera.
+
+        No modifica ``self``.
+
+        Parameters
+        ----------
+        data : DataFrame con la duración y una columna por recurso.
+        resource_labels : lista de columnas de recurso.
+        maximos : límite por recurso.  Un escalar (mismo límite para todos),
+            una lista/tupla/array con un límite por recurso (en el orden de
+            ``resource_labels``), un dict ``{recurso: escalar | lista | Series}``
+            o un DataFrame (columnas = recursos, índice desde el periodo 1) para
+            límites que varían con el tiempo.  Una lista o Series por recurso
+            se interpreta desde el periodo 1; el último valor se prolonga.
+        report : si True, muestra la traza con Markdown (como ``asignar``).
+        tikz : si True, dibuja también el Gantt TikZ de cada recurso.
+
+        Returns
+        -------
+        AsignacionMulti con ``data`` (duraciones con filas de espera ``💤X``),
+        ``inicios``, ``fines``, ``esperas``, ``duracion``, ``cargas``,
+        ``limites``, ``traza`` (decisión y recurso limitante por periodo y
+        actividad), ``gantts`` y ``dibujos`` (dict por recurso).
+        """
+        if isinstance(resource_labels, str):
+            resource_labels = [resource_labels]
+        if not resource_labels:
+            raise ValueError("Error: Debe indicar resource_labels (lista de recursos)")
+        resource_labels = list(resource_labels)
+        if maximos is None:
+            raise ValueError("Error: Debe introducir maximos (un límite por recurso)")
+        if duration_label not in data.columns:
+            raise ValueError("Error: Duration label not in data columns")
+        for rl in resource_labels:
+            if rl not in data.columns:
+                raise ValueError(f"Error: Resource label '{rl}' not in data columns")
+        K = len(resource_labels)
+
+        # límites por recurso
+        if isinstance(maximos, pd.DataFrame):
+            specs = {rl: maximos[rl] for rl in resource_labels}
+        elif isinstance(maximos, dict):
+            falta = [rl for rl in resource_labels if rl not in maximos]
+            if falta:
+                raise ValueError(f"Error: faltan límites para {falta}")
+            specs = {rl: maximos[rl] for rl in resource_labels}
+        elif isinstance(maximos, (list, tuple, np.ndarray)):
+            if len(maximos) != K:
+                raise ValueError(
+                    "Error: una lista de maximos debe tener un valor por recurso; "
+                    "para límites variables en el tiempo use un dict o un DataFrame")
+            specs = dict(zip(resource_labels, maximos))
+        else:
+            specs = {rl: maximos for rl in resource_labels}
+        vectors = {rl: self._limit_vector(specs[rl], rl) for rl in resource_labels}
+
+        preds = self._real_predecessors()
+        acts = sorted(preds)
+        faltan = [a for a in acts if a not in data.index]
+        if faltan:
+            raise ValueError(f"Error: faltan filas en data para {faltan}")
+        dur = {a: int(data.loc[a, duration_label]) for a in acts}
+        dem = {a: np.array([float(data.loc[a, rl]) for rl in resource_labels]) for a in acts}
+        for a in acts:
+            for k, rl in enumerate(resource_labels):
+                if dem[a][k] > vectors[rl].max():
+                    raise ValueError(
+                        f"Error: la actividad {a} requiere más '{rl}' ({dem[a][k]:g}) "
+                        f"que el máximo permitido ({vectors[rl].max():g})")
+
+        # prioridad: LS del CPM sin recursos
+        cal = self.calendar(pd.Series(dur))
+        ls = {a: cal.loc[a, "inicio_mas_tardio"] for a in acts}
+        orden = sorted(acts, key=lambda a: (ls[a], dur[a], a))
+
+        n0 = max(len(v) for v in vectors.values())
+        horizonte = n0 + sum(dur.values()) + 1
+        maxd = max(dur.values(), default=0)
+        ancho = horizonte + maxd + 1
+        limite = np.empty((K, ancho))
+        for k, rl in enumerate(resource_labels):
+            v = vectors[rl]
+            limite[k, :len(v)] = v[:ancho]
+            limite[k, len(v):] = v[-1]
+        carga = np.zeros((K, ancho))
+
+        inicio, fin, traza = {}, {}, []
+        t = 0
+        pendientes = set(acts)
+        while pendientes:
+            if t > horizonte:
+                raise ValueError(
+                    "Error: el proyecto no es factible con los límites de recursos indicados")
+            elegibles = [a for a in orden if a in pendientes
+                         and all(p in fin and fin[p] <= t for p in preds[a])]
+            for a in elegibles:
+                d = dur[a]
+                if d == 0:
+                    inicio[a], fin[a] = t, t
+                    pendientes.discard(a)
+                    continue
+                exceso = (carga[:, t:t + d] + dem[a][:, None] > limite[:, t:t + d] + 1e-9)
+                bloqueo = [resource_labels[k] for k in range(K) if exceso[k].any()]
+                if not bloqueo:
+                    carga[:, t:t + d] += dem[a][:, None]
+                    inicio[a], fin[a] = t, t + d
+                    pendientes.discard(a)
+                    traza.append((t + 1, a, "empieza", ""))
+                else:
+                    traza.append((t + 1, a, "espera", ", ".join(bloqueo)))
+            t += 1
+
+        duracion = max(fin.values(), default=0)
+        traza = pd.DataFrame(traza, columns=["periodo", "actividad", "decision", "bloqueada_por"])
+        inicios = pd.Series(inicio).sort_index()
+        fines = pd.Series(fin).sort_index()
+        esperas = pd.Series({
+            a: inicio[a] - max((fin[p] for p in preds[a]), default=0) for a in acts
+        }).sort_index()
+        esperas = esperas[esperas > 0]
+
+        cargas = pd.DataFrame(carga[:, :duracion].T, index=range(1, duracion + 1),
+                              columns=resource_labels)
+        limites = pd.DataFrame(limite[:, :duracion].T, index=range(1, duracion + 1),
+                               columns=resource_labels)
+        cargas.index.name = limites.index.name = "periodo"
+
+        # Gantt con las esperas, sobre una copia (desplazar muta el grafo)
+        proyecto = self.copy()
+        my_data = data.copy()
+        if len(esperas):
+            # orden cronológico, y alfabético dentro de cada periodo (como asignar)
+            shifts = {a: int(esperas[a]) for a in sorted(esperas.index, key=lambda x: (inicio[x], x))}
+            my_data, _, _ = proyecto.desplazar(
+                my_data, duration_label, resource_labels[0], report=False,
+                cuadrados=False, **shifts)
+        gantts, dibujos = {}, {}
+        for rl in resource_labels:
+            gantts[rl], dibujos[rl] = proyecto.gantt(
+                data=my_data, duration_label=duration_label, resource_label=rl,
+                holguras=True, total="fila", tikz=tikz, params=params,
+                extra_rows=limites[[rl]].T.rename(index={rl: "Máximo"}))
+
+        if report:
+            for periodo, grupo in traza.groupby("periodo"):
+                emp = list(grupo.loc[grupo.decision == "empieza", "actividad"])
+                esp = [f"{r.actividad} ({r.bloqueada_por})"
+                       for r in grupo.loc[grupo.decision == "espera"].itertuples()]
+                display(Markdown(f"Periodo {periodo}. Empiezan: {emp}. Esperan: {esp}"))
+
+        return AsignacionMulti(my_data, inicios, fines, esperas, duracion, cargas,
+                               limites, traza, gantts, dibujos, proyecto)
+
     def standard_deviation(self, durations, variances, report=False):
         varianza = {key: 0 for key in self.activities}
         varianza.update(variances)
@@ -2671,6 +2876,45 @@ class ProjectGraph:
             n_samples=n_samples,
             seed=seed,
         )
+
+
+# ---------------------------------------------------------------------------
+# AsignacionMulti
+# ---------------------------------------------------------------------------
+
+class AsignacionMulti:
+    """Resultado de ``ProjectGraph.asignar_multi`` (asignación con varios recursos).
+
+    Atributos: ``data`` (duraciones con filas de espera 💤X), ``inicios`` y
+    ``fines`` (instante, desde 0), ``esperas`` (periodos que espera cada
+    actividad desde que quedó lista), ``duracion`` (del proyecto con recursos),
+    ``cargas`` y ``limites`` (DataFrame periodo × recurso), ``traza``
+    (periodo, actividad, decisión y recurso que la bloquea), ``gantts`` y
+    ``dibujos`` (dict por recurso), ``proyecto`` (copia del ProjectGraph con
+    las esperas 💤X insertadas, coherente con ``data``).
+    """
+
+    def __init__(self, data, inicios, fines, esperas, duracion, cargas, limites,
+                 traza, gantts, dibujos, proyecto=None):
+        self.proyecto = proyecto
+        self.data = data
+        self.inicios = inicios
+        self.fines = fines
+        self.esperas = esperas
+        self.duracion = duracion
+        self.cargas = cargas
+        self.limites = limites
+        self.traza = traza
+        self.gantts = gantts
+        self.dibujos = dibujos
+
+    def __iter__(self):
+        # permite `data, gantts, dibujos = proyecto.asignar_multi(...)`
+        return iter((self.data, self.gantts, self.dibujos))
+
+    def __repr__(self):
+        return (f"AsignacionMulti(duracion={self.duracion}, "
+                f"recursos={list(self.cargas.columns)}, esperas={self.esperas.to_dict()})")
 
 
 # ---------------------------------------------------------------------------
