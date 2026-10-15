@@ -71,6 +71,10 @@ acumulados = gantts['acumulados']            # PV, EV, AC por semana
 plot_curvas_valor_ganado(gantts)             # curvas S
 ```
 
+## Valor ganado con incertidumbre y con recursos
+
+`monte_carlo_valor_ganado` simula las duraciones y los costes reales y calcula SPI y CPI en una fecha de control; las previsiones clásicas (T/SPI, BAC/CPI) se comparan con lo que ocurre en cada réplica (sesgo, error, correlación): son mejores cuanto más avanzado está el proyecto, y una alarma por umbral de SPI tiene sensibilidad y falsas alarmas. `valor_ganado_recursos` toma una línea base sin recursos y una ejecución con límite: el SPI cae desde la primera espera aunque nadie trabaje peor. La línea base debe incluir los recursos.
+
 ## Qué practica cada variante
 
-*indicadores-eac*: Gantts de PV, EV y AC, variaciones, índices, tres EAC, VAC y TCPI. *earned-schedule*: ES, SPI(t) y duración prevista frente al SPI clásico. *tendencia*: tres puntos de control y evolución de los índices. *coste-bien-plazo-mal* y *plazo-bien-coste-mal*: lectura de las combinaciones de CPI y SPI. *diagnostico*: una resolución con CPI y SPI intercambiados. *inverso-desde-curvas*: sólo las curvas S. *coste-no-uniforme*: perfiles de desembolso no uniformes y su efecto sobre PV y SPI. *vigilar*: índices por actividad cruzados con la holgura.
+*indicadores-eac*: Gantts de PV, EV y AC, variaciones, índices, tres EAC, VAC y TCPI. *earned-schedule*: ES, SPI(t) y duración prevista frente al SPI clásico. *tendencia*: tres puntos de control y evolución de los índices. *coste-bien-plazo-mal* y *plazo-bien-coste-mal*: lectura de las combinaciones de CPI y SPI. *diagnostico*: una resolución con CPI y SPI intercambiados. *inverso-desde-curvas*: sólo las curvas S. *coste-no-uniforme*: perfiles de desembolso no uniformes y su efecto sobre PV y SPI. *vigilar*: índices por actividad cruzados con la holgura. *prevision-incertidumbre*: calidad de T/SPI y BAC/CPI con duraciones y costes aleatorios y fiabilidad de una alarma de SPI. *ev-recursos*: línea base sin recursos y ejecución con límite de operarios.

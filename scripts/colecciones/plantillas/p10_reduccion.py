@@ -788,6 +788,91 @@ def _crashing_recursos(rng):
     return celdas, f"{n} actividades; límite {L} operarios, reducir dos semanas (Ackoff sin recursos falla)"
 
 
+def _crashing_incertidumbre(rng):
+    """Reducir con duraciones inciertas: la reducción determinista hasta el plazo solo da ~50 % de probabilidad."""
+    estado = {}
+
+    def acepta(i):
+        if not (1 <= i["n_dummies"] <= 4 and 5 <= i["n_rutas"] <= 10 and 12 <= i["T"] <= 24 and (i["D"] >= 3).all()):
+            return False
+        a, m, b = P.tres_estimaciones_triangular(rng, i["D"])
+        if ((b - a) < 2).sum() > len(i["D"]) // 2:
+            return False
+        tope, cn, ct, ucr = P.costes_reduccion(rng, i["D"])
+        ucr = ucr.replace(0.0, np.inf)
+        if int(np.isfinite(ucr).sum()) < 4:
+            return False
+        pg = i["proyecto"]
+        dist = {x: ("triangular", float(a[x]), float(m[x]), float(b[x])) for x in i["D"].index}
+        df = P.tabla_base(i, duration=i["D"], a=a, m=m, b=b, cap_duration=tope, ucr=ucr)
+        T = int(i["T"])
+        try:
+            t = pg.monte_carlo_crashing(dist, df, "duration", tope, ucr, plazo=T - 2, reduccion_max=8,
+                                        n_samples=1500, seed=3)
+        except Exception:
+            return False
+        if t.index.max() < 4:
+            return False
+        p = t["P(τ ≤ plazo)"]
+        if not (0.05 <= p[0] <= 0.35 and p.max() >= 0.9):
+            return False
+        r90 = int(p[p >= 0.9].index.min())
+        if not (3 <= r90 <= t.index.max()):
+            return False
+        # la reducción determinista justo hasta el plazo (2 meses) debe dar una probabilidad claramente <0,9
+        if not (p.get(2, 1.0) <= 0.75 and r90 >= 3):
+            return False
+        estado.update(df=df, tope=tope, ucr=ucr, plazo=T - 2)
+        return True
+
+    info = P.buscar(rng, acepta, n=int(rng.choice([8, 9])), n_inicio=int(rng.choice([2, 3])),
+                    n_fin=int(rng.choice([1, 2])), max_intentos=6000)
+    df, plazo = estado["df"], estado["plazo"]
+    T = int(info["T"])
+    celdas = [md("# Enunciado"),
+              md("Considere el proyecto cuyo cuadro de prelaciones, estimaciones de duración (mínima *a*, más probable *m* y "
+                 "máxima *b*, semanas, distribución triangular), duración tope y coste unitario de reducción (k€/semana) se "
+                 "adjunta; la columna *duration* es la duración esperada. Las actividades con CUR infinito no se pueden acelerar. "
+                 f"El contrato exige entregar en **{plazo} semanas**.")]
+    celdas.append(preguntas([
+        f"Con las duraciones esperadas el proyecto dura {T} semanas. Simule 5 000 réplicas y estime la probabilidad de entregar "
+        f"en {plazo} semanas sin acelerar.",
+        f"Aplique Ackoff-Sasieni para reducir el proyecto hasta {plazo} semanas con las duraciones esperadas. "
+        "¿Qué probabilidad de cumplir el plazo da ahora esa reducción? Compruébelo simulando.",
+        "Construya la tabla de probabilidad de cumplir el plazo, duración media simulada y coste de reducción en función de las "
+        "semanas recortadas (de 0 a 8). Use los mismos números aleatorios para todas las filas.",
+        "¿Cuántas semanas hay que recortar para tener un 90 % de probabilidad de cumplir? ¿Cuánto cuesta frente a la "
+        "reducción determinista? ¿Cuánto cuesta cada punto porcentual de probabilidad ganado en cada tramo?"]))
+    celdas.append(code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"plazo = {plazo}\n"
+                       "dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}\n"
+                       "tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']"))
+    celdas += apartado(1)
+    celdas.append(code("tabla = proyecto.monte_carlo_crashing(dists, datos_proyecto, 'duration', tope, ucr, plazo=plazo,\n"
+                       "                                       reduccion_max=8, n_samples=5000, seed=7)\n"
+                       "Markdown(f'Sin acelerar: duración media simulada {tabla.loc[0, \"τ media\"]:.2f} semanas y P(τ ≤ {plazo}) = {tabla.loc[0, \"P(τ ≤ plazo)\"]:.3f}.')"))
+    celdas += apartado(2)
+    celdas.append(code("r_det = int(tabla.index[tabla['duración determinista'] <= plazo].min())\n"
+                       "Markdown(f'Reducir las duraciones esperadas hasta {plazo} semanas exige {r_det} semana(s) de reducción y {tabla.loc[r_det, \"coste\"]:.0f} k€; '\n"
+                       "         f'pero la probabilidad real de cumplir es {tabla.loc[r_det, \"P(τ ≤ plazo)\"]:.3f}: reducir las duraciones esperadas hasta el plazo '\n"
+                       "         'deja una probabilidad muy inferior al 90 % que suele exigirse.')"))
+    celdas += apartado(3)
+    celdas.append(code('#| tbl-cap: "Probabilidad de cumplir el plazo según las semanas recortadas"\n#| label: tbl-crashingMC\n'
+                       "tabla.round(3)"))
+    celdas += apartado(4)
+    celdas.append(code("r90 = int(tabla.index[tabla['P(τ ≤ plazo)'] >= 0.9].min())\n"
+                       "marginal = (tabla['coste'].diff() / (100 * tabla['P(τ ≤ plazo)'].diff())).rename('k€ por punto de probabilidad')\n"
+                       "display(marginal.round(2).to_frame())\n"
+                       "Markdown(f'Para el 90 % hay que recortar {r90} semanas ({tabla.loc[r90, \"coste\"]:.0f} k€) en vez de las {r_det} deterministas '\n"
+                       "         f'({tabla.loc[r_det, \"coste\"]:.0f} k€): la diferencia, {tabla.loc[r90, \"coste\"] - tabla.loc[r_det, \"coste\"]:.0f} k€, es lo que cuesta '\n"
+                       "         'la seguridad. Los últimos puntos de probabilidad son los más caros.')"))
+    return celdas, f"duraciones triangulares; plazo de {plazo} semanas; reducción y probabilidad"
+
+
 VARIANTES = [
     Variante("cur-y-ackoff", 1, "CUR a partir de costes normal y tope; Ackoff-Sasieni tres semanas con un paso de dos actividades",
              lambda rng: _base(1, rng)),
@@ -801,6 +886,8 @@ VARIANTES = [
              _cur_por_tramos),
     Variante("crashing-recursos", 3, "reducir la duración con un límite de operarios: Ackoff sin recursos falla; cadena crítica con recursos, modelo con recurso y contratar frente a acelerar",
              _crashing_recursos),
+    Variante("crashing-incertidumbre", 3, "reducir con duraciones triangulares: la reducción determinista hasta el plazo da poca probabilidad; coste de la seguridad",
+             _crashing_incertidumbre),
 ]
 
 

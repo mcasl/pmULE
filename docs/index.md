@@ -216,6 +216,7 @@ Coste unitario de reducción, algoritmo de Ackoff-Sasieni paso a paso, costes in
 [Reduccion 13](colecciones/10_reduccion/Reduccion_13.html) — *programacion-lineal* (nivel 3): 9 actividades; reducir 3 semanas: Ackoff 3 k€ frente a PL 3 k€  
 [Reduccion 14](colecciones/10_reduccion/Reduccion_14.html) — *cur-por-tramos* (nivel 3): 9 actividades; CUR por tramos, reducir 3 semanas  
 [Reduccion 15](colecciones/10_reduccion/Reduccion_15.html) — *crashing-recursos* (nivel 3): 9 actividades; límite 3 operarios, reducir dos semanas (Ackoff sin recursos falla)  
+[Reduccion 16](colecciones/10_reduccion/Reduccion_16.html) — *crashing-incertidumbre* (nivel 3): duraciones triangulares; plazo de 18 semanas; reducción y probabilidad  
 
 ## Nivelación y asignación de recursos
 
@@ -262,6 +263,8 @@ Diagramas de Gantt del valor planificado, ganado y coste real; CPI, SPI, EAC, VA
 [ValorGanado 16](colecciones/12_valor_ganado/ValorGanado_16.html) — *inverso-desde-curvas* (nivel 2): 9 actividades (ocultas); curvas S hasta la semana 14 de 20  
 [ValorGanado 17](colecciones/12_valor_ganado/ValorGanado_17.html) — *coste-no-uniforme* (nivel 3): 8 actividades; perfiles de desembolso no uniformes; control en la semana 8  
 [ValorGanado 18](colecciones/12_valor_ganado/ValorGanado_18.html) — *vigilar* (nivel 2): 9 actividades; qué vigilar cruzando SPI/CPI por actividad con la holgura  
+[ValorGanado 19](colecciones/12_valor_ganado/ValorGanado_19.html) — *prevision-incertidumbre* (nivel 3): duraciones triangulares y costes inciertos; controles en las semanas [6, 12, 17]  
+[ValorGanado 20](colecciones/12_valor_ganado/ValorGanado_20.html) — *ev-recursos* (nivel 3): límite de 3 operarios y línea base sin recursos  
 
 ## La fórmula del tiempo de compleción τ = ‖R·t‖∞
 
@@ -344,6 +347,8 @@ Construir los flujos de caja libre de un caso de estudio (inversión, ingresos, 
 [Viabilidad 10](colecciones/17_viabilidad/Viabilidad_10.html) — *financiacion* (nivel 3): una línea de envasado automatizada: préstamo del 70% al 5% a 4 años; TIR proyecto 15.6%  
 [Viabilidad 11](colecciones/17_viabilidad/Viabilidad_11.html) — *van-montecarlo* (nivel 3): 8 actividades, 18 meses, I0 = 1075 k€, ingreso 30 ± 10 k€/mes durante 60 meses, k = 10%; distribución del VAN  
 [Viabilidad 12](colecciones/17_viabilidad/Viabilidad_12.html) — *van-montecarlo* (nivel 3): 8 actividades, 18 meses, I0 = 950 k€, ingreso 30 ± 10 k€/mes durante 48 meses, k = 8%; distribución del VAN  
+[Viabilidad 13](colecciones/17_viabilidad/Viabilidad_13.html) — *recursos-van* (nivel 3): límite de 3 operarios, ingresos de 65 k€/mes durante 36 meses  
+[Viabilidad 14](colecciones/17_viabilidad/Viabilidad_14.html) — *crashing-van* (nivel 3): ingresos de 35 k€/mes durante 36 meses; reducción mes a mes con Ackoff  
 
 ## Casos de decisión con varios implicados
 
@@ -360,6 +365,7 @@ Situaciones en las que proveedor, cliente, contratista, inspector, otros jefes d
 [Caso 08](colecciones/18_casos/Caso_08.html) — *comite-valor-ganado* (nivel 3): comité y valor ganado: C declarada al 67 % frente al 40 % real; SPI 1.00 → 0.82  
 [Caso 09](colecciones/18_casos/Caso_09.html) — *oferta-comercial* (nivel 2): oferta comercial: media 16, P(≤16) = 0.32 por Monte Carlo, plazo 90 % 18.8; óptimo 17  
 [Caso 10](colecciones/18_casos/Caso_10.html) — *comite-inversion* (nivel 3): comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%  
+[Caso 11](colecciones/18_casos/Caso_11.html) — *contingencia-planta* (nivel 3): límite de 3 operarios, plazo mes 16, penalización 6 k€/mes y VAN  
 
 ## Exámenes montados con las plantillas
 

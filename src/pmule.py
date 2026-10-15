@@ -2698,6 +2698,263 @@ class ProjectGraph:
         return MonteCarloRecursosResult(tau_libre, tau_rec, criticidad,
                                         pd.Series(bloqueos) / n_samples, n_samples, seed)
 
+    # ------------------------------------------------------------------
+    # Combinaciones: VAN, crashing, valor ganado y recursos
+    # ------------------------------------------------------------------
+    def _calendario_con_recursos(self, data, duration_label, resource_labels, maximos):
+        """Inicios (0-based) y duración con recursos de un proyecto determinista."""
+        return self.copy().asignar_multi(data.copy(), duration_label, resource_labels, maximos,
+                                         report=False, tikz=False, dibujar=False)
+
+    def van_recursos(self, data, duration_label, resource_labels, maximos, bac,
+                     ingreso_mensual, n_meses, tasa_anual, ampliaciones=3):
+        """VAN de un proyecto de inversión con y sin límite de recursos.
+
+        Con límites el proyecto termina más tarde (τ mayor): los ingresos se retrasan y los costes de
+        las actividades que esperan también.  Devuelve un dict con ``escenarios`` (DataFrame: duración,
+        VAN de costes, VAN de ingresos, VAN) y ``ampliaciones`` (qué ocurre al ampliar *todos* los
+        límites en 0, 1, … unidades: duración y VAN), para decidir si compensa ampliar el recurso.
+        """
+        resource_labels = [resource_labels] if isinstance(resource_labels, str) else list(resource_labels)
+        R_df = self.path_matrix(dummies=False)
+        acts = list(R_df.columns)
+        bac = pd.Series(bac, dtype=float).reindex(acts)
+        D = data[duration_label].reindex(acts).to_numpy(dtype=float)[None, :]
+        B = bac.to_numpy()[None, :]
+        ES0, EF0 = self._calendarios_simulados(D, acts)
+
+        def van(ES, tau):
+            ES = np.asarray(ES, dtype=float)[None, :]
+            return _van_cerrado(ES, D, B, np.array([float(tau)]), np.array([float(ingreso_mensual)]),
+                                n_meses, tasa_anual)
+
+        def fila(nombre, ES, tau):
+            c, i = van(ES, tau)
+            return {"escenario": nombre, "duración": float(tau), "VAN costes": float(c[0]),
+                    "VAN ingresos": float(i[0]), "VAN": float(i[0] - c[0])}
+
+        filas = [fila("sin límite", ES0[0], EF0.max())]
+        limites_base = self._vectores_limite(resource_labels, maximos)
+        res = self._calendario_con_recursos(data, duration_label, resource_labels, maximos)
+        ES1 = res.inicios.reindex(acts).to_numpy(dtype=float)
+        filas.append(fila("con límite", ES1, res.duracion))
+        escen = pd.DataFrame(filas).set_index("escenario")
+        amp = []
+        for u in range(int(ampliaciones) + 1):
+            mx = {rl: np.asarray(limites_base[rl], dtype=float) + u for rl in resource_labels}
+            r = self._calendario_con_recursos(data, duration_label, resource_labels, mx)
+            f = fila(f"+{u}", r.inicios.reindex(acts).to_numpy(dtype=float), r.duracion)
+            amp.append({"unidades de más": u, "duración": f["duración"], "VAN": f["VAN"]})
+        amp = pd.DataFrame(amp).set_index("unidades de más")
+        amp["mejora de VAN"] = amp["VAN"].diff()
+        return {"escenarios": escen, "ampliaciones": amp}
+
+    def monte_carlo_van_recursos(self, distributions, data, resource_labels, maximos, bac,
+                                 ingreso_mensual, n_meses, tasa_anual, n_samples=1000, seed=None):
+        """Monte Carlo del VAN con y sin límite de recursos (réplica a réplica se replanifica)."""
+        resource_labels = [resource_labels] if isinstance(resource_labels, str) else list(resource_labels)
+        vectors = self._vectores_limite(resource_labels, maximos)
+        preds = self._real_predecessors()
+        orden = _orden_topologico(preds)
+        bac = pd.Series(bac, dtype=float).reindex(orden)
+        if bac.isna().any():
+            raise ValueError("Faltan BAC para alguna actividad")
+        dem = {a: np.array([float(data.loc[a, rl]) for rl in resource_labels]) for a in orden}
+        rng = np.random.default_rng(seed)
+        D = np.zeros((n_samples, len(orden)))
+        for j, a in enumerate(orden):
+            D[:, j] = _make_sampler(rng, distributions[a])(n_samples)
+        D = np.maximum(np.rint(D), 1.0)
+        if isinstance(ingreso_mensual, (int, float, np.integer, np.floating)):
+            F = np.full(n_samples, float(ingreso_mensual))
+        else:
+            F = _make_sampler(rng, ingreso_mensual)(n_samples)
+        n0 = max(len(v) for v in vectors.values())
+        ancho = n0 + int(D.sum(axis=1).max()) + int(D.max()) + 2
+        limite = _matriz_limite([vectors[rl] for rl in resource_labels], ancho)
+        ES_lib, EF_lib = self._calendarios_simulados(D, orden)
+        ES_rec = np.zeros_like(D)
+        tau_rec = np.zeros(n_samples)
+        for i in range(n_samples):
+            dur = {a: int(D[i, j]) for j, a in enumerate(orden)}
+            LS = _cpm_puro(preds, dur, orden)[1]
+            ini, fin, _, _ = _planificar_paralelo(preds, orden, dur, dem, limite,
+                                                  n0 + sum(dur.values()) + 1, resource_labels, ls=LS)
+            ES_rec[i] = [ini[a] for a in orden]
+            tau_rec[i] = max(fin.values(), default=0)
+        B = np.tile(bac.to_numpy(), (n_samples, 1))
+        tau_lib = EF_lib.max(axis=1)
+        c0, i0 = _van_cerrado(ES_lib, D, B, tau_lib, F, n_meses, tasa_anual)
+        c1, i1 = _van_cerrado(ES_rec, D, B, tau_rec, F, n_meses, tasa_anual)
+        return MonteCarloVANRecursosResult(i0 - c0, i1 - c1, tau_lib, tau_rec, n_samples, seed)
+
+    def _ruta_crashing(self, data, duration_label, min_durations, costs, reduccion_max,
+                       resource_labels=None, maximos=None):
+        """Lista de (r, duraciones, coste acumulado) con r = 0, 1, … periodos recortados."""
+        d0 = data[duration_label].astype(float)
+        mind = pd.Series(min_durations, dtype=float).reindex(d0.index)
+        ucr = pd.Series(costs, dtype=float).reindex(d0.index)
+        con_rec = resource_labels is not None
+        T0 = (self.copy().asignar_multi(data.copy(), duration_label, resource_labels, maximos,
+                                        report=False, tikz=False, dibujar=False).duracion
+              if con_rec else self.duration(d0))
+        ruta = [(0, d0.copy(), 0.0, float(T0))]
+        previo = float(T0)
+        for r in range(1, int(reduccion_max) + 1):
+            if con_rec:
+                cr = self.copy().crashing_recursos(data, duration_label, resource_labels, maximos,
+                                                   mind, ucr, reduccion=r)
+                dur = cr.duraciones.astype(float)
+                coste = float(cr.coste_total)
+                T = float(cr.duracion_final)
+            else:
+                _, _, dur, _ = self.ackoff(d0, mind, ucr, reduction=r, report=False)
+                dur = pd.Series(dur, dtype=float).reindex(d0.index)
+                coste = float(((d0 - dur) * ucr.replace(np.inf, 0.0)).sum())
+                T = float(self.duration(dur))
+            if T >= previo - 1e-9:
+                break
+            ruta.append((r, dur, coste, T))
+            previo = T
+        return ruta
+
+    def crashing_van(self, data, duration_label, min_durations, costs, bac, ingreso_mensual,
+                     n_meses, tasa_anual, resource_labels=None, maximos=None, reduccion_max=20):
+        """Duración óptima por VAN: cada semana recortada cuesta (CUR) pero adelanta los ingresos.
+
+        El coste de reducción se suma al BAC de cada actividad y se reparte en su nueva duración.
+        Con ``resource_labels`` y ``maximos`` se reduce con ``crashing_recursos`` (límites de recursos);
+        sin ellos con Ackoff-Sasieni.  Devuelve un DataFrame indexado por periodos recortados con
+        duración, coste de reducción acumulado, VAN y ganancia marginal; la fila de VAN máximo es el óptimo.
+        """
+        R_df = self.path_matrix(dummies=False)
+        acts = list(R_df.columns)
+        bac = pd.Series(bac, dtype=float).reindex(acts)
+        ucr = pd.Series(costs, dtype=float).reindex(data.index)
+        ruta = self._ruta_crashing(data, duration_label, min_durations, costs, reduccion_max,
+                                   resource_labels, maximos)
+        filas = []
+        d0 = data[duration_label].astype(float)
+        for r, dur, coste, T in ruta:
+            D = dur.reindex(acts).to_numpy(dtype=float)[None, :]
+            extra = ((d0 - dur) * ucr.replace(np.inf, 0.0)).reindex(acts).to_numpy()
+            B = (bac.to_numpy() + extra)[None, :]
+            if resource_labels is not None:
+                d_data = data.copy()
+                d_data[duration_label] = dur
+                res = self._calendario_con_recursos(d_data, duration_label, resource_labels, maximos)
+                ES = res.inicios.reindex(acts).to_numpy(dtype=float)[None, :]
+                tau = float(res.duracion)
+            else:
+                ES, EF = self._calendarios_simulados(D, acts)
+                tau = float(EF.max())
+            c, i = _van_cerrado(ES, D, B, np.array([tau]), np.array([float(ingreso_mensual)]),
+                                n_meses, tasa_anual)
+            filas.append({"periodos recortados": r, "duración": tau, "coste de reducción": coste,
+                          "VAN": float(i[0] - c[0])})
+        tabla = pd.DataFrame(filas).set_index("periodos recortados")
+        tabla["ganancia marginal"] = tabla["VAN"].diff()
+        return tabla
+
+    def monte_carlo_crashing(self, distributions, data, duration_label, min_durations, costs,
+                             plazo, reduccion_max=6, n_samples=5000, seed=None):
+        """Probabilidad de cumplir el plazo en función de las periodos recortados (y su coste).
+
+        Con números aleatorios comunes: se sortean las duraciones una vez y a cada réplica se le restan
+        las reducciones que da Ackoff-Sasieni en cada paso (mínimo 1 y no menos que la duración tope).
+        """
+        R_df = self.path_matrix(dummies=False)
+        acts = list(R_df.columns)
+        rng = np.random.default_rng(seed)
+        D = np.zeros((n_samples, len(acts)))
+        for j, a in enumerate(acts):
+            D[:, j] = _make_sampler(rng, distributions[a])(n_samples)
+        D = np.maximum(np.rint(D), 1.0)
+        d0 = data[duration_label].astype(float).reindex(acts)
+        ruta = self._ruta_crashing(data, duration_label, min_durations, costs, reduccion_max)
+        filas = []
+        for r, dur, coste, T in ruta:
+            red = (d0 - dur.reindex(acts)).to_numpy()[None, :]
+            Dr = np.maximum(D - red, 1.0)
+            _, EF = self._calendarios_simulados(Dr, acts)
+            tau = EF.max(axis=1)
+            filas.append({"periodos recortados": r, "duración determinista": T, "coste": coste,
+                          "τ media": float(tau.mean()), "τ P90": float(np.quantile(tau, 0.9)),
+                          "P(τ ≤ plazo)": float((tau <= plazo).mean())})
+        return pd.DataFrame(filas).set_index("periodos recortados")
+
+    def monte_carlo_valor_ganado(self, distributions, plan, bac, t_control, n_samples=2000,
+                                 seed=None, factor_coste=None):
+        """Calidad de las previsiones de valor ganado cuando las duraciones son aleatorias.
+
+        ``plan`` son las duraciones previstas (línea base, calendario más temprano), ``bac`` el
+        presupuesto de cada actividad (avance lineal) y ``factor_coste`` la distribución del
+        factor multiplicativo del coste real (por actividad o ``None``).  En la fecha de control
+        ``t_control`` se calcula, réplica a réplica, SPI = EV/PV y CPI = EV/AC, y las previsiones
+        clásicas: duración T_plan/SPI y coste BAC/CPI.  Se comparan con la duración y el coste que de
+        verdad resultan.  Devuelve ``MonteCarloValorGanadoResult``.
+        """
+        R_df = self.path_matrix(dummies=False)
+        acts = list(R_df.columns)
+        rng = np.random.default_rng(seed)
+        plan = pd.Series(plan, dtype=float).reindex(acts)
+        bac_s = pd.Series(bac, dtype=float).reindex(acts)
+        Dp = plan.to_numpy()[None, :]
+        ESp, EFp = self._calendarios_simulados(Dp, acts)
+        T_plan = float(EFp.max())
+        B = bac_s.to_numpy()[None, :]
+        pv = float((B * np.clip((t_control - ESp) / Dp, 0.0, 1.0)).sum())
+        D = np.zeros((n_samples, len(acts)))
+        for j, a in enumerate(acts):
+            D[:, j] = _make_sampler(rng, distributions[a])(n_samples)
+        D = np.maximum(np.rint(D), 1.0)
+        ES, EF = self._calendarios_simulados(D, acts)
+        avance = np.clip((t_control - ES) / D, 0.0, 1.0)
+        W = np.tile(bac_s.to_numpy(), (n_samples, 1))
+        K = np.ones_like(W)
+        if factor_coste:
+            for j, a in enumerate(acts):
+                if a in factor_coste:
+                    K[:, j] = _make_sampler(rng, factor_coste[a])(n_samples)
+        ev = (W * avance).sum(axis=1)
+        ac = (W * K * avance).sum(axis=1)
+        spi = ev / pv if pv > 0 else np.full(n_samples, np.nan)
+        cpi = np.where(ac > 0, ev / np.where(ac > 0, ac, 1.0), np.nan)
+        tau = EF.max(axis=1)
+        coste_final = (W * K).sum(axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            tau_pred = T_plan / spi
+            eac_pred = float(bac_s.sum()) / cpi
+        return MonteCarloValorGanadoResult(t_control, T_plan, float(bac_s.sum()), pv, ev, ac, spi, cpi,
+                                           tau, tau_pred, coste_final, eac_pred, n_samples, seed)
+
+    def valor_ganado_recursos(self, data, duration_label, resource_labels, maximos, bac):
+        """Valor ganado cuando la línea base ignora los recursos y la ejecución los respeta.
+
+        Devuelve una tabla por periodo con el valor planificado (calendario más temprano sin recursos),
+        el valor ganado (calendario con recursos), el SPI y las previsiones de duración
+        T_plan/SPI; ``attrs`` guarda T_plan, T_real y BAC.  Con límite de recursos el SPI cae por debajo
+        de 1 desde que se produce la primera espera, aunque nadie trabaje «peor».
+        """
+        R_df = self.path_matrix(dummies=False)
+        acts = list(R_df.columns)
+        bac = pd.Series(bac, dtype=float).reindex(acts).to_numpy()
+        D = data[duration_label].reindex(acts).to_numpy(dtype=float)
+        ESp, EFp = self._calendarios_simulados(D[None, :], acts)
+        res = self._calendario_con_recursos(data, duration_label, resource_labels, maximos)
+        ESr = res.inicios.reindex(acts).to_numpy(dtype=float)
+        T_plan, T_real = float(EFp.max()), float(res.duracion)
+        filas = []
+        for t in range(0, int(max(T_plan, T_real)) + 1):
+            pv = float((bac * np.clip((t - ESp[0]) / D, 0.0, 1.0)).sum())
+            ev = float((bac * np.clip((t - ESr) / D, 0.0, 1.0)).sum())
+            spi = ev / pv if pv > 0 else np.nan
+            filas.append({"periodo": t, "PV": pv, "EV": ev, "SPI": spi,
+                          "duración prevista": T_plan / spi if spi and spi > 0 else np.nan})
+        tabla = pd.DataFrame(filas).set_index("periodo")
+        tabla.attrs.update(T_plan=T_plan, T_real=T_real, BAC=float(bac.sum()))
+        return tabla
+
     def standard_deviation(self, durations, variances, report=False):
         varianza = {key: 0 for key in self.activities}
         varianza.update(variances)
@@ -3636,6 +3893,90 @@ class MonteCarloRecursosResult:
     def __repr__(self):
         return (f"MonteCarloRecursosResult(n={self.n_samples}, τ libre={self.tau_libre_samples.mean():.2f}, "
                 f"τ con recursos={self.tau_recursos_samples.mean():.2f})")
+
+
+def _van_cerrado(ES, D, B, tau, F, n_meses, tasa_anual):
+    """(VAN de costes, VAN de ingresos) en forma cerrada, vectorizado por réplicas.
+
+    Coste de cada actividad repartido uniformemente en su duración desde su inicio ES; ingresos F
+    por mes durante ``n_meses`` desde τ; tasa mensual equivalente a la anual.
+    """
+    km = (1.0 + tasa_anual) ** (1.0 / 12.0) - 1.0
+    v = 1.0 / (1.0 + km)
+    serie = lambda inicio, n: v ** (inicio + 1.0) * (1.0 - v ** n) / (1.0 - v)
+    coste = (B / D * serie(ES, D)).sum(axis=1)
+    ingreso = F * serie(tau, float(n_meses))
+    return coste, ingreso
+
+
+class MonteCarloVANRecursosResult:
+    """VAN simulado con y sin límite de recursos."""
+
+    def __init__(self, van_libre, van_recursos, tau_libre, tau_recursos, n_samples, seed):
+        self.van_libre_samples = np.asarray(van_libre, dtype=float)
+        self.van_recursos_samples = np.asarray(van_recursos, dtype=float)
+        self.tau_libre_samples = np.asarray(tau_libre, dtype=float)
+        self.tau_recursos_samples = np.asarray(tau_recursos, dtype=float)
+        self.n_samples = n_samples
+        self.seed = seed
+
+    @property
+    def perdida_samples(self):
+        return self.van_libre_samples - self.van_recursos_samples
+
+    def prob_van_negativo(self, con_recursos=True):
+        x = self.van_recursos_samples if con_recursos else self.van_libre_samples
+        return float((x < 0).mean())
+
+    def summary(self):
+        def fila(x):
+            return {"media": x.mean(), "desv. típica": x.std(ddof=1), "P10": np.quantile(x, .1),
+                    "P50": np.quantile(x, .5), "P90": np.quantile(x, .9)}
+        return pd.DataFrame({"VAN sin recursos": fila(self.van_libre_samples),
+                             "VAN con recursos": fila(self.van_recursos_samples),
+                             "pérdida por recursos": fila(self.perdida_samples)}).T
+
+    def __repr__(self):
+        return (f"MonteCarloVANRecursosResult(n={self.n_samples}, VAN libre={self.van_libre_samples.mean():.2f}, "
+                f"VAN con recursos={self.van_recursos_samples.mean():.2f})")
+
+
+class MonteCarloValorGanadoResult:
+    """Previsiones de valor ganado frente a lo que de verdad ocurre (réplicas)."""
+
+    def __init__(self, t_control, T_plan, BAC, pv, ev, ac, spi, cpi, tau, tau_pred, coste, eac_pred,
+                 n_samples, seed):
+        self.t_control, self.T_plan, self.BAC, self.pv = t_control, T_plan, BAC, pv
+        self.ev, self.ac, self.spi, self.cpi = ev, ac, spi, cpi
+        self.tau_samples, self.tau_pred_samples = tau, tau_pred
+        self.coste_samples, self.eac_pred_samples = coste, eac_pred
+        self.n_samples, self.seed = n_samples, seed
+
+    def summary(self):
+        def fila(x):
+            x = x[np.isfinite(x)]
+            return {"media": x.mean(), "desv. típica": x.std(ddof=1), "P10": np.quantile(x, .1),
+                    "P90": np.quantile(x, .9)}
+        return pd.DataFrame({"SPI": fila(self.spi), "CPI": fila(self.cpi),
+                             "duración real": fila(self.tau_samples),
+                             "duración prevista (T/SPI)": fila(self.tau_pred_samples),
+                             "coste real": fila(self.coste_samples),
+                             "coste previsto (BAC/CPI)": fila(self.eac_pred_samples)}).T
+
+    def calidad_prevision(self):
+        """Sesgo, error absoluto medio y correlación de las previsiones de duración y de coste."""
+        def medidas(real, pred):
+            m = np.isfinite(pred)
+            e = pred[m] - real[m]
+            c = np.corrcoef(real[m], pred[m])[0, 1] if m.sum() > 2 and pred[m].std() > 0 and real[m].std() > 0 else np.nan
+            return {"sesgo": float(e.mean()), "error absoluto medio": float(np.abs(e).mean()),
+                    "correlación": float(c)}
+        return pd.DataFrame({"duración": medidas(self.tau_samples, self.tau_pred_samples),
+                             "coste": medidas(self.coste_samples, self.eac_pred_samples)}).T
+
+    def __repr__(self):
+        return (f"MonteCarloValorGanadoResult(t={self.t_control}, n={self.n_samples}, "
+                f"SPI medio={np.nanmean(self.spi):.3f})")
 
 
 # ---------------------------------------------------------------------------

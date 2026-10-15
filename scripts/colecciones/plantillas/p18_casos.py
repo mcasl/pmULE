@@ -1444,6 +1444,193 @@ def _comite_inversion(rng):
     return celdas, f"comité de inversión: {caso['tema']}; VAN {VAN:.0f} k€ ({umbral_ce:.0%}), precio −{2 * x:.0%} con prob. {pi:.0%}"
 
 
+# ---------------------------------------------------------------------------
+# Caso integrador — Plan de contingencia de una planta: recursos limitados, duraciones inciertas,
+# aceleración con ayuda del contratista, penalización del cliente y VAN
+# ---------------------------------------------------------------------------
+def _evaluar_opcion(pg, df, dist_base, L_op, red, pen, c, plazo, F, N, k, L_ref, n, seed):
+    """VAN neto (tras penalización y operarios extra) y probabilidad de cumplir de una opción."""
+    dist = {a: ("triangular", max(1.0, d[1] - red[a]), max(1.0, d[2] - red[a]), max(1.0, d[3] - red[a]))
+            for a, d in dist_base.items()}
+    bac = df["BAC"] + df["ucr"].replace(np.inf, 0.0) * red
+    mc = pg.monte_carlo_van_recursos(dist, df[["operarios"]], ["operarios"], [L_op], bac, F, N, k,
+                                     n_samples=n, seed=seed)
+    tau = mc.tau_recursos_samples
+    neto = mc.van_recursos_samples - pen * np.maximum(tau - plazo, 0.0) - c * (L_op - L_ref) * tau
+    return {"VAN medio": float(neto.mean()), "P(VAN<0)": float((neto < 0).mean()),
+            "P(τ≤plazo)": float((tau <= plazo).mean()), "τ medio": float(tau.mean()),
+            "coste reducción": float((df["ucr"].replace(np.inf, 0.0) * red).sum())}
+
+
+def _plan_opciones(pg, df, dist_base, L, pen, c, plazo, F, N, k, n, seed):
+    d = df[["predecessor", "duration", "operarios"]]
+    tope, ucr = df["cap_duration"], df["ucr"]
+    ceros = pd.Series(0.0, index=df.index)
+    red_c = pg.crashing_recursos(d, "duration", ["operarios"], [L], tope, ucr, reduccion=2).reducciones
+    red_d = pg.crashing_recursos(d, "duration", ["operarios"], [L + 1], tope, ucr, reduccion=2).reducciones
+    red_c, red_d = pd.Series(red_c, dtype=float).reindex(df.index).fillna(0.0), pd.Series(red_d, dtype=float).reindex(df.index).fillna(0.0)
+    ops = {"A: no hacer nada": (L, ceros), "B: un operario más": (L + 1, ceros),
+           "C: acelerar dos meses": (L, red_c), "D: operario más y acelerar": (L + 1, red_d)}
+    return pd.DataFrame({n_: _evaluar_opcion(pg, df, dist_base, Lo, r, pen, c, plazo, F, N, k, L, n, seed)
+                         for n_, (Lo, r) in ops.items()}).T
+
+
+def _contingencia_planta(rng):
+    estado = {}
+
+    def acepta(i):
+        if not (0 <= i["n_dummies"] <= 4 and 4 <= i["n_rutas"] <= 10 and 10 <= i["T"] <= 20):
+            return False
+        nombres = list(i["D"].index)
+        a, m, b = P.tres_estimaciones_triangular(rng, i["D"])
+        if ((b - a) < 2).sum() > len(nombres) // 2:
+            return False
+        op = P.recursos(rng, nombres, hi=3).rename("operarios")
+        L = int(op.max())
+        tope, cn, ct, ucr = P.costes_reduccion(rng, i["D"])
+        ucr = ucr.replace(0.0, np.inf)
+        if int(np.isfinite(ucr).sum()) < 4:
+            return False
+        BAC = pd.Series(rng.integers(2, 9, size=len(nombres)) * 25, index=nombres, name="BAC")
+        df = P.tabla_base(i, duration=i["D"], a=a, m=m, b=b, operarios=op, BAC=BAC, cap_duration=tope, ucr=ucr)
+        pg = i["proyecto"]
+        T0 = int(i["T"])
+        try:
+            r0 = pg.copy().asignar_multi(df[["predecessor", "duration", "operarios"]].copy(), "duration", ["operarios"], [L],
+                                         dibujar=False)
+            r1 = pg.copy().asignar_multi(df[["predecessor", "duration", "operarios"]].copy(), "duration", ["operarios"], [L + 1],
+                                         dibujar=False)
+        except Exception:
+            return False
+        if not (1 <= r0.duracion - T0 <= 3 and r1.duracion < r0.duracion):
+            return False
+        k = float(rng.choice([0.08, 0.10, 0.12]))
+        N = int(rng.choice([36, 48]))
+        dist_base = {x: ("triangular", float(a[x]), float(m[x]), float(b[x])) for x in nombres}
+        fijas = {x: ("triangular", float(d), float(d), float(d)) for x, d in i["D"].items()}
+        v0 = pg.monte_carlo_van(fijas, BAC, 0.0, N, k, n_samples=1, seed=0).van_samples[0]
+        v1 = pg.monte_carlo_van(fijas, BAC, 1.0, N, k, n_samples=1, seed=0).van_samples[0]
+        F = float(np.ceil((-v0 / (v1 - v0)) * float(rng.choice([1.05, 1.1, 1.18])) / 5) * 5)
+        plazo = T0 + 1
+        pen = float(rng.choice([6, 10, 15]))
+        c = float(rng.choice([2.0, 3.0, 4.0]))
+        try:
+            t = _plan_opciones(pg, df, dist_base, L, pen, c, plazo, F, N, k, 300, 5)
+        except Exception:
+            return False
+        best = t["VAN medio"].idxmax()
+        if best.startswith(("A", "D")):
+            return False
+        if not (t.loc[best, "P(τ≤plazo)"] - t.iloc[0]["P(τ≤plazo)"] >= 0.15 and t.iloc[0]["P(τ≤plazo)"] <= 0.45):
+            return False
+        if t["VAN medio"].sort_values().diff().dropna().min() < 2.0:
+            return False
+        if not (0.05 <= t["P(VAN<0)"].max() <= 0.8):
+            return False
+        estado.update(df=df, L=L, k=k, N=N, F=F, plazo=plazo, pen=pen, c=c, T0=T0, Tr=int(r0.duracion), t=t)
+        return True
+
+    info = P.buscar(rng, acepta, n=int(rng.choice([8, 9])), n_inicio=int(rng.choice([2, 3])),
+                    n_fin=int(rng.choice([1, 2])), max_intentos=3000)
+    df, L, k, N, F, plazo, pen, c = (estado[x] for x in ("df", "L", "k", "N", "F", "plazo", "pen", "c"))
+    T0, Tr = estado["T0"], estado["Tr"]
+    agentes = ["cliente", "director financiero", "jefe de obra", "contratista"]
+    celdas = [md("# Enunciado"),
+              md(f"Usted dirige la construcción de una planta cuyo cuadro de prelaciones, duraciones (meses; *a*, *m* y *b* son las "
+                 "estimaciones mínima, más probable y máxima de una distribución triangular y *duration* la duración esperada), "
+                 f"operarios por actividad, presupuesto (BAC, k€), duración tope y coste unitario de reducción (CUR, k€ por mes) se "
+                 f"adjuntan. La cuadrilla fija es de **{L} operarios**. Cuando la planta se entrega, genera un flujo neto de "
+                 f"{F:.0f} k€ al mes durante {N} meses; la empresa descuenta al {k:.0%} anual. El viernes recibe estos mensajes."),
+              code('#| tbl-cap: "Datos del proyecto"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)),
+              _mensaje("Cliente",
+                       f"El contrato fija la entrega en el mes {plazo} con una penalización de **{pen:.0f} k€ por mes de retraso**. "
+                       "Les pedimos que nos confirmen la probabilidad real de cumplirlo, no la fecha del plan."),
+              _mensaje("Director financiero",
+                       "No autorizaré ninguna medida cuyo VAN esperado, neto de penalizaciones y de lo que cueste, no supere al de no "
+                       "hacer nada. Y quiero saber la probabilidad de que el VAN sea negativo en cada opción."),
+              _mensaje("Jefe de obra",
+                       f"Podemos subcontratar **un operario más** durante todo el proyecto por {c:.0f} k€ al mes. Con la cuadrilla "
+                       "actual, por mucho que acorten las actividades, a veces se quedan esperando por falta de gente."),
+              _mensaje("Contratista",
+                       "Podemos acelerar actividades con horas extra y refuerzos a los CUR indicados en la tabla (hasta la duración tope). "
+                       "Díganos cuántos meses necesita recortar y le decimos qué actividades."),
+              _cierre(agentes)]
+    celdas.append(preguntas([
+        "Calcule la duración con las duraciones esperadas sin límite de recursos y con el límite de operarios. ¿Cuál es la cadena "
+        "crítica con recursos y qué actividades esperan?",
+        f"Simule 3 000 ejecuciones con duraciones triangulares y con el límite de operarios (replanificando en cada réplica) y "
+        f"estime la probabilidad de entregar en el mes {plazo}, el VAN esperado neto de penalización y P(VAN < 0) si no se hace nada.",
+        "Evalúe cuatro opciones con los mismos números aleatorios: (A) no hacer nada, (B) contratar un operario más, (C) acelerar dos "
+        "meses con el contratista (reducción con recursos limitados) y (D) las dos cosas a la vez. Tabla de VAN esperado neto, "
+        "P(VAN < 0), probabilidad de cumplir el plazo, duración media y coste de la aceleración.",
+        "¿Qué opción recomienda al director financiero? ¿Y al cliente? ¿Se suman los efectos de B y C en D? Explique por qué.",
+        "Redacte en tres o cuatro líneas la respuesta a cada implicado.",
+        "¿Qué ha cambiado respecto a un análisis determinista con el camino crítico? Señale al menos tres decisiones que habría "
+        "tomado mal sin recursos, sin incertidumbre o sin VAN."]))
+    celdas.append(md("# Resolución"))
+    celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
+                       "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
+                       "proyecto = prelaciones.create_project()\n"
+                       f"L, plazo, penalizacion, coste_operario, F, N, k = {L}, {plazo}, {pen}, {c}, {F}, {N}, {k}\n"
+                       "base = datos_proyecto[['predecessor', 'duration', 'operarios']]\n"
+                       "tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']\n"
+                       "dist_base = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}"))
+    celdas += apartado(1)
+    celdas.append(code("duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
+                       "res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [L])\n"
+                       "cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], [L])\n"
+                       "esperas = res0.traza[res0.traza.decision == 'espera']\n"
+                       "Markdown(f'Sin límite {duracion_libre} meses; con {L} operarios {res0.duracion}. Cadena crítica con recursos: '\n"
+                       "         f'{\", \".join(sorted(cadena[\"actividades\"]))}. Esperan: {\", \".join(sorted(set(esperas.actividad)))}.')"))
+    celdas += apartado(2)
+    celdas.append(code(EVALUAR_OPCION))
+    celdas.append(code("ceros = pd.Series(0.0, index=datos_proyecto.index)\n"
+                       "A = evaluar(L, ceros)\n"
+                       "Markdown(f'Sin hacer nada: P(entregar en el mes {plazo}) = {A[\"P(τ≤plazo)\"]:.3f}; duración media {A[\"τ medio\"]:.2f} meses; '\n"
+                       "         f'VAN esperado neto {A[\"VAN medio\"]:.1f} k€; P(VAN<0) = {A[\"P(VAN<0)\"]:.3f}.')"))
+    celdas += apartado(3)
+    celdas.append(code("red_c = pd.Series(proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L], tope, ucr, reduccion=2).reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)\n"
+                       "red_d = pd.Series(proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L + 1], tope, ucr, reduccion=2).reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)\n"
+                       "opciones = {'A: no hacer nada': (L, ceros), 'B: un operario más': (L + 1, ceros),\n"
+                       "            'C: acelerar dos meses': (L, red_c), 'D: operario más y acelerar': (L + 1, red_d)}\n"
+                       "tabla = pd.DataFrame({n: evaluar(Lo, r) for n, (Lo, r) in opciones.items()}).T\n"
+                       "tabla"))
+    celdas.append(code("display(pd.DataFrame({'C: reducciones': red_c[red_c > 0], 'D: reducciones': red_d[red_d > 0]}).fillna(0).astype(int).T)\n"
+                       "Markdown('Las reducciones se calculan con `crashing_recursos`: se acorta lo que de verdad acorta el proyecto con el límite de operarios, no lo más barato.')"))
+    celdas += apartado(4)
+    celdas.append(code("mejor = tabla['VAN medio'].idxmax()\n"
+                       "ok_cliente = tabla[tabla['P(τ≤plazo)'] >= 0.7].index.tolist()\n"
+                       "suma = (tabla.loc['B: un operario más', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio']\n"
+                       "        + tabla.loc['C: acelerar dos meses', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio'])\n"
+                       "real = tabla.loc['D: operario más y acelerar', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio']\n"
+                       "Markdown(f'Mayor VAN esperado: {mejor} ({tabla.loc[mejor, \"VAN medio\"]:.1f} k€). Opciones con P(cumplir) ≥ 70 %: {ok_cliente or \"ninguna\"}. '\n"
+                       "         f'Respecto a A, B y C por separado suponen {suma:+.1f} k€ en total y juntas (D) {real:+.1f} k€: los efectos no se suman, '\n"
+                       "         'porque las dos medidas atacan el mismo cuello de botella (esperas por operarios y duración de la cadena crítica).')"))
+    celdas += apartado(5)
+    celdas.append(md("**Cliente:** con la cuadrilla actual la probabilidad de cumplir es baja; la opción recomendada la sube a la cifra de la tabla. "
+                     "**Director financiero:** el VAN esperado neto de penalización y de coste es el de la tabla, con la probabilidad de VAN negativo indicada. "
+                     "**Jefe de obra:** se contrata un operario sólo si la tabla lo respalda; las esperas se concentran en la cadena crítica con recursos. "
+                     "**Contratista:** se aceleran únicamente las actividades que de verdad acortan el proyecto con el límite de operarios."))
+    celdas += apartado(6)
+    celdas.append(md("Con el camino crítico y duraciones esperadas se habría dicho que el plazo se cumple (sin límite de recursos y sin incertidumbre); "
+                     "se habría acelerado la actividad más barata aunque no acorte el proyecto; y se habría juzgado cada medida por separado "
+                     "sin ver que se solapan. Los recursos fijan la duración real, la incertidumbre convierte la fecha en una probabilidad y el VAN "
+                     "obliga a comparar el coste de cada medida con lo que vale cobrar antes."))
+    return celdas, f"límite de {L} operarios, plazo mes {plazo}, penalización {pen:.0f} k€/mes y VAN"
+
+
+EVALUAR_OPCION = (
+    "def evaluar(L_op, red, n=3000, semilla=21):\n"
+    "    '''VAN neto (tras penalización y operarios extra) y probabilidad de cumplir de una opción (mismos números aleatorios).'''\n"
+    "    dist = {a: ('triangular', max(1.0, d[1] - red[a]), max(1.0, d[2] - red[a]), max(1.0, d[3] - red[a])) for a, d in dist_base.items()}\n"
+    "    bac = datos_proyecto['BAC'] + ucr.replace(np.inf, 0.0) * red\n"
+    "    mc = proyecto.monte_carlo_van_recursos(dist, datos_proyecto[['operarios']], ['operarios'], [L_op], bac, F, N, k, n_samples=n, seed=semilla)\n"
+    "    tau = mc.tau_recursos_samples\n"
+    "    neto = mc.van_recursos_samples - penalizacion * np.maximum(tau - plazo, 0.0) - coste_operario * (L_op - L) * tau\n"
+    "    return {'VAN medio': neto.mean(), 'P(VAN<0)': (neto < 0).mean(), 'P(τ≤plazo)': (tau <= plazo).mean(),\n"
+    "            'τ medio': tau.mean(), 'coste reducción': float((ucr.replace(np.inf, 0.0) * red).sum())}\n")
+
+
 VARIANTES = [
     Variante("reforma-laboratorio", 3, "retraso de un proveedor crítico, exigencia del inspector, oferta de reducción (Ackoff), coste del retraso para el cliente, tope presupuestario, incertidumbre y negociaciones sin coste",
              _reforma_laboratorio),
@@ -1455,6 +1642,8 @@ VARIANTES = [
              _oferta_comercial),
     Variante("comite-inversion", 3, "caso de inversión con mensajes contradictorios: escenarios y umbrales, contrato a precio fijo como seguro (VAN esperado y peor caso), apalancamiento y separación inversión/financiación",
              _comite_inversion, grafo="pert"),
+    Variante("contingencia-planta", 3, "plan de contingencia: límite de operarios, duraciones triangulares, aceleración con recursos, penalización del cliente y VAN; cuatro opciones con Monte Carlo",
+             _contingencia_planta),
 ]
 
 
