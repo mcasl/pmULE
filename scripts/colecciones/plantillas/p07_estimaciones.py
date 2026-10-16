@@ -1,5 +1,6 @@
 """Colección 07 — Tres estimaciones: media y varianza PERT de cada actividad,
 cálculo inverso, comparación Beta-PERT / triangular / uniforme."""
+import pandas as pd
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
@@ -24,7 +25,7 @@ def _base(k, rng):
     tabla = df.copy().astype(object)
     for x in ocultas:
         tabla.loc[x, "a"] = "?"
-    tabla["duration"] = "?"
+    tabla["duration"] = pd.Series("?", index=tabla.index, dtype=object)
     tabla.loc[ocultas, "duration"] = [int(D[x]) for x in ocultas]
     comparar = asim[int(rng.integers(0, len(asim)))] if asim else list(D.index)[0]
 
