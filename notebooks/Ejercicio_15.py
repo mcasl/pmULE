@@ -387,7 +387,7 @@ precio_reduccion = pd.Series({key:datos_proyecto_simplificado.loc[actividades,'c
 precio_reduccion['Coste de Reducción Acumulado'] = precio_reduccion['Coste de Reducción'].cumsum()
 precio_reduccion['Penalizacion'] = [40, 30, 20, 10, 0]
 precio_reduccion['duracion']= [35, 34, 33, 32,31]
-precio_reduccion = precio_reduccion._append({'Coste de Reducción':0, 'Coste de Reducción Acumulado':0, 'duracion': 36, 'Penalizacion': 50}, ignore_index=True).sort_values('duracion', ascending=False)
+precio_reduccion = pd.concat([precio_reduccion, pd.DataFrame([{'Coste de Reducción':0, 'Coste de Reducción Acumulado':0, 'duracion': 36, 'Penalizacion': 50}])], ignore_index=True).sort_values('duracion', ascending=False)
 precio_reduccion.set_index('duracion', inplace=True)
 precio_reduccion['Costes Totales'] = precio_reduccion['Coste de Reducción Acumulado'] + precio_reduccion['Penalizacion']
 precio_reduccion

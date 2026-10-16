@@ -12,7 +12,6 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-pd.set_option("future.no_silent_downcasting", True)
 
 def highlight_first_minimum(row):
     styles = pd.Series('', index=row.index)
@@ -1502,7 +1501,7 @@ class ProjectGraph:
                 columns=["start", "duration"],
                 dtype="int64",
             )
-        gantt = pd.DataFrame("", index=actividades_con_duracion, columns=periodos)
+        gantt = pd.DataFrame("", index=actividades_con_duracion, columns=periodos, dtype=object)
 
         for edge in self.pert_graph.edges:
             activity_name = self.pert_graph.edges[edge]["activity"]
@@ -3065,7 +3064,7 @@ class ProjectGraph:
         result = path_matrix.copy()
 
         result.replace(0, np.nan, inplace=True)
-        result = result.multiply(costs, axis="columns")
+        result = result.multiply(costs.astype(float), axis="columns")
         step = 0
         result.loc[:, step] = path_matrix @ durations
         result.loc[step, :] = periods_available
@@ -3322,6 +3321,36 @@ class ProjectGraph:
             "rel_error": rel_error,
             "sigma_ratio": sigma_ratio,
         }
+
+    # ------------------------------------------------------------------
+    # SVD implícita (sin construir R)
+    # ------------------------------------------------------------------
+
+    def roy_dag(self) -> "RoyDAG":
+        """Grafo de Roy reducido transitivamente (solo actividades reales) como ``RoyDAG``."""
+        pred = self.distant_predecessor(dummies=False)
+        G = nx.DiGraph(); G.add_nodes_from(pred)
+        for a, ps in pred.items():
+            for p in ps:
+                if p in pred: G.add_edge(p, a)
+        return RoyDAG(list(G.nodes), list(nx.transitive_reduction(G).edges()))
+
+    def svd_implicit(self, k: int = 5, dense_max: int = 400) -> dict:
+        """k primeros valores/vectores singulares de R SIN enumerar las rutas.
+
+        Lanczos sobre el producto (RᵀR)x por DP (O(aristas)); válido aunque el nº
+        de rutas sea exponencial. Con n ≤ dense_max usa la matriz RᵀR densa
+        (también obtenida por DP). Devuelve ``{"sigma": ndarray, "V": DataFrame
+        (actividades × k, v₁ ≥ 0), "info": dict}``; coincide con
+        ``path_matrix_SVD(dummies=False)`` salvo signo.
+        """
+        dag = self.roy_dag(); sigma, V, info = implicit_svd_roy(dag, k=k, dense_max=dense_max)
+        return {"sigma": sigma, "V": pd.DataFrame(V, index=dag.acts, columns=[f"v{i + 1}" for i in range(V.shape[1])]), "info": info}
+
+    def tau_rank_k(self, durations: dict, k: int = 1) -> float:
+        """τ_k = ‖R_k·t‖∞ sin construir R: ruta más larga con duraciones V_k V_kᵀ t."""
+        dag = self.roy_dag(); _, V, _ = implicit_svd_roy(dag, k=k); t = np.array([durations.get(a, 0.0) for a in dag.acts], float)
+        return tau_rank_k_roy(dag, t, V, ks=[k])[k]
 
     # ------------------------------------------------------------------
     # Lectura nativa de .sm (PSPLIB)
@@ -4411,6 +4440,144 @@ def make_Roy(linkage_matrix):
     ]
     graph.add_edges_from(resto_de_enlaces)
     return graph
+
+
+# ----------------------------------------------------------------------
+# SVD implícita de la matriz de rutas R (sin construir R) — octubre 2026
+# R^T R = Σ_p 1_p 1_p^T se aplica a un vector con dos barridos de DP (O(aristas)),
+# de modo que Lanczos da los σ_i, v_i dominantes aunque el nº de rutas sea
+# exponencial; y τ_k = ‖R_k t‖∞ es el CPM con duraciones proyectadas V_k V_kᵀ t.
+# Copia del módulo experiments/cluster_roy/implicit_svd.py (mantener ambos sincronizados).
+# ----------------------------------------------------------------------
+import scipy.sparse as _sp_impl
+from scipy.sparse.linalg import splu as _splu, LinearOperator as _LinearOperator, eigsh as _eigsh
+
+
+class RoyDAG:
+    """DAG de Roy reducido con s y f implicitos. Las actividades se reordenan topologicamente (self.acts)."""
+
+    def __init__(self, acts, edges):
+        acts = list(acts); ix = {a: i for i, a in enumerate(acts)}; n = len(acts)
+        succ = [[] for _ in range(n)]; indeg = np.zeros(n, int)
+        for u, v in edges: succ[ix[u]].append(ix[v]); indeg[ix[v]] += 1
+        order, stack, d = [], [i for i in range(n) if indeg[i] == 0], indeg.copy()
+        while stack:
+            u = stack.pop(); order.append(u)
+            for v in succ[u]:
+                d[v] -= 1
+                if d[v] == 0: stack.append(v)
+        if len(order) != n: raise ValueError("el grafo tiene ciclos")
+        pos = {old: new for new, old in enumerate(order)}
+        self.acts = [acts[o] for o in order]; self.perm = np.array(order); self.n = n
+        rows = [pos[ix[u]] for u, v in edges]; cols = [pos[ix[v]] for u, v in edges]
+        self.A = _sp_impl.csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, n))        # A[u,v]=1 si u->v (triangular superior)
+        self.pred = [[] for _ in range(n)]
+        for r, c in zip(rows, cols): self.pred[c].append(r)
+        self.pred = [np.array(p, int) for p in self.pred]
+        self.src = (np.asarray(self.A.sum(axis=0)).ravel() == 0).astype(float)           # sin predecesoras: unidos a s
+        self.snk = (np.asarray(self.A.sum(axis=1)).ravel() == 0).astype(float)           # sin sucesoras: unidos a f
+        I = _sp_impl.identity(n, format="csc")
+        self._LuF = _splu((I - self.A.T).tocsc(), permc_spec="NATURAL")                    # resuelve (I-A^T) y = r (hacia delante)
+        self._LuB = _splu((I - self.A).tocsc(), permc_spec="NATURAL")                      # (I-A) y = r (hacia atras)
+        self.a = self._LuF.solve(self.src); self.b = self._LuB.solve(self.snk)
+        self.pathcount = self.a * self.b                                                    # diag(R^T R)
+        self.n_paths = float(self.a[self.snk > 0].sum())
+
+    def to_topo(self, x):  # vector en el orden original de `acts` -> orden topologico interno
+        return np.asarray(x)[self.perm]
+
+    def gram_matvec(self, X):
+        """(R^T R) X para X de forma (n,) o (n,m)."""
+        X = np.asarray(X, float); one = X.ndim == 1
+        if one: X = X[:, None]
+        a, b = self.a[:, None], self.b[:, None]
+        F = self._LuF.solve(np.ascontiguousarray(X * a)); B = self._LuB.solve(np.ascontiguousarray(self.A @ (X * b)))
+        Y = F * b + a * B
+        return Y[:, 0] if one else Y
+
+    def gram_dense(self):
+        return self.gram_matvec(np.eye(self.n))
+
+    def longest_path(self, w, return_path=False):
+        """Ruta s->f mas larga con pesos de nodo w (pueden ser negativos). Devuelve la longitud (y la ruta)."""
+        w = np.asarray(w, float); L = np.empty(self.n); arg = np.full(self.n, -1)
+        for i in range(self.n):
+            p = self.pred[i]
+            if p.size: j = p[np.argmax(L[p])]; L[i] = L[j] + w[i]; arg[i] = j
+            else: L[i] = w[i]
+        ends = np.flatnonzero(self.snk); e = ends[np.argmax(L[ends])]
+        if not return_path: return float(L[e])
+        path = [e]
+        while arg[path[-1]] >= 0: path.append(arg[path[-1]])
+        return float(L[e]), path[::-1]
+
+    def critical_mask(self, T):
+        """Criticidad por actividad para matrices de duraciones T (n, m) en orden topologico: holgura total ~ 0."""
+        T = np.asarray(T, float); n, m = T.shape; EF = np.empty((n, m))
+        for i in range(n):
+            p = self.pred[i]; EF[i] = (EF[p].max(axis=0) if p.size else 0.0) + T[i]
+        tau = EF[self.snk > 0].max(axis=0); LS = np.empty((n, m)); succ = self.A.tolil().rows
+        for i in range(n - 1, -1, -1):
+            s = succ[i]; LS[i] = (LS[s].min(axis=0) if s else tau) - T[i]
+        return (LS + T - EF) < 1e-9 * np.maximum(tau, 1.0), tau
+
+
+def _eigsh_robust(op, n, kk, tol, rng):
+    """eigsh 'LA'; si ARPACK falla (p. ej. 'no shifts could be applied', habitual con espectros casi nulos o muy degenerados)
+    reintenta con mas vectores de Krylov y, en ultimo caso, diagonaliza el operador denso (n x n)."""
+    for ncv in (None, min(n - 1, max(4 * kk + 20, 40))):
+        try:
+            return _eigsh(_LinearOperator((n, n), matvec=op, matmat=op, dtype=float), k=kk, which="LA", tol=tol, ncv=ncv, v0=rng.normal(size=n))
+        except Exception:
+            pass
+    M = op(np.eye(n)); lam, V = np.linalg.eigh((M + M.T) / 2); return lam[-kk:], V[:, -kk:]
+
+
+def _top_eigs_deflated(mv, n, k, tol=1e-10, max_pass=12, seed=0):
+    """k autopares dominantes de un operador simetrico semidefinido positivo por Lanczos con DEFLACION.
+    Lanczos de un solo vector ve una sola copia de cada autovalor repetido (frecuente en grafos simetricos);
+    tras cada pasada se proyecta fuera lo ya hallado y se repite hasta que no aparece nada mayor que el k-esimo.
+    Devuelve (lam, V, matvecs)."""
+    rng = np.random.default_rng(seed); cnt = [0]; Vf = np.zeros((n, 0)); lf = np.zeros(0)
+    def op(x):
+        cnt[0] += 1; x = np.asarray(x, float)
+        if Vf.shape[1]: x = x - Vf @ (Vf.T @ x)
+        y = mv(x)
+        return y - Vf @ (Vf.T @ y) if Vf.shape[1] else y
+    for _ in range(max_pass):
+        kk = min(k, n - 1 - Vf.shape[1])
+        if kk < 1: break
+        lam, V = _eigsh_robust(op, n, kk, tol, rng)
+        keep = lam > 1e-12 * max(1.0, lam.max(), lf.max() if lf.size else 0.0)
+        lam, V = lam[keep], V[:, keep]
+        if lam.size == 0: break
+        V = V - Vf @ (Vf.T @ V); V, _ = np.linalg.qr(V)                  # la deflacion es aproximada: reortogonalizar
+        allL = np.concatenate([lf, lam]); allV = np.hstack([Vf, V]); o = np.argsort(-allL, kind="stable")[:k]
+        changed = bool((o >= lf.size).any())                              # ¿entro algun autopar nuevo en los k primeros?
+        Vf, lf = allV[:, o], allL[o]
+        if not changed: break
+    return lf[:k], Vf[:, :k], cnt[0]
+
+
+def implicit_svd_roy(dag: RoyDAG, k=10, dense_max=400, tol=1e-10):
+    """Primeros k valores singulares sigma y vectores V (n x k, orden topologico) de R.
+    n <= dense_max: eigh de R^T R denso (se obtiene por DP, NO por R) -> todo el espectro; si no, Lanczos implicito con deflacion
+    (recupera tambien los autovalores repetidos). v1 se devuelve con signo >= 0 (Perron-Frobenius). Devuelve (sigma, V, info)."""
+    n = dag.n; info = {}
+    if n <= dense_max or k >= n - 1:
+        lam, V = np.linalg.eigh(dag.gram_dense()); o = np.argsort(-lam); lam, V = lam[o], V[:, o]; info["method"] = "dense"
+        info["rank"] = int((lam > 1e-10 * lam[0]).sum()); lam, V = lam[:k], V[:, :k]
+    else:
+        lam, V, cnt = _top_eigs_deflated(dag.gram_matvec, n, k, tol=tol); info["method"] = "lanczos"; info["matvecs"] = cnt
+    if V[:, 0].sum() < 0: V[:, 0] = -V[:, 0]
+    return np.sqrt(np.clip(lam, 0, None)), V, info
+
+
+def tau_rank_k_roy(dag: RoyDAG, t, V, ks=None):
+    """tau_k = ||R_k t||_inf = ruta mas larga con duraciones proyectadas V_k V_k^T t (t en orden topologico).
+    Devuelve {k: tau_k}. Para k=1 equivale a sigma1*max(u1)*(v1.t)."""
+    t = np.asarray(t, float); ks = ks or range(1, V.shape[1] + 1); c = V.T @ t
+    return {k: dag.longest_path(V[:, :k] @ c[:k]) for k in ks}
 
 
 class LatexArray(np.ndarray):
