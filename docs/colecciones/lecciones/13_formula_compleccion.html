@@ -4082,8 +4082,8 @@ window.Quarto = {
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>proyecto.tau_sensitivity()                    <span class="co"># gradiente (actividades críticas)</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>U, S, Vt <span class="op">=</span> proyecto.path_matrix_SVD()         <span class="co"># descomposición de R</span></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>proyecto.incidence_matrix()<span class="op">;</span> proyecto.nullspace()</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>proyecto.svd_approximation_error()            <span class="co"># (ver nota)</span></span></code></pre></div><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Nota: la versión actual de <code>svd_approximation_error</code> usa <span class="math inline">\(\sum_r (u_1)_r\)</span> en lugar de <span class="math inline">\(\max_r (u_1)_r\)</span> y da errores muy grandes; los cuadernos de la colección calculan <span class="math inline">\(\tau_1\)</span> como arriba.</p>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>proyecto.svd_approximation_error(t.to_dict())  <span class="co"># τ₁ = σ₁·máx(u₁)·v₁ᵀt frente a τ</span></span></code></pre></div><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Nota: <code>svd_approximation_error</code> calcula <span class="math inline">\(\tau_1=\sigma_1\max_r (u_1)_r\,(v_1^\top t)\)</span>, la aproximación de rango 1 coherente con <span class="math inline">\(R\approx\sigma_1u_1v_1^\top\)</span> (hasta octubre de 2026 usaba <span class="math inline">\(\sum_r (u_1)_r\)</span> y daba errores enormes).</p>
 </section>
 <section id="qué-practica-cada-variante" class="level2">
 <h2 class="anchored" data-anchor-id="qué-practica-cada-variante">Qué practica cada variante</h2>

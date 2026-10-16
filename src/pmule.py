@@ -3290,7 +3290,15 @@ class ProjectGraph:
     def svd_approximation_error(self, durations: dict) -> dict:
         """Error de la aproximación de rango 1 SVD respecto al τ exacto.
 
-        Aproximación: τ_svd = σ₁ · (Σ u₁ᵢ) · (v₁ᵀ · t)
+        Con R ≈ σ₁ u₁ v₁ᵀ, la longitud de la ruta i es ≈ σ₁ u₁ᵢ (v₁ᵀ t) y τ es
+        el máximo de esas longitudes:
+
+            τ_svd = σ₁ · máx_i(u₁ᵢ) · (v₁ᵀ · t)
+
+        (signo normalizado: u₁ y v₁ se toman con Σu₁ ≥ 0, como corresponde a
+        una R no negativa). Hasta octubre de 2026 el método usaba Σu₁ en lugar
+        de máx(u₁), lo que sobrestimaba τ en un factor que crece con el número
+        de rutas (mediana de 24 a 127 veces τ en PSPLIB j30–j120).
 
         Returns
         -------
@@ -3300,7 +3308,10 @@ class ProjectGraph:
         t = np.array([durations.get(a, 0.0) for a in R.columns])
         tau_exact = float(np.max(R.values @ t))
         U, s, Vt = np.linalg.svd(R.values, full_matrices=False)
-        tau_svd = float(s[0] * U[:, 0].sum() * (Vt[0] @ t))
+        u1, v1 = U[:, 0], Vt[0]
+        if u1.sum() < 0:
+            u1, v1 = -u1, -v1
+        tau_svd = float(s[0] * u1.max() * (v1 @ t))
         abs_error = abs(tau_exact - tau_svd)
         rel_error = abs_error / tau_exact if tau_exact != 0.0 else 0.0
         sigma_ratio = float(s[0] / s[1]) if len(s) > 1 and s[1] > 0 else float("inf")

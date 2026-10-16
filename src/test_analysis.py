@@ -232,11 +232,37 @@ class TestSvdApproximationError(unittest.TestCase):
         self.assertEqual(err["sigma_ratio"], float("inf"))
 
     def test_chain_exact_equals_svd(self):
-        # For a rank-1 route matrix, SVD approx = exact (up to signs/scaling)
+        # Una ruta única: R tiene rango 1 y la aproximación es exacta.
         proj, acts = make_chain(2)
         err = proj.svd_approximation_error({a: 1.0 for a in acts})
-        # rel_error should be small for rank-1
         self.assertAlmostEqual(err["sigma_ratio"], float("inf"))
+        self.assertAlmostEqual(err["tau_svd"], err["tau_exact"])
+        self.assertAlmostEqual(err["rel_error"], 0.0)
+
+    def test_chain_exact_with_distinct_durations(self):
+        proj, acts = make_chain(4)
+        err = proj.svd_approximation_error({a: float(i + 1) for i, a in enumerate(acts)})
+        self.assertAlmostEqual(err["tau_svd"], err["tau_exact"])
+
+    def test_tau_svd_is_max_form_rank1(self):
+        # τ_svd = σ₁ · máx(u₁) · (v₁ᵀ t), no la versión con Σu₁.
+        proj = make_diamond()
+        durations = {"A": 1, "B": 2, "C": 1, "D": 2}
+        R = proj.path_matrix(dummies=False)
+        t = np.array([durations[a] for a in R.columns], dtype=float)
+        U, s, Vt = np.linalg.svd(R.values.astype(float), full_matrices=False)
+        u1, v1 = U[:, 0], Vt[0]
+        if u1.sum() < 0:
+            u1, v1 = -u1, -v1
+        expected = float(s[0] * u1.max() * (v1 @ t))
+        err = proj.svd_approximation_error(durations)
+        self.assertAlmostEqual(err["tau_svd"], expected)
+
+    def test_tau_svd_does_not_blow_up_with_many_paths(self):
+        # Regresión: con Σu₁ el error relativo crecía con el nº de rutas.
+        proj = make_diamond()
+        err = proj.svd_approximation_error({"A": 1, "B": 2, "C": 1, "D": 2})
+        self.assertLess(err["rel_error"], 0.5)
 
 
 # ---------------------------------------------------------------------------

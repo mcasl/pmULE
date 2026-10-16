@@ -59,10 +59,10 @@ proyecto.tau(t.to_dict())                     # ‖R·t‖∞
 proyecto.tau_sensitivity()                    # gradiente (actividades críticas)
 U, S, Vt = proyecto.path_matrix_SVD()         # descomposición de R
 proyecto.incidence_matrix(); proyecto.nullspace()
-proyecto.svd_approximation_error()            # (ver nota)
+proyecto.svd_approximation_error(t.to_dict())  # τ₁ = σ₁·máx(u₁)·v₁ᵀt frente a τ
 ```
 
-Nota: la versión actual de `svd_approximation_error` usa $\sum_r (u_1)_r$ en lugar de $\max_r (u_1)_r$ y da errores muy grandes; los cuadernos de la colección calculan $\tau_1$ como arriba.
+Nota: `svd_approximation_error` calcula $\tau_1=\sigma_1\max_r (u_1)_r\,(v_1^\top t)$, la aproximación de rango 1 coherente con $R\approx\sigma_1u_1v_1^\top$ (hasta octubre de 2026 usaba $\sum_r (u_1)_r$ y daba errores enormes).
 
 ## Qué practica cada variante
 
