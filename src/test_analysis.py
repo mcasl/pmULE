@@ -690,6 +690,64 @@ class TestMonteCarlo(unittest.TestCase):
         r = proj.monte_carlo(dists, n_samples=100, seed=0)
         self.assertAlmostEqual(r.tau_mean, 12.0, delta=0.05)
 
+class TestSVDImplicita(unittest.TestCase):
+    """SVD implícita de R (sin enumerar rutas): coincide con la SVD explícita."""
+
+    PREDS = {"A": set(), "B": set(), "C": {"A", "B"}, "D": {"B"}, "E": {"C"}, "F": {"C", "D"}, "G": {"E", "F"}, "H": {"D"}}
+    T = {"A": 3, "B": 2, "C": 4, "D": 5, "E": 6, "F": 1, "G": 2, "H": 7}
+
+    def setUp(self):
+        self.proj = ProjectGraph.from_dict_of_sets(self.PREDS, simplify=True)
+
+    def test_sigma_coincide_con_svd_explicita(self):
+        S = np.linalg.svd(self.proj.path_matrix(dummies=False).values, compute_uv=False)
+        for dense_max in (400, 0):
+            r = self.proj.svd_implicit(k=3, dense_max=dense_max)
+            np.testing.assert_allclose(r["sigma"], S[:3], atol=1e-8)
+
+    def test_v1_coincide_salvo_signo(self):
+        R = self.proj.path_matrix(dummies=False)
+        _, _, Vt = np.linalg.svd(R.values, full_matrices=False)
+        V = self.proj.svd_implicit(k=2)["V"]
+        v1 = V["v1"].reindex(R.columns).values
+        self.assertTrue((v1 >= -1e-12).all())
+        np.testing.assert_allclose(v1, np.abs(Vt[0]), atol=1e-8)
+
+    def test_tau_rank_k_coincide_con_svd_explicita(self):
+        R = self.proj.path_matrix(dummies=False); t = np.array([self.T[a] for a in R.columns], float)
+        U, S, Vt = np.linalg.svd(R.values, full_matrices=False)
+        for k in (1, 2):
+            esperado = float(np.max((U[:, :k] * S[:k]) @ (Vt[:k] @ t)))
+            self.assertAlmostEqual(self.proj.tau_rank_k(self.T, k=k), esperado, places=8)
+
+    def test_k1_igual_a_svd_approximation_error(self):
+        self.assertAlmostEqual(self.proj.tau_rank_k(self.T, k=1), self.proj.svd_approximation_error(self.T)["tau_svd"], places=8)
+
+    def test_autovalores_repetidos(self):
+        """4 cadenas paralelas idénticas: σ₁=…=σ₄=√2; Lanczos de un solo vector solo vería una copia."""
+        from pmule import RoyDAG, implicit_svd_roy
+        acts = [f"{c}{i}" for i in range(4) for c in "ab"]
+        dag = RoyDAG(acts, [(f"a{i}", f"b{i}") for i in range(4)])
+        sigma, V, info = implicit_svd_roy(dag, k=4, dense_max=0)
+        self.assertEqual(info["method"], "lanczos")
+        np.testing.assert_allclose(sigma, np.sqrt(2.0), atol=1e-8)
+        np.testing.assert_allclose(V.T @ V, np.eye(4), atol=1e-8)
+
+    def test_rutas_exponenciales(self):
+        """30 rombos en serie: 2**30 rutas; R no cabe, la SVD implícita sí."""
+        preds = {"x0": set()}
+        for i in range(30):
+            preds[f"a{i}"] = {f"x{i}"}; preds[f"b{i}"] = {f"x{i}"}; preds[f"x{i + 1}"] = {f"a{i}", f"b{i}"}
+        from pmule import RoyDAG, implicit_svd_roy, tau_rank_k_roy
+        edges = [(p, a) for a, ps in preds.items() for p in ps]
+        dag = RoyDAG(list(preds), edges)
+        self.assertEqual(dag.n_paths, 2.0 ** 30)
+        sigma, V, info = implicit_svd_roy(dag, k=3, dense_max=0)
+        self.assertEqual(info["method"], "lanczos")
+        self.assertTrue(sigma[0] >= sigma[1] >= sigma[2] > 0)
+        t = np.array([2.0 if a.startswith("a") else 1.0 for a in dag.acts])
+        self.assertAlmostEqual(dag.longest_path(t), 30 * (2 + 1) + 1)   # xk (1) + a (2) por rombo, + x_30
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
