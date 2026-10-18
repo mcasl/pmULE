@@ -4435,8 +4435,13 @@ def make_Roy(linkage_matrix):
 
     graph.add_edges_from(enlaces_finales)
 
+    # Recorrido explícito: con pandas 3, ``df[df].stack()`` ya no descarta los
+    # NaN y devolvía TODOS los pares (grafo completo con bucles).
     resto_de_enlaces = [
-        (b, a) for a, b in list(linkage_matrix[linkage_matrix].stack().index)
+        (predecesora, actividad)
+        for actividad in linkage_matrix.index
+        for predecesora in linkage_matrix.columns
+        if bool(linkage_matrix.loc[actividad, predecesora])
     ]
     graph.add_edges_from(resto_de_enlaces)
     return graph

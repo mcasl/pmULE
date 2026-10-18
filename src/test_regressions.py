@@ -374,5 +374,19 @@ class TestBug13_ParallelEndActivitiesKeepSingleSink(unittest.TestCase):
         self._check(pg)
 
 
+class TestBug14_MakeRoyPandas3(unittest.TestCase):
+    """make_Roy usaba ``df[df].stack()``: con pandas 3 la pila conserva los NaN
+    y el grafo de Roy salía completo (todas las parejas y bucles)."""
+
+    def test_solo_las_prelaciones(self):
+        from pmule import make_Roy
+        pt = PredecessorTable.from_dict_of_sets(PREDS)
+        g = make_Roy(pt.immediate_linkage_matrix)
+        esperadas = {(p, a) for a, ps in PREDS.items() for p in ps}
+        internas = {(u, v) for u, v in g.edges if u != "start" and v != "finish"}
+        self.assertEqual(internas, esperadas)
+        self.assertFalse(any(u == v for u, v in g.edges))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
