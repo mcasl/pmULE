@@ -517,3 +517,54 @@ Variantes:
 - `Caso_09` [oferta-comercial, nivel 2] — oferta comercial: media 16, P(≤16) = 0.32 por Monte Carlo, plazo 90 % 18.8; óptimo 17
 - `Caso_10` [comite-inversion, nivel 3] — comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%
 - `Caso_11` [contingencia-planta, nivel 3] — límite de 3 operarios, plazo mes 16, penalización 6 k€/mes y VAN
+
+## 19_etica — Ética en el desarrollo de proyectos
+
+Situaciones típicas de un proyecto (informes de avance, estimaciones, riesgos, horas extra, compresión, línea base, pagos, adjudicaciones, holguras, coste hundido, ofertas) en las que alguien propone algo discutible. Cada caso pide (A) calcular la magnitud que la situación esconde o distorsiona, (B) aplicar un criterio de referencia con respuesta determinada (Código Ético del PMI, ICB4, PMBOK o una norma legal, parafraseados en la lección 19) y (C) deliberar y redactar la comunicación.
+
+Lección (teoría): `lecciones/19_etica.qmd` → `docs/colecciones/lecciones/19_etica.html`.
+
+Variantes:
+  - `informe-maquillado` (nivel 2): avance = gastado / presupuesto: CPI = 1 por construcción; índices y EAC con el avance verificado; C1 y C3
+  - `verdad-a-medias` (nivel 2): «la ruta crítica termina en la semana T» frente a P(T ≤ fecha) con PERT y Monte Carlo; el dato que falta; C2
+  - `colchones-ocultos` (nivel 2): peores casos entregados y 10 % del jefe de proyecto frente a la reserva para el 80 %; C8 y C4
+  - `riesgo-silenciado` (nivel 3): riesgo conocido antes del comité: Monte Carlo con y sin el riesgo frente al umbral de decisión; materialidad; C4
+  - `horas-extra` (nivel 2): diagrama de cargas, horas extraordinarias por operario frente al máximo legal, asignación con límite; C7
+  - `inspeccion-suprimida` (nivel 2): comprimir con Ackoff frente a suprimir la inspección reglamentaria; coste esperado del defecto; C7
+  - `linea-base-reescrita` (nivel 2): SPI contra la línea base aprobada y contra la desplazada sin solicitud de cambio; C9 y C3
+  - `pago-subcontratistas` (nivel 2): valor actual de pagar a 30, 60 y 90 días para contratista y subcontratas; máximo legal; C5 y C10
+  - `adjudicacion-conflicto` (nivel 1): puntuación con los criterios publicados, sobrecoste de adjudicar al pariente, revelar y abstenerse; C6
+  - `holgura-oculta` (nivel 2): holguras total, libre e independiente; qué pasa al consumirlas; «no tengo margen»; C1 y C4
+  - `coste-hundido` (nivel 2): VAN de los flujos restantes frente al VAN total con lo gastado; continuar o cancelar; C12 y C11
+  - `recurso-desviado` (nivel 2): parar una actividad para otro proyecto: retraso, penalidad legal por demora, óptimo de empresa; C1 y C5
+  - `baja-temeraria` (nivel 3): umbral de presunción de oferta anormal (art. 85 RGLCAP) y probabilidad del plazo ofertado; C13 y C1
+  - `imputacion-cruzada` (nivel 1): reimputar horas del proyecto subvencionado al privado: CPI antes y después, gasto subvencionable; C1 y C5
+
+- `Dilema_01` [informe-maquillado, nivel 2] — informe con avance = gastado/presupuesto: SPI 1.05 y CPI 1,00 frente a 0.89 y 0.85 verificados
+- `Dilema_02` [verdad-a-medias, nivel 2] — «la ruta crítica acaba en la semana 22» frente a P(T ≤ 22) = 0.50 (PERT) y 0.45 (MC)
+- `Dilema_03` [colchones-ocultos, nivel 2] — peores casos entregados + 10 %: 27 semanas frente a 18 esperadas y 20 con el 80 %
+- `Dilema_04` [riesgo-silenciado, nivel 3] — riesgo en G (30%, +2 semanas): P(T ≤ 23) pasa de 0.83 a 0.62, umbral 70%
+- `Dilema_05` [horas-extra, nivel 2] — 4 operarios, pico 6: 110 horas extra por operario frente a 80 legales; con límite, 23 semanas
+- `Dilema_06` [inspeccion-suprimida, nivel 2] — adelantar 2 semanas: 6 k€ por Ackoff frente a «quitar I» (coste esperado del defecto 20 k€)
+- `Dilema_07` [linea-base-reescrita, nivel 2] — arranque 3 semanas tarde por el cliente: SPI 0.79 contra la línea base y 1,00 contra la desplazada sin aprobar
+- `Dilema_08` [pago-subcontratistas, nivel 2] — pagar a 90 días: +5.5 k€ para el contratista, −11.4 k€ para las subcontratas; máximo legal 60
+- `Dilema_09` [adjudicacion-conflicto, nivel 1] — contrato privado: la Oferta 3 queda 9.8 puntos por debajo con los criterios del pliego
+- `Dilema_10` [holgura-oculta, nivel 2] — A con holguras 3/1/1 y «no tiene ningún margen»; ceder 1 a H
+- `Dilema_11` [coste-hundido, nivel 2] — VAN restante -59 k€ (cancelar) aunque los flujos nominales (300) superen la inversión que falta (290)
+- `Dilema_12` [recurso-desviado, nivel 2] — parar B 3 semanas (holgura 1): 2 de retraso, 4.2 k€ de penalidad frente a 2.1 k€ del otro proyecto
+- `Dilema_13` [baja-temeraria, nivel 3] — baja 29.0 % (umbral 27.9 %) y plazo 14 con P = 0.12: temeraria y sin buena fe
+- `Dilema_14` [imputacion-cruzada, nivel 1] — 530 h (26 k€) de A a B: CPI de A de 0.79 a 1.01; no subvencionable
+- `Dilema_15` [informe-maquillado, nivel 2] — informe con avance = gastado/presupuesto: SPI 1.06 y CPI 1,00 frente a 0.90 y 0.85 verificados
+- `Dilema_16` [verdad-a-medias, nivel 2] — «la ruta crítica acaba en la semana 22» frente a P(T ≤ 23) = 0.69 (PERT) y 0.61 (MC)
+- `Dilema_17` [colchones-ocultos, nivel 2] — peores casos entregados + 10 %: 43 semanas frente a 22 esperadas y 25 con el 80 %
+- `Dilema_18` [riesgo-silenciado, nivel 3] — riesgo en G (50%, +3 semanas): P(T ≤ 22) pasa de 0.83 a 0.56, umbral 70%
+- `Dilema_19` [horas-extra, nivel 2] — 4 operarios, pico 7: 110 horas extra por operario frente a 80 legales; con límite, 23 semanas
+- `Dilema_20` [inspeccion-suprimida, nivel 2] — adelantar 3 semanas: 14 k€ por Ackoff frente a «quitar H» (coste esperado del defecto 45 k€)
+- `Dilema_21` [linea-base-reescrita, nivel 2] — arranque 2 semanas tarde por el cliente: SPI 0.85 contra la línea base y 1,00 contra la desplazada sin aprobar
+- `Dilema_22` [pago-subcontratistas, nivel 2] — pagar a 90 días: +4.2 k€ para el contratista, −11.4 k€ para las subcontratas; máximo legal 60
+- `Dilema_23` [adjudicacion-conflicto, nivel 1] — contrato privado: la Oferta 1 queda 15.0 puntos por debajo con los criterios del pliego
+- `Dilema_24` [holgura-oculta, nivel 2] — A con holguras 5/2/2 y «no tiene ningún margen»; ceder 1 a H
+- `Dilema_25` [coste-hundido, nivel 2] — VAN restante 224 k€ (continuar) con VAN total -216 k€
+- `Dilema_26` [recurso-desviado, nivel 2] — parar B 2 semanas (holgura 0): 2 de retraso, 9.9 k€ de penalidad frente a 14.9 k€ del otro proyecto
+- `Dilema_27` [baja-temeraria, nivel 3] — baja 28.3 % (umbral 27.7 %) y plazo 18 con P = 0.09: temeraria y sin buena fe
+- `Dilema_28` [imputacion-cruzada, nivel 1] — 530 h (32 k€) de A a B: CPI de A de 0.72 a 1.02; no subvencionable
