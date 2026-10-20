@@ -132,8 +132,10 @@ class TestVisoresTiempos(unittest.TestCase):
     def test_pert_visor(self):
         html = self.pg.pert_pasos_html(DUR)
         n = len(self.pg.nodes)
-        self.assertEqual(self._fotos(html), 2 * n + 2)     # vacío + n + n + final
-        self.assertEqual(html.count("data:image/svg+xml;base64,"), 2 * n + 2)
+        m = len(self.pg.pert_graph.edges)
+        total = 2 * n + m + 2                   # vacío + n + n + m holguras + final
+        self.assertEqual(self._fotos(html), total)
+        self.assertEqual(html.count("data:image/svg+xml;base64,"), total)
         self.assertIn("siguiente", html)
 
     def test_roy_visor(self):
@@ -169,7 +171,7 @@ class TestTrazadoPropio(unittest.TestCase):
     def test_pert_layout_capas_conserva_el_dibujo_anterior(self):
         fotos = self.pg.plot_tikz_pasos(DUR, layout="capas")
         self.assertNotIn(".. controls", fotos[-1])
-        self.assertEqual(len(fotos), 2 * len(self.pg.nodes) + 2)
+        self.assertEqual(len(fotos), 2 * len(self.pg.nodes) + len(self.pg.pert_graph.edges) + 2)
 
     def test_roy_curvas(self):
         fotos = self.pg.plot_tikz_roy_pasos(DUR)

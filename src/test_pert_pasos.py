@@ -100,10 +100,11 @@ class TestPlotTikzPasos(unittest.TestCase):
     def setUp(self):
         self.pg = project()
         self.n = len(self.pg.nodes)
+        self.m = len(self.pg.pert_graph.edges)
 
     def test_numero_de_fotogramas(self):
         frames = self.pg.plot_tikz_pasos(DUR)
-        self.assertEqual(len(frames), 2 * self.n + 2)
+        self.assertEqual(len(frames), 2 * self.n + self.m + 2)
         for c in frames:
             self.assertTrue(c.startswith(r"\begin{tikzpicture}"))
             self.assertTrue(c.rstrip().endswith(r"\end{tikzpicture}"))
@@ -124,8 +125,8 @@ class TestPlotTikzPasos(unittest.TestCase):
     def test_beamer(self):
         c = self.pg.plot_tikz_pasos(DUR, beamer=True)
         self.assertIsInstance(c, str)
-        self.assertEqual(c.count(r"\only<"), 2 * self.n + 2)
-        self.assertIn(rf"\only<{2 * self.n + 2}>", c)
+        self.assertEqual(c.count(r"\only<"), 2 * self.n + self.m + 2)
+        self.assertIn(rf"\only<{2 * self.n + self.m + 2}>", c)
 
     def test_posiciones_y_textos(self):
         pos = {nodo: (i, 0) for i, nodo in enumerate(self.pg.nodes)}
@@ -153,3 +154,32 @@ class TestPlotTikzPasos(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHolgurasPasos(unittest.TestCase):
+    def setUp(self):
+        self.pg = project()
+        self.pasos = self.pg.pert_pasos(DUR)
+        self.res = self.pg.calculate_pert(DUR)
+
+    def test_una_fila_por_actividad_con_la_holgura_total(self):
+        h = self.pasos["holguras"]
+        self.assertEqual(len(h), len(self.pg.pert_graph.edges))
+        esperado = self.res["activities"]["H_total"]
+        for _, fila in h.iterrows():
+            self.assertEqual(fila["valor"], esperado[fila["actividad"]])
+
+    def test_formula_en_el_calculo(self):
+        fila = self.pg.pert_pasos(DUR, formato="latex")["holguras"].iloc[0]
+        self.assertIn("t_{", fila["calculo"])
+        self.assertIn(f"= {fila['valor']}", fila["calculo"])
+
+    def test_fotogramas_de_holguras_y_rojo_progresivo(self):
+        n_h = len(self.pasos["holguras"])
+        n_sucesos = len(self.pasos["tempranos"])
+        cods = self.pg.plot_tikz_pasos(DUR)
+        self.assertEqual(len(cods), 1 + 2 * n_sucesos + n_h + 1)
+        rojos = [c.count("fill=white!90!red") for c in cods[1 + 2 * n_sucesos: -1]]
+        self.assertEqual(rojos, sorted(rojos))           # nunca se quita el rojo
+        self.assertEqual(cods[1 + 2 * n_sucesos - 1].count("fill=white!90!red"), 0)
+        self.assertGreater(rojos[-1], 0)

@@ -1,7 +1,7 @@
 {
  "cells": [
   {
-   "index": 4,
+   "index": 2,
    "source": "# Alargamos el ancho de las celdas al 100%",
    "vars": {
     "datos_enunciado": {
@@ -58,7 +58,7 @@
    }
   },
   {
-   "index": 6,
+   "index": 4,
    "source": "datos_proyecto=datos_enunciado.copy()",
    "vars": {
     "datos_proyecto": {
@@ -130,7 +130,7 @@
    }
   },
   {
-   "index": 7,
+   "index": 5,
    "source": "proyecto = prelaciones.create_project()",
    "vars": {
     "proyecto": {
@@ -168,7 +168,7 @@
    }
   },
   {
-   "index": 10,
+   "index": 8,
    "source": "datos_proyecto['duracion'] = datos_proyecto['duracion'].astype(float)",
    "vars": {
     "datos_proyecto": {
@@ -524,7 +524,7 @@
    }
   },
   {
-   "index": 16,
+   "index": 14,
    "source": "acumulados = gantts['acumulados']",
    "vars": {
     "acumulados": {
@@ -578,7 +578,7 @@
    }
   },
   {
-   "index": 19,
+   "index": 17,
    "source": "EV = acumulados.tail(1)['EV'].iloc[0]",
    "vars": {
     "AC": 5600.0,
@@ -587,7 +587,7 @@
    }
   },
   {
-   "index": 20,
+   "index": 18,
    "source": "BAC = int(datos_enunciado.loc[:, 'coste_planificado'].sum())",
    "vars": {
     "BAC": 8000
