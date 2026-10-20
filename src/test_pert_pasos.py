@@ -118,8 +118,8 @@ class TestPlotTikzPasos(unittest.TestCase):
         # muestra la duración del proyecto; el final marca el camino crítico.
         self.assertNotIn("(210:0.27)", frames[0])
         self.assertIn("= 31$", frames[self.n])
-        self.assertIn("red!75!black", frames[-1])
-        self.assertNotIn("red!75!black", frames[self.n])
+        self.assertIn("red, very thick", frames[-1])
+        self.assertNotIn("red, very thick", frames[self.n])
 
     def test_beamer(self):
         c = self.pg.plot_tikz_pasos(DUR, beamer=True)

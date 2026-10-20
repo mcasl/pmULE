@@ -1362,8 +1362,17 @@ class ProjectGraph:
         ranksep=0.5,
         nodesep=0.5,
         rotate=0,
+        motor="tikz",
         **kwargs,
     ):
+        """Dibuja el grafo PERT. Por defecto (``motor="tikz"``) con TikZ y la disposición
+        propia de pmule (:meth:`pert_tikz`: sin graphviz, el camino crítico en rojo; los
+        argumentos de disposición ``ranksep``, ``nodesep``… no se usan); con
+        ``motor="graphviz"``, el dibujo de graphviz de siempre (pygraphviz)."""
+        if motor == "tikz":
+            return self.pert_tikz(filename, durations)
+        if motor != "graphviz":
+            raise ValueError("motor debe ser 'tikz' o 'graphviz'")
         if filename is None:
             filename = "output_pert_figure.svg"
 
@@ -1698,8 +1707,16 @@ class ProjectGraph:
         nodesep=0.5,
         rotate=0,
         dpi=300,
+        motor="tikz",
         **kwargs,
     ):
+        """Dibuja el grafo Roy. Por defecto (``motor="tikz"``) con TikZ y la disposición
+        propia de pmule (:meth:`roy_tikz`, sin graphviz y con el camino crítico en rojo);
+        con ``motor="graphviz"``, el dibujo de graphviz de siempre (pygraphviz)."""
+        if motor == "tikz":
+            return self.roy_tikz(filename, durations)
+        if motor != "graphviz":
+            raise ValueError("motor debe ser 'tikz' o 'graphviz'")
         if isinstance(durations, (pd.Series, pd.DataFrame)):
             durations = durations.copy()
         df = PredecessorTable.from_project(self).immediate_linkage_matrix
@@ -3669,7 +3686,7 @@ class ProjectGraph:
 
     def plot_tikz_pasos(self, durations, beamer: bool = False,
                         escala: float = 1.0, posiciones: dict = None,
-                        textos: dict = None):
+                        textos: dict = None, layout: str = "auto"):
         """Dibujo del grafo PERT paso a paso (código TikZ).
 
         Secuencia de fotogramas: grafo vacío; un fotograma por suceso en el
@@ -3688,6 +3705,12 @@ class ProjectGraph:
         ----------
         durations : dict | pandas.Series
             Duraciones de las actividades.
+        layout : {"auto", "capas"}
+            ``"auto"`` (por defecto): disposición propia por capas con pocos cruces,
+            flechas que esquivan los nodos y nombres colocados donde no pisan nodos,
+            flechas ni otros nombres (:func:`_disposicion_capas`); ``"capas"``:
+            disposición simple por capas topológicas. Con ``posiciones`` se usa
+            siempre la impuesta.
         beamer : bool
             ``False`` (por defecto): lista de cadenas, un ``tikzpicture`` por
             fotograma (útil con ``jupyter_tikz`` o para figuras sueltas).
@@ -3713,7 +3736,10 @@ class ProjectGraph:
         dur = self._normalize_durations(durations, dummies=True).to_dict()
         pasos = self.pert_pasos(durations, formato="latex")
         holguras = self.calculate_pert(durations)["activities"]["H_total"]
-        pos = self._pert_posiciones(escala, posiciones)
+        trazado = None
+        if posiciones is None and layout == "auto":
+            trazado = self._trazado_pert(dur, escala)
+        pos = trazado["pos"] if trazado else self._pert_posiciones(escala, posiciones)
         rotulos = {"inicio": "Grafo del proyecto",
                    "final": "Camino crítico: duración = {duracion}"}
         rotulos.update(textos or {})
@@ -3721,7 +3747,7 @@ class ProjectGraph:
         f = self._num_paso
 
         def fotograma(*args, **kwargs):
-            return self._pert_fotograma(pos, dur, holguras, escala, *args, **kwargs)
+            return self._pert_fotograma(pos, dur, holguras, escala, *args, trazado=trazado, **kwargs)
 
         fotogramas = []
         fotogramas.append(fotograma({}, {}, texto=rotulos["inicio"]))
@@ -3746,9 +3772,102 @@ class ProjectGraph:
         return self._beamer_o_lista(fotogramas, beamer=beamer)
 
 
+    def plot_tikz_pert(self, durations=False, escala: float = 1.0, posiciones: dict = None,
+                       layout: str = "auto") -> str:
+        """Grafo PERT como un ``tikzpicture`` (sin graphviz): con ``durations`` lleva los
+        tiempos tempranos y tardíos en los nodos, ``actividad (duración)`` en las flechas y
+        el camino crítico en rojo (flechas y nodos); sin ellas, el grafo con los nombres
+        (ficticias ``@i→j`` punteadas y en verde). Disposición propia por capas que evita
+        que se pisen los elementos (véase :meth:`plot_tikz_pasos`). Necesita las
+        bibliotecas TikZ ``calc`` y ``arrows.meta``."""
+        con = durations is not False and durations is not None
+        if con:
+            dur = self._normalize_durations(durations, dummies=True).to_dict()
+            res = self.calculate_pert(durations)
+            tempranos = {f"{k}": v for k, v in res["nodes"]["early"].items()}
+            tardios = {f"{k}": v for k, v in res["nodes"]["late"].items()}
+            holguras = res["activities"]["H_total"]
+        else:
+            dur, tempranos, tardios, holguras = {}, {}, {}, {}
+        trazado = None
+        if posiciones is None and layout == "auto":
+            trazado = self._trazado_pert(dur, escala, con)
+        pos = trazado["pos"] if trazado else self._pert_posiciones(escala, posiciones)
+        cuerpo = self._pert_fotograma(pos, dur, holguras, escala, tempranos, tardios,
+                                      critico=con, trazado=trazado, con_duracion=con)
+        return "\\begin{tikzpicture}[>=stealth]\n" + cuerpo + "\n\\end{tikzpicture}"
+
+    def pert_tikz(self, filename=None, durations=False, escala: float = 1.0,
+                  posiciones: dict = None, layout: str = "auto", **graphviz):
+        """Dibuja el grafo PERT con TikZ y devuelve la imagen SVG (se muestra al ser la
+        última expresión de la celda). Sustituye a :meth:`pert` en los cuadernos: acepta
+        sus mismos argumentos (``durations``, ``filename``…) e ignora los de disposición
+        de graphviz (``ranksep``, ``nodesep``, ``rowsep``…). Con ``filename`` guarda
+        además el dibujo (``.pdf``, ``.svg`` o ``.png``). Hace falta ``pdflatex``."""
+        codigo = self.plot_tikz_pert(durations, escala, posiciones, layout)
+        return SVG(data=_svg_ancho_columna(_svgs_de_tikz([codigo], guardar=filename)[0]))
+
+    def plot_tikz_roy(self, durations=False, escala: float = 1.0, posiciones: dict = None,
+                      etiquetas: dict = None, layout: str = "auto") -> str:
+        """Grafo Roy como un ``tikzpicture`` (sin graphviz): cajas con el nombre y, abajo,
+        mínimo | duración | máximo; con ``durations`` el camino crítico en rojo. Sin
+        ellas, las cajas vacías. Véase :meth:`plot_tikz_roy_pasos`."""
+        con = durations is not False and durations is not None
+        fotos = self.plot_tikz_roy_pasos(durations if con else {}, beamer=False, escala=escala,
+                                         posiciones=posiciones, etiquetas=etiquetas,
+                                         layout=layout, estatico=True, con_duracion=con)
+        return fotos[0]
+
+    def roy_tikz(self, filename=None, durations=False, escala: float = 1.0,
+                 posiciones: dict = None, layout: str = "auto", etiquetas: dict = None, **graphviz):
+        """Dibuja el grafo Roy con TikZ y devuelve la imagen SVG; sustituye a :meth:`roy`
+        en los cuadernos (acepta sus argumentos e ignora los de graphviz)."""
+        codigo = self.plot_tikz_roy(durations, escala, posiciones, etiquetas, layout)
+        return SVG(data=_svg_ancho_columna(_svgs_de_tikz([codigo], guardar=filename)[0]))
+
     # ------------------------------------------------------------------
     # Piezas comunes de los dibujos paso a paso
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _tex_texto(texto: str) -> str:
+        """Texto de una etiqueta a LaTeX (flecha de las ficticias ``@i→j`` y caracteres especiales)."""
+        for a, b in (("\\", r"\textbackslash{}"), ("$", r"\$"), ("_", r"\_"), ("&", r"\&"),
+                     ("%", r"\%"), ("#", r"\#"), ("→", r"$\to$"), ("💤", r"\textit{zz}")):
+            texto = texto.replace(a, b)
+        # lo que pdflatex no sabe escribir (emoji, etc.) no debe romper la compilación
+        return "".join(c if ord(c) < 0x2000 else "?" for c in texto)
+
+    @staticmethod
+    def _ruta_tikz(a: str, b: str, pos: dict, intermedios: list, curva: bool, nombre) -> str:
+        """Camino TikZ de una arista del trazado de :func:`_disposicion_capas`: recta o
+        curvas de Bézier con tangente horizontal por los puntos intermedios.
+        ``nombre(id)`` da el nombre del nodo TikZ; TikZ recorta en su borde."""
+        A, B = f"({nombre(a)})", f"({nombre(b)})"
+        if not intermedios and not curva:
+            return f"{A} -- {B}"
+        pts = [pos[a]] + list(intermedios) + [pos[b]]
+        t = A
+        for i in range(len(pts) - 1):
+            (x1, y1), (x2, y2) = pts[i], pts[i + 1]
+            dx = (x2 - x1) * 0.45
+            fin = B if i == len(pts) - 2 else f"({x2:.2f}cm,{y2:.2f}cm)"
+            t += (f" .. controls ({x1 + dx:.2f}cm,{y1:.2f}cm) and ({x2 - dx:.2f}cm,{y2:.2f}cm) .. {fin}")
+        return t
+
+    def _trazado_pert(self, dur: dict, escala: float = 1.0, con_duracion: bool = True):
+        """Disposición propia (sin graphviz) del grafo PERT con las etiquetas
+        ``actividad (duración)``; las ficticias llevan ``@i→j (0)`` como en ``pert()``."""
+        f = self._num_paso
+        nodos = {f"{n}": (1.1, 1.1) for n in self.nodes}
+        aristas, anchos = [], {}
+        for u, v, d in self.pert_graph.edges(data=True):
+            clave = (f"{u}", f"{v}")
+            aristas.append(clave)
+            act = d.get("activity", "")
+            anchos[clave] = _ancho_etiqueta(f"{act} ({f(dur.get(act, 0))})" if con_duracion else act)
+        tr = _disposicion_capas(nodos, aristas, anchos, separacion=0.6 * escala, hueco=0.8 * escala)
+        return tr
 
     @staticmethod
     def _curvatura_tikz(pos, u, v, umbral):
@@ -3772,7 +3891,8 @@ class ProjectGraph:
         return "bend right=25" if peor >= 0 else "bend left=25"
 
     def _pert_fotograma(self, pos, dur, holguras, escala, tempranos, tardios,
-                        actual=None, arcos_activos=(), texto="", critico=False):
+                        actual=None, arcos_activos=(), texto="", critico=False,
+                        trazado=None, con_duracion=True):
         """Un fotograma TikZ del grafo PERT (cuerpo, sin ``tikzpicture``).
 
         ``actual`` es un suceso o un conjunto de sucesos que se resaltan en
@@ -3784,6 +3904,10 @@ class ProjectGraph:
         else:
             actuales = {f"{actual}"} if actual is not None else set()
         y_min = min(y for _, y in pos.values())
+        if trazado:
+            y_min = min([y_min] + [y for _, y in trazado["etiquetas"].values()]) - 0.2
+            for r in trazado["rutas"].values():
+                y_min = min([y_min] + [y for _, y in r])
         x_mid = (min(x for x, _ in pos.values()) + max(x for x, _ in pos.values())) / 2
         L, A = [], []
         for (u, v, data) in G.edges(data=True):
@@ -3792,24 +3916,48 @@ class ProjectGraph:
             estilo = ["->", "thick"]
             if ficticia:
                 estilo.append("dashed")
+            color = ""
             if (f"{u}", f"{v}") in arcos_activos:
                 estilo += ["orange!80!black", "very thick"]
+                color = "orange!80!black"
             elif critico and holguras.get(act, 1) == 0:
-                estilo += ["red!75!black", "very thick"]
-            etiqueta = "" if ficticia else f"{act} ({f(dur.get(act, 0))})"
+                estilo += ["red", "very thick"]
+                color = "red"
+            elif ficticia and not con_duracion:
+                estilo.append("green!50!black")
+                color = "green!50!black"
+            etq = self._tex_texto(act) + (f" ({f(dur.get(act, 0))})" if con_duracion else "")
+            if trazado and (f"{u}", f"{v}") in trazado["rutas"]:
+                clave = (f"{u}", f"{v}")
+                A.append(rf"  \draw[{', '.join(estilo)}] "
+                         + self._ruta_tikz(clave[0], clave[1], pos, trazado["rutas"][clave],
+                                           trazado["curva"][clave], lambda n: f"n{n}") + ";")
+                if clave in trazado["etiquetas"]:
+                    lx, ly = trazado["etiquetas"][clave]
+                    A.append(rf"  \node[font=\scriptsize, inner sep=1pt, fill=white{', text=' + color if color else ''}]"
+                             rf" at ({lx:.2f}cm, {ly:.2f}cm) {{{etq}}};")
+                continue
+            etiqueta = etq
             curva = self._curvatura_tikz(pos, u, v, 0.75 * escala)
             trazo = f"to[{curva}]" if curva else "--"
             lado = "below" if curva.startswith("bend right") else "above"
             A.append(rf"  \draw[{', '.join(estilo)}] (n{u}) {trazo}"
                      rf" node[midway, {lado}, sloped, font=\scriptsize] {{{etiqueta}}} (n{v});")
         for nodo, (x, y) in pos.items():
-            relleno = ("fill=orange!20, draw=orange!80!black, very thick"
-                       if nodo in actuales else "fill=white, draw, thick")
+            es_critico = (critico and nodo in tempranos and nodo in tardios
+                          and tempranos[nodo] == tardios[nodo])
+            if nodo in actuales:
+                relleno = "fill=orange!20, draw=orange!80!black, very thick"
+            elif es_critico:
+                relleno = "fill=red!10, draw=red, very thick"
+            else:
+                relleno = "fill=white, draw, thick"
             L.append(rf"  \node[circle, {relleno}, minimum size=1.1cm, inner sep=0pt]"
                      rf" (n{nodo}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
             L.append(rf"  \draw[gray] (n{nodo}.center) -- (n{nodo}.45)"
                      rf" (n{nodo}.center) -- (n{nodo}.135) (n{nodo}.center) -- (n{nodo}.270);")
-            L.append(rf"  \node[font=\footnotesize\bfseries] at ($(n{nodo}.center)+(90:0.28)$) {{{nodo}}};")
+            L.append(rf"  \node[font=\footnotesize\bfseries{', text=red' if es_critico else ''}]"
+                     rf" at ($(n{nodo}.center)+(90:0.28)$) {{{self._tex_texto(f"{nodo}")}}};")
             if nodo in tempranos:
                 L.append(rf"  \node[font=\scriptsize] at ($(n{nodo}.center)+(210:0.27)$) {{{f(tempranos[nodo])}}};")
             if nodo in tardios:
@@ -4207,7 +4355,9 @@ class ProjectGraph:
 
     def plot_tikz_roy_pasos(self, durations, beamer: bool = False,
                             escala: float = 1.0, posiciones: dict = None,
-                            textos: dict = None, etiquetas: dict = None):
+                            textos: dict = None, etiquetas: dict = None,
+                            layout: str = "auto", estatico: bool = False,
+                            con_duracion: bool = True):
         """Dibujo del grafo Roy paso a paso (código TikZ).
 
         Como :meth:`plot_tikz_pasos`, pero con las actividades en los nodos:
@@ -4229,7 +4379,14 @@ class ProjectGraph:
         pasos = self.roy_pasos(durations, formato="latex", etiquetas=et)
         G = self._roy_grafo_actual()
         capa = self._roy_capas(G)
-        if posiciones is None:
+        trazado = None
+        if posiciones is None and layout == "auto":
+            trazado = _disposicion_capas({f"{n}": (1.5, 0.9) for n in G.nodes},
+                                         [(f"{u}", f"{v}") for u, v in G.edges()],
+                                         separacion=0.3 * escala, hueco=0.4 * escala)
+        if trazado:
+            pos = trazado["pos"]
+        elif posiciones is None:
             from collections import defaultdict
             por_capa = defaultdict(list)
             for n in sorted(G.nodes, key=lambda n: f"{n}"):
@@ -4261,7 +4418,12 @@ class ProjectGraph:
                 if (u, v) in arcos_activos:
                     estilo += ["orange!80!black", "very thick"]
                 elif u in criticos and v in criticos:
-                    estilo += ["red!75!black", "very thick"]
+                    estilo += ["red", "very thick"]
+                if trazado and (u, v) in trazado["rutas"]:
+                    A.append(rf"  \draw[{', '.join(estilo)}] "
+                             + self._ruta_tikz(u, v, pos, trazado["rutas"][(u, v)],
+                                               trazado["curva"][(u, v)], lambda n: ident[n]) + ";")
+                    continue
                 curva = self._curvatura_tikz(pos, u, v, 0.8 * escala)
                 trazo = f"to[{curva}]" if curva else "--"
                 A.append(rf"  \draw[{', '.join(estilo)}] ({ident[u]}) {trazo} ({ident[v]});")
@@ -4270,7 +4432,7 @@ class ProjectGraph:
                 if nodo == actual:
                     estilo = "fill=orange!20, draw=orange!80!black, very thick"
                 elif nodo in criticos:
-                    estilo = "fill=red!8, draw=red!75!black, very thick"
+                    estilo = "fill=red!10, draw=red, very thick"
                 else:
                     estilo = "fill=white, draw, thick"
                 L.append(rf"  \node[rectangle, {estilo}, minimum width=1.5cm, minimum height=0.9cm,"
@@ -4278,8 +4440,10 @@ class ProjectGraph:
                 L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
                          rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
                          rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
-                L.append(rf"  \node[font=\footnotesize\bfseries] at ($({r}.center)+(0,0.22)$) {{{et.get(nodo, nodo)}}};")
-                L.append(rf"  \node[font=\scriptsize, gray] at ($({r}.center)+(0,-0.22)$) {{{f(dur[nodo])}}};")
+                L.append(rf"  \node[font=\footnotesize\bfseries{', text=red' if nodo in criticos else ''}]"
+                         rf" at ($({r}.center)+(0,0.22)$) {{{self._tex_texto(f"{et.get(nodo, nodo)}")}}};")
+                if con_duracion:
+                    L.append(rf"  \node[font=\scriptsize, gray] at ($({r}.center)+(0,-0.22)$) {{{f(dur[nodo])}}};")
                 if nodo in minimos:
                     L.append(rf"  \node[font=\scriptsize] at ($({r}.center)+(-0.5,-0.22)$) {{{f(minimos[nodo])}}};")
                 if nodo in maximos:
@@ -4289,6 +4453,14 @@ class ProjectGraph:
                 L.append(rf"  \node[anchor=north, font=\small] at ({x_mid:.2f}cm, {y_min - 1.0:.2f}cm) {{{texto}}};")
             return "\n".join(L)
 
+        if estatico:                       # un solo dibujo, sin texto (grafo Roy del resultado)
+            if con_duracion:
+                mn = {f"{r['nodo']}": r["valor"] for _, r in pasos["minimos"].iterrows()}
+                mx = {f"{r['nodo']}": r["valor"] for _, r in pasos["maximos"].iterrows()}
+                fotos = [fotograma(mn, mx, criticos={n for n in mn if mn[n] == mx[n]})]
+            else:
+                fotos = [fotograma({}, {})]
+            return self._beamer_o_lista(fotos, beamer=False)
         fotos = [fotograma({}, {}, texto=rotulos["inicio"])]
         minimos = {}
         for _, fila in pasos["minimos"].iterrows():
@@ -6116,6 +6288,253 @@ def make_gantt_tikz(
 
 
 
+def _ancho_etiqueta(texto: str) -> float:
+    """Ancho aproximado en cm de una etiqueta en ``\\scriptsize``."""
+    ancho = {"@": 0.17, "→": 0.17, " ": 0.07, "(": 0.07, ")": 0.07}
+    return sum(ancho.get(c, 0.115) for c in texto) + 0.15
+
+
+def _muestras_ruta(pts: list, curva: bool, n: int = 24) -> list:
+    """Puntos de la ruta de una arista: recta entre extremos o curvas de Bézier
+    con tangente horizontal en cada punto (como las que dibuja ``_ruta_tikz``)."""
+    if not curva:
+        return [pts[0], pts[-1]]
+    salida = []
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
+        dx = (x2 - x1) * 0.45
+        for k in range(n + 1):
+            t = k / n
+            a, b, c, d = (1 - t) ** 3, 3 * t * (1 - t) ** 2, 3 * t ** 2 * (1 - t), t ** 3
+            salida.append((a * x1 + b * (x1 + dx) + c * (x2 - dx) + d * x2, a * y1 + b * y1 + c * y2 + d * y2))
+    return salida
+
+
+def _disposicion_capas(nodos: dict, aristas: list, anchos_etiqueta: dict = None,
+                       separacion: float = 0.35, hueco: float = 0.5) -> dict:
+    """Disposición de un grafo acíclico por capas, de izquierda a derecha, pensada
+    para dibujarlo con TikZ sin que se pisen sus elementos.
+
+    1. Capas: la de cada nodo es la longitud del camino más largo que llega a él.
+    2. Orden dentro de cada capa: las aristas que saltan capas se parten con nodos
+       virtuales y se minimiza el número de cruces (baricentros alternando
+       sentidos y trasposiciones de vecinos), conservando el mejor orden.
+    3. Alturas: mínimos cuadrados respecto a la media de los vecinos con la
+       separación mínima entre nodos contiguos (regresión isótona), de modo que
+       las aristas largas quedan casi rectas y esquivan los nodos de las capas
+       intermedias por su nodo virtual.
+    4. Rutas: rectas entre capas contiguas y curvas por los nodos virtuales en las
+       largas; si una recta atraviesa un nodo se cambia por una curva.
+    5. Nombres: sobre su flecha, en el punto de la ruta (probando varios) que
+       menos pisa nodos, otros nombres y otras flechas.
+
+    ``nodos``: ``{id: (ancho_cm, alto_cm)}``; ``aristas``: ``[(u, v)]``;
+    ``anchos_etiqueta``: ``{(u, v): ancho_cm}`` (opcional). Devuelve ``{"pos", "rutas"
+    (puntos intermedios), "curva", "etiquetas"}`` con coordenadas en cm.
+    """
+    import itertools
+    anchos_etiqueta = anchos_etiqueta or {}
+    ids = list(nodos)
+    preds = {n: [] for n in ids}
+    succs = {n: [] for n in ids}
+    for u, v in aristas:
+        succs[u].append(v)
+        preds[v].append(u)
+    # 1. capas
+    grado = {n: len(preds[n]) for n in ids}
+    cola, orden = [n for n in ids if grado[n] == 0], []
+    while cola:
+        n = cola.pop(0)
+        orden.append(n)
+        for m in succs[n]:
+            grado[m] -= 1
+            if grado[m] == 0:
+                cola.append(m)
+    if len(orden) != len(ids):
+        raise ValueError("el grafo tiene ciclos")
+    capa = {}
+    for n in orden:
+        capa[n] = max((capa[q] + 1 for q in preds[n]), default=0)
+    # 2. nodos virtuales y orden
+    L, tam = dict(capa), dict(nodos)
+    ep = {n: [] for n in ids}
+    es = {n: [] for n in ids}
+    cadenas = {}
+    for u, v in aristas:
+        cur, virt = u, []
+        for j in range(1, capa[v] - capa[u]):
+            w = ("v", u, v, j)
+            L[w], tam[w] = capa[u] + j, (0.0, 0.25)
+            ep[w], es[w] = [], []
+            es[cur].append(w)
+            ep[w].append(cur)
+            cur = w
+            virt.append(w)
+        es[cur].append(v)
+        ep[v].append(cur)
+        cadenas[(u, v)] = virt
+    ncapas = max(L.values()) + 1
+    por_capa = [[] for _ in range(ncapas)]
+    for n in L:
+        por_capa[L[n]].append(n)
+    idx = {}
+
+    def reindexa(c):
+        for i, n in enumerate(por_capa[c]):
+            idx[n] = i
+
+    for c in range(ncapas):
+        reindexa(c)
+
+    def cruces_entre(c):
+        ar = [(idx[a], idx[b]) for a in por_capa[c] for b in es[a]]
+        return sum(1 for (a1, b1), (a2, b2) in itertools.combinations(ar, 2) if (a1 - a2) * (b1 - b2) < 0)
+
+    def cruces():
+        return sum(cruces_entre(c) for c in range(ncapas - 1))
+
+    def barrido(rango, vecinos):
+        for c in rango:
+            clave = {n: (sum(idx[q] for q in vecinos[n]) / len(vecinos[n]) if vecinos[n] else idx[n])
+                     for n in por_capa[c]}
+            por_capa[c].sort(key=lambda n: (clave[n], idx[n]))
+            reindexa(c)
+
+    mejor = (cruces(), [list(c) for c in por_capa])
+    for _ in range(24):
+        barrido(range(1, ncapas), ep)
+        barrido(range(ncapas - 2, -1, -1), es)
+        mejora = True
+        while mejora:                                   # trasposición de vecinos
+            mejora = False
+            for c in range(ncapas):
+                for i in range(len(por_capa[c]) - 1):
+                    antes = cruces()
+                    por_capa[c][i], por_capa[c][i + 1] = por_capa[c][i + 1], por_capa[c][i]
+                    reindexa(c)
+                    if cruces() < antes:
+                        mejora = True
+                    else:
+                        por_capa[c][i], por_capa[c][i + 1] = por_capa[c][i + 1], por_capa[c][i]
+                        reindexa(c)
+        total = cruces()
+        if total < mejor[0]:
+            mejor = (total, [list(c) for c in por_capa])
+        if total == 0:
+            break
+    por_capa = [list(c) for c in mejor[1]]
+    for c in range(ncapas):
+        reindexa(c)
+
+    # 3. alturas (la fila 0 arriba: d crece hacia abajo)
+    def separar(c, deseado):
+        nodos_c = por_capa[c]
+        off, acum = [0.0], 0.0
+        for a, b in zip(nodos_c, nodos_c[1:]):
+            acum += (tam[a][1] + tam[b][1]) / 2 + separacion
+            off.append(acum)
+        bloques = []                                    # PAV sobre z = d - offset
+        for i, n in enumerate(nodos_c):
+            bloques.append([deseado[n] - off[i], 1, i, i])
+            while len(bloques) > 1 and bloques[-2][0] > bloques[-1][0]:
+                b2, b1 = bloques.pop(), bloques.pop()
+                bloques.append([(b1[0] * b1[1] + b2[0] * b2[1]) / (b1[1] + b2[1]), b1[1] + b2[1], b1[2], b2[3]])
+        d = {}
+        for z, _, i0, i1 in bloques:
+            for i in range(i0, i1 + 1):
+                d[nodos_c[i]] = z + off[i]
+        return d
+
+    d = {}
+    for c in range(ncapas):
+        ini = {n: float(i) for i, n in enumerate(por_capa[c])}
+        d.update(separar(c, ini))
+    for _ in range(10):
+        for c in range(1, ncapas):
+            d.update(separar(c, {n: (sum(d[q] for q in ep[n]) / len(ep[n]) if ep[n] else d[n])
+                                 for n in por_capa[c]}))
+        for c in range(ncapas - 2, -1, -1):
+            d.update(separar(c, {n: (sum(d[q] for q in es[n]) / len(es[n]) if es[n] else d[n])
+                                 for n in por_capa[c]}))
+    # 3b. posiciones x
+    ancho_capa = [max([tam[n][0] for n in por_capa[c] if not isinstance(n, tuple)] or [0.0])
+                  for c in range(ncapas)]
+    x, xs = 0.0, []
+    for c in range(ncapas):
+        if c:
+            ancho_h = max([anchos_etiqueta.get((u, v), 0.0) for (u, v) in aristas
+                           if capa[u] == c - 1 and capa[v] == c] or [0.0])
+            x += ancho_capa[c - 1] / 2 + ancho_capa[c] / 2 + max(0.9, ancho_h + hueco)
+        xs.append(x)
+    pos_ext = {n: (xs[L[n]], -d[n]) for n in L}
+    pos = {n: pos_ext[n] for n in ids}
+
+    # 4. rutas
+    rects = {n: (pos[n][0], pos[n][1], nodos[n][0] / 2 + 0.06, nodos[n][1] / 2 + 0.06) for n in ids}
+
+    def dentro(p, r):
+        return abs(p[0] - r[0]) < r[2] and abs(p[1] - r[1]) < r[3]
+
+    def choca(clave, curva):
+        u, v = clave
+        pts = [pos[u]] + [pos_ext[w] for w in cadenas[clave]] + [pos[v]]
+        for q in _muestras_ruta(pts, curva, 12) if curva else \
+                [(pts[0][0] + (pts[-1][0] - pts[0][0]) * k / 40, pts[0][1] + (pts[-1][1] - pts[0][1]) * k / 40)
+                 for k in range(41)]:
+            for n, r in rects.items():
+                if n not in clave and dentro(q, r):
+                    return True
+        return False
+
+    curva = {}
+    rutas = {}
+    for clave in aristas:
+        virt = cadenas[clave]
+        rutas[clave] = [pos_ext[w] for w in virt]
+        curva[clave] = bool(virt) or choca(clave, False)
+
+    # 5. nombres
+    muestras = {}
+    for clave in aristas:
+        u, v = clave
+        muestras[clave] = _muestras_ruta([pos[u]] + rutas[clave] + [pos[v]], curva[clave])
+    poli = {}
+    for clave, pts in muestras.items():                # polilíneas densas (misma ruta)
+        densa = []
+        for a, b in zip(pts, pts[1:]):
+            m = max(1, int(((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5 / 0.08))
+            densa += [(a[0] + (b[0] - a[0]) * k / m, a[1] + (b[1] - a[1]) * k / m) for k in range(m)]
+        densa.append(pts[-1])
+        poli[clave] = densa
+    etiquetas, ocupadas = {}, []
+    for clave in sorted(anchos_etiqueta, key=lambda c: -len(poli.get(c, []))):
+        if clave not in poli:
+            continue
+        w, h = anchos_etiqueta[clave] / 2 + 0.03, 0.17
+        u, v = clave
+        densa = [q for q in poli[clave] if not dentro(q, rects[u]) and not dentro(q, rects[v])] or poli[clave]
+        mejor_c = None
+        candidatos = [(0.5 + sg * 0.04 * k, dy) for k in range(0, 12) for sg in ((1,) if k == 0 else (1, -1))
+                      for dy in (0.0, 0.2, -0.2, 0.35, -0.35)]
+        for t, dy in candidatos:
+            px, py = densa[min(len(densa) - 1, max(0, int(t * (len(densa) - 1))))]
+            py += dy
+            pen = abs(t - 0.5) + (0.5 if dy else 0.0)
+            for n, r in rects.items():
+                if abs(px - r[0]) < w + r[2] + 0.15 and abs(py - r[1]) < h + r[3] + 0.05:
+                    pen += 100
+            for (qx, qy, qw, qh) in ocupadas:
+                if abs(px - qx) < w + qw and abs(py - qy) < h + qh:
+                    pen += 50
+            for otra, dens in poli.items():
+                if otra != clave:
+                    pen += 6 * sum(1 for (ax, ay) in dens[::2] if abs(px - ax) < w and abs(py - ay) < h)
+            if mejor_c is None or pen < mejor_c[0]:
+                mejor_c = (pen, px, py)
+        etiquetas[clave] = (mejor_c[1], mejor_c[2])
+        ocupadas.append((mejor_c[1], mejor_c[2], w, h))
+    return dict(pos=pos, rutas=rutas, curva=curva, etiquetas=etiquetas)
+
+
 def _html_pasos(fotos: list) -> str:
     """Une fotogramas HTML en un visor autocontenido con botones
     (anterior / siguiente) para mostrar un cálculo paso a paso en un cuaderno
@@ -6144,7 +6563,17 @@ def _html_pasos(fotos: list) -> str:
         'k = Math.max(0, Math.min(p.length - 1, k + d)); p[k].style.display = "block";'
         'c.querySelector(".pmule-contador").textContent = "paso " + (k + 1) + " de " + p.length; };</script>')
 
-def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta") -> list:
+def _svg_ancho_columna(svg):
+    """Quita ``width``/``height`` fijos de la raíz del SVG (conserva ``viewBox``)
+    para que el navegador lo escale al ancho disponible de la columna."""
+    import re
+    def raiz(m):
+        t = re.sub(r'\s(?:width|height)="[^"]*"', '', m.group(0))
+        return t
+    return re.sub(r'<svg\b[^>]*>', raiz, svg, count=1)
+
+
+def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: str = None) -> list:
     """Compila una lista de ``tikzpicture`` (un fotograma cada uno) y devuelve un
     SVG por fotograma, recortado al dibujo. Un solo ``pdflatex`` para todos (el
     grafo es el mismo en todos, así que las cajas casi coinciden y no saltan al
@@ -6172,6 +6601,19 @@ def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta") -> list:
             subprocess.run(["pdftocairo", "-svg", "-f", str(k), "-l", str(k), "f.pdf", f"p{k}.svg"],
                            cwd=d, check=True, capture_output=True)
             svgs.append((d / f"p{k}.svg").read_text(encoding="utf8"))
+        if guardar:                                   # copia de la primera figura
+            destino = Path(guardar)
+            if destino.parent and not destino.parent.exists():
+                destino.parent.mkdir(parents=True, exist_ok=True)
+            ext = destino.suffix.lower()
+            if ext == ".pdf":
+                shutil.copy(d / "f.pdf", destino)
+            elif ext == ".svg":
+                destino.write_text(svgs[0], encoding="utf8")
+            elif ext == ".png":
+                subprocess.run(["pdftocairo", "-png", "-r", "200", "-f", "1", "-l", "1", "-singlefile",
+                                "f.pdf", str(destino.with_suffix(""))], cwd=d, check=True,
+                               capture_output=True)
     return svgs
 
 
@@ -6183,7 +6625,7 @@ def _html_fotogramas_tikz(codigos: list, librerias: str = "calc,arrows.meta") ->
     fotos = []
     for svg in _svgs_de_tikz(codigos, librerias):
         b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
-        fotos.append('<img alt="paso" style="display:block;margin:0 auto;max-width:100%;height:auto" '
+        fotos.append('<img alt="paso" style="display:block;margin:0 auto;width:100%;max-width:1100px;height:auto" '
                      f'src="data:image/svg+xml;base64,{b64}">')
     return _html_pasos(fotos)
 

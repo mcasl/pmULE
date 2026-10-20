@@ -184,7 +184,7 @@ prelaciones_restantes = PredecessorTable.from_dict_of_strings(
 
 # %%
 proyecto_restante = prelaciones_restantes.create_project()
-proyecto_restante.pert(duraciones=False)
+proyecto_restante.pert(durations=False)
 
 # %% [markdown]
 # #### Cálculo de las duraciones del resto del proyecto
