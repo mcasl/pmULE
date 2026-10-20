@@ -31,11 +31,6 @@ sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, EarnedValue
 
-# %%
-# %%capture
-# %mkdir -p ~/temp
-# %cd ~/temp
-
 # %% [markdown]
 # ## Enunciado
 #
@@ -103,7 +98,6 @@ gantts = vg.calcula_gantts(data=datos_proyecto,
                           )
 
 # %%
-os.chdir("/Users/mcasl/temp")
 TexFragment(gantts['gantt_PV']).run_latex()
 
 # %% [markdown]
