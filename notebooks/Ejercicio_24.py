@@ -194,12 +194,15 @@ proyecto.zaderenko(duraciones)
 proyecto.display_zaderenko_pasos(duraciones)
 
 # %%
-proyecto.display_pert_pasos(duraciones)
-
-# %%
 #| fig-cap: "Grafo Pert con indicación de tiempos y rutas del camino crítico"
 #| label: fig-PertConTiempos
 proyecto.pert(durations=duraciones, ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(duraciones)
 
 # %% [markdown]
 # ## Apartado 4

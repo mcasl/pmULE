@@ -115,5 +115,43 @@ class TestConstruccion(unittest.TestCase):
         self.assertIn(rf"\only<{n + 1}>", m)
 
 
+
+class TestVisoresTiempos(unittest.TestCase):
+    """Visores HTML con botones de los tiempos del PERT y del Roy (fotogramas TikZ → SVG)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        if not (shutil.which("pdflatex") and shutil.which("pdftocairo")):
+            raise unittest.SkipTest("hace falta pdflatex y pdftocairo")
+        cls.pg = project()
+
+    def _fotos(self, html):
+        return html.count('class="pmule-paso"')
+
+    def test_pert_visor(self):
+        html = self.pg.pert_pasos_html(DUR)
+        n = len(self.pg.nodes)
+        self.assertEqual(self._fotos(html), 2 * n + 2)     # vacío + n + n + final
+        self.assertEqual(html.count("data:image/svg+xml;base64,"), 2 * n + 2)
+        self.assertIn("siguiente", html)
+
+    def test_roy_visor(self):
+        html = self.pg.roy_pasos_html(DUR)
+        n = len(DUR) + 2                                    # actividades + Inicio + Fin
+        self.assertEqual(self._fotos(html), 2 * n + 2)
+        self.assertEqual(html.count("data:image/svg+xml;base64,"), 2 * n + 2)
+
+    def test_svgs_validos(self):
+        import base64, re
+        html = self.pg.pert_pasos_html(DUR)
+        for b64 in re.findall(r'base64,([A-Za-z0-9+/=]+)"', html):
+            self.assertIn("<svg", base64.b64decode(b64).decode("utf8"))
+
+    def test_display_sin_visor_conserva_la_lista(self):
+        self.pg.display_pert_pasos(DUR, visor=False)
+        self.pg.display_roy_pasos(DUR, visor=False)
+
+
 if __name__ == "__main__":
     unittest.main()

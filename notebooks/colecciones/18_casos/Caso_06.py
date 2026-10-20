@@ -305,12 +305,15 @@ _g, _d = p0.gantt(df0, 'duration', holguras=True, tikz=True, params=dict(inner_t
 pinta_tikz(_d)
 
 # %%
-p0.display_roy_pasos(dur0)
-
-# %%
 #| fig-cap: "Grafo Roy del plan original con los tiempos"
 #| label: fig-grafo0
 p0.roy(durations=dur0, ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+p0.display_roy_pasos(dur0)
 
 # %%
 #| tbl-cap: "Calendario del plan original"

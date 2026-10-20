@@ -254,12 +254,15 @@ duraciones_ordinaria = datos_proyecto['duration'].copy(); duraciones_ordinaria[t
 duracion_ordinaria = int(proyecto.duration(duraciones_ordinaria))
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo PERT con el procedimiento simplificado"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 1

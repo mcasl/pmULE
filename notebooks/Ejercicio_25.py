@@ -191,12 +191,15 @@ proyecto.display_critical_path(durations=datos_proyecto['duration'])
 # ### Grafo PERT con indicación del camino crítico
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Pert con tiempos, y rutas críticas"
 #| label: fig-PertConTiempos
 proyecto.pert(durations=datos_proyecto['duration'])
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # La desviación típica puede calcularse para cada ruta del camino crítico. En este caso sólo existe una ruta

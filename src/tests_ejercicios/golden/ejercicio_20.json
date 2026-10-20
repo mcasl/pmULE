@@ -889,7 +889,7 @@
    }
   },
   {
-   "index": 40,
+   "index": 42,
    "source": "#| include: false",
    "vars": {
     "ackoff": {
@@ -2106,7 +2106,7 @@
    }
   },
   {
-   "index": 43,
+   "index": 45,
    "source": "for item, value in best_option.items():",
    "vars": {
     "item": 1,

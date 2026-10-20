@@ -73,6 +73,7 @@ def _install_stubs():
     pmule.display = lambda *a, **k: None
     pmule.to_jup = lambda *a, **k: None
     pmule.pinta_tikz = lambda *a, **k: None
+    pmule._svgs_de_tikz = lambda codigos, *a, **k: ["<svg/>"] * len(codigos)   # sin LaTeX
     pmule.plot_cargas = lambda *a, **k: None
     pmule.plot_curvas_valor_ganado = lambda *a, **k: None
     pmule.ProjectGraph.pert = lambda self, *a, **k: None     # graphviz

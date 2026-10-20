@@ -988,7 +988,7 @@
    }
   },
   {
-   "index": 17,
+   "index": 18,
    "source": "#| fig-cap: \"Gantt de la planificación inicial\"",
    "vars": {
     "dibujo": {
@@ -1854,7 +1854,7 @@
    }
   },
   {
-   "index": 19,
+   "index": 20,
    "source": "#| out-height: 80%",
    "vars": {
     "dibujo": {
@@ -2754,7 +2754,7 @@
    }
   },
   {
-   "index": 25,
+   "index": 26,
    "source": "#| out-height: 80%",
    "vars": {
     "dibujo": {
@@ -2764,7 +2764,7 @@
    }
   },
   {
-   "index": 27,
+   "index": 28,
    "source": "gantts = vg.calcula_gantts(datos_proyecto,",
    "vars": {
     "gantts": {
@@ -4799,7 +4799,7 @@
    }
   },
   {
-   "index": 31,
+   "index": 32,
    "source": "#| out-width: 50%",
    "vars": {
     "acumulados": {
@@ -4949,7 +4949,7 @@
    }
   },
   {
-   "index": 36,
+   "index": 37,
    "source": "datos_proyecto_actualizado = datos_proyecto.copy()",
    "vars": {
     "empezadas": {
@@ -5011,7 +5011,7 @@
    }
   },
   {
-   "index": 40,
+   "index": 41,
    "source": "#| out-width: 100%",
    "vars": {
     "dibujo": {
@@ -5021,7 +5021,7 @@
    }
   },
   {
-   "index": 43,
+   "index": 44,
    "source": "datos_proyecto_simplificado = (datos_proyecto",
    "vars": {
     "datos_proyecto_simplificado": {
@@ -5182,7 +5182,7 @@
    }
   },
   {
-   "index": 44,
+   "index": 45,
    "source": "prelaciones_simplificado = PredecessorTable.from_dataframe_of_strings(datos_proyecto_simplificado, a",
    "vars": {
     "prelaciones_simplificado": {
@@ -5316,7 +5316,7 @@
    }
   },
   {
-   "index": 48,
+   "index": 49,
    "source": "#| tab-width: 80%",
    "vars": {
     "ackoff": {
@@ -5875,7 +5875,7 @@
    }
   },
   {
-   "index": 54,
+   "index": 55,
    "source": "#| out-width: 100%",
    "vars": {
     "precio_reduccion": {
@@ -5936,7 +5936,7 @@
    }
   },
   {
-   "index": 55,
+   "index": 56,
    "source": "# Duración con mínimos costes totales",
    "vars": {
     "mejor_opcion": 34

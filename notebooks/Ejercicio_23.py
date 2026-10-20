@@ -247,22 +247,28 @@ display(Markdown(pregunta_5))
 proyecto.calculate_pert(duraciones)['activities']
 
 # %%
-proyecto.display_pert_pasos(duraciones)
-
-# %%
 #| fig-cap: "Grafo Pert con tiempos, y rutas críticas"
 #| label: fig-PertConTiempos
 proyecto.pert(durations=duraciones, ranksep=0.3)
 
-# %%
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
 
 # %%
-proyecto.display_roy_pasos(duraciones)
+proyecto.display_pert_pasos(duraciones)
+
+# %%
 
 # %%
 #| fig-cap: "Grafo Roy con tiempos, y rutas críticas"
 #| label: fig-RoyConTiempos
 proyecto.roy(durations=duraciones, ranksep=0.3)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(duraciones)
 
 # %% [markdown]
 # ## Apartado 6

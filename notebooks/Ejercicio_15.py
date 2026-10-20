@@ -121,12 +121,15 @@ proyecto = prelaciones.create_project()
 # ### Grafo PERT de la planificación inicial
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duracion_planificada'])
-
-# %%
 #| out-width: 100%
 #| fig-cap: "Pert de la planificación inicial"
 proyecto.pert(filename="pert_1.2.2.pdf", durations=datos_proyecto['duracion_planificada'], ranksep=0.7, rowsep=1.5)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duracion_planificada'])
 
 # %%
 Markdown(

@@ -252,12 +252,15 @@ datos_proyecto[['predecessor', 'duration']]
 display(Markdown(pregunta_2))
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy reconstruido, con tiempos y camino crítico"
 #| label: fig-grafo
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # El Roy y el Gantt contienen la misma información estructural (actividades y prelaciones inmediatas) y, si se anotan los tiempos, también las fechas. El Gantt añade la escala temporal (se *ve* la duración y los huecos); el Roy hace visibles las rutas y permite el cálculo nodo a nodo sin dibujar a escala.

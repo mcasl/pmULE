@@ -276,12 +276,15 @@ proyecto = prelaciones.create_project()
 duraciones = datos_proyecto['duration'].round().astype(int)
 
 # %%
-proyecto.display_pert_pasos(duraciones)
-
-# %%
 #| fig-cap: "Grafo PERT con las duraciones medias y el camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=duraciones, ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(duraciones)
 
 # %%
 duracion_proyecto = proyecto.duration(duraciones)

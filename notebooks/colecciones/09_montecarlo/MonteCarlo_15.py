@@ -256,12 +256,15 @@ expuestas = datos_proyecto.index[datos_proyecto['exposed'] == 'sí'].tolist()
 display(Markdown(pregunta_1))
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-pert
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 path_matrix = proyecto.path_matrix(dummies=False)

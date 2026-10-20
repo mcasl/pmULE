@@ -189,23 +189,29 @@ calendario
 # A continuación se muestra el grafo Pert del proyecto, con indicación de las actividades críticas:
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Pert con indicación del camino crítico"
 #| label: fig-pertrutasCriticas
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1.5, nodesep=1)
 
 # %% [markdown]
-# A continuación se muestra el grafo Roy del proyecto, con indicación de las actividades críticas:
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %% [markdown]
+# A continuación se muestra el grafo Roy del proyecto, con indicación de las actividades críticas:
 
 # %%
 #| fig-cap: "Grafo Roy del proyecto con indicación de las actividades críticas"
 #| label: fig-RoyCríticas
 proyecto.roy(ranksep=1.25, nodesep=1.25, durations=datos_proyecto['duration'])
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 2
