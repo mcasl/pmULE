@@ -296,7 +296,7 @@ datos_proyecto_actualizado.loc[~empezadas, 'duracion_planificada'] = datos_proye
 #| out-width: 100%
 #| fig-cap: "Pert de la previsión a futuro del proyecto"
 
-proyecto.pert(filename='pert_2.0.1_inicial.pdf', duraciones=datos_proyecto_actualizado['duracion_planificada'], ranksep=0.9)
+proyecto.pert(filename='pert_2.0.1_inicial.pdf', durations=datos_proyecto_actualizado['duracion_planificada'], ranksep=0.9)
 
 # %% [markdown]
 # El proyecto presenta ahora una nueva duración de 36 periodos.

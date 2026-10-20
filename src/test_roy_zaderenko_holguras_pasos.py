@@ -153,5 +153,134 @@ class TestVisoresTiempos(unittest.TestCase):
         self.pg.display_roy_pasos(DUR, visor=False)
 
 
+class TestTrazadoPropio(unittest.TestCase):
+    """Los fotogramas TikZ usan la disposición propia (sin graphviz) y sin colisiones."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pg = project()
+
+    def test_pert_curvas_y_ficticias_con_la_notacion_de_pert(self):
+        fotos = self.pg.plot_tikz_pasos(DUR)
+        self.assertIn(".. controls", fotos[-1])
+        self.assertIn(r"@3$\to$5 (0)", fotos[-1])
+        self.assertIn(r"@7$\to$8 (0)", fotos[-1])
+
+    def test_pert_layout_capas_conserva_el_dibujo_anterior(self):
+        fotos = self.pg.plot_tikz_pasos(DUR, layout="capas")
+        self.assertNotIn(".. controls", fotos[-1])
+        self.assertEqual(len(fotos), 2 * len(self.pg.nodes) + 2)
+
+    def test_roy_curvas(self):
+        fotos = self.pg.plot_tikz_roy_pasos(DUR)
+        self.assertIn(".. controls", fotos[-1])
+        self.assertNotIn(".. controls", self.pg.plot_tikz_roy_pasos(DUR, layout="capas")[-1])
+
+    def test_los_nodos_no_se_solapan(self):
+        tr = self.pg._trazado_pert(dict(DUR))
+        pts = list(tr["pos"].values())
+        for i, (x1, y1) in enumerate(pts):
+            for x2, y2 in pts[i + 1:]:
+                self.assertGreater(((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5, 1.1)
+
+
+class TestDisposicionPropia(unittest.TestCase):
+    """Sin graphviz: la disposición propia no pisa nodos con flechas ni con nombres."""
+
+    PRE = {"A": "", "B": "", "C": "", "D": "A", "E": "A,B", "F": "B,C", "G": "D,E", "H": "E,F",
+           "I": "C", "J": "G,H", "K": "G,I", "L": "H,I", "M": "J,K", "N": "K,L"}
+
+    def _proyecto_denso(self):
+        from pmule import PredecessorTable
+        pg = PredecessorTable.from_dict_of_strings(self.PRE).create_project()
+        return pg, {k: 2 + i % 7 for i, k in enumerate(self.PRE)}
+
+    def test_no_lanza_procesos(self):
+        import subprocess
+        orig = subprocess.run
+        subprocess.run = lambda *a, **k: (_ for _ in ()).throw(AssertionError("no debe lanzar procesos"))
+        try:
+            project().plot_tikz_pasos(DUR)
+            project().plot_tikz_roy_pasos(DUR)
+        finally:
+            subprocess.run = orig
+
+    def test_ninguna_flecha_ni_nombre_pisa_un_nodo(self):
+        import pmule
+        pg, dur = self._proyecto_denso()
+        tr = pg._trazado_pert(dict(dur))
+        for (u, v), inter in tr["rutas"].items():
+            pts = [tr["pos"][u]] + inter + [tr["pos"][v]]
+            for q in pmule._muestras_ruta(pts, tr["curva"][(u, v)], 30):
+                for n, (cx, cy) in tr["pos"].items():
+                    if n not in (u, v):
+                        self.assertFalse(abs(q[0] - cx) < 0.55 and abs(q[1] - cy) < 0.55,
+                                         f"la flecha {u}->{v} pisa el nodo {n}")
+        for (u, v), (lx, ly) in tr["etiquetas"].items():
+            for n, (cx, cy) in tr["pos"].items():
+                self.assertFalse(abs(lx - cx) < 0.85 and abs(ly - cy) < 0.72,
+                                 f"el nombre de {u}->{v} pisa el nodo {n}")
+
+    def test_roy_denso(self):
+        pg, dur = self._proyecto_denso()
+        self.assertEqual(len(pg.plot_tikz_roy_pasos(dur)), 2 * (len(dur) + 2) + 2)
+
+
+class TestPertRoyTikzPorDefecto(unittest.TestCase):
+    """pert() y roy() dibujan con TikZ por defecto (motor="tikz"), sin graphviz."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        if not (shutil.which("pdflatex") and shutil.which("pdftocairo")):
+            raise unittest.SkipTest("hace falta pdflatex y pdftocairo")
+
+    def test_pert_devuelve_svg_y_guarda_pdf(self):
+        import tempfile, os
+        d = tempfile.mkdtemp()
+        out = project().pert(os.path.join(d, "p.pdf"), durations=DUR, ranksep=1, nodesep=1)
+        self.assertIn("<svg", out.data)
+        self.assertTrue(os.path.exists(os.path.join(d, "p.pdf")))
+
+    def test_roy_devuelve_svg(self):
+        self.assertIn("<svg", project().roy(durations=dict(DUR), ranksep=1.2).data)
+        self.assertIn("<svg", project().roy().data)
+
+    def test_critico_en_rojo_brillante_con_nodos_rellenos(self):
+        cod = project().plot_tikz_pert(DUR)
+        self.assertIn("fill=red!10, draw=red, very thick", cod)
+        self.assertIn("red, very thick", cod)
+        self.assertNotIn("red!75!black", cod)
+        cod = project().plot_tikz_roy(DUR)
+        self.assertIn("fill=red!10, draw=red, very thick", cod)
+        self.assertNotIn("red!75!black", cod)
+
+    def test_sin_duraciones_no_hay_tiempos_ni_rojo(self):
+        cod = project().plot_tikz_pert(False)
+        self.assertNotIn("red", cod)
+        self.assertIn("green!50!black", cod)           # ficticias
+        self.assertNotIn("(0)", cod)
+
+    def test_actividad_de_espera_con_emoji_compila(self):
+        out = project().pert(durations=dict(DUR, **{"💤C": 1}))   # warn por clave desconocida
+        self.assertIn("<svg", out.data)
+
+    def test_motor_graphviz_se_conserva(self):
+        with self.assertRaises(ValueError):
+            project().pert(motor="otro")
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSvgAnchoColumna(unittest.TestCase):
+    def test_quita_width_height_y_conserva_viewbox(self):
+        import pmule
+        svg = '<svg xmlns="x" width="300pt" height="100pt" viewBox="0 0 300 100"><rect width="3" height="4"/></svg>'
+        out = pmule._svg_ancho_columna(svg)
+        raiz = out[:out.index(">")]
+        self.assertNotIn("width=", raiz)
+        self.assertNotIn("height=", raiz)
+        self.assertIn('viewBox="0 0 300 100"', raiz)
+        self.assertIn('<rect width="3" height="4"/>', out)

@@ -370,7 +370,10 @@ class TestAsignar(unittest.TestCase):
 class TestGraphvizPlots(unittest.TestCase):
 
     def setUp(self):
+        import functools
         self.pg = project()
+        self.pg.pert = functools.partial(self.pg.pert, motor="graphviz")
+        self.pg.roy = functools.partial(self.pg.roy, motor="graphviz")
         self.tmp = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -427,10 +430,10 @@ class TestLazyGraphvizImport(unittest.TestCase):
             return real_import(name, *a, **k)
         with mock.patch("builtins.__import__", side_effect=fake):
             with self.assertRaises(ImportError) as cm:
-                project().pert("x.svg", durations=DUR)
+                project().pert("x.svg", durations=DUR, motor="graphviz")
             self.assertIn("pygraphviz", str(cm.exception))
             with self.assertRaises(ImportError):
-                project().roy("x.png")
+                project().roy("x.png", motor="graphviz")
 
 
 # ---------------------------------------------------------------------------
