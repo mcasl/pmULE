@@ -179,7 +179,11 @@ class TestHolgurasPasos(unittest.TestCase):
         n_sucesos = len(self.pasos["tempranos"])
         cods = self.pg.plot_tikz_pasos(DUR)
         self.assertEqual(len(cods), 1 + 2 * n_sucesos + n_h + 1)
-        rojos = [c.count("fill=white!90!red") for c in cods[1 + 2 * n_sucesos: -1]]
-        self.assertEqual(rojos, sorted(rojos))           # nunca se quita el rojo
-        self.assertEqual(cods[1 + 2 * n_sucesos - 1].count("fill=white!90!red"), 0)
-        self.assertGreater(rojos[-1], 0)
+        fotos_h = cods[1 + 2 * n_sucesos: -1]
+        for c in fotos_h:                              # actividad y sus 2 sucesos en naranja
+            self.assertEqual(c.count("fill=orange!20"), 2)
+            self.assertIn("orange!80!black, very thick]", c)
+        rojas = [c.count(", red, very thick") for c in fotos_h]
+        self.assertEqual(rojas, sorted(rojas))          # las flechas rojas no se quitan
+        self.assertEqual(cods[1 + 2 * n_sucesos - 1].count(", red, very thick"), 0)
+        self.assertGreater(rojas[-1], 0)

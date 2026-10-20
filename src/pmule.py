@@ -3714,8 +3714,8 @@ class ProjectGraph:
         recorrido hacia delante (se rellena su tiempo temprano y se resaltan
         las actividades que llegan); uno por suceso en el recorrido hacia
         atrás (tiempo tardío y actividades que salen); uno por actividad con el cálculo
-        de su holgura total (``H = t*_j - t_i - d``; las de holgura 0 y sus sucesos
-        pasan a rojo progresivamente); y un fotograma final con el camino crítico. Bajo el grafo se escribe el cálculo
+        de su holgura total (``H = t*_j - t_i - d``; la actividad y sus sucesos en naranja
+        y, si la holgura es 0, en rojo desde el fotograma siguiente); y un fotograma final con el camino crítico. Bajo el grafo se escribe el cálculo
         del paso (véase :meth:`pert_pasos`).
 
         Los nodos siguen el convenio de los apuntes: índice arriba, temprano a
@@ -3790,13 +3790,14 @@ class ProjectGraph:
         criticas: set = set()
         for _, fila in pasos["holguras"].iterrows():
             act, u, v = fila["actividad"], f"{fila['origen']}", f"{fila['destino']}"
-            if fila["valor"] == 0:
-                criticas.add(act)
-            fotogramas.append(fotograma(dict(tempranos), dict(tardios), None,
-                                        {(u, v)} if fila["valor"] != 0 else set(),
+            # la actividad calculada y sus dos sucesos van en naranja; el rojo
+            # (si es crítica) aparece en los fotogramas siguientes
+            fotogramas.append(fotograma(dict(tempranos), dict(tardios), {u, v}, {(u, v)},
                                         f"${fila['calculo']}$"
                                         + (r"\\ \small\textcolor{red}{actividad crítica}" if fila["valor"] == 0 else ""),
                                         criticas=set(criticas)))
+            if fila["valor"] == 0:
+                criticas.add(act)
         duracion = max(tempranos.values())
         fotogramas.append(fotograma(dict(tempranos), dict(tardios), critico=True,
                                     texto=rotulos["final"].format(duracion=f(duracion))))
