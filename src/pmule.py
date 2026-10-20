@@ -3687,79 +3687,15 @@ class ProjectGraph:
         dur = self._normalize_durations(durations, dummies=True).to_dict()
         pasos = self.pert_pasos(durations, formato="latex")
         holguras = self.calculate_pert(durations)["activities"]["H_total"]
-        if posiciones is None:
-            pos = self._pert_layout_capas(escala)
-        else:
-            pos = {f"{k}": (float(x) * escala, float(y) * escala)
-                   for k, (x, y) in posiciones.items()}
-            faltan = set(self.nodes) - set(pos)
-            if faltan:
-                raise ValueError(f"Faltan posiciones para los sucesos {sorted(faltan)}")
+        pos = self._pert_posiciones(escala, posiciones)
         rotulos = {"inicio": "Grafo del proyecto",
                    "final": "Camino crítico: duración = {duracion}"}
         rotulos.update(textos or {})
         G = self.pert_graph
-        e2a = self.edges_from_nodes
         f = self._num_paso
-        n = len(pos)
-        y_min = min(y for _, y in pos.values())
-        x_mid = (min(x for x, _ in pos.values()) + max(x for x, _ in pos.values())) / 2
 
-        def curvatura(u, v):
-            # Si el segmento u→v pasa cerca de otro nodo, se curva hacia el
-            # lado contrario para no atravesarlo.
-            (x1, y1), (x2, y2) = pos[f"{u}"], pos[f"{v}"]
-            dx, dy = x2 - x1, y2 - y1
-            largo = (dx * dx + dy * dy) ** 0.5 or 1.0
-            peor = None
-            for nodo, (x, y) in pos.items():
-                if nodo in (f"{u}", f"{v}"):
-                    continue
-                t = ((x - x1) * dx + (y - y1) * dy) / (largo * largo)
-                if not 0.0 < t < 1.0:
-                    continue
-                cruz = (dx * (y - y1) - dy * (x - x1)) / largo
-                if abs(cruz) < 0.75 * escala and (peor is None or abs(cruz) < abs(peor)):
-                    peor = cruz
-            if peor is None:
-                return ""
-            return "bend right=25" if peor >= 0 else "bend left=25"
-
-        def fotograma(tempranos, tardios, actual=None, arcos_activos=(),
-                      texto="", critico=False):
-            L, A = [], []
-            for (u, v, data) in G.edges(data=True):
-                act = data.get("activity", "")
-                ficticia = (not act) or act.startswith("@")
-                estilo = ["->", "thick"]
-                if ficticia:
-                    estilo.append("dashed")
-                if (f"{u}", f"{v}") in arcos_activos:
-                    estilo += ["orange!80!black", "very thick"]
-                elif critico and holguras.get(act, 1) == 0:
-                    estilo += ["red!75!black", "very thick"]
-                etiqueta = "" if ficticia else f"{act} ({f(dur.get(act, 0))})"
-                curva = curvatura(u, v)
-                trazo = f"to[{curva}]" if curva else "--"
-                lado = "below" if curva.startswith("bend right") else "above"
-                A.append(rf"  \draw[{', '.join(estilo)}] (n{u}) {trazo}"
-                         rf" node[midway, {lado}, sloped, font=\scriptsize] {{{etiqueta}}} (n{v});")
-            for nodo, (x, y) in pos.items():
-                relleno = ("fill=orange!20, draw=orange!80!black, very thick"
-                           if nodo == actual else "fill=white, draw, thick")
-                L.append(rf"  \node[circle, {relleno}, minimum size=1.1cm, inner sep=0pt]"
-                         rf" (n{nodo}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
-                L.append(rf"  \draw[gray] (n{nodo}.center) -- (n{nodo}.45)"
-                         rf" (n{nodo}.center) -- (n{nodo}.135) (n{nodo}.center) -- (n{nodo}.270);")
-                L.append(rf"  \node[font=\footnotesize\bfseries] at ($(n{nodo}.center)+(90:0.28)$) {{{nodo}}};")
-                if nodo in tempranos:
-                    L.append(rf"  \node[font=\scriptsize] at ($(n{nodo}.center)+(210:0.27)$) {{{f(tempranos[nodo])}}};")
-                if nodo in tardios:
-                    L.append(rf"  \node[font=\scriptsize] at ($(n{nodo}.center)+(330:0.27)$) {{{f(tardios[nodo])}}};")
-            L += A
-            if texto:
-                L.append(rf"  \node[anchor=north, font=\small] at ({x_mid:.2f}cm, {y_min - 1.2:.2f}cm) {{{texto}}};")
-            return "\n".join(L)
+        def fotograma(*args, **kwargs):
+            return self._pert_fotograma(pos, dur, holguras, escala, *args, **kwargs)
 
         fotogramas = []
         fotogramas.append(fotograma({}, {}, texto=rotulos["inicio"]))
@@ -3781,7 +3717,85 @@ class ProjectGraph:
         fotogramas.append(fotograma(dict(tempranos), dict(tardios), critico=True,
                                     texto=rotulos["final"].format(duracion=f(duracion))))
 
-        cabecera = r"\begin{tikzpicture}[>=stealth]"
+        return self._beamer_o_lista(fotogramas, beamer=beamer)
+
+
+    # ------------------------------------------------------------------
+    # Piezas comunes de los dibujos paso a paso
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _curvatura_tikz(pos, u, v, umbral):
+        """Si el segmento u→v pasa cerca de otro nodo, devuelve la curva TikZ
+        que lo esquiva (hacia el lado contrario); si no, cadena vacía."""
+        (x1, y1), (x2, y2) = pos[f"{u}"], pos[f"{v}"]
+        dx, dy = x2 - x1, y2 - y1
+        largo = (dx * dx + dy * dy) ** 0.5 or 1.0
+        peor = None
+        for nodo, (x, y) in pos.items():
+            if nodo in (f"{u}", f"{v}"):
+                continue
+            t = ((x - x1) * dx + (y - y1) * dy) / (largo * largo)
+            if not 0.0 < t < 1.0:
+                continue
+            cruz = (dx * (y - y1) - dy * (x - x1)) / largo
+            if abs(cruz) < umbral and (peor is None or abs(cruz) < abs(peor)):
+                peor = cruz
+        if peor is None:
+            return ""
+        return "bend right=25" if peor >= 0 else "bend left=25"
+
+    def _pert_fotograma(self, pos, dur, holguras, escala, tempranos, tardios,
+                        actual=None, arcos_activos=(), texto="", critico=False):
+        """Un fotograma TikZ del grafo PERT (cuerpo, sin ``tikzpicture``).
+
+        ``actual`` es un suceso o un conjunto de sucesos que se resaltan en
+        naranja; ``arcos_activos``, los arcos ``(i, j)`` resaltados."""
+        G = self.pert_graph
+        f = self._num_paso
+        if isinstance(actual, (set, frozenset, list, tuple)):
+            actuales = {f"{a}" for a in actual}
+        else:
+            actuales = {f"{actual}"} if actual is not None else set()
+        y_min = min(y for _, y in pos.values())
+        x_mid = (min(x for x, _ in pos.values()) + max(x for x, _ in pos.values())) / 2
+        L, A = [], []
+        for (u, v, data) in G.edges(data=True):
+            act = data.get("activity", "")
+            ficticia = (not act) or act.startswith("@")
+            estilo = ["->", "thick"]
+            if ficticia:
+                estilo.append("dashed")
+            if (f"{u}", f"{v}") in arcos_activos:
+                estilo += ["orange!80!black", "very thick"]
+            elif critico and holguras.get(act, 1) == 0:
+                estilo += ["red!75!black", "very thick"]
+            etiqueta = "" if ficticia else f"{act} ({f(dur.get(act, 0))})"
+            curva = self._curvatura_tikz(pos, u, v, 0.75 * escala)
+            trazo = f"to[{curva}]" if curva else "--"
+            lado = "below" if curva.startswith("bend right") else "above"
+            A.append(rf"  \draw[{', '.join(estilo)}] (n{u}) {trazo}"
+                     rf" node[midway, {lado}, sloped, font=\scriptsize] {{{etiqueta}}} (n{v});")
+        for nodo, (x, y) in pos.items():
+            relleno = ("fill=orange!20, draw=orange!80!black, very thick"
+                       if nodo in actuales else "fill=white, draw, thick")
+            L.append(rf"  \node[circle, {relleno}, minimum size=1.1cm, inner sep=0pt]"
+                     rf" (n{nodo}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
+            L.append(rf"  \draw[gray] (n{nodo}.center) -- (n{nodo}.45)"
+                     rf" (n{nodo}.center) -- (n{nodo}.135) (n{nodo}.center) -- (n{nodo}.270);")
+            L.append(rf"  \node[font=\footnotesize\bfseries] at ($(n{nodo}.center)+(90:0.28)$) {{{nodo}}};")
+            if nodo in tempranos:
+                L.append(rf"  \node[font=\scriptsize] at ($(n{nodo}.center)+(210:0.27)$) {{{f(tempranos[nodo])}}};")
+            if nodo in tardios:
+                L.append(rf"  \node[font=\scriptsize] at ($(n{nodo}.center)+(330:0.27)$) {{{f(tardios[nodo])}}};")
+        L += A
+        if texto:
+            L.append(rf"  \node[anchor=north, font=\small, align=center] at ({x_mid:.2f}cm, {y_min - 1.2:.2f}cm) {{{texto}}};")
+        return "\n".join(L)
+
+    @staticmethod
+    def _beamer_o_lista(fotogramas, cabecera=r"\begin{tikzpicture}[>=stealth]",
+                        beamer=False):
         if not beamer:
             return [f"{cabecera}\n{c}\n\\end{{tikzpicture}}" for c in fotogramas]
         cuerpo = [cabecera]
@@ -3789,6 +3803,418 @@ class ProjectGraph:
             cuerpo.append(rf"\only<{k}>{{" + "\n" + c + "\n}")
         cuerpo.append(r"\end{tikzpicture}")
         return "\n".join(cuerpo)
+
+    def _pert_posiciones(self, escala, posiciones):
+        if posiciones is None:
+            return self._pert_layout_capas(escala)
+        pos = {f"{k}": (float(x) * escala, float(y) * escala)
+               for k, (x, y) in posiciones.items()}
+        faltan = set(self.nodes) - set(pos)
+        if faltan:
+            raise ValueError(f"Faltan posiciones para los sucesos {sorted(faltan)}")
+        return pos
+
+    # ------------------------------------------------------------------
+    # Holguras del PERT paso a paso (docencia)
+    # ------------------------------------------------------------------
+
+    def holguras_pasos(self, durations, formato: str = "texto",
+                       ficticias: bool = False) -> pd.DataFrame:
+        """Cálculo paso a paso de las holguras total, libre e independiente.
+
+        Una fila por actividad (orden alfabético; las ficticias solo si
+        ``ficticias=True``) con los sucesos ``i`` y ``j``, la duración
+        ``t_ij``, los tiempos ``t_i``, ``t_j``, ``t*_i``, ``t*_j``, las
+        holguras ``HT = t*_j - t_i - t_ij``, ``HL = t_j - t_i - t_ij`` e
+        ``HI = t_j - t*_i - t_ij`` (que puede ser negativa) y el cálculo
+        escrito de cada una (columnas ``calculo_HT``, ``calculo_HL`` y
+        ``calculo_HI``; texto o LaTeX según ``formato``).
+        """
+        if formato not in ("texto", "latex"):
+            raise ValueError("formato debe ser 'texto' o 'latex'")
+        dur = self._normalize_durations(durations, dummies=True).to_dict()
+        nodos = self.calculate_pert(durations)["nodes"]
+        e, l = nodos["early"], nodos["late"]
+        f = self._num_paso
+        latex = formato == "latex"
+        largos = any(len(f"{n}") > 1 for n in self.nodes)
+        filas = []
+        for act, (i, j) in sorted(self.nodes_from_edges.items(), key=lambda x: x[0].lstrip("@")):
+            if act.startswith("@") and not ficticias:
+                continue
+            d = dur.get(act, 0)
+            ti, tj, li, lj = e[f"{i}"], e[f"{j}"], l[f"{i}"], l[f"{j}"]
+            HT, HL, HI = lj - ti - d, tj - ti - d, tj - li - d
+            if latex:
+                tij = f"t_{{{i},{j}}}" if largos else f"t_{{{i}{j}}}"
+                cT = rf"H^{{T}}=t_{{{j}}}^{{*}}-t_{{{i}}}-{tij}={f(lj)}-{f(ti)}-{f(d)}={f(HT)}"
+                cL = rf"H^{{L}}=t_{{{j}}}-t_{{{i}}}-{tij}={f(tj)}-{f(ti)}-{f(d)}={f(HL)}"
+                cI = rf"H^{{I}}=t_{{{j}}}-t_{{{i}}}^{{*}}-{tij}={f(tj)}-{f(li)}-{f(d)}={f(HI)}"
+            else:
+                cT = f"HT = t{j}* - t{i} - t{i}{j} = {f(lj)} - {f(ti)} - {f(d)} = {f(HT)}"
+                cL = f"HL = t{j} - t{i} - t{i}{j} = {f(tj)} - {f(ti)} - {f(d)} = {f(HL)}"
+                cI = f"HI = t{j} - t{i}* - t{i}{j} = {f(tj)} - {f(li)} - {f(d)} = {f(HI)}"
+            filas.append(dict(actividad=act, i=f"{i}", j=f"{j}", duracion=d,
+                              t_i=ti, t_j=tj, t_i_tardio=li, t_j_tardio=lj,
+                              HT=HT, HL=HL, HI=HI,
+                              calculo_HT=cT, calculo_HL=cL, calculo_HI=cI))
+        return pd.DataFrame(filas).set_index("actividad")
+
+    def plot_tikz_holguras_pasos(self, durations, beamer: bool = False,
+                                 escala: float = 1.0, posiciones: dict = None,
+                                 textos: dict = None):
+        """Dibujo TikZ del cálculo de las holguras paso a paso.
+
+        Primer fotograma: grafo con los tiempos tempranos y tardíos. Después,
+        un fotograma por actividad real con su arco y sus dos sucesos en
+        naranja y, debajo, las tres holguras calculadas (véase
+        :meth:`holguras_pasos`). Último: actividades críticas en rojo.
+        Mismos convenios y parámetros que :meth:`plot_tikz_pasos`;
+        ``textos`` admite las claves ``inicio``, ``final`` y ``actividad``.
+        """
+        dur = self._normalize_durations(durations, dummies=True).to_dict()
+        res = self.calculate_pert(durations)
+        holguras = res["activities"]["H_total"]
+        tempranos = {f"{k}": v for k, v in res["nodes"]["early"].items()}
+        tardios = {f"{k}": v for k, v in res["nodes"]["late"].items()}
+        pos = self._pert_posiciones(escala, posiciones)
+        rotulos = {"inicio": "Grafo con los tiempos tempranos y tardíos",
+                   "final": r"Actividades críticas: $H^{T}=0$",
+                   "actividad": "Actividad"}
+        rotulos.update(textos or {})
+        pasos = self.holguras_pasos(durations, formato="latex")
+
+        def foto(**k):
+            return self._pert_fotograma(pos, dur, holguras, escala,
+                                        tempranos, tardios, **k)
+
+        fotogramas = [foto(texto=rotulos["inicio"])]
+        for act, fila in pasos.iterrows():
+            texto = (rf"{rotulos['actividad']} {act} ({fila['i']}--{fila['j']})\\"
+                     rf"${fila['calculo_HT']}$\quad ${fila['calculo_HL']}$\quad"
+                     rf" ${fila['calculo_HI']}$")
+            fotogramas.append(foto(actual={fila["i"], fila["j"]},
+                                   arcos_activos={(fila["i"], fila["j"])},
+                                   texto=texto))
+        fotogramas.append(foto(critico=True, texto=rotulos["final"]))
+        return self._beamer_o_lista(fotogramas, beamer=beamer)
+
+    # ------------------------------------------------------------------
+    # Algoritmo de Zaderenko paso a paso (docencia)
+    # ------------------------------------------------------------------
+
+    def zaderenko_pasos(self, durations, textos: dict = None) -> list:
+        """Matriz de Zaderenko paso a paso, como cuadros LaTeX coloreados.
+
+        Fotogramas: matriz con las duraciones; uno por suceso hacia delante
+        (columna ``j`` sombreada, en azul los tiempos ``t_i`` de las filas
+        con duración en esa columna y esas duraciones, en rojo el ``t_j``
+        resultante); uno por suceso hacia atrás (fila ``i`` sombreada, en
+        azul las duraciones y los ``t*_j`` de sus columnas, en rojo el
+        ``t*_i``); y uno final con las actividades y sucesos críticos en
+        rojo. Bajo cada cuadro, el cálculo del paso.
+
+        Necesita los paquetes ``colortbl`` y ``xcolor``. Devuelve la lista de
+        fotogramas; :meth:`zaderenko_pasos_beamer` los une con ``\\only<k>``.
+        ``textos`` admite ``inicio``, ``final``, ``columna`` y ``fila``.
+        """
+        dur = self._normalize_durations(durations, dummies=True).to_dict()
+        res = self.calculate_pert(durations)
+        early = {f"{k}": v for k, v in res["nodes"]["early"].items()}
+        late = {f"{k}": v for k, v in res["nodes"]["late"].items()}
+        H = res["activities"]["H_total"]
+        pasos = self.pert_pasos(durations, formato="latex")
+        N = [f"{n}" for n in sorted(self.nodes, key=int)]
+        celda = {}
+        for act, (i, j) in self.nodes_from_edges.items():
+            celda[(f"{i}", f"{j}")] = (act, dur.get(act, 0))
+        f = self._num_paso
+        rot = {"inicio": r"Matriz de duraciones $t_{ij}$",
+               "final": "Camino crítico",
+               "columna": "Columna", "fila": "Fila"}
+        rot.update(textos or {})
+        azul = lambda x: rf"\textbf{{\textcolor{{blue!70!black}}{{{x}}}}}"
+        rojo = lambda x: rf"\textbf{{\textcolor{{red!75!black}}{{{x}}}}}"
+        fondo = r"\cellcolor{orange!18}"
+
+        def cuadro(te, tl, modo=None, nodo=None, texto=""):
+            col = "c|c|" + "c" * len(N)
+            L = [r"\begin{tabular}{" + col + "}",
+                 r"$t_i\!\downarrow$ & $i\backslash j$ & " + " & ".join(N) + r"\\ \hline"]
+            for i in N:
+                ti = f(te[i]) if i in te else ""
+                if ti and modo == "del" and i == nodo:
+                    ti = rojo(ti)
+                elif ti and modo == "del" and (i, nodo) in celda:
+                    ti = azul(ti)
+                elif ti and modo == "fin" and early[i] == late[i]:
+                    ti = rojo(ti)
+                fila = [ti, i]
+                for j in N:
+                    if i == j:
+                        c = r"$\times$"
+                    elif (i, j) in celda:
+                        act, d = celda[(i, j)]
+                        c = f(d)
+                        if (modo == "del" and j == nodo) or (modo == "atr" and i == nodo):
+                            c = azul(c)
+                        elif modo == "fin" and H.get(act, 1) == 0:
+                            c = rojo(c)
+                    else:
+                        c = ""
+                    if (modo == "del" and j == nodo) or (modo == "atr" and i == nodo):
+                        c = fondo + c
+                    fila.append(c)
+                L.append(" & ".join(fila) + r"\\")
+            ult = []
+            for j in N:
+                c = f(tl[j]) if j in tl else ""
+                if c and modo == "atr" and j == nodo:
+                    c = rojo(c)
+                elif c and modo == "atr" and (nodo, j) in celda:
+                    c = azul(c)
+                elif c and modo == "fin" and early[j] == late[j]:
+                    c = rojo(c)
+                ult.append(c)
+            L.append(r"\hline")
+            L.append(r" & $t_j^*\!\leftarrow$ & " + " & ".join(ult) + r"\\")
+            L.append(r"\end{tabular}")
+            if texto:
+                L.append(r"\par\smallskip " + texto)
+            return "\n".join(L)
+
+        # La matriz se recorre por columnas (filas) en orden numérico: con los
+        # sucesos numerados de menor a mayor es un orden topológico válido.
+        fotos = [cuadro({}, {}, texto=rot["inicio"])]
+        te, tl = {}, {}
+        del_ = {f"{r['suceso']}": r for _, r in pasos["tempranos"].iterrows()}
+        atr_ = {f"{r['suceso']}": r for _, r in pasos["tardios"].iterrows()}
+        for j in N:
+            te[j] = del_[j]["valor"]
+            fotos.append(cuadro(dict(te), {}, "del", j,
+                                f"{rot['columna']} {j}: ${del_[j]['calculo']}$"))
+        for i in reversed(N):
+            tl[i] = atr_[i]["valor"]
+            fotos.append(cuadro(dict(te), dict(tl), "atr", i,
+                                f"{rot['fila']} {i}: ${atr_[i]['calculo']}$"))
+        fotos.append(cuadro(dict(te), dict(tl), "fin", texto=rot["final"]))
+        return fotos
+
+    def zaderenko_pasos_beamer(self, durations, textos: dict = None) -> str:
+        """Fotogramas de :meth:`zaderenko_pasos` unidos con ``\\only<k>``."""
+        fotos = self.zaderenko_pasos(durations, textos=textos)
+        return "\n".join(rf"\only<{k}>{{%" + "\n" + c + "\n}%"
+                         for k, c in enumerate(fotos, start=1))
+
+    # ------------------------------------------------------------------
+    # Grafo Roy paso a paso (docencia)
+    # ------------------------------------------------------------------
+
+    def _roy_grafo_actual(self) -> nx.DiGraph:
+        df = PredecessorTable.from_project(self).immediate_linkage_matrix
+        filas = ~df.index.str.startswith("@")
+        columnas = ~df.columns.str.startswith("@")
+        return make_Roy(df.loc[filas, columnas])
+
+    @staticmethod
+    def _roy_capas(G) -> dict:
+        capa = {}
+        for nodo in nx.topological_sort(G):
+            capa[nodo] = max((capa[p] + 1 for p in G.predecessors(nodo)), default=0)
+        return capa
+
+    def roy_pasos(self, durations, formato: str = "texto",
+                  etiquetas: dict = None) -> dict:
+        """Cálculo paso a paso de los tiempos mínimos y máximos del grafo Roy.
+
+        Relaciones fin-comienzo: el arco I→J tiene atributo ``δ_IJ = D_I``.
+        Hacia delante, ``T_J = máx{T_I + D_I}`` sobre las precedentes de J;
+        hacia atrás, ``T*_I = mín{T*_J - D_I}`` sobre sus sucesoras. Los nodos
+        ficticios ``start`` y ``finish`` se rotulan con ``etiquetas``
+        (por defecto «Inicio» y «Fin»).
+
+        Returns
+        -------
+        dict
+            ``{"minimos": DataFrame, "maximos": DataFrame}`` con una fila por
+            paso y las columnas ``nodo``, ``rotulo``, ``actividades``,
+            ``terminos``, ``calculo`` y ``valor``.
+        """
+        if formato not in ("texto", "latex"):
+            raise ValueError("formato debe ser 'texto' o 'latex'")
+        et = {"start": "Inicio", "finish": "Fin"}
+        et.update(etiquetas or {})
+        dur = self._normalize_durations(durations, dummies=False).to_dict()
+        dur["start"] = dur["finish"] = 0
+        G = self._roy_grafo_actual()
+        capa = self._roy_capas(G)
+        orden = sorted(G.nodes, key=lambda n: (capa[n], f"{n}"))
+        f = self._num_paso
+        latex = formato == "latex"
+
+        def rot(n):
+            return et.get(n, f"{n}")
+
+        def T(n, maximo=False):
+            r = rot(n)
+            if latex:
+                r = rf"\mathrm{{{r}}}" if len(r) > 1 else r
+                return f"T_{{{r}}}" + ("^{*}" if maximo else "")
+            return f"T{r}" + ("*" if maximo else "")
+
+        def expresion(nodo, ops, valor, maximo, base=None):
+            izq = T(nodo, maximo)
+            if base is not None:
+                return f"{izq} = {base}" if base == f(valor) else f"{izq} = {base} = {f(valor)}"
+            if len(ops) == 1:
+                return f"{izq} = {ops[0]} = {f(valor)}"
+            if latex:
+                op = r"\min" if maximo else r"\max"
+                return rf"{izq} = {op}\{{{r',\ '.join(ops)}\}} = {f(valor)}"
+            op = "mín" if maximo else "máx"
+            return f"{izq} = {op}{{{', '.join(ops)}}} = {f(valor)}"
+
+        sep, sem = ("+", "-") if latex else (" + ", " - ")
+        minimo, filas = {}, []
+        for nodo in orden:
+            prev = sorted(G.predecessors(nodo), key=lambda n: (capa[n], f"{n}"))
+            if not prev:
+                minimo[nodo] = 0
+                filas.append(dict(nodo=nodo, rotulo=rot(nodo), actividades="", terminos=[],
+                                  calculo=expresion(nodo, [], 0, False, base="0"), valor=0))
+                continue
+            terminos = [(rot(p), minimo[p] + dur[p]) for p in prev]
+            ops = [f"{f(minimo[p])}{sep}{f(dur[p])}" for p in prev]
+            minimo[nodo] = max(t for _, t in terminos)
+            filas.append(dict(nodo=nodo, rotulo=rot(nodo),
+                              actividades=", ".join(a for a, _ in terminos),
+                              terminos=terminos,
+                              calculo=expresion(nodo, ops, minimo[nodo], False),
+                              valor=minimo[nodo]))
+        minimos = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
+
+        maximo, filas = {}, []
+        for nodo in orden[::-1]:
+            sig = sorted(G.successors(nodo), key=lambda n: (capa[n], f"{n}"))
+            if not sig:
+                maximo[nodo] = minimo[nodo]
+                filas.append(dict(nodo=nodo, rotulo=rot(nodo), actividades="", terminos=[],
+                                  calculo=expresion(nodo, [], maximo[nodo], True,
+                                                    base=T(nodo)),
+                                  valor=maximo[nodo]))
+                continue
+            terminos = [(rot(s), maximo[s] - dur[nodo]) for s in sig]
+            ops = [f"{f(maximo[s])}{sem}{f(dur[nodo])}" for s in sig]
+            maximo[nodo] = min(t for _, t in terminos)
+            filas.append(dict(nodo=nodo, rotulo=rot(nodo),
+                              actividades=", ".join(a for a, _ in terminos),
+                              terminos=terminos,
+                              calculo=expresion(nodo, ops, maximo[nodo], True),
+                              valor=maximo[nodo]))
+        maximos = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
+        return dict(minimos=minimos, maximos=maximos)
+
+    def plot_tikz_roy_pasos(self, durations, beamer: bool = False,
+                            escala: float = 1.0, posiciones: dict = None,
+                            textos: dict = None, etiquetas: dict = None):
+        """Dibujo del grafo Roy paso a paso (código TikZ).
+
+        Como :meth:`plot_tikz_pasos`, pero con las actividades en los nodos:
+        cada nodo es una caja con el nombre arriba y, abajo, tiempo mínimo |
+        duración | tiempo máximo. Fotogramas: grafo con las duraciones; uno
+        por nodo hacia delante (se rellena el mínimo y se resaltan los arcos
+        que llegan); uno por nodo hacia atrás (máximo y arcos que salen); y
+        el camino crítico en rojo. Bajo el grafo, el cálculo del paso (véase
+        :meth:`roy_pasos`).
+
+        ``posiciones`` es ``{nodo: (x, y)}`` en cm con los nombres internos
+        de pmule (``start``, ``finish`` y las actividades). Necesita las
+        bibliotecas TikZ ``calc`` y ``arrows.meta``.
+        """
+        et = {"start": "Inicio", "finish": "Fin"}
+        et.update(etiquetas or {})
+        dur = self._normalize_durations(durations, dummies=False).to_dict()
+        dur["start"] = dur["finish"] = 0
+        pasos = self.roy_pasos(durations, formato="latex", etiquetas=et)
+        G = self._roy_grafo_actual()
+        capa = self._roy_capas(G)
+        if posiciones is None:
+            from collections import defaultdict
+            por_capa = defaultdict(list)
+            for n in sorted(G.nodes, key=lambda n: f"{n}"):
+                por_capa[capa[n]].append(n)
+            pos = {}
+            for c, nodos in por_capa.items():
+                for i, n in enumerate(nodos):
+                    pos[f"{n}"] = (2.3 * c * escala, ((len(nodos) - 1) / 2.0 - i) * 1.5 * escala)
+        else:
+            pos = {f"{k}": (float(x) * escala, float(y) * escala)
+                   for k, (x, y) in posiciones.items()}
+            faltan = {f"{n}" for n in G.nodes} - set(pos)
+            if faltan:
+                raise ValueError(f"Faltan posiciones para los nodos {sorted(faltan)}")
+        ident = {f"{n}": f"r{k}" for k, n in enumerate(sorted(G.nodes, key=lambda n: f"{n}"))}
+        rotulos = {"inicio": "Grafo Roy del proyecto",
+                   "final": "Camino crítico: duración = {duracion}"}
+        rotulos.update(textos or {})
+        f = self._num_paso
+        y_min = min(y for _, y in pos.values())
+        x_mid = (min(x for x, _ in pos.values()) + max(x for x, _ in pos.values())) / 2
+
+        def fotograma(minimos, maximos, actual=None, arcos_activos=(), texto="",
+                      criticos=()):
+            L, A = [], []
+            for u, v in G.edges():
+                u, v = f"{u}", f"{v}"
+                estilo = ["->", "thick"]
+                if (u, v) in arcos_activos:
+                    estilo += ["orange!80!black", "very thick"]
+                elif u in criticos and v in criticos:
+                    estilo += ["red!75!black", "very thick"]
+                curva = self._curvatura_tikz(pos, u, v, 0.8 * escala)
+                trazo = f"to[{curva}]" if curva else "--"
+                A.append(rf"  \draw[{', '.join(estilo)}] ({ident[u]}) {trazo} ({ident[v]});")
+            for nodo, (x, y) in pos.items():
+                r = ident[nodo]
+                if nodo == actual:
+                    estilo = "fill=orange!20, draw=orange!80!black, very thick"
+                elif nodo in criticos:
+                    estilo = "fill=red!8, draw=red!75!black, very thick"
+                else:
+                    estilo = "fill=white, draw, thick"
+                L.append(rf"  \node[rectangle, {estilo}, minimum width=1.5cm, minimum height=0.9cm,"
+                         rf" inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
+                L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
+                         rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
+                         rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
+                L.append(rf"  \node[font=\footnotesize\bfseries] at ($({r}.center)+(0,0.22)$) {{{et.get(nodo, nodo)}}};")
+                L.append(rf"  \node[font=\scriptsize, gray] at ($({r}.center)+(0,-0.22)$) {{{f(dur[nodo])}}};")
+                if nodo in minimos:
+                    L.append(rf"  \node[font=\scriptsize] at ($({r}.center)+(-0.5,-0.22)$) {{{f(minimos[nodo])}}};")
+                if nodo in maximos:
+                    L.append(rf"  \node[font=\scriptsize] at ($({r}.center)+(0.5,-0.22)$) {{{f(maximos[nodo])}}};")
+            L += A
+            if texto:
+                L.append(rf"  \node[anchor=north, font=\small] at ({x_mid:.2f}cm, {y_min - 1.0:.2f}cm) {{{texto}}};")
+            return "\n".join(L)
+
+        fotos = [fotograma({}, {}, texto=rotulos["inicio"])]
+        minimos = {}
+        for _, fila in pasos["minimos"].iterrows():
+            n = f"{fila['nodo']}"
+            minimos[n] = fila["valor"]
+            arcos = {(f"{u}", f"{v}") for u, v in G.in_edges(fila["nodo"])}
+            fotos.append(fotograma(dict(minimos), {}, n, arcos, f"${fila['calculo']}$"))
+        maximos = {}
+        for _, fila in pasos["maximos"].iterrows():
+            n = f"{fila['nodo']}"
+            maximos[n] = fila["valor"]
+            arcos = {(f"{u}", f"{v}") for u, v in G.out_edges(fila["nodo"])}
+            fotos.append(fotograma(dict(minimos), dict(maximos), n, arcos, f"${fila['calculo']}$"))
+        criticos = {n for n in minimos if minimos[n] == maximos[n]}
+        fotos.append(fotograma(dict(minimos), dict(maximos), criticos=criticos,
+                               texto=rotulos["final"].format(duracion=f(minimos["finish"]))))
+        return self._beamer_o_lista(fotos, beamer=beamer)
 
 
     # ------------------------------------------------------------------
