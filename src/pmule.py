@@ -3617,8 +3617,29 @@ class ProjectGraph:
         tardios = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
         return dict(tempranos=tempranos, tardios=tardios)
 
-    def display_pert_pasos(self, durations) -> None:
-        """Muestra en un cuaderno los pasos de :meth:`pert_pasos` como Markdown con LaTeX."""
+    def pert_pasos_html(self, durations, escala: float = 1.0, posiciones: dict = None,
+                        textos: dict = None) -> str:
+        """El cálculo de los tiempos del PERT como visor HTML con botones
+        (anterior / siguiente) cuyos fotogramas son los dibujos TikZ de
+        :meth:`plot_tikz_pasos`, compilados a SVG (hace falta ``pdflatex`` y
+        ``pdftocairo``)."""
+        codigos = self.plot_tikz_pasos(durations, beamer=False, escala=escala,
+                                       posiciones=posiciones, textos=textos)
+        return _html_fotogramas_tikz(codigos)
+
+    def display_pert_pasos(self, durations, escala: float = 1.0, posiciones: dict = None,
+                           textos: dict = None, visor: bool = True) -> None:
+        """Muestra en un cuaderno el cálculo de los tiempos del PERT paso a paso:
+        grafo TikZ que se va rellenando, con botones (``visor=True``,
+        :meth:`pert_pasos_html`). Con ``visor=False``, o si no hay LaTeX, la
+        lista de cálculos como Markdown con LaTeX."""
+        if visor:
+            try:
+                display(HTML(self.pert_pasos_html(durations, escala, posiciones, textos)))
+                return
+            except (FileNotFoundError, RuntimeError) as e:
+                import warnings
+                warnings.warn(f"No se pudo generar el visor TikZ ({e}); se muestra la lista de cálculos.")
         pasos = self.pert_pasos(durations, formato="latex")
         for titulo, clave in (("Tiempos tempranos (hacia delante)", "tempranos"),
                               ("Tiempos tardíos (hacia atrás)", "tardios")):
@@ -4287,8 +4308,29 @@ class ProjectGraph:
         return self._beamer_o_lista(fotos, beamer=beamer)
 
 
-    def display_roy_pasos(self, durations, etiquetas: dict = None) -> None:
-        """Muestra en un cuaderno los pasos de :meth:`roy_pasos` como Markdown con LaTeX."""
+    def roy_pasos_html(self, durations, escala: float = 1.0, posiciones: dict = None,
+                       textos: dict = None, etiquetas: dict = None) -> str:
+        """El cálculo de los tiempos del Roy como visor HTML con botones cuyos
+        fotogramas son los dibujos TikZ de :meth:`plot_tikz_roy_pasos`,
+        compilados a SVG (hace falta ``pdflatex`` y ``pdftocairo``)."""
+        codigos = self.plot_tikz_roy_pasos(durations, beamer=False, escala=escala,
+                                           posiciones=posiciones, textos=textos,
+                                           etiquetas=etiquetas)
+        return _html_fotogramas_tikz(codigos)
+
+    def display_roy_pasos(self, durations, etiquetas: dict = None, escala: float = 1.0,
+                          posiciones: dict = None, textos: dict = None,
+                          visor: bool = True) -> None:
+        """Muestra en un cuaderno el cálculo de los tiempos del Roy paso a paso:
+        grafo TikZ que se va rellenando, con botones (``visor=True``). Con
+        ``visor=False``, o si no hay LaTeX, la lista de cálculos como Markdown."""
+        if visor:
+            try:
+                display(HTML(self.roy_pasos_html(durations, escala, posiciones, textos, etiquetas)))
+                return
+            except (FileNotFoundError, RuntimeError) as e:
+                import warnings
+                warnings.warn(f"No se pudo generar el visor TikZ ({e}); se muestra la lista de cálculos.")
         pasos = self.roy_pasos(durations, formato="latex", etiquetas=etiquetas)
         for titulo, clave in (("Tiempos mínimos (hacia delante)", "minimos"),
                               ("Tiempos máximos (hacia atrás)", "maximos")):
@@ -6101,6 +6143,50 @@ def _html_pasos(fotos: list) -> str:
         'for (var i = 0; i < p.length; i++) { if (p[i].style.display !== "none") k = i; p[i].style.display = "none"; }'
         'k = Math.max(0, Math.min(p.length - 1, k + d)); p[k].style.display = "block";'
         'c.querySelector(".pmule-contador").textContent = "paso " + (k + 1) + " de " + p.length; };</script>')
+
+def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta") -> list:
+    """Compila una lista de ``tikzpicture`` (un fotograma cada uno) y devuelve un
+    SVG por fotograma, recortado al dibujo. Un solo ``pdflatex`` para todos (el
+    grafo es el mismo en todos, así que las cajas casi coinciden y no saltan al
+    pasar de uno a otro). Necesita ``pdflatex`` y ``pdftocairo``."""
+    import shutil, subprocess, tempfile
+    from pathlib import Path
+    for exe in ("pdflatex", "pdftocairo"):
+        if shutil.which(exe) is None:
+            raise FileNotFoundError(f"no se encuentra {exe}: hace falta LaTeX para los fotogramas TikZ")
+    paginas = "\n".join(codigos)
+    n = len(codigos)
+    doc = ("\\documentclass[border=4pt,multi=tikzpicture]{standalone}\n"
+           "\\usepackage[utf8]{inputenc}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath}\n"
+           "\\usepackage{tikz}\n" + f"\\usetikzlibrary{{{librerias}}}\n"
+           "\\begin{document}\n" + paginas + "\n\\end{document}\n")
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        (d / "f.tex").write_text(doc, encoding="utf8")
+        r = subprocess.run(["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "f.tex"],
+                           cwd=d, capture_output=True, text=True)
+        if r.returncode != 0 or not (d / "f.pdf").exists():
+            raise RuntimeError("pdflatex falló al compilar los fotogramas:\n" + r.stdout[-1500:])
+        svgs = []
+        for k in range(1, n + 1):
+            subprocess.run(["pdftocairo", "-svg", "-f", str(k), "-l", str(k), "f.pdf", f"p{k}.svg"],
+                           cwd=d, check=True, capture_output=True)
+            svgs.append((d / f"p{k}.svg").read_text(encoding="utf8"))
+    return svgs
+
+
+def _html_fotogramas_tikz(codigos: list, librerias: str = "calc,arrows.meta") -> str:
+    """Visor HTML con botones (:func:`_html_pasos`) de fotogramas TikZ compilados a
+    SVG. Cada SVG va como imagen ``data:`` para que los identificadores de
+    glifos de unos no se mezclen con los de otros."""
+    import base64
+    fotos = []
+    for svg in _svgs_de_tikz(codigos, librerias):
+        b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
+        fotos.append('<img alt="paso" style="display:block;margin:0 auto;max-width:100%;height:auto" '
+                     f'src="data:image/svg+xml;base64,{b64}">')
+    return _html_pasos(fotos)
+
 
 def pinta_tikz(dibujo, filename=None):
     if filename is not None:

@@ -236,12 +236,15 @@ duracion_proyecto = proyecto.duration(datos_proyecto['duration'])
 display(Markdown(pregunta_1))
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-pert
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Calendario y holguras"

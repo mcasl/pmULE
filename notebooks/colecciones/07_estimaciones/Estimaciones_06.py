@@ -295,12 +295,15 @@ proyecto = prelaciones.create_project()
 duraciones = datos_proyecto['duration'].round().astype(int)
 
 # %%
-proyecto.display_roy_pasos(duraciones)
-
-# %%
 #| fig-cap: "Grafo Roy con las duraciones medias y el camino crítico"
 #| label: fig-pert
 proyecto.roy(durations=duraciones, ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(duraciones)
 
 # %%
 duracion_proyecto = proyecto.duration(duraciones)

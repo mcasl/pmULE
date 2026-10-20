@@ -273,12 +273,15 @@ def indicadores(seguimiento, calendario_plan, semana):
     return detalle, pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV': EV - AC, 'SV': EV - PV, 'CPI': EV / AC, 'SPI': EV / PV})
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo PERT de la línea base"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 1

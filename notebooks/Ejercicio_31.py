@@ -256,20 +256,26 @@ resultados_pert['activities'][['H_total']].T
 proyecto.display_critical_path(durations=duraciones_medias)
 
 # %%
-proyecto.display_pert_pasos(duraciones_medias)
-
-# %%
 #| fig-cap: "Grafo Pert con indicación de tiempos y del camino crítico"
 #| label: fig-pertCritico
 proyecto.pert(durations=duraciones_medias, ranksep=1.2, nodesep=0.8)
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
 # %%
-proyecto.display_roy_pasos(duraciones_medias)
+proyecto.display_pert_pasos(duraciones_medias)
 
 # %%
 #| fig-cap: "Grafo Roy con indicación del camino crítico"
 #| label: fig-royCritico
 proyecto.roy(durations=duraciones_medias, ranksep=1.2, nodesep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(duraciones_medias)
 
 # %% [markdown]
 # Las actividades A y C (estudio geotécnico y pista) tienen una holgura de sólo una semana. La actividad J tiene también holgura uno. Volveremos sobre ello en el apartado 3.

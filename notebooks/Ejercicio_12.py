@@ -187,10 +187,13 @@ calendario
 # A continuación se muestra el grafo Pert del proyecto, con indicación de las actividades críticas:
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
+proyecto.pert(durations=datos_proyecto['duration'])
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
 
 # %%
-proyecto.pert(durations=datos_proyecto['duration'])
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # ### Caracterización de la duración del proyecto mediante una distribución Normal

@@ -247,23 +247,29 @@ proyecto.display_critical_path(datos_proyecto['duration'])
 # #### Grafo PERT con indicación de tiempos, y rutas del camino crítico
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Pert del proyecto con indicación del camino crítico"
 #| label: fig-pertCritico
 proyecto.pert(durations=datos_proyecto['duration'])
 
 # %% [markdown]
-# #### Grafo Roy con indicación de tiempos, y rutas del camino crítico
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %% [markdown]
+# #### Grafo Roy con indicación de tiempos, y rutas del camino crítico
 
 # %%
 #| fig-cap: "Grafo Roy del proyecto con indicación del camino crítico"
 #| label: fig-royCritico
 proyecto.roy(durations=datos_proyecto['duration'])
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # #### Calendario del proyecto

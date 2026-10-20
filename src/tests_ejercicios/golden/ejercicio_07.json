@@ -606,7 +606,7 @@
    }
   },
   {
-   "index": 32,
+   "index": 34,
    "source": "#| tbl-cap: \"Calendario del proyecto\"",
    "vars": {
     "calendario": {
@@ -772,7 +772,7 @@
    }
   },
   {
-   "index": 36,
+   "index": 38,
    "source": "proyecto_asignacion = proyecto.copy()",
    "vars": {
     "dibujo": {
@@ -1443,7 +1443,7 @@
    }
   },
   {
-   "index": 42,
+   "index": 44,
    "source": "duracion_y_recursos = datos_proyecto[['duration', 'resources']]",
    "vars": {
     "dibujo": {
@@ -2437,7 +2437,7 @@
    }
   },
   {
-   "index": 48,
+   "index": 50,
    "source": "proyecto_ackoff = proyecto.copy()",
    "vars": {
     "ackoff": {
@@ -3343,7 +3343,7 @@
    }
   },
   {
-   "index": 50,
+   "index": 52,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {
@@ -3356,7 +3356,7 @@
    }
   },
   {
-   "index": 55,
+   "index": 57,
    "source": "#| tbl-cap: \"Cuadro del algoritmo de Ackoff Sasieni para reducción a tiempo tope del proyecto\"",
    "vars": {
     "ackoff": {
@@ -5485,7 +5485,7 @@
    }
   },
   {
-   "index": 56,
+   "index": 58,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {
@@ -5499,7 +5499,7 @@
    }
   },
   {
-   "index": 60,
+   "index": 62,
    "source": "prelaciones_modificadas =  PredecessorTable.from_dict_of_sets(",
    "vars": {
     "prelaciones_modificadas": {
@@ -5558,7 +5558,7 @@
    }
   },
   {
-   "index": 61,
+   "index": 63,
    "source": "proyecto_modificado = prelaciones_modificadas.create_project()",
    "vars": {
     "proyecto_modificado": {
@@ -5674,7 +5674,7 @@
    }
   },
   {
-   "index": 62,
+   "index": 64,
    "source": "duracion_modificado = datos_proyecto['duration'].drop('F')",
    "vars": {
     "duracion_modificado": {
@@ -5718,7 +5718,7 @@
    }
   },
   {
-   "index": 64,
+   "index": 66,
    "source": "gantt_df, dibujo = proyecto_modificado.gantt(duracion_modificado.to_frame(),",
    "vars": {
     "dibujo": {
@@ -6342,7 +6342,7 @@
    }
   },
   {
-   "index": 67,
+   "index": 69,
    "source": "duracion_proyecto_modificado = proyecto_modificado.duration(durations=duracion_modificado.to_frame()",
    "vars": {
     "duracion_proyecto_modificado": 35

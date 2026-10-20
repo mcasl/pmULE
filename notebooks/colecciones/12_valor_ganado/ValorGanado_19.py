@@ -259,12 +259,15 @@ plan = datos_proyecto['m']
 display(Markdown(pregunta_1))
 
 # %%
-proyecto.display_pert_pasos(plan)
-
-# %%
 #| fig-cap: "Grafo PERT de la línea base (duraciones más probables) con el camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=plan, ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(plan)
 
 # %%
 #| tbl-cap: "Calendario de la línea base"

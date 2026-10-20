@@ -178,20 +178,26 @@ resultados_pert['activities'][['H_total']]
 # Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas, cuyas actividades se listan en orden alfabético:
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Pert con indicación con indicación del camino crítico"
 #| label: fig-pertcritico
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1.5, nodesep=0.7)
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo Roy con indicación con indicación del camino crítico"
 #| label: fig-Roycritico
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # Las rutas del camino crítico son:

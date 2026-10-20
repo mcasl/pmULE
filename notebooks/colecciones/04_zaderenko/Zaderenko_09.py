@@ -310,12 +310,15 @@ calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin
 detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d', 'H_total = LS − ES']]
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"
 #| label: fig-pertTiempos
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 4

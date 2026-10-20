@@ -297,12 +297,15 @@ duracion = int(proyecto.duration(datos_proyecto['duration']))
 calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-grafo
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # El coste mensual de cada actividad es su BAC dividido por su duración. Escribiéndolo en cada casilla del Gantt de inicios más tempranos, el desembolso de cada mes es la suma de su columna (fila *Total*) y la fila *Acumulado* muestra lo invertido hasta ese mes; la columna *Total* de cada actividad recupera su BAC.

@@ -278,12 +278,15 @@ duracion = int(proyecto.duration(datos_proyecto['duration']))
 calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-grafo
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 pagos = pd.Series(0.0, index=range(1, duracion + 1))

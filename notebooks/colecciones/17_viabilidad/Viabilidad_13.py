@@ -270,12 +270,15 @@ BAC = datos_proyecto['BAC']
 display(Markdown(pregunta_1))
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy con el camino crítico (sin límite de operarios)"
 #| label: fig-grafo
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Calendario sin límite de recursos (meses)"

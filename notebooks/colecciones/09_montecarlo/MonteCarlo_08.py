@@ -241,12 +241,15 @@ display(Markdown(pregunta_1))
 pd.DataFrame({'(a + m + b)/3': [f"({r['a']:g} + {r['m']:g} + {r['b']:g})/3 = {r['duration']:.2f}" for _, r in datos_proyecto.iterrows()]}, index=datos_proyecto.index).T
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'].round(1))
-
-# %%
 #| fig-cap: "Grafo PERT con las duraciones medias"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'].round(1), ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'].round(1))
 
 # %%
 path_matrix = proyecto.path_matrix(dummies=False)

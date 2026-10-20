@@ -240,12 +240,15 @@ duracion_proyecto = proyecto.duration(datos_proyecto['duration'])
 display(Markdown(pregunta_1))
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-pert-p1
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Calendario y holguras"
@@ -373,12 +376,15 @@ proyecto = prelaciones.create_project()
 display(Markdown(pregunta_1))
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"
 #| label: fig-pert-p2
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Holgura total de las actividades"

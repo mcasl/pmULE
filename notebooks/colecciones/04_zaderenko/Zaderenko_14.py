@@ -339,9 +339,12 @@ Markdown(f'El cuadro recuperado reproduce el Gantt: {compatible}. Una predecesor
          'Por eso el Gantt no determina el cuadro de prelaciones.')
 
 # %%
-proyecto.display_roy_pasos(prelaciones_recuperadas['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-pert
 proyecto.roy(durations=prelaciones_recuperadas['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(prelaciones_recuperadas['duration'])

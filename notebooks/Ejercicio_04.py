@@ -186,23 +186,29 @@ for ruta, actividades in camino_critico.items():
 # #### Grafo PERT con indicación del camino crítico
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Pert del proyecto con indicación del camino crítico"
 #| label: fig-pertCritico
 proyecto.pert(durations=datos_proyecto['duration'])
 
 # %% [markdown]
-# Alternativamente, se muestra el grafo roy correspondiente con indicación del camino crítico.
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %% [markdown]
+# Alternativamente, se muestra el grafo roy correspondiente con indicación del camino crítico.
 
 # %%
 #| fig-cap: "Grafo Roy del proyecto con indicación del camino crítico"
 #| label: fig-royCritico
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # #### Varianza de cada rama

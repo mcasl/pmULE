@@ -5,7 +5,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/%A_%a.log
 # Una tarea del array = un cuaderno. Uso (lo lanza scripts/render_cluster.sh):
-#   cd ~/pmule_render && sbatch --array=1-N%M repo/scripts/cluster/render_array.sbatch lista.txt
+#   cd ~/pmule_render && sbatch --array=1-N[%M] repo/scripts/cluster/render_array.sbatch lista.txt
 # lista.txt: rutas relativas al repositorio (notebooks/.../X.ipynb), una por línea.
 # Cada tarea trabaja en una copia privada (sin choques entre los quarto
 # simultáneos) y deja el HTML en out/docs/<ruta relativa a notebooks/>.

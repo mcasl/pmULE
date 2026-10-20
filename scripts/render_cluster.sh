@@ -8,7 +8,8 @@
 #   scripts/render_cluster.sh --grep '\.roy('     # cuadernos cuyo .py contiene el patrón
 #   scripts/render_cluster.sh --all               # ejercicios, colecciones y exámenes
 #   scripts/render_cluster.sh --build             # (re)construye el contenedor
-# Opciones: -m N  tareas simultáneas como máximo (32 por defecto)
+# Opciones: -m N  limita las tareas simultáneas (por defecto sin límite: el array
+#           corre al máximo que permita el gestor SLURM)
 #
 # Pasos: comprobar conexión (si falla: VPN) → jupytext --sync local → rsync de
 # ida → sbatch --wait (array, una tarea por cuaderno) → rsync de vuelta →
@@ -18,7 +19,7 @@ cd "$(dirname "$0")/.."
 
 HOST="${PMULE_CLUSTER:-legio2}"
 REMOTO="pmule_render"           # ~/pmule_render en el clúster
-MAX=32
+MAX=
 BUILD=0
 cuadernos=()
 
@@ -71,9 +72,9 @@ lista="lista_$(date +%Y%m%d_%H%M%S).txt"
 printf '%s\n' "${cuadernos[@]}" | ssh "$HOST" "cat > ~/$REMOTO/$lista"
 ssh "$HOST" "rm -rf ~/$REMOTO/out/docs"
 n=${#cuadernos[@]}
-echo "→ sbatch: $n tarea(s), máx. $MAX a la vez"
+echo "→ sbatch: $n tarea(s), ${MAX:+máx. $MAX a la vez}${MAX:-sin límite de simultáneas}"
 t0=$(date +%s)
-if ssh "$HOST" "cd ~/$REMOTO && sbatch --wait --parsable --array=1-$n%$MAX repo/scripts/cluster/render_array.sbatch $lista"; then
+if ssh "$HOST" "cd ~/$REMOTO && sbatch --wait --parsable --array=1-$n${MAX:+%$MAX} repo/scripts/cluster/render_array.sbatch $lista"; then
     estado=0
 else
     estado=1

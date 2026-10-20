@@ -237,12 +237,15 @@ X, plazo = 'C', 28
 p_plazo = float(norm.cdf((plazo - duracion) / sigma))
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # Cada pregunta se construye con la respuesta correcta calculada y tres distractores *plausibles*: errores típicos (sumar todas las duraciones, confundir holgura libre y total, contar las ficticias como rutas, usar la varianza en lugar de la desviación…).

@@ -316,20 +316,26 @@ camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
 Markdown(f'La duración del proyecto es {duracion_proyecto} semanas.')
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-royCritico
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo PERT con tiempos y camino crítico"
 #| label: fig-pertCritico
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 4

@@ -252,12 +252,15 @@ datos_proyecto[['predecessor', 'duration']]
 display(Markdown(pregunta_2))
 
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo PERT reconstruido, con tiempos y camino crítico"
 #| label: fig-grafo
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 Markdown(f'''El PERT representa las actividades como arcos, y un arco sólo puede salir de un nodo: cuando dos actividades comparten *algunas* predecesoras pero no todas, hace falta una ficticia para no inventar prelaciones. El Gantt no tiene ese problema porque dibuja cada prelación como una flecha independiente. Este grafo necesita {len(proyecto.dummies)} ficticia(s).''')

@@ -1028,7 +1028,7 @@
    }
   },
   {
-   "index": 54,
+   "index": 56,
    "source": "datos_proyecto['variance'] = datos_proyecto.eval('standard_deviation ** 2')",
    "vars": {
     "datos_proyecto": {
@@ -1274,14 +1274,14 @@
    }
   },
   {
-   "index": 59,
+   "index": 61,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_b": 22.66
    }
   },
   {
-   "index": 65,
+   "index": 67,
    "source": "ackoff, best_option, durations, available = proyecto.ackoff(durations=datos_proyecto['duration'],",
    "vars": {
     "ackoff": {
@@ -1925,7 +1925,7 @@
    }
   },
   {
-   "index": 68,
+   "index": 70,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {

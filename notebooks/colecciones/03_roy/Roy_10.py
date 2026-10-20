@@ -273,20 +273,26 @@ print('Finales (sin sucesoras):     ', ', '.join(sorted(prelaciones.end_activiti
 display(Markdown(pregunta_2))
 
 # %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
-
-# %%
 #| fig-cap: "Grafo Roy"
 #| label: fig-roy
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
 # %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo PERT"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 Markdown(f'El PERT necesita {len(proyecto.dummies)} actividad(es) ficticia(s); el Roy, ninguna.')
