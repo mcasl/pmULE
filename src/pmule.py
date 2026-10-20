@@ -3632,7 +3632,24 @@ class ProjectGraph:
                               calculo=expresion("tardio", nodo, ops, late[nodo]),
                               valor=late[nodo]))
         tardios = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
-        return dict(tempranos=tempranos, tardios=tardios)
+
+        # Holguras totales: H_ij = t*_j - t_i - d_ij
+        filas = []
+        for nodo in orden:
+            for u, v in sorted(G.out_edges(nodo), key=lambda e: e2a[(f"{e[0]}", f"{e[1]}")]):
+                act = e2a[(f"{u}", f"{v}")]
+                d = dur.get(act, 0)
+                h = late[f"{v}"] - early[f"{u}"] - d
+                izq = (rf"H_{{\mbox{{{self._tex_texto(act)}}}}}" if latex else f"H({act})")
+                if latex:
+                    cuerpo = (rf"t_{{{v}}}^{{*}} - t_{{{u}}} - d = "
+                              rf"{f(late[f'{v}'])} - {f(early[f'{u}'])} - {f(d)}")
+                else:
+                    cuerpo = f"t{v}* - t{u} - d = {f(late[f'{v}'])} - {f(early[f'{u}'])} - {f(d)}"
+                filas.append(dict(actividad=act, origen=u, destino=v,
+                                  calculo=f"{izq} = {cuerpo} = {f(h)}", valor=h))
+        holguras = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
+        return dict(tempranos=tempranos, tardios=tardios, holguras=holguras)
 
     def pert_pasos_html(self, durations, escala: float = 1.0, posiciones: dict = None,
                         textos: dict = None) -> str:
@@ -3665,6 +3682,10 @@ class ProjectGraph:
                 act = f" &nbsp; ({fila['actividades']})" if fila["actividades"] else ""
                 lineas.append(f"- ${fila['calculo']}${act}")
             display(Markdown("\n".join(lineas)))
+        lineas = ["**Holguras totales**", ""]
+        for _, fila in pasos["holguras"].iterrows():
+            lineas.append(f"- ${fila['calculo']}$")
+        display(Markdown("\n".join(lineas)))
 
     def _pert_layout_capas(self, escala: float = 1.0) -> dict:
         """Posiciones (x, y) en cm por capas topológicas (número de arcos del
@@ -3692,8 +3713,9 @@ class ProjectGraph:
         Secuencia de fotogramas: grafo vacío; un fotograma por suceso en el
         recorrido hacia delante (se rellena su tiempo temprano y se resaltan
         las actividades que llegan); uno por suceso en el recorrido hacia
-        atrás (tiempo tardío y actividades que salen); y un fotograma final
-        con el camino crítico en rojo. Bajo el grafo se escribe el cálculo
+        atrás (tiempo tardío y actividades que salen); uno por actividad con el cálculo
+        de su holgura total (``H = t*_j - t_i - d``; las de holgura 0 y sus sucesos
+        pasan a rojo progresivamente); y un fotograma final con el camino crítico. Bajo el grafo se escribe el cálculo
         del paso (véase :meth:`pert_pasos`).
 
         Los nodos siguen el convenio de los apuntes: índice arriba, temprano a
@@ -3765,6 +3787,16 @@ class ProjectGraph:
             arcos = {(f"{u}", f"{v}") for u, v in G.out_edges(nodo)}
             fotogramas.append(fotograma(dict(tempranos), dict(tardios), nodo, arcos,
                                         f"${fila['calculo']}$"))
+        criticas: set = set()
+        for _, fila in pasos["holguras"].iterrows():
+            act, u, v = fila["actividad"], f"{fila['origen']}", f"{fila['destino']}"
+            if fila["valor"] == 0:
+                criticas.add(act)
+            fotogramas.append(fotograma(dict(tempranos), dict(tardios), None,
+                                        {(u, v)} if fila["valor"] != 0 else set(),
+                                        f"${fila['calculo']}$"
+                                        + (r"\\ \small\textcolor{red}{actividad crítica}" if fila["valor"] == 0 else ""),
+                                        criticas=set(criticas)))
         duracion = max(tempranos.values())
         fotogramas.append(fotograma(dict(tempranos), dict(tardios), critico=True,
                                     texto=rotulos["final"].format(duracion=f(duracion))))
@@ -3892,8 +3924,12 @@ class ProjectGraph:
 
     def _pert_fotograma(self, pos, dur, holguras, escala, tempranos, tardios,
                         actual=None, arcos_activos=(), texto="", critico=False,
-                        trazado=None, con_duracion=True):
+                        trazado=None, con_duracion=True, criticas=None):
         """Un fotograma TikZ del grafo PERT (cuerpo, sin ``tikzpicture``).
+
+        ``criticas``: conjunto de actividades ya reconocidas como críticas (holgura
+        total 0); si se da, sustituye a ``critico`` y los nodos extremos de esas
+        actividades se pintan también de rojo.
 
         ``actual`` es un suceso o un conjunto de sucesos que se resaltan en
         naranja; ``arcos_activos``, los arcos ``(i, j)`` resaltados."""
@@ -3920,7 +3956,8 @@ class ProjectGraph:
             if (f"{u}", f"{v}") in arcos_activos:
                 estilo += ["orange!80!black", "very thick"]
                 color = "orange!80!black"
-            elif critico and holguras.get(act, 1) == 0:
+            elif (act in criticas if criticas is not None
+                  else critico and holguras.get(act, 1) == 0):
                 estilo += ["red", "very thick"]
                 color = "red"
             elif ficticia and not con_duracion:
@@ -3944,8 +3981,12 @@ class ProjectGraph:
             A.append(rf"  \draw[{', '.join(estilo)}] (n{u}) {trazo}"
                      rf" node[midway, {lado}, sloped, font=\scriptsize] {{{etiqueta}}} (n{v});")
         for nodo, (x, y) in pos.items():
-            es_critico = (critico and nodo in tempranos and nodo in tardios
-                          and tempranos[nodo] == tardios[nodo])
+            if criticas is not None:
+                es_critico = any(G.edges[e].get("activity", "") in criticas
+                                 for e in list(G.in_edges(nodo)) + list(G.out_edges(nodo)))
+            else:
+                es_critico = (critico and nodo in tempranos and nodo in tardios
+                              and tempranos[nodo] == tardios[nodo])
             if nodo in actuales:
                 relleno = "fill=orange!20, draw=orange!80!black, very thick"
             elif es_critico:
