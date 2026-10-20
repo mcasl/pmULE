@@ -67,6 +67,8 @@ def truncate_and_pad(value, n_decimal_places):
         #return int(truncated_value) if n_digits == 0 else truncated_value
 
     if isinstance(value, str):
+        if not value.strip():          # casilla vacía en filas/columnas extra
+            return value
         value = float(value)
     elif (
         isinstance(value, np.int64)
@@ -1474,6 +1476,9 @@ class ProjectGraph:
         
         user_cols = extra_cols.copy() if extra_cols is not None else None
         user_rows = extra_rows.copy() if extra_rows is not None else None
+        # Las filas/columnas del usuario se añaden al final (user_*); si no se
+        # vacían aquí, con total=None se dibujaban dos veces en el TikZ.
+        extra_cols = extra_rows = None
 
         my_data = data.copy()
         my_data[duration_label] = my_data[duration_label].astype(int)
