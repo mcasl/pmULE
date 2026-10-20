@@ -242,6 +242,30 @@ def simular(N, semilla):
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con las duraciones medias y el camino crítico"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Matriz de rutas"
+#| label: tbl-matrizRutas
+proyecto.display_path_matrix(dummies=False)
+
+# %%
+#| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"
+#| label: tbl-rutas
+datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2
+medias_rutas = detalle_rutas(R, datos_proyecto['duration'][R.columns], nombre='duración media')
+varianzas_rutas = detalle_rutas(R, datos_proyecto['variance'][R.columns], nombre='varianza', decimales=2)
+pd.concat([medias_rutas, varianzas_rutas[['varianza = suma', 'varianza']]], axis=1)
+
+# %% [markdown]
+# Cada réplica es un vector de duraciones normales; la duración de cada ruta es R·t y la del proyecto, el máximo. Para cada tamaño N se repite el mismo cálculo con más columnas.
+
+# %%
 tamanos = [20, 200, 2000, 20000]
 filas = {}
 for N in tamanos:

@@ -84,7 +84,7 @@ def redundantes_posibles(preds):
     pares = []
     for a in preds:
         ancestros = nx.ancestors(G, a)
-        for p in ancestros - preds[a]:
+        for p in sorted(ancestros - preds[a]):        # orden determinista (no depende del hash de los str)
             pares.append((p, a))
     return pares
 

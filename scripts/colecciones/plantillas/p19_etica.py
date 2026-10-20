@@ -837,6 +837,7 @@ def _inspeccion_suprimida(rng):
         if not (2 <= int(i["D"][I]) <= 3):
             return False
         tope, cn, ct, cur = P.costes_reduccion(rng, i["D"], n_inf=0)
+        cur = cur.astype(float)                     # pandas 3 no admite inf en una Series entera
         tope[I], cur[I], ct[I] = int(i["D"][I]), np.inf, cn[I]
         r = int(rng.choice([2, 3]))
         pasos, dur, coste = _ackoff(i["proyecto"], i["D"].astype(float), tope, cur, r)

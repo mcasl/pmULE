@@ -275,6 +275,23 @@ gantts = EarnedValue(proyecto).calcula_gantts(datos_valor_ganado, planned_durati
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy de la planificación"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario planificado (inicios más tempranos): de él sale la fracción planificada de cada actividad en la semana de control"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+
+# %% [markdown]
+# En el Gantt del valor planificado cada casilla lleva el coste planificado de la semana (BAC / duración); en el del valor ganado, el BAC por el porcentaje realizado repartido entre las semanas trabajadas.
+
+# %%
 #| fig-cap: "PV: valor planificado"
 #| label: fig-ganttPV
 pinta_tikz(gantts['gantt_PV'])
@@ -285,12 +302,31 @@ pinta_tikz(gantts['gantt_PV'])
 pinta_tikz(gantts['gantt_EV'])
 
 # %%
+#| fig-cap: "AC: coste real"
+#| label: fig-ganttAC
+pinta_tikz(gantts['gantt_AC'])
+
+# %%
+#| tbl-cap: "PV, EV y AC actividad a actividad en el punto de control"
+#| label: tbl-valorGanadoPaso
+detalle_vg = detalle_valor_ganado(datos_valor_ganado, calendario, semana_control)
+detalle_vg[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]
+
+# %%
 acumulados = gantts['acumulados']
 PV = float(acumulados.loc[semana_control, 'PV'])
 EV = float((datos_valor_ganado['BAC'] * datos_valor_ganado['performed'] / 100).sum())
 AC = float(datos_valor_ganado['AC'].sum())
 CPI, SPI = EV / AC, EV / PV
 pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV = EV − AC': EV - AC, 'SV = EV − PV': EV - PV, 'CPI': CPI, 'SPI': SPI}).round(3).to_frame('valor').T
+
+# %%
+Markdown(f'''Sumando las columnas de la tabla anterior: PV = {detalle_vg["PV_i"].sum():.1f}, EV = {detalle_vg["EV_i"].sum():.1f}, AC = {detalle_vg["AC"].sum():.1f} k€. Y con ellas:
+
+- CV = EV − AC = {EV:.1f} − {AC:.1f} = {EV - AC:.1f} k€
+- SV = EV − PV = {EV:.1f} − {PV:.1f} = {EV - PV:.1f} k€
+- CPI = EV / AC = {EV:.1f} / {AC:.1f} = {CPI:.3f}
+- SPI = EV / PV = {EV:.1f} / {PV:.1f} = {SPI:.3f}''')
 
 # %%
 #| fig-cap: "Curvas S"

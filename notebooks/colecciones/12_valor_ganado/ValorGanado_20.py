@@ -237,8 +237,47 @@ BAC = datos_proyecto['BAC']
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo PERT de la línea base (sin recursos) con el camino crítico"
+#| label: fig-pert
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %%
+#| tbl-cap: "Calendario de la línea base (inicios más tempranos, sin mirar los operarios)"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %%
+#| fig-cap: "Carga de operarios de la línea base frente al límite"
+#| label: fig-cargasInicial
+gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)
+plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=limite)
+
+# %% [markdown]
+# La ejecución real sigue el algoritmo de asignación: semana a semana, cada actividad disponible (predecesoras terminadas) empieza si caben sus operarios durante toda su duración; si no, espera. Traza semana a semana y Gantt resultante (filas 💤: esperas):
+
+# %%
+res = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt de la ejecución real con el límite de operarios"
+#| label: fig-ganttReal
+pinta_tikz(res.dibujos['operarios'])
+
+# %%
+#| tbl-cap: "Inicio de cada actividad en la línea base y en la ejecución real"
+#| label: tbl-inicios
+pd.DataFrame({'inicio línea base': calendario['inicio_mas_temprano'].astype(int), 'inicio real': res.inicios, 'fin real': res.fines,
+              'espera (semanas)': res.esperas}).fillna(0).astype(int).T
+
+# %% [markdown]
+# El PV de cada semana es la suma, sobre las actividades, del BAC por la fracción planificada transcurrida (línea base); el EV, lo mismo con el calendario real (nadie trabaja más despacio, así que la fracción ejecutada es la real del calendario con recursos).
+
+# %%
 tabla = proyecto.valor_ganado_recursos(datos_proyecto, 'duration', ['operarios'], limite, BAC)
-res = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operarios'], limite)
 T_plan, T_real = tabla.attrs['T_plan'], tabla.attrs['T_real']
 Markdown(f'Línea base {T_plan:.0f} semanas; con {limite[0]} operarios el calendario real dura {T_real:.0f}.')
 

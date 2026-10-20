@@ -123,6 +123,12 @@ def _base(k, rng):
     ap = 1
     celdas += apartado(ap); ap += 1
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario: fechas y holgura total de cada actividad"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
+    celdas.append(md("En el Gantt cada actividad empieza en su inicio más temprano y la casilla lleva los operarios que "
+                     "ocupa; la fila *Total* suma la columna (carga de la semana) y la fila *Cuadrados* eleva cada carga "
+                     "al cuadrado (su suma, en la última columna, es la medida de desnivel que usa la nivelación)."))
     celdas.append(code('#| fig-cap: "Diagrama de Gantt con las cargas de operarios (inicios más tempranos)"\n#| label: fig-ganttInicial\n'
                        "proyecto_inicial = proyecto.copy()\n"
                        "gantt_inicial, dibujo = proyecto_inicial.gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)\n"
@@ -161,6 +167,12 @@ def _base(k, rng):
                          "cada una, prueba todos los desplazamientos dentro de su holgura eligiendo el que minimiza "
                          "la suma de cuadrados. La tabla muestra la suma de cuadrados para cada desplazamiento "
                          "posible, con el mínimo resaltado."))
+        celdas.append(code('#| tbl-cap: "Actividades no críticas en el orden en que las recorre el algoritmo (fin más temprano creciente; a igualdad, más holgura primero)"\n#| label: tbl-ordenNivelacion\n'
+                           "no_criticas = calendario[calendario['H_total'] > 0].sort_values(['fin_mas_temprano', 'H_total'], ascending=[True, False])\n"
+                           "no_criticas[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']].T"))
+        celdas.append(md("Para cada una de ellas se prueba cada desplazamiento de 0 a su holgura total (las columnas de la "
+                         "tabla siguiente), se recalculan las cargas y su suma de cuadrados, y se aplica el desplazamiento "
+                         "de suma mínima antes de pasar a la siguiente actividad; por eso el resultado depende del orden."))
         celdas.append(code('#| tbl-cap: "Suma de cuadrados para cada desplazamiento posible"\n#| label: tbl-cuadrados\n'
                            "proyecto_nivelado = proyecto.copy()\n"
                            "desplazamientos, cuadrados, datos_nivelados, gantt_nivelado, dibujo = proyecto_nivelado.nivelar(\n"
@@ -185,6 +197,11 @@ def _base(k, rng):
         celdas.append(md("El algoritmo de Wiest-Levy recorre el calendario periodo a periodo: cuando la demanda supera "
                          "el límite, aplaza las actividades con más holgura (y, si no basta, también críticas, lo que "
                          "alarga el proyecto). Las filas 💤 marcan las esperas introducidas."))
+        celdas.append(md("Prioridad para entrar en una semana: primero las actividades ya empezadas (no se interrumpen); "
+                         "entre las demás, menor holgura total y, a igualdad, menor duración. Traza semana a semana (qué se "
+                         "programa y qué se aplaza una semana cuando la carga supera el límite):"))
+        celdas.append(code("_ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',\n"
+                           "                           maximo=limite_maximo_recursos, report=True)"))
         celdas.append(code('#| fig-cap: "Diagrama de Gantt tras la asignación"\n#| label: fig-ganttAsignado\n'
                            "proyecto_asignado = proyecto.copy()\n"
                            "datos_asignados, gantt_asignado, dibujo = proyecto_asignado.asignar(\n"
@@ -199,6 +216,8 @@ def _base(k, rng):
                            "Markdown(f'El proyecto pasa de {duracion_inicial} a {duracion_asignada} semanas. Esperas introducidas: '\n"
                            "         f'{\", \".join(f\"{i[1:]} ({int(fila.duration)} sem.)\" for i, fila in esperas.iterrows()) or \"ninguna\"}.')"))
         celdas += apartado(ap); ap += 1
+        celdas.append(code("_ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',\n"
+                           f"                           maximo=[{lim}], report=True)"))
         celdas.append(code('#| fig-cap: "Diagrama de Gantt con el límite constante"\n#| label: fig-ganttLimiteFijo\n'
                            f"limite_fijo = [{lim}]\n"
                            "proyecto_fijo = proyecto.copy()\n"
@@ -311,6 +330,10 @@ def _consumible(rng):
                        "proyecto = prelaciones.create_project()\n"
                        f"suministro = {lim}"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario: fechas y holgura total de cada actividad"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
     celdas.append(code('#| fig-cap: "Diagrama de Gantt con el consumo semanal"\n#| label: fig-ganttInicial\n'
                        "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)\n"
                        "pinta_tikz(dibujo)"))
@@ -320,6 +343,11 @@ def _consumible(rng):
                        "exceso = consumo[consumo > suministro]\n"
                        "Markdown(f'Se supera el suministro en las semanas {\", \".join(str(t) for t in exceso.index)} (máximo {int(consumo.max())} litros).')"))
     celdas += apartado(2)
+    celdas.append(md("El algoritmo de asignación recorre las semanas; cuando el consumo supera el suministro aplaza una "
+                     "semana las actividades con más holgura (primero las que aún no han empezado) y, si no basta, también "
+                     "las críticas. Traza semana a semana:"))
+    celdas.append(code("_ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',\n"
+                       "                           maximo=[suministro], report=True)"))
     celdas.append(code('#| fig-cap: "Diagrama de Gantt tras la asignación"\n#| label: fig-ganttAsignado\n'
                        "proyecto_asignado = proyecto.copy()\n"
                        "datos_asignados, gantt_asignado, dibujo = proyecto_asignado.asignar(\n"
@@ -329,6 +357,8 @@ def _consumible(rng):
     celdas.append(code("duracion_inicial = proyecto.duration(datos_proyecto['duration'])\n"
                        "duracion_asignada = len(gantt_asignado.data.columns.drop('H_total'))\n"
                        "Markdown(f'Sin almacenamiento el proyecto pasa de {duracion_inicial} a {duracion_asignada} semanas.')"))
+    celdas.append(code('#| fig-cap: "Consumo semanal tras la asignación frente al suministro"\n#| label: fig-cargasAsignado\n'
+                       "plot_cargas(gantt_df=gantt_asignado, limite_maximo_recursos=[suministro])"))
     celdas += apartado(3)
     celdas.append(code("acumulado = pd.DataFrame({'consumo acumulado': consumo.cumsum(), 'suministro acumulado': suministro * np.arange(1, len(consumo) + 1)})\n"
                        "acumulado['cumple'] = acumulado['consumo acumulado'] <= acumulado['suministro acumulado']\n"
@@ -395,6 +425,10 @@ def _limite_insuficiente(rng):
                        "Markdown(f'No: {\", \".join(imposibles)} necesita(n) {int(datos_proyecto[\"resources\"].max())} operarios a la vez, más que los {limite} disponibles, '\n"
                        "         'y una actividad no puede ejecutarse con menos operarios de los que requiere (no se admite alargarla). El mínimo factible es el máximo requerido por una actividad.')"))
     celdas += apartado(2)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario: fechas y holgura total de cada actividad"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
     celdas.append(code('#| fig-cap: "Cargas con las actividades en su inicio más temprano"\n#| label: fig-cargasInicial\n'
                        "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)\n"
                        "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=None)"))
@@ -403,19 +437,34 @@ def _limite_insuficiente(rng):
                        "desplazamientos, cuadrados, datos_nivelados, gantt_nivelado, dibujo = proyecto_nivelado.nivelar(\n"
                        "    data=datos_proyecto.copy(), duration_label='duration', resource_label='resources')\n"
                        "cargas_niveladas = gantt_nivelado.data.loc['Total'].drop('H_total').astype(float)\n"
-                       "Markdown(f'Máximo de operarios: {int(cargas.max())} con inicios más tempranos y {int(cargas_niveladas.max())} tras nivelar (duración {duracion_minima} en ambos casos).')"))
+                       "display(desplazamientos[desplazamientos['desplazamientos'] > 0].T)\n"
+                       "Markdown(f'Máximo de operarios: {int(cargas.max())} con inicios más tempranos y {int(cargas_niveladas.max())} tras nivelar (duración {duracion_minima} en ambos casos). '\n"
+                       "         f'Sumas de cuadrados: {(cargas ** 2).sum():.0f} antes y {(cargas_niveladas ** 2).sum():.0f} después.')"))
+    celdas.append(code('#| fig-cap: "Cargas tras la nivelación"\n#| label: fig-cargasNivelado\n'
+                       "plot_cargas(gantt_df=gantt_nivelado, limite_maximo_recursos=None)"))
     celdas += apartado(3)
+    celdas.append(md("Para cada número de operarios se aplica el algoritmo de asignación (semana a semana, aplazando "
+                     "primero las actividades con más holgura). Con el mínimo factible se muestra la traza completa y el Gantt:"))
     celdas.append(code("minimo = int(datos_proyecto['resources'].max())\n"
                        "maximo = int(cargas_niveladas.max())\n"
-                       "filas = {}\n"
+                       "p_min = proyecto.copy()\n"
+                       "datos_min, gantt_min, dibujo_min = p_min.asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',\n"
+                       "                                                 maximo=[minimo], report=True, params=dict(period_width=1, **GANTT_PARAMS))"))
+    celdas.append(code('#| fig-cap: "Gantt con el mínimo de operarios factible"\n#| label: fig-ganttMinimo\n'
+                       "pinta_tikz(dibujo_min)"))
+    celdas.append(code("filas = {}\n"
                        "for L in range(minimo, maximo + 1):\n"
                        "    p = proyecto.copy()\n"
-                       "    _, g, _ = p.asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources', maximo=[L], report=False)\n"
-                       "    filas[L] = len(g.data.columns.drop('H_total'))\n"
-                       "tabla = pd.Series(filas, name='duración (semanas)').rename_axis('operarios').to_frame()\n"
-                       "tabla.T"))
+                       "    d_L, g, _ = p.asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources', maximo=[L], report=False)\n"
+                       "    esperas_L = d_L[d_L.index.str.startswith('💤')]\n"
+                       "    filas[L] = {'duración (semanas)': len(g.data.columns.drop('H_total')),\n"
+                       "                'esperas introducidas': ', '.join(f'{i[1:]} ({int(f.duration)} sem.)' for i, f in esperas_L.iterrows()) or 'ninguna'}\n"
+                       "tabla = pd.DataFrame(filas).T.rename_axis('operarios')\n"
+                       "tabla.index = tabla.index.astype(int)\n"
+                       "tabla['duración (semanas)'] = tabla['duración (semanas)'].astype(int)\n"
+                       "tabla"))
     celdas.append(code('#| fig-cap: "Duración del proyecto según los operarios disponibles"\n#| label: fig-duracionOperarios\n'
-                       "ax = tabla.plot(marker='o', legend=False, figsize=(7, 4)); ax.set_ylabel('semanas');"))
+                       "ax = tabla['duración (semanas)'].plot(marker='o', legend=False, figsize=(7, 4)); ax.set_ylabel('semanas'); ax.set_xlabel('operarios');"))
     celdas += apartado(4)
     celdas.append(code("tabla['coste operarios'] = 2 * tabla.index * tabla['duración (semanas)']\n"
                        "tabla['coste fijo'] = 5 * tabla['duración (semanas)']\n"
@@ -463,7 +512,7 @@ PLANIFICADOR = (
     "def gantt_texto(trabajo, limite):\n"
     "    '''Tabla actividad × semana con el recurso usado y fila de carga total.'''\n"
     "    T = max(max(s) for s in trabajo.values() if s)\n"
-    "    g = pd.DataFrame('', index=list(trabajo), columns=range(1, T + 1))\n"
+    "    g = pd.DataFrame('', index=list(trabajo), columns=range(1, T + 1), dtype=object)   # object: admite enteros y texto\n"
     "    for a, semanas in trabajo.items():\n"
     "        for t in semanas:\n"
     "            g.loc[a, t] = int(datos_proyecto.loc[a, 'resources'])\n"
@@ -523,6 +572,7 @@ def _reglas_prioridad(rng):
                        "proyecto = prelaciones.create_project()\n"
                        f"limite = {limite}"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Calendario sin restricción de recursos"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "duracion_minima = proyecto.duration(datos_proyecto['duration'])\n"
@@ -555,6 +605,10 @@ def _reglas_prioridad(rng):
                        "duraciones['sin límite de recursos'] = duracion_minima\n"
                        "duraciones.to_frame().T"))
     celdas += apartado(3)
+    celdas.append(md("La librería recorre también las semanas, pero en vez de admitir actividades hasta llenar el límite "
+                     "aplaza una semana, cuando la carga lo supera, las que tienen más holgura (y las ya empezadas no se "
+                     "tocan). Traza semana a semana:"))
+    celdas.append(code("_ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources', maximo=[limite], report=True)"))
     celdas.append(code('#| fig-cap: "Asignación de la librería (Wiest-Levy)"\n#| label: fig-ganttAsignado\n'
                        "proyecto_asignado = proyecto.copy()\n"
                        "datos_asignados, gantt_asignado, dibujo = proyecto_asignado.asignar(\n"
@@ -607,6 +661,15 @@ def _interrumpibles(rng):
     celdas.append(code(PLANIFICADOR))
     celdas.append(code("regla = lambda a, t: (calendario.loc[a, 'H_total'], datos_proyecto.loc[a, 'duration'], a)"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico (sin límite de operarios)", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario sin límite de recursos (la regla de prioridad usa la holgura total)"\n#| label: tbl-calendario\n'
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
+    celdas.append(code('#| fig-cap: "Cargas con los inicios más tempranos frente al límite"\n#| label: fig-cargasInicial\n'
+                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)\n"
+                       "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[limite])"))
+    celdas.append(md("El planificador recorre las semanas: una actividad es *disponible* cuando han terminado sus "
+                     "predecesoras; las disponibles se ordenan por la regla (menor holgura total, luego menor duración) y "
+                     "entran mientras quepan en el límite. Sin interrupciones, las ya empezadas van primero."))
     celdas.append(code('#| tbl-cap: "Programación sin interrupciones"\n#| label: tbl-sinInterrupcion\n'
                        "trabajo_no, inicio_no, fin_no = planificar(datos_proyecto, prelaciones, limite, regla, interrumpible=False)\n"
                        "gantt_texto(trabajo_no, limite)"))
@@ -712,6 +775,10 @@ def _limites_simultaneos(rng):
                        "recursos = ['operarios', 'equipos']\n"
                        f"limites = [{L1}, {L2}]"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico (sin límites)", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario sin límite de recursos"\n#| label: tbl-calendario\n'
+                       "calendario_libre = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario_libre[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
     celdas.append(code('#| fig-cap: "Cargas de operarios con los inicios más tempranos"\n#| label: fig-cargasOperarios\n'
                        "gantt_op, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)\n"
                        "plot_cargas(gantt_df=gantt_op, limite_maximo_recursos=limites[0])"))
@@ -725,13 +792,23 @@ def _limites_simultaneos(rng):
                        "Markdown(f'Operarios (límite {limites[0]}): se supera en las semanas {exceso_op or \"ninguna\"}. '\n"
                        "         f'Equipos (límite {limites[1]}): se supera en las semanas {exceso_eq or \"ninguna\"}.')"))
     celdas += apartado(2)
-    celdas.append(code("resultado = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', recursos, limites)\n"
+    celdas.append(md("El algoritmo recorre las semanas; en cada una, las actividades disponibles (predecesoras terminadas) "
+                     "se ordenan por prioridad (menor inicio más tardío, luego menor duración) y cada una empieza sólo si "
+                     "cabe en **los dos** recursos durante todas las semanas que ocuparía; si no, espera. La traza indica "
+                     "entre paréntesis el recurso que bloquea a cada actividad que espera."))
+    celdas.append(code("resultado = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', recursos, limites, report=True, tikz=True, params=GANTT_PARAMS)\n"
                        "calendario = pd.DataFrame({'inicio (semana)': resultado.inicios + 1, 'fin (semana)': resultado.fines,\n"
                        "                          'espera (semanas)': resultado.esperas}).fillna(0).astype(int)\n"
                        "calendario"))
     celdas.append(code("esperas = resultado.traza[resultado.traza.decision == 'espera']\n"
                        "esperas = esperas.rename(columns={'bloqueada_por': 'recurso que se satura'})\n"
                        "esperas[['periodo', 'actividad', 'recurso que se satura']].reset_index(drop=True)"))
+    celdas.append(code('#| fig-cap: "Gantt de operarios tras la asignación simultánea (filas 💤: esperas)"\n#| label: fig-ganttOperarios\n'
+                       "pinta_tikz(resultado.dibujos['operarios'])"))
+    celdas.append(code('#| fig-cap: "Gantt de equipos tras la asignación simultánea"\n#| label: fig-ganttEquipos\n'
+                       "pinta_tikz(resultado.dibujos['equipos'])"))
+    celdas.append(code('#| tbl-cap: "Carga de cada recurso semana a semana frente a su límite"\n#| label: tbl-cargasLimites\n'
+                       "pd.concat([resultado.cargas.add_suffix(' ocupados'), resultado.limites.add_suffix(' (límite)')], axis=1).T"))
     celdas.append(code('#| fig-cap: "Cargas de operarios tras la asignación simultánea"\n#| label: fig-asignacionOperarios\n'
                        "plot_cargas(gantt_df=resultado.gantts['operarios'], limite_maximo_recursos=list(resultado.limites['operarios']))"))
     celdas.append(code('#| fig-cap: "Cargas de equipos tras la asignación simultánea"\n#| label: fig-asignacionEquipos\n'
@@ -741,12 +818,16 @@ def _limites_simultaneos(rng):
                        "         'al menos uno de los dos recursos: el que aparece en la tabla.')"))
     celdas += apartado(3)
     celdas.append(code("p_solo = proyecto.copy()\n"
-                       "datos_solo, gantt_solo, dibujo = p_solo.asignar(data=datos_proyecto.copy(), duration_label='duration',\n"
-                       "                                                resource_label='operarios', maximo=[limites[0]], report=False)\n"
-                       "gantt_eq_solo, dibujo = p_solo.gantt_cargas(datos_solo, 'duration', 'equipos', report=False, tikz=False)\n"
+                       "datos_solo, gantt_solo, dibujo_solo = p_solo.asignar(data=datos_proyecto.copy(), duration_label='duration',\n"
+                       "                                                     resource_label='operarios', maximo=[limites[0]], report=True, params=dict(period_width=1, **GANTT_PARAMS))\n"
+                       "gantt_eq_solo, _ = p_solo.gantt_cargas(datos_solo, 'duration', 'equipos', report=False, tikz=False)\n"
                        "cargas_eq_solo = gantt_eq_solo.data.loc['Total'].drop('H_total').astype(float)\n"
-                       "exceso = [int(t) for t, c in cargas_eq_solo.items() if c > limites[1]]\n"
-                       "Markdown(f'Solo con operarios la duración es {len(gantt_solo.data.columns.drop(\"H_total\"))} semanas, pero los equipos llegan a '\n"
+                       "exceso = [int(t) for t, c in cargas_eq_solo.items() if c > limites[1]]"))
+    celdas.append(code('#| fig-cap: "Gantt de operarios aplicando el algoritmo sólo a los operarios"\n#| label: fig-ganttSoloOperarios\n'
+                       "pinta_tikz(dibujo_solo)"))
+    celdas.append(code('#| fig-cap: "Cargas de equipos que resultan de ese calendario"\n#| label: fig-cargasEquiposSolo\n'
+                       "plot_cargas(gantt_df=gantt_eq_solo, limite_maximo_recursos=limites[1])"))
+    celdas.append(code(                       "Markdown(f'Solo con operarios la duración es {len(gantt_solo.data.columns.drop(\"H_total\"))} semanas, pero los equipos llegan a '\n"
                        "         f'{int(cargas_eq_solo.max())} (límite {limites[1]}) en las semanas {exceso}. '\n"
                        "         'Resolver un recurso desplaza actividades y puede crear picos en el otro: hay que comprobar todos a la vez, '\n"
                        "         'y corregir uno a uno no garantiza converger a un calendario factible.')"))

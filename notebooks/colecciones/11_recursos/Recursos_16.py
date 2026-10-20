@@ -237,6 +237,20 @@ limites = [4, 2]
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con tiempos y camino crítico (sin límites)"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario sin límite de recursos"
+#| label: tbl-calendario
+calendario_libre = proyecto.calendar(datos_proyecto['duration'])
+calendario_libre[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %%
 #| fig-cap: "Cargas de operarios con los inicios más tempranos"
 #| label: fig-cargasOperarios
 gantt_op, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)
@@ -262,8 +276,11 @@ Markdown(f'Operarios (límite {limites[0]}): se supera en las semanas {exceso_op
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# El algoritmo recorre las semanas; en cada una, las actividades disponibles (predecesoras terminadas) se ordenan por prioridad (menor inicio más tardío, luego menor duración) y cada una empieza sólo si cabe en **los dos** recursos durante todas las semanas que ocuparía; si no, espera. La traza indica entre paréntesis el recurso que bloquea a cada actividad que espera.
+
 # %%
-resultado = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', recursos, limites)
+resultado = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', recursos, limites, report=True, tikz=True, params=GANTT_PARAMS)
 calendario = pd.DataFrame({'inicio (semana)': resultado.inicios + 1, 'fin (semana)': resultado.fines,
                           'espera (semanas)': resultado.esperas}).fillna(0).astype(int)
 calendario
@@ -272,6 +289,21 @@ calendario
 esperas = resultado.traza[resultado.traza.decision == 'espera']
 esperas = esperas.rename(columns={'bloqueada_por': 'recurso que se satura'})
 esperas[['periodo', 'actividad', 'recurso que se satura']].reset_index(drop=True)
+
+# %%
+#| fig-cap: "Gantt de operarios tras la asignación simultánea (filas 💤: esperas)"
+#| label: fig-ganttOperarios
+pinta_tikz(resultado.dibujos['operarios'])
+
+# %%
+#| fig-cap: "Gantt de equipos tras la asignación simultánea"
+#| label: fig-ganttEquipos
+pinta_tikz(resultado.dibujos['equipos'])
+
+# %%
+#| tbl-cap: "Carga de cada recurso semana a semana frente a su límite"
+#| label: tbl-cargasLimites
+pd.concat([resultado.cargas.add_suffix(' ocupados'), resultado.limites.add_suffix(' (límite)')], axis=1).T
 
 # %%
 #| fig-cap: "Cargas de operarios tras la asignación simultánea"
@@ -296,11 +328,23 @@ display(Markdown(pregunta_3))
 
 # %%
 p_solo = proyecto.copy()
-datos_solo, gantt_solo, dibujo = p_solo.asignar(data=datos_proyecto.copy(), duration_label='duration',
-                                                resource_label='operarios', maximo=[limites[0]], report=False)
-gantt_eq_solo, dibujo = p_solo.gantt_cargas(datos_solo, 'duration', 'equipos', report=False, tikz=False)
+datos_solo, gantt_solo, dibujo_solo = p_solo.asignar(data=datos_proyecto.copy(), duration_label='duration',
+                                                     resource_label='operarios', maximo=[limites[0]], report=True, params=dict(period_width=1, **GANTT_PARAMS))
+gantt_eq_solo, _ = p_solo.gantt_cargas(datos_solo, 'duration', 'equipos', report=False, tikz=False)
 cargas_eq_solo = gantt_eq_solo.data.loc['Total'].drop('H_total').astype(float)
 exceso = [int(t) for t, c in cargas_eq_solo.items() if c > limites[1]]
+
+# %%
+#| fig-cap: "Gantt de operarios aplicando el algoritmo sólo a los operarios"
+#| label: fig-ganttSoloOperarios
+pinta_tikz(dibujo_solo)
+
+# %%
+#| fig-cap: "Cargas de equipos que resultan de ese calendario"
+#| label: fig-cargasEquiposSolo
+plot_cargas(gantt_df=gantt_eq_solo, limite_maximo_recursos=limites[1])
+
+# %%
 Markdown(f'Solo con operarios la duración es {len(gantt_solo.data.columns.drop("H_total"))} semanas, pero los equipos llegan a '
          f'{int(cargas_eq_solo.max())} (límite {limites[1]}) en las semanas {exceso}. '
          'Resolver un recurso desplaza actividades y puede crear picos en el otro: hay que comprobar todos a la vez, '

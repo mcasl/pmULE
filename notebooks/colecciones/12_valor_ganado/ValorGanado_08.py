@@ -207,14 +207,14 @@ for item in sorted(dir()):
 #| tbl-cap: "Planificación del proyecto"
 #| label: tbl-datosEnunciado
 datos_enunciado = pd.DataFrame([
-#  activity, predecessor, duration, BAC, profile         
-    ('A'     , '---'      , 7       , 60 , 'uniforme'      ),
-    ('B'     , '---'      , 2       , 60 , 'uniforme'      ),
-    ('C'     , '---'      , 6       , 20 , 'uniforme'      ),
-    ('D'     , 'A,B,C'    , 4       , 60 , 'inicio'        ),
-    ('E'     , 'B,C'      , 5       , 70 , 'final'         ),
-    ('F'     , 'C'        , 4       , 40 , 'uniforme'      ),
-    ('G'     , 'E,F'      , 5       , 20 , np.str_('final')),
+#  activity, predecessor, duration, BAC, profile   
+    ('A'     , '---'      , 7       , 60 , 'uniforme'),
+    ('B'     , '---'      , 2       , 60 , 'uniforme'),
+    ('C'     , '---'      , 6       , 20 , 'uniforme'),
+    ('D'     , 'A,B,C'    , 4       , 60 , 'inicio'  ),
+    ('E'     , 'B,C'      , 5       , 70 , 'final'   ),
+    ('F'     , 'C'        , 4       , 40 , 'uniforme'),
+    ('G'     , 'E,F'      , 5       , 20 , 'final'   ),
 ], columns=['activity', 'predecessor', 'duration', 'BAC', 'profile']).set_index('activity')
 datos_enunciado
 
@@ -266,6 +266,22 @@ BAC_total = float(datos_proyecto['BAC'].sum())
 
 # %%
 display(Markdown(pregunta_1))
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo PERT de la planificación"
+#| label: fig-pert
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %%
+#| tbl-cap: "Calendario de inicios más tempranos"
+#| label: tbl-calendario
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+
+# %% [markdown]
+# Con el inicio más temprano de cada actividad se reparte su BAC semana a semana según su perfil; la fila *suma* comprueba que se recupera el BAC.
 
 # %%
 def perfil_semanal(BAC, d, perfil):

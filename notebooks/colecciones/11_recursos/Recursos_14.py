@@ -284,7 +284,7 @@ def planificar(datos, prelaciones, limite, prioridad, interrumpible=False, max_p
 def gantt_texto(trabajo, limite):
     '''Tabla actividad × semana con el recurso usado y fila de carga total.'''
     T = max(max(s) for s in trabajo.values() if s)
-    g = pd.DataFrame('', index=list(trabajo), columns=range(1, T + 1))
+    g = pd.DataFrame('', index=list(trabajo), columns=range(1, T + 1), dtype=object)   # object: admite enteros y texto
     for a, semanas in trabajo.items():
         for t in semanas:
             g.loc[a, t] = int(datos_proyecto.loc[a, 'resources'])
@@ -301,6 +301,28 @@ regla = lambda a, t: (calendario.loc[a, 'H_total'], datos_proyecto.loc[a, 'durat
 
 # %%
 display(Markdown(pregunta_1))
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con tiempos y camino crítico (sin límite de operarios)"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario sin límite de recursos (la regla de prioridad usa la holgura total)"
+#| label: tbl-calendario
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %%
+#| fig-cap: "Cargas con los inicios más tempranos frente al límite"
+#| label: fig-cargasInicial
+gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)
+plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[limite])
+
+# %% [markdown]
+# El planificador recorre las semanas: una actividad es *disponible* cuando han terminado sus predecesoras; las disponibles se ordenan por la regla (menor holgura total, luego menor duración) y entran mientras quepan en el límite. Sin interrupciones, las ya empezadas van primero.
 
 # %%
 #| tbl-cap: "Programación sin interrupciones"

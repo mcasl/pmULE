@@ -305,6 +305,11 @@ duraciones_lp = datos_proyecto['duration'] - x_lp.reindex(datos_proyecto.index).
 Markdown(f'La programación lineal acorta {", ".join(f"{a} ({x:g})" for a, x in x_lp[x_lp > 0].items())} con sobrecoste {coste_lp:.0f} k€; '
          f'todas las rutas quedan en como mucho {float((R @ duraciones_lp[acts]).max()):g} semanas (objetivo {T_objetivo}).')
 
+# %%
+#| tbl-cap: "Duración de cada ruta con la solución del programa lineal"
+#| label: tbl-rutasLP
+detalle_rutas(R, duraciones_lp[acts], decimales=1)
+
 # %% [markdown]
 # ## Apartado 4
 

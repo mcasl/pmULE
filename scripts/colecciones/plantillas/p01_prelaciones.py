@@ -32,7 +32,7 @@ def _base(k, rng):
     errata = None
     if con_ciclo:
         G = P.grafo(preds)
-        candidatos = [(d, e) for e in preds for d in nx.descendants(G, e) if e not in preds[d]]
+        candidatos = [(d, e) for e in preds for d in sorted(nx.descendants(G, e)) if e not in preds[d]]
         d, e = candidatos[int(rng.integers(0, len(candidatos)))]
         errata = (d, e)           # "d precede a e" es la errata
         dado[e].add(d)
@@ -205,7 +205,7 @@ def _grafo_erroneo(rng):
         preds = {a: set(ps) for a, ps in i["preds"].items()}
         G = P.grafo(preds)
         # quitar una prelación (que no deje a nadie sin predecesora) y añadir otra no redundante
-        quitables = [(p, a) for a, ps in preds.items() for p in ps if len(ps) > 1]
+        quitables = [(p, a) for a, ps in preds.items() for p in sorted(ps) if len(ps) > 1]
         if not quitables:
             return False
         p_q, a_q = quitables[int(rng.integers(0, len(quitables)))]

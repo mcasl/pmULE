@@ -213,7 +213,7 @@ datos_enunciado = pd.DataFrame([
     ('J'     , 'B,I'      ),
     ('F'     , 'E'        ),
     ('A'     , '---'      ),
-    ('H'     , 'B,E'      ),
+    ('H'     , 'C,E'      ),
     ('D'     , 'C'        ),
     ('E'     , 'A,B,C'    ),
     ('B'     , '---'      ),

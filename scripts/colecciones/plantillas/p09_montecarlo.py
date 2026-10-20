@@ -419,6 +419,16 @@ def _convergencia(rng):
                        "    T = np.clip(rng.normal(mu, sigma, (len(R.columns), N)), 0, None)\n"
                        "    return (R.values @ T).max(axis=0)"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias y el camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Matriz de rutas"\n#| label: tbl-matrizRutas\n'
+                       "proyecto.display_path_matrix(dummies=False)"))
+    celdas.append(code('#| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"\n#| label: tbl-rutas\n'
+                       "datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2\n"
+                       "medias_rutas = detalle_rutas(R, datos_proyecto['duration'][R.columns], nombre='duración media')\n"
+                       "varianzas_rutas = detalle_rutas(R, datos_proyecto['variance'][R.columns], nombre='varianza', decimales=2)\n"
+                       "pd.concat([medias_rutas, varianzas_rutas[['varianza = suma', 'varianza']]], axis=1)"))
+    celdas.append(md("Cada réplica es un vector de duraciones normales; la duración de cada ruta es R·t y la del proyecto, "
+                     "el máximo. Para cada tamaño N se repite el mismo cálculo con más columnas."))
     celdas.append(code("tamanos = [20, 200, 2000, 20000]\n"
                        "filas = {}\n"
                        "for N in tamanos:\n"
@@ -500,6 +510,10 @@ def _correlacionadas(rng):
                        "duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
                        "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
                        "Markdown(f'Duración media del proyecto: {duracion_media} semanas. Actividades expuestas al factor común: {\", \".join(expuestas)}.')"))
+    celdas.append(code('#| tbl-cap: "Duración media de cada ruta y actividades expuestas que contiene"\n#| label: tbl-rutas\n'
+                       "rutas = detalle_rutas(path_matrix, datos_proyecto['duration'][path_matrix.columns], nombre='duración media')\n"
+                       "rutas['expuestas en la ruta'] = [', '.join(a for a in path_matrix.columns[path_matrix.loc[r] == 1] if a in expuestas) or 'ninguna' for r in path_matrix.index]\n"
+                       "rutas"))
     celdas += apartado(2)
     celdas.append(code(f"rng = np.random.default_rng({semilla})\n"
                        "mu, sigma = datos_proyecto['duration'].astype(float), datos_proyecto['standard_deviation'].astype(float)\n"
@@ -589,6 +603,8 @@ def _percentiles(rng):
                        "duraciones_rutas_medias = path_matrix @ datos_proyecto['duration'][path_matrix.columns]\n"
                        "duracion_media = float(duraciones_rutas_medias.max())\n"
                        "Markdown(f'Con las medias, la ruta más larga es {duraciones_rutas_medias.idxmax()} ({\" - \".join(path_matrix.columns[path_matrix.loc[duraciones_rutas_medias.idxmax()] == 1])}) y la duración {duracion_media:.2f} semanas.')"))
+    celdas.append(code('#| tbl-cap: "Duración media de cada ruta"\n#| label: tbl-rutas\n'
+                       "detalle_rutas(path_matrix, datos_proyecto['duration'][path_matrix.columns], nombre='duración media', decimales=2)"))
     celdas += apartado(2)
     celdas.append(code(f"rng = np.random.default_rng({semilla})\n"
                        "duraciones_mc = pd.DataFrame({act: rng.triangular(fila['a'], fila['m'], fila['b'], N) for act, fila in datos_proyecto.iterrows()})\n"
@@ -687,13 +703,39 @@ def _recursos_limitados(rng):
                        "demanda = datos_proyecto[['predecessor', 'duration', 'operarios']]\n"
                        "dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}"))
     celdas += apartado(1)
-    celdas.append(code("duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
-                       "res0 = proyecto.copy().asignar_multi(demanda.copy(), 'duration', ['operarios'], limite)\n"
-                       "Markdown(f'Con las duraciones más probables: {duracion_libre} semanas sin límite y {res0.duracion} semanas con {limite[0]} operarios.')"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones más probables y el camino crítico (sin límite)", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario sin límite de recursos"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
+    celdas.append(code('#| fig-cap: "Carga de operarios con los inicios más tempranos frente al límite"\n#| label: fig-cargasInicial\n'
+                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(demanda.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)\n"
+                       "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=limite)"))
+    celdas.append(md("El algoritmo de asignación recorre las semanas: cada actividad disponible (predecesoras terminadas) "
+                     "empieza, por orden de prioridad (menor inicio más tardío), si caben sus operarios durante toda su "
+                     "duración; si no, espera. Traza semana a semana y Gantt resultante (filas 💤: esperas):"))
+    celdas.append(code("res0 = proyecto.copy().asignar_multi(demanda.copy(), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)"))
+    celdas.append(code('#| fig-cap: "Gantt con el límite de operarios y las duraciones más probables"\n#| label: fig-ganttAsignado\n'
+                       "pinta_tikz(res0.dibujos['operarios'])"))
+    celdas.append(code('#| tbl-cap: "Inicio de cada actividad sin y con límite"\n#| label: tbl-inicios\n'
+                       "pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int), 'inicio con límite': res0.inicios, 'fin con límite': res0.fines,\n"
+                       "              'espera (semanas)': res0.esperas}).fillna(0).astype(int).T"))
+    celdas.append(code("Markdown(f'Con las duraciones más probables: {duracion_libre} semanas sin límite y {res0.duracion} semanas con {limite[0]} operarios.')"))
     celdas += apartado(2)
+    celdas.append(md("En cada réplica se sortean las duraciones (triangulares, redondeadas a semanas enteras), se calcula "
+                     "la duración sin recursos (camino más largo) y se vuelve a aplicar el algoritmo de asignación con el "
+                     "límite: dos duraciones por réplica. `monte_carlo_recursos` hace las 2000 réplicas y guarda ambas."))
     celdas.append(code('#| tbl-cap: "Distribución de la duración con y sin límite de recursos"\n#| label: tbl-mcRecursos\n'
                        "mc = proyecto.copy().monte_carlo_recursos(dists, demanda[['operarios']].copy(), ['operarios'], limite, n_samples=2000, seed=11)\n"
                        "mc.summary().round(2)"))
+    celdas.append(code('#| fig-cap: "Distribución simulada de la duración sin y con el límite de operarios"\n#| label: fig-histograma\n'
+                       "from matplotlib import pyplot as plt\n"
+                       "fig, ax = plt.subplots(figsize=(8, 4))\n"
+                       "bins = np.arange(min(mc.tau_libre_samples.min(), mc.tau_recursos_samples.min()) - 0.5, max(mc.tau_libre_samples.max(), mc.tau_recursos_samples.max()) + 1.5, 1)\n"
+                       "ax.hist(mc.tau_libre_samples, bins=bins, alpha=0.5, label='sin límite')\n"
+                       "ax.hist(mc.tau_recursos_samples, bins=bins, alpha=0.5, label=f'con {limite[0]} operarios')\n"
+                       "ax.axvline(plazo, color='red', linestyle='--', label=f'plazo ({plazo})')\n"
+                       "ax.set_xlabel('duración del proyecto (semanas)'); ax.set_ylabel('réplicas'); ax.legend(); plt.show()"))
     celdas.append(code("Markdown(f'La media sube de {mc.tau_libre_samples.mean():.2f} a {mc.tau_recursos_samples.mean():.2f} semanas '\n"
                        "         f'y la desviación típica pasa de {mc.tau_libre_samples.std():.2f} a {mc.tau_recursos_samples.std():.2f}. '\n"
                        "         'El límite añade esperas que dependen de qué actividades coinciden en cada réplica.')"))

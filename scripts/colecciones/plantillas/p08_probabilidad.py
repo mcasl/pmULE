@@ -227,6 +227,12 @@ def _varianza_maxima(rng):
     celdas.append(code("duracion_media = proyecto.duration(datos_proyecto['duration'])\n"
                        "criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts))\n"
                        "Markdown(f'Duración media {duracion_media} semanas; ruta crítica {\" - \".join(criticas)}. {X} {\"sí\" if X in criticas else \"no\"} está en ella.')"))
+    celdas.append(code('#| tbl-cap: "Media de cada ruta y varianza de las actividades de desviación conocida"\n#| label: tbl-rutas\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "sd_conocida = pd.to_numeric(datos_proyecto['standard_deviation'], errors='coerce').fillna(0.0)\n"
+                       "medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')\n"
+                       "varianzas = detalle_rutas(R, (sd_conocida ** 2)[R.columns], 'varianza sin ' + X, 3)\n"
+                       "pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)"))
     celdas += apartado(2)
     celdas.append(code("var_resto = float((datos_proyecto.loc[[a for a in criticas if a != X], 'standard_deviation'] ** 2).sum())\n"
                        "Markdown(f'Varianza del proyecto = varianza del resto de la ruta crítica + σ² = {var_resto:.3f} + σ².')"))
@@ -302,6 +308,11 @@ def _diagnostico(rng):
                        "criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts))\n"
                        "suma_sigmas = float(datos_proyecto.loc[criticas, 'standard_deviation'].sum())\n"
                        "pd.Series({'suma de σ (incorrecto)': suma_sigmas, 'raíz de la suma de varianzas (correcto)': desviacion_proyecto}).round(3).to_frame('σ del proyecto')"))
+    celdas.append(code('#| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"\n#| label: tbl-rutas\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')\n"
+                       "varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'varianza', 3)\n"
+                       "pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)"))
     celdas += apartado(3)
     celdas.append(md("El segundo alumno ha sumado varianzas, que es lo correcto, pero de una ruta que no es la "
                      "crítica. La varianza del proyecto se toma de la ruta crítica; sólo si esa otra ruta también "

@@ -143,6 +143,8 @@ def _deterministas(rng):
                        "datos_proyecto['duration'] = datos_proyecto.eval('(a + 4 * m + b) / 6').round().astype(int)\n"
                        "datos_proyecto['variance'] = datos_proyecto.eval('((b - a) / 6) ** 2')\n"
                        "datos_proyecto"))
+    celdas.append(code('#| tbl-cap: "Media y varianza PERT de cada actividad con los números sustituidos"\n#| label: tbl-estimaciones\n'
+                       "detalle_estimaciones(datos_proyecto)"))
     celdas.append(md("Cuando $a = m = b$ la varianza es $(b-a)^2/36 = 0$: la actividad no aporta incertidumbre, "
                      "aunque sí aporta duración."))
     celdas += apartado(2)

@@ -259,8 +259,33 @@ plan = datos_proyecto['m']
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(plan)
+
+# %%
+#| fig-cap: "Grafo PERT de la línea base (duraciones más probables) con el camino crítico"
+#| label: fig-pert
+proyecto.pert(durations=plan, ranksep=1)
+
+# %%
+#| tbl-cap: "Calendario de la línea base"
+#| label: tbl-calendario
+calendario = proyecto.calendar(plan)
 T_plan = proyecto.duration(plan)
-Markdown(f'Línea base: {T_plan} semanas, BAC = {datos_proyecto["BAC"].sum():.0f} k€.')
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+
+# %% [markdown]
+# El valor planificado de cada actividad en una fecha es su BAC por la fracción de su duración que, según el calendario, debería haberse ejecutado; el PV del proyecto es la suma.
+
+# %%
+#| tbl-cap: "Valor planificado de cada actividad en cada fecha de control (k€)"
+#| label: tbl-pvFechas
+pv_fechas = pd.DataFrame({f'semana {t}': datos_proyecto['BAC'] * ((t - calendario['inicio_mas_temprano']).clip(lower=0).clip(upper=calendario['duracion']) / calendario['duracion']) for t in puntos})
+pv_fechas.loc['Total (PV)'] = pv_fechas.sum()
+pv_fechas.round(1)
+
+# %%
+Markdown(f'Línea base: {T_plan} semanas, BAC = {datos_proyecto["BAC"].sum():.0f} k€; PV en las fechas de control: '
+         + ', '.join(f'semana {t}: {v:.1f} k€' for t, v in zip(puntos, pv_fechas.loc["Total (PV)"])) + '.')
 
 # %% [markdown]
 # ## Apartado 2

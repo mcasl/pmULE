@@ -224,6 +224,39 @@ datos_enunciado
 # # Resolución
 
 # %%
+def van(flujos, k):
+    '''Valor actual neto de una lista de flujos (el primero en t = 0) a la tasa k.'''
+    return float(sum(f / (1 + k) ** t for t, f in enumerate(flujos)))
+
+def tir(flujos):
+    '''Tasa que anula el VAN (por bisección entre −99 % y 1000 %).'''
+    from scipy.optimize import brentq
+    return float(brentq(lambda k: van(flujos, k), -0.99, 10.0))
+
+def tabla_descuento(flujos, k):
+    '''Año, flujo, factor de descuento, valor actual y valores acumulados (simple y descontado).'''
+    t = pd.DataFrame({'flujo': list(flujos)}, index=pd.Index(range(len(flujos)), name='año'))
+    t['(1 + k)^-t'] = [(1 + k) ** -i for i in t.index]
+    t['valor actual'] = t['flujo'] * t['(1 + k)^-t']
+    t['acumulado'] = t['flujo'].cumsum()
+    t['acumulado descontado'] = t['valor actual'].cumsum()
+    return t
+
+def payback(flujos, k=None):
+    '''Periodo de recuperación (años, con interpolación lineal dentro del año); descontado si se da k.'''
+    acum = 0.0
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return float(t - 1 + (-acum) / v)
+        acum += v
+    return float('inf')
+
+def anualidad_equivalente(VAN, k, n):
+    '''Anualidad constante durante n años cuyo valor actual es VAN.'''
+    return float(VAN * k / (1 - (1 + k) ** -n))
+
+# %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -237,14 +270,63 @@ BAC = datos_proyecto['BAC']
 display(Markdown(pregunta_1))
 
 # %%
-#| tbl-cap: "VAN sin y con límite de operarios"
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con el camino crítico (sin límite de operarios)"
+#| label: fig-grafo
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario sin límite de recursos (meses)"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+duracion_libre = int(proyecto.duration(datos_proyecto['duration']))
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %% [markdown]
+# El coste mensual de cada actividad es su BAC entre su duración; la fila *Total* del Gantt es el desembolso de cada mes. Cada mes es un periodo: en los meses 1…T el flujo es −desembolso y en los T+1…T+N, +F; la tasa mensual equivalente cumple $(1 + k_m)^{12} = 1 + k$.
+
+# %%
+#| fig-cap: "Gantt de inicios más tempranos con el coste mensual de cada actividad (k€)"
+#| label: fig-ganttCostes
+datos_gantt = datos_proyecto.copy()
+datos_gantt['coste_mensual'] = datos_gantt['BAC'] / datos_gantt['duration']
+gantt_costes, dibujo = proyecto.gantt(datos_gantt, 'duration', 'coste_mensual', total='ambas', acumulado=True, tikz=True,
+                                      params=dict(inner_text_digits=1, **GANTT_PARAMS))
+pinta_tikz(dibujo)
+
+# %%
+def desembolsos(inicios, duraciones):
+    '''Desembolso de cada mes repartiendo el BAC de cada actividad uniformemente desde su inicio (contado desde 0).'''
+    T = int(max(inicios[a] + duraciones[a] for a in datos_proyecto.index))
+    pagos = pd.Series(0.0, index=range(1, T + 1))
+    for a, fila in datos_proyecto.iterrows():
+        es, d = int(inicios[a]), int(duraciones[a])
+        for m in range(es + 1, es + d + 1):
+            pagos[m] += fila['BAC'] / d
+    return pagos
+def flujo_mensual(pagos):
+    return [0.0] + [-float(x) for x in pagos] + [F] * N
+k_mensual = (1 + k) ** (1 / 12) - 1
+pagos_libre = desembolsos(calendario['inicio_mas_temprano'], datos_proyecto['duration'])
+flujos_libre = flujo_mensual(pagos_libre)
+VAN_libre = van(flujos_libre, k_mensual)
+display(pd.DataFrame({'desembolso (k€)': pagos_libre}).T.round(1))
+Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin límite: {duracion_libre} meses de inversión ({pagos_libre.sum():.0f} k€ = Σ BAC) y '
+         f'VAN = {VAN_libre:.1f} k€ (valor actual de los ingresos {van([0.0] * (duracion_libre + 1) + [F] * N, k_mensual):.1f} menos el de los desembolsos '
+         f'{-van([0.0] + [-float(x) for x in pagos_libre], k_mensual):.1f}).')
+
+# %%
+#| tbl-cap: "VAN sin y con límite de operarios (van_recursos)"
 #| label: tbl-escenarios
 res = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, F, N, k, ampliaciones=3)
 escenarios = res['escenarios'].round(2)
 escenarios
 
 # %%
-Markdown(f'Sin límite: {escenarios.loc["sin límite", "duración"]:.0f} meses y VAN {escenarios.loc["sin límite", "VAN"]:.1f} k€.')
+Markdown(f'La librería da lo mismo: sin límite {escenarios.loc["sin límite", "duración"]:.0f} meses y VAN {escenarios.loc["sin límite", "VAN"]:.1f} k€ '
+         f'(VAN de los ingresos {escenarios.loc["sin límite", "VAN ingresos"]:.1f}, de los costes {escenarios.loc["sin límite", "VAN costes"]:.1f}).')
 
 # %% [markdown]
 # ## Apartado 2
@@ -253,9 +335,40 @@ Markdown(f'Sin límite: {escenarios.loc["sin límite", "duración"]:.0f} meses y
 display(Markdown(pregunta_2))
 
 # %%
+#| fig-cap: "Carga de operarios con los inicios más tempranos frente al límite"
+#| label: fig-cargasInicial
+gantt_op, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)
+plot_cargas(gantt_df=gantt_op, limite_maximo_recursos=[L])
+
+# %% [markdown]
+# El algoritmo de asignación recorre los meses; cada actividad disponible (predecesoras terminadas) empieza, por orden de prioridad (menor inicio más tardío), si caben sus operarios durante toda su duración; si no, espera. Traza mes a mes y Gantt resultante (filas 💤: esperas):
+
+# %%
+res_lim = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operarios'], [L], report=True, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt con el límite de operarios"
+#| label: fig-ganttLimite
+pinta_tikz(res_lim.dibujos['operarios'])
+
+# %%
+#| tbl-cap: "Inicio de cada actividad sin y con límite"
+#| label: tbl-iniciosLimite
+pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int), 'inicio con límite': res_lim.inicios.reindex(datos_proyecto.index),
+              'espera (meses)': res_lim.esperas.reindex(datos_proyecto.index).fillna(0).astype(int)}).T
+
+# %%
+#| tbl-cap: "Desembolso mensual sin y con límite (k€)"
+#| label: tbl-desembolsosLimite
+pagos_lim = desembolsos(res_lim.inicios, datos_proyecto['duration'])
+flujos_lim = flujo_mensual(pagos_lim)
+VAN_lim = van(flujos_lim, k_mensual)
+pd.DataFrame({'sin límite': pagos_libre, 'con límite': pagos_lim}).fillna(0).T.round(1)
+
+# %%
 dif = escenarios.loc['con límite'] - escenarios.loc['sin límite']
-Markdown(f'Con {L} operarios el proyecto dura {escenarios.loc["con límite", "duración"]:.0f} meses (+{dif["duración"]:.0f}); '
-         f'el VAN pasa de {escenarios.loc["sin límite", "VAN"]:.1f} a {escenarios.loc["con límite", "VAN"]:.1f} k€ ({dif["VAN"]:.1f}). '
+Markdown(f'Con {L} operarios el proyecto dura {res_lim.duracion} meses (+{res_lim.duracion - duracion_libre}): los ingresos empiezan en el mes {res_lim.duracion + 1} en vez del {duracion_libre + 1}. '
+         f'VAN = {VAN_lim:.1f} k€ (la librería: {escenarios.loc["con límite", "VAN"]:.1f}) frente a {VAN_libre:.1f} sin límite: {dif["VAN"]:.1f} k€. '
          f'Efecto en los ingresos: {dif["VAN ingresos"]:.1f} k€ (se cobran más tarde); en los costes: {-dif["VAN costes"]:.1f} k€ '
          '(las actividades que esperan se pagan más tarde y el coste se descuenta más). El retraso de los ingresos domina.')
 

@@ -242,6 +242,15 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 
 # %%
+#| tbl-cap: "Calendario: fechas y holgura total de cada actividad"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %% [markdown]
+# En el Gantt cada actividad empieza en su inicio más temprano y la casilla lleva los operarios que ocupa; la fila *Total* suma la columna (carga de la semana) y la fila *Cuadrados* eleva cada carga al cuadrado (su suma, en la última columna, es la medida de desnivel que usa la nivelación).
+
+# %%
 #| fig-cap: "Diagrama de Gantt con las cargas de operarios (inicios más tempranos)"
 #| label: fig-ganttInicial
 proyecto_inicial = proyecto.copy()
@@ -271,6 +280,13 @@ display(Markdown(pregunta_2))
 # %% [markdown]
 # El algoritmo de Wiest-Levy recorre el calendario periodo a periodo: cuando la demanda supera el límite, aplaza las actividades con más holgura (y, si no basta, también críticas, lo que alarga el proyecto). Las filas 💤 marcan las esperas introducidas.
 
+# %% [markdown]
+# Prioridad para entrar en una semana: primero las actividades ya empezadas (no se interrumpen); entre las demás, menor holgura total y, a igualdad, menor duración. Traza semana a semana (qué se programa y qué se aplaza una semana cuando la carga supera el límite):
+
+# %%
+_ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',
+                           maximo=limite_maximo_recursos, report=True)
+
 # %%
 #| fig-cap: "Diagrama de Gantt tras la asignación"
 #| label: fig-ganttAsignado
@@ -297,6 +313,10 @@ Markdown(f'El proyecto pasa de {duracion_inicial} a {duracion_asignada} semanas.
 
 # %%
 display(Markdown(pregunta_3))
+
+# %%
+_ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',
+                           maximo=[6], report=True)
 
 # %%
 #| fig-cap: "Diagrama de Gantt con el límite constante"

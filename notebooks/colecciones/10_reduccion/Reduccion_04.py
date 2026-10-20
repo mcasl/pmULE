@@ -250,6 +250,11 @@ for nombre, acts in rutas_criticas.items():
 comunes = set.intersection(*[set(a) for a in rutas_criticas.values()])
 Markdown(f'Duración {duracion_normal} semanas con {len(rutas_criticas)} rutas críticas; actividades comunes a todas: {", ".join(sorted(comunes)) or "ninguna"}.')
 
+# %%
+#| tbl-cap: "Duración de cada ruta (suma de sus actividades)"
+#| label: tbl-rutas
+detalle_rutas(R, datos_proyecto['duration'][R.columns])
+
 # %% [markdown]
 # ## Apartado 2
 
@@ -270,6 +275,11 @@ barata = 'A'
 d1 = datos_proyecto['duration'].copy(); d1[barata] -= 1
 Markdown(f'Acortando {barata} una semana la duración del proyecto es {proyecto.duration(d1)} semanas (antes {duracion_normal}): '
          f'se han gastado {datos_proyecto.loc[barata, "ucr"]:.0f} k€ para nada; la ruta {[r for r, a in rutas_criticas.items() if barata not in a][0]} sigue siendo crítica.')
+
+# %%
+#| tbl-cap: "Duración de cada ruta tras acortar sólo la actividad más barata"
+#| label: tbl-rutasBarata
+detalle_rutas(R, d1[R.columns])
 
 # %% [markdown]
 # ## Apartado 4

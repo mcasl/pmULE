@@ -207,15 +207,15 @@ for item in sorted(dir()):
 #| tbl-cap: "Planificación del proyecto"
 #| label: tbl-datosEnunciado
 datos_enunciado = pd.DataFrame([
-#  activity, predecessor, duration, BAC, profile          
-    ('A'     , '---'      , 3       , 20 , 'uniforme'       ),
-    ('B'     , '---'      , 2       , 40 , np.str_('inicio')),
-    ('C'     , '---'      , 4       , 60 , 'uniforme'       ),
-    ('D'     , 'A,B,C'    , 4       , 30 , 'uniforme'       ),
-    ('E'     , 'B'        , 2       , 60 , 'uniforme'       ),
-    ('F'     , 'E'        , 6       , 50 , 'inicio'         ),
-    ('G'     , 'C'        , 5       , 20 , 'final'          ),
-    ('H'     , 'F,G'      , 5       , 40 , 'uniforme'       ),
+#  activity, predecessor, duration, BAC, profile   
+    ('A'     , '---'      , 3       , 20 , 'uniforme'),
+    ('B'     , '---'      , 2       , 40 , 'inicio'  ),
+    ('C'     , '---'      , 4       , 60 , 'uniforme'),
+    ('D'     , 'A,B,C'    , 4       , 30 , 'uniforme'),
+    ('E'     , 'B'        , 2       , 60 , 'uniforme'),
+    ('F'     , 'E'        , 6       , 50 , 'inicio'  ),
+    ('G'     , 'C'        , 5       , 20 , 'final'   ),
+    ('H'     , 'F,G'      , 5       , 40 , 'uniforme'),
 ], columns=['activity', 'predecessor', 'duration', 'BAC', 'profile']).set_index('activity')
 datos_enunciado
 
@@ -251,6 +251,22 @@ BAC_total = float(datos_proyecto['BAC'].sum())
 
 # %%
 display(Markdown(pregunta_1))
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy de la planificación"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario de inicios más tempranos"
+#| label: tbl-calendario
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+
+# %% [markdown]
+# Con el inicio más temprano de cada actividad se reparte su BAC semana a semana según su perfil; la fila *suma* comprueba que se recupera el BAC.
 
 # %%
 def perfil_semanal(BAC, d, perfil):

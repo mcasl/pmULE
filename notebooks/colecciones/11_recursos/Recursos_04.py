@@ -236,6 +236,20 @@ suministro = 70
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo PERT con tiempos y camino crítico"
+#| label: fig-pert
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %%
+#| tbl-cap: "Calendario: fechas y holgura total de cada actividad"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %%
 #| fig-cap: "Diagrama de Gantt con el consumo semanal"
 #| label: fig-ganttInicial
 gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)
@@ -257,6 +271,13 @@ Markdown(f'Se supera el suministro en las semanas {", ".join(str(t) for t in exc
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# El algoritmo de asignación recorre las semanas; cuando el consumo supera el suministro aplaza una semana las actividades con más holgura (primero las que aún no han empezado) y, si no basta, también las críticas. Traza semana a semana:
+
+# %%
+_ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',
+                           maximo=[suministro], report=True)
+
 # %%
 #| fig-cap: "Diagrama de Gantt tras la asignación"
 #| label: fig-ganttAsignado
@@ -270,6 +291,11 @@ pinta_tikz(dibujo)
 duracion_inicial = proyecto.duration(datos_proyecto['duration'])
 duracion_asignada = len(gantt_asignado.data.columns.drop('H_total'))
 Markdown(f'Sin almacenamiento el proyecto pasa de {duracion_inicial} a {duracion_asignada} semanas.')
+
+# %%
+#| fig-cap: "Consumo semanal tras la asignación frente al suministro"
+#| label: fig-cargasAsignado
+plot_cargas(gantt_df=gantt_asignado, limite_maximo_recursos=[suministro])
 
 # %% [markdown]
 # ## Apartado 3

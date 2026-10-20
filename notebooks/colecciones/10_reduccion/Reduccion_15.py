@@ -257,10 +257,63 @@ base = datos_proyecto[['predecessor', 'duration', 'operarios']]
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo PERT con las duraciones normales y el camino crítico (sin límite de operarios)"
+#| label: fig-pert
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %%
+#| tbl-cap: "Calendario sin límite de recursos"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_libre = proyecto.duration(datos_proyecto['duration'])
-res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], limite)
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %%
+#| fig-cap: "Gantt de inicios más tempranos con los operarios de cada actividad (fila Total: carga semanal)"
+#| label: fig-ganttInicial
+gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)
+pinta_tikz(dibujo)
+
+# %%
+#| fig-cap: "Carga de operarios frente al límite"
+#| label: fig-cargasInicial
+plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=limite)
+
+# %%
+cargas = gantt_inicial.data.loc['Total'].drop('H_total').astype(float)
+exceso = cargas[cargas > limite[0]]
+Markdown(f'Sin límite el proyecto dura {duracion_libre} semanas, pero en las semanas {", ".join(str(t) for t in exceso.index)} harían falta '
+         f'{", ".join(f"{int(c)}" for c in exceso)} operarios, más de los {limite[0]} disponibles: hay que reprogramar.')
+
+# %% [markdown]
+# El algoritmo de asignación recorre las semanas una a una. En cada semana son *candidatas* las actividades no empezadas cuyas predecesoras han terminado; se ordenan por prioridad (menor inicio más tardío en el calendario sin recursos, después menor duración) y cada una empieza si, en todas las semanas que ocuparía, los operarios ya comprometidos más los suyos no superan el límite; si no, espera. La traza muestra la decisión de cada semana y, entre paréntesis, el recurso que bloquea a las que esperan.
+
+# %%
+res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt con el límite de operarios (filas 💤: esperas por falta de operarios)"
+#| label: fig-ganttAsignado
+pinta_tikz(res0.dibujos['operarios'])
+
+# %%
+#| tbl-cap: "Calendario con recursos: inicio, fin y espera de cada actividad"
+#| label: tbl-calendarioRecursos
+calendario_recursos = pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int), 'inicio con límite': res0.inicios,
+                                    'fin con límite': res0.fines, 'espera (semanas)': res0.esperas}).fillna(0).astype(int)
+calendario_recursos
+
+# %%
+#| tbl-cap: "Carga de operarios semana a semana frente al límite"
+#| label: tbl-cargasRecursos
+pd.concat([res0.cargas['operarios'].rename('operarios ocupados'), res0.limites['operarios'].rename('límite')], axis=1).T
+
+# %%
 cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], limite)
-Markdown(f'Sin límite: {duracion_libre} semanas. Con {limite[0]} operarios: {res0.duracion} semanas. '
+Markdown(f'Sin límite: {duracion_libre} semanas. Con {limite[0]} operarios: {res0.duracion} semanas ({res0.duracion - duracion_libre} más). '
          f'Cadena crítica con recursos: {", ".join(sorted(cadena["actividades"]))}.')
 
 # %%
@@ -269,7 +322,7 @@ Markdown(f'Sin límite: {duracion_libre} semanas. Con {limite[0]} operarios: {re
 cadena['arcos'].rename(columns={'de': 'de', 'a': 'a', 'motivo': 'motivo (precedencia o recurso)'})
 
 # %% [markdown]
-# Los arcos de *recurso* son esperas: una actividad no puede empezar porque otra que usa los mismos operarios aún no ha terminado. La duración la fija esa cadena (precedencias más esperas), no el camino crítico.
+# La cadena crítica con recursos se lee hacia atrás desde la última actividad: cada arco une una actividad con otra que empieza justo cuando ella termina, bien porque es su predecesora (*precedencia*), bien porque le libera los operarios que esperaba (*recurso*). Los arcos de recurso son esperas, no prelaciones: la duración la fija esa cadena (precedencias más esperas), no el camino crítico del grafo.
 
 # %% [markdown]
 # ## Apartado 2
@@ -277,15 +330,52 @@ cadena['arcos'].rename(columns={'de': 'de', 'a': 'a', 'motivo': 'motivo (precede
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# Ackoff-Sasieni sólo mira el grafo: acorta en cada paso, una semana, la combinación más barata de actividades que reduce todas las rutas críticas *sin recursos*. La tabla muestra, para cada ruta, el CUR de sus actividades y su duración tras cada paso.
+
 # %%
+#| tbl-cap: "Algoritmo de Ackoff-Sasieni sin tener en cuenta los recursos"
+#| label: tbl-ackoff
 tabla_ack, pasos_ack, dur_ack, margen = proyecto.ackoff(durations=datos_proyecto['duration'],
     min_durations=datos_proyecto['cap_duration'], costs=datos_proyecto['ucr'], reduction=2, report=False)
-coste_ack = float(sum(datos_proyecto.loc[a, 'ucr'] for acts in pasos_ack.values() for a in acts))
-res_ack = proyecto.copy().asignar_multi(base.assign(duration=dur_ack), 'duration', ['operarios'], limite)
-Markdown(f'Ackoff sin recursos reduce el proyecto a {proyecto.duration(dur_ack)} semanas (coste {coste_ack:.0f} k€), '
+tabla_ack
+
+# %%
+#| tbl-cap: "Opciones consideradas en cada paso"
+#| label: tbl-ackoffPaso
+detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duration'], datos_proyecto['ucr'], pasos_ack)
+
+# %%
+resumen_ack = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos_ack.values()],
+                            'coste del paso': [float(sum(datos_proyecto.loc[acts, 'ucr'])) for acts in pasos_ack.values()]},
+                           index=pd.Index(range(1, len(pasos_ack) + 1), name='paso'))
+coste_ack = float(resumen_ack['coste del paso'].sum())
+resumen_ack
+
+# %% [markdown]
+# Aplicadas esas reducciones, se vuelve a programar con el límite de operarios:
+
+# %%
+res_ack = proyecto.copy().asignar_multi(base.assign(duration=dur_ack.reindex(base.index).astype(int)), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt con el límite de operarios tras las reducciones de Ackoff-Sasieni"
+#| label: fig-ganttAckoff
+pinta_tikz(res_ack.dibujos['operarios'])
+
+# %%
+#| tbl-cap: "Duración e inicio de cada actividad antes y después de aplicar Ackoff-Sasieni (con el límite)"
+#| label: tbl-inicioAckoff
+pd.DataFrame({'duración normal': datos_proyecto['duration'], 'duración Ackoff': dur_ack.reindex(datos_proyecto.index).astype(int),
+              'inicio con límite (antes)': res0.inicios, 'inicio con límite (después)': res_ack.inicios,
+              'fin con límite (antes)': res0.fines, 'fin con límite (después)': res_ack.fines}).T
+
+# %%
+Markdown(f'Ackoff sin recursos reduce el proyecto a {proyecto.duration(dur_ack)} semanas sobre el papel (coste {coste_ack:.0f} k€), '
          f'pero con el límite de operarios la duración es {res_ack.duracion} semanas (antes {res0.duracion}). '
-         'Ackoff eligió por el camino crítico sin recursos, y eso no acorta la cadena crítica con recursos: '
-         'el dinero se gasta sin acortar lo que de verdad manda.')
+         f'Las actividades acortadas ({", ".join(sorted(set(a for acts in pasos_ack.values() for a in acts)))}) están en el camino crítico del grafo, '
+         f'pero lo que manda con recursos es la cadena {", ".join(sorted(cadena["actividades"]))}: '
+         'el dinero se gasta sin acortar lo que de verdad fija el plazo.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -293,17 +383,37 @@ Markdown(f'Ackoff sin recursos reduce el proyecto a {proyecto.duration(dur_ack)}
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# `crashing_recursos` repite en cada paso cuatro operaciones: (1) programa con el límite, (2) halla la cadena crítica con recursos, (3) evalúa como candidatos las actividades reducibles de esa cadena una a una, por parejas y el corte de coste mínimo de la cadena, **replanificando** con cada candidato, y (4) se queda con el más barato que de verdad acorta la duración replanificada. La tabla muestra, paso a paso, la cadena crítica, lo que habría elegido Ackoff-Sasieni sin recursos, cuántos candidatos se evaluaron y cuántas reducciones de una sola actividad no acortaron nada.
+
 # %%
-#| tbl-cap: "Crashing con recursos limitados"
+#| tbl-cap: "Crashing con recursos limitados, paso a paso"
 #| label: tbl-crashing
 cr = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], limite,
                                        datos_proyecto['cap_duration'], datos_proyecto['ucr'], reduccion=2)
-cr.pasos[['actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]
+cr.pasos[['cadena_critica', 'ackoff_sin_recursos', 'candidatos_evaluados', 'reducciones_sin_efecto', 'actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]
 
 # %%
-Markdown(f'Duración {res0.duracion} → {cr.duracion_final} semanas con un sobrecoste de {cr.coste_total:.0f} k€, '
+#| tbl-cap: "Duraciones finales y semanas recortadas a cada actividad"
+#| label: tbl-duracionesCrashing
+pd.DataFrame({'duración normal': datos_proyecto['duration'], 'duración tope': datos_proyecto['cap_duration'],
+              'duración final': cr.duraciones.reindex(datos_proyecto.index).astype(int), 'recortado': cr.reducciones.reindex(datos_proyecto.index).astype(int),
+              'CUR': datos_proyecto['ucr']}).T
+
+# %%
+datos_cr = base.assign(duration=cr.duraciones.reindex(base.index).astype(int))
+res_cr = proyecto.copy().asignar_multi(datos_cr, 'duration', ['operarios'], limite, report=False, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt con el límite de operarios tras el crashing con recursos"
+#| label: fig-ganttCrashing
+pinta_tikz(res_cr.dibujos['operarios'])
+
+# %%
+Markdown(f'Duración {res0.duracion} → {cr.duracion_final} semanas (parada: «{cr.motivo_parada}») con un sobrecoste de {cr.coste_total:.0f} k€, '
          f'frente a {coste_ack:.0f} k€ de Ackoff sin recursos, que no consiguió reducir la duración con recursos '
-         f'(quedó en {res_ack.duracion}).')
+         f'(quedó en {res_ack.duracion}). La diferencia está en qué actividades se acortan: las de la cadena crítica con recursos, '
+         'comprobando en cada paso que la replanificación realmente termina antes.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -311,17 +421,33 @@ Markdown(f'Duración {res0.duracion} → {cr.duracion_final} semanas con un sobr
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# En el modelo *con recurso*, acelerar una actividad consume operarios: cada semana recortada añade un operario a su demanda, de modo que la reducción puede chocar con el mismo límite que intenta esquivar.
+
 # %%
+#| tbl-cap: "Crashing con recursos cuando acelerar consume un operario por semana recortada"
+#| label: tbl-crashingRecurso
 extra = {a: {'operarios': 1} for a in datos_proyecto.index if np.isfinite(datos_proyecto.loc[a, 'ucr'])}
 cr_b = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], limite,
                                          datos_proyecto['cap_duration'], datos_proyecto['ucr'], reduccion=2,
                                          demanda_extra=extra)
-if cr_b.duracion_final <= res0.duracion - 2:
-    cierre = 'Aun consumiendo el recurso, el límite todavía permite la reducción pedida, con otras actividades o con un coste distinto.'
+cr_b.pasos[['cadena_critica', 'candidatos_evaluados', 'actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]
+
+# %%
+#| tbl-cap: "Demanda de operarios de cada actividad tras las reducciones (modelo con recurso)"
+#| label: tbl-demandaRecurso
+pd.DataFrame({'operarios (normal)': datos_proyecto['operarios'], 'operarios (tras recortar)': cr_b.demanda['operarios'].reindex(datos_proyecto.index),
+              'recortado': cr_b.reducciones.reindex(datos_proyecto.index).astype(int)}).T
+
+# %%
+if cr_b.duracion_final <= res0.duracion - 2 and cr_b.coste_total == cr.coste_total and (cr_b.reducciones == cr.reducciones).all():
+    cierre = 'Aun consumiendo el recurso, el límite todavía permite la reducción pedida con las mismas actividades y el mismo coste: la demanda extra cabe en las semanas en que se aplica.'
+elif cr_b.duracion_final <= res0.duracion - 2:
+    cierre = 'Aun consumiendo el recurso, el límite todavía permite la reducción pedida, pero con otras actividades o con un coste distinto.'
 else:
     cierre = 'Como acelerar consume el recurso escaso, el límite frena también las reducciones: no se alcanza lo pedido sin ampliar el recurso.'
 Markdown(f'Modelo con recurso: parada «{cr_b.motivo_parada}», duración final {cr_b.duracion_final} semanas, '
-         f'sobrecoste {cr_b.coste_total:.0f} k€. {cierre}')
+         f'sobrecoste {cr_b.coste_total:.0f} k€ (modelo con dinero: {cr.duracion_final} semanas y {cr.coste_total:.0f} k€). {cierre}')
 
 # %% [markdown]
 # ## Apartado 5
@@ -330,8 +456,15 @@ Markdown(f'Modelo con recurso: parada «{cr_b.motivo_parada}», duración final 
 display(Markdown(pregunta_5))
 
 # %%
-mas = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [limite[0] + 1])
+mas = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [limite[0] + 1], report=True, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt con un operario más, sin acelerar ninguna actividad"
+#| label: fig-ganttMasOperarios
+pinta_tikz(mas.dibujos['operarios'])
+
+# %%
 Markdown(f'Con {limite[0] + 1} operarios, sin acelerar nada: {mas.duracion} semanas (antes {res0.duracion}). '
          f'Se ahorran {res0.duracion - mas.duracion} semana(s). Reducir {res0.duracion - cr.duracion_final} semanas acelerando cuesta '
-         f'{cr.coste_total:.0f} k€. Compensa contratar si el coste del operario adicional durante esas semanas es menor que ese sobrecoste '
+         f'{cr.coste_total:.0f} k€. Compensa contratar si el coste del operario adicional durante las {mas.duracion} semanas del proyecto es menor que ese sobrecoste '
          '(y la comparación es justa solo con el mismo número de semanas ahorradas).')
