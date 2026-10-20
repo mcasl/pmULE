@@ -274,6 +274,9 @@ comprobacion['cumple'] = [str(e) == str(o) if e != '≥ 1' else o >= 1 for e, o 
 comprobacion
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT con las rutas críticas"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

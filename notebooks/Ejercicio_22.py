@@ -159,6 +159,12 @@ prelaciones_distantes
 proyecto.zaderenko(durations=datos_proyecto['duracion'])
 
 # %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(datos_proyecto['duracion'])
+
+# %% [markdown]
 # De manera condensada, se muestran los tiempos tempranos y tardíos en la siguiente tabla:
 
 # %%
@@ -192,12 +198,18 @@ proyecto.display_critical_path(durations=datos_proyecto['duracion'])
 # ### Grafo PERT con indicación de tiempos y camino crítico
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duracion'])
+
+# %%
 #| fig-cap: "Grafo Pert con tiempos, y rutas críticas"
 #| label: fig-PertConTiempos
 proyecto.pert(durations=datos_proyecto['duracion'])
 
 # %% [markdown]
 # ### Grafo Roy con indicación de tiempos y camino crítico
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duracion'])
 
 # %%
 #| fig-cap: "Grafo Roy con tiempos, y rutas críticas"

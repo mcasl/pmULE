@@ -1,0 +1,82 @@
+Bootstrap: docker
+From: ubuntu:24.04
+
+# Contenedor Apptainer para renderizar con Quarto los cuadernos de pmule en el
+# clúster GVIS (legio2). Lleva todo lo que necesitan los cuadernos:
+#   - Python 3.12.3 (el de Ubuntu 24.04) con el entorno de uv.lock (grupo dev)
+#   - Graphviz + pygraphviz (grafos PERT y Roy)
+#   - TeX Live con TikZ y pdftocairo (jupyter_tikz: Gantt y figuras TikZ)
+#   - Quarto (misma versión que en el Mac)
+#
+# Construcción (en legio2, desde ~/pmule_render/repo):
+#   apptainer build --fakeroot ../pmule-render.sif scripts/cluster/pmule-render.def
+# Hay que reconstruirlo solo si cambian pyproject.toml/uv.lock o la versión de Quarto;
+# pmule.py NO va dentro: se monta desde el repositorio sincronizado.
+
+%arguments
+    QUARTO_VERSION=1.8.26
+
+%files
+    pyproject.toml /opt/pmule/pyproject.toml
+    uv.lock /opt/pmule/uv.lock
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export VIRTUAL_ENV=/opt/pmule/.venv
+    export PATH=/opt/pmule/.venv/bin:/opt/quarto/bin:$PATH
+    export QUARTO_PYTHON=/opt/pmule/.venv/bin/python
+    export MPLBACKEND=Agg
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl git rsync locales \
+        python3.12 python3.12-dev python3.12-venv \
+        build-essential pkg-config graphviz libgraphviz-dev \
+        poppler-utils \
+        texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+        texlive-pictures texlive-fonts-recommended texlive-lang-spanish lmodern \
+        fontconfig fonts-liberation2 fonts-texgyre fonts-dejavu-core
+    rm -rf /var/lib/apt/lists/*
+    # Graphviz traduce su fuente por defecto (Times-Roman) a la familia genérica
+    # «serif»; se hace que «serif» sea TeX Gyre Termes (clon de Times) para que
+    # los grafos se vean como en el Mac (por defecto saldría DejaVu Serif).
+    cat > /etc/fonts/local.conf <<'EOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <alias binding="strong"><family>serif</family><prefer><family>TeX Gyre Termes</family></prefer></alias>
+  <alias binding="strong"><family>Times</family><prefer><family>TeX Gyre Termes</family></prefer></alias>
+</fontconfig>
+EOF
+    fc-cache -f
+    fc-match Times-Roman
+    fc-match serif
+
+    # Quarto
+    curl -fsSL -o /tmp/quarto.tar.gz \
+        "https://github.com/quarto-dev/quarto-cli/releases/download/v{{ QUARTO_VERSION }}/quarto-{{ QUARTO_VERSION }}-linux-amd64.tar.gz"
+    mkdir -p /opt/quarto
+    tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1
+    rm /tmp/quarto.tar.gz
+
+    # Entorno de Python reproducible a partir de uv.lock
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+    cd /opt/pmule
+    export UV_PYTHON=/usr/bin/python3.12 UV_PYTHON_DOWNLOADS=never UV_LINK_MODE=copy
+    uv sync --frozen --group dev --no-install-project
+    /opt/pmule/.venv/bin/python -m ipykernel install --prefix /opt/pmule/.venv --name python3
+    chmod -R a+rX /opt/pmule /opt/quarto
+
+%test
+    /opt/quarto/bin/quarto --version
+    /opt/pmule/.venv/bin/python -c "import pygraphviz, jupyter_tikz, pandas, networkx"
+    pdflatex --version | head -1
+    pdftocairo -v 2>&1 | head -1
+
+%labels
+    Author Manuel Castejón Limas
+    Purpose Render de los cuadernos de pmule con Quarto en SLURM

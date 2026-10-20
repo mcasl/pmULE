@@ -242,6 +242,9 @@ display(Markdown(pregunta_1))
 pd.DataFrame({'(a + m + b)/3': [f"({r['a']:g} + {r['m']:g} + {r['b']:g})/3 = {r['duration']:.2f}" for _, r in datos_proyecto.iterrows()]}, index=datos_proyecto.index).T
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'].round(1))
+
+# %%
 #| fig-cap: "Grafo Roy con las duraciones medias"
 #| label: fig-pert
 proyecto.roy(durations=datos_proyecto['duration'].round(1), ranksep=1.2, nodesep=1.2)

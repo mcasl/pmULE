@@ -224,6 +224,12 @@ display(Markdown(pregunta_4))
 #| label: tbl-Zaderenko
 proyecto.zaderenko(duraciones)
 
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(duraciones)
+
 # %%
 #| tbl-cap: "Valores de los tiempos tempranos y tardíos de los nodos"
 #| label: tbl-TempranosTardios
@@ -241,11 +247,17 @@ display(Markdown(pregunta_5))
 proyecto.calculate_pert(duraciones)['activities']
 
 # %%
+proyecto.display_pert_pasos(duraciones)
+
+# %%
 #| fig-cap: "Grafo Pert con tiempos, y rutas críticas"
 #| label: fig-PertConTiempos
 proyecto.pert(durations=duraciones, ranksep=0.3)
 
 # %%
+
+# %%
+proyecto.display_roy_pasos(duraciones)
 
 # %%
 #| fig-cap: "Grafo Roy con tiempos, y rutas críticas"

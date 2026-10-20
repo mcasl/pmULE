@@ -295,6 +295,9 @@ proyecto = prelaciones.create_project()
 duraciones = datos_proyecto['duration'].round().astype(int)
 
 # %%
+proyecto.display_pert_pasos(duraciones)
+
+# %%
 #| fig-cap: "Grafo PERT con las duraciones medias y el camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=duraciones, ranksep=1)

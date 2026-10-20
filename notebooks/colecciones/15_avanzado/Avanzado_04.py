@@ -366,6 +366,9 @@ display(comparacion)
 Markdown(f'''Con todas las relaciones FC + 0 el proyecto dura {duracion_fc} días frente a {duracion_pdm} con PDM. Las relaciones CC y FF permiten solapar actividades (acortan); los desfases positivos en FC son esperas obligadas (alargan); una CF con desfase grande obliga a que la sucesora no termine demasiado pronto, lo que puede retrasarla respecto al FC clásico. El efecto neto depende de cuáles de ellas están en el camino crítico.''')
 
 # %%
+proyecto_fc.display_roy_pasos(tabla_fc['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy equivalente con todas las relaciones FC + 0"
 #| label: fig-pertFc
 proyecto_fc.roy(durations=tabla_fc['duration'], ranksep=1.2, nodesep=1.2)

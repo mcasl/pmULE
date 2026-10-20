@@ -237,6 +237,9 @@ expuestas = datos_proyecto.index[datos_proyecto['exposed'] == 'sí'].tolist()
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

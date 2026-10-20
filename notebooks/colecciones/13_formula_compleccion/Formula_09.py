@@ -295,6 +295,12 @@ Math(bmatrix(R) + r' \times ' + bmatrix(t) + ' = ' + bmatrix(Rt) + r' \quad\Righ
 #| label: tbl-zaderenko
 proyecto.zaderenko(durations=datos_proyecto['duration'])
 
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+
 # %%
 Markdown(f'‖R·t‖∞ = {tau:.0f}; tiempo más temprano del último nodo = {proyecto.duration(datos_proyecto["duration"])}; '
          f'la librería (`proyecto.tau`) da {proyecto.tau(t.to_dict()):.0f}. Las tres coinciden: el cálculo de tiempos hacia delante es una forma de calcular el máximo sin enumerar las rutas.')

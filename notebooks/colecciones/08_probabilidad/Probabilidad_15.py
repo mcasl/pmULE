@@ -259,6 +259,9 @@ display(Markdown(pregunta_1))
 # Las cadenas que llegan al hito son los caminos del grafo de actividades (Roy) desde las iniciales hasta $X$. Cada una tiene media la suma de las medias y varianza la suma de las varianzas de sus actividades.
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy con el hito marcado"
 #| label: fig-roy
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)

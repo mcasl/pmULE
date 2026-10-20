@@ -235,6 +235,9 @@ R = proyecto.path_matrix(dummies=False)
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT con las duraciones normales y las rutas críticas"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

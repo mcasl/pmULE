@@ -329,9 +329,15 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT reconstruido, con tiempos y ruta crítica"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo Roy reconstruido"

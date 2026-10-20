@@ -258,6 +258,9 @@ comprobacion['cumple'] = [str(e) == str(o) if e != '≥ 1' else o >= 1 for e, o 
 comprobacion
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy con las rutas críticas"
 #| label: fig-pert
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)

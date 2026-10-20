@@ -223,6 +223,12 @@ duraciones_medias = datos_proyecto['duration']
 proyecto.zaderenko(durations=duraciones_medias)
 
 # %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(duraciones_medias)
+
+# %% [markdown]
 # Los tiempos tempranos y tardíos obtenidos para cada nodo son:
 
 # %%
@@ -250,9 +256,15 @@ resultados_pert['activities'][['H_total']].T
 proyecto.display_critical_path(durations=duraciones_medias)
 
 # %%
+proyecto.display_pert_pasos(duraciones_medias)
+
+# %%
 #| fig-cap: "Grafo Pert con indicación de tiempos y del camino crítico"
 #| label: fig-pertCritico
 proyecto.pert(durations=duraciones_medias, ranksep=1.2, nodesep=0.8)
+
+# %%
+proyecto.display_roy_pasos(duraciones_medias)
 
 # %%
 #| fig-cap: "Grafo Roy con indicación del camino crítico"

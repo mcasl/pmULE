@@ -295,6 +295,9 @@ duracion = int(proyecto.duration(datos_proyecto['duration']))
 calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-grafo
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

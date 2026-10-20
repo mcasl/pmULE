@@ -357,7 +357,7 @@
    }
   },
   {
-   "index": 15,
+   "index": 17,
    "source": "#| tbl-cap: \"Valores de los tiempos tempranos y tardíos de los nodos\"",
    "vars": {
     "resultados_pert": {
@@ -488,14 +488,14 @@
    }
   },
   {
-   "index": 18,
+   "index": 20,
    "source": "duracion_media_proyecto = int(proyecto.duration(durations=datos_proyecto['duration']))",
    "vars": {
     "duracion_media_proyecto": 20
    }
   },
   {
-   "index": 24,
+   "index": 26,
    "source": "#| tbl-cap: \"Calendario del proyecto\"",
    "vars": {
     "calendario": {
@@ -628,7 +628,7 @@
    }
   },
   {
-   "index": 30,
+   "index": 33,
    "source": "desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(durations=datos_proyecto['duration",
    "vars": {
     "desviacion_proyecto": 2.23606797749979,
@@ -656,7 +656,7 @@
    }
   },
   {
-   "index": 34,
+   "index": 37,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_a": 0.09,
@@ -665,7 +665,7 @@
    }
   },
   {
-   "index": 39,
+   "index": 42,
    "source": "ackoff, best_option, duration, available = proyecto.ackoff(durations=datos_proyecto['duration'],",
    "vars": {
     "ackoff": {
@@ -1075,7 +1075,7 @@
    }
   },
   {
-   "index": 46,
+   "index": 49,
    "source": "#| fig-cap: \"Distribución inicial del consumo de recursos\"",
    "vars": {
     "dibujo": {
@@ -1518,7 +1518,7 @@
    }
   },
   {
-   "index": 50,
+   "index": 53,
    "source": "desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nivelar(data=datos_proye",
    "vars": {
     "cuadrados": {
@@ -2128,7 +2128,7 @@
    }
   },
   {
-   "index": 58,
+   "index": 61,
    "source": "proyecto_asignacion = proyecto_nivelacion.copy()",
    "vars": {
     "dibujo": {
@@ -2516,7 +2516,7 @@
    }
   },
   {
-   "index": 62,
+   "index": 65,
    "source": "duracion_y_recursos = datos_proyecto[['duration', 'resources']]",
    "vars": {
     "dibujo": {

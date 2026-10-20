@@ -304,6 +304,9 @@ BAC_total = float(datos_proyecto['BAC'].sum())
 duracion_planificada = proyecto.duration(datos_proyecto['duration'])
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT de la planificación"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

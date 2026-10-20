@@ -254,6 +254,9 @@ t = datos_proyecto['duration'][R.columns]
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy con tiempos y rutas críticas"
 #| label: fig-pert
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)

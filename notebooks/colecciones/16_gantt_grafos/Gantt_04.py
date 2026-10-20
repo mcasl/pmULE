@@ -252,6 +252,9 @@ datos_proyecto[['predecessor', 'duration']]
 display(Markdown(pregunta_2))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT reconstruido, con tiempos y camino crítico"
 #| label: fig-grafo
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

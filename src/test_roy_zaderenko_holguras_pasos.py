@@ -82,5 +82,38 @@ class TestHolgurasPasos(unittest.TestCase):
         self.assertIn("H^{T}", frames[1])
 
 
+class TestZaderenkoHtml(unittest.TestCase):
+
+    def test_visor_html(self):
+        pg = project()
+        h = pg.zaderenko_pasos_html(DUR)
+        n = len(pg.nodes)
+        self.assertEqual(h.count('class="pmule-paso"'), 2 * n + 2)
+        self.assertIn("pmulePaso", h)
+        self.assertEqual(h, pg.zaderenko_pasos_html(DUR))      # determinista
+
+
+class TestConstruccion(unittest.TestCase):
+
+    def setUp(self):
+        self.pg = project()
+
+    def test_orden(self):
+        orden = self.pg.orden_construccion()
+        self.assertEqual(sorted(orden), sorted(DUR))
+        self.assertLess(orden.index("A"), orden.index("C"))
+        self.assertLess(orden.index("F"), orden.index("G"))
+
+    def test_fotogramas(self):
+        n = len(DUR)
+        pert = self.pg.plot_tikz_construccion_pert()
+        roy = self.pg.plot_tikz_construccion_roy()
+        self.assertEqual(len(pert), n + 2)
+        self.assertEqual(len(roy), n + 2)
+        self.assertIn("dashed", pert[-1])          # ficticias en el grafo final
+        m = self.pg.matriz_prelaciones_beamer()
+        self.assertIn(rf"\only<{n + 1}>", m)
+
+
 if __name__ == "__main__":
     unittest.main()

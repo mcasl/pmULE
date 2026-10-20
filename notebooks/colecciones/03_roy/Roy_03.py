@@ -316,9 +316,15 @@ camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
 Markdown(f'La duración del proyecto es {duracion_proyecto} semanas.')
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-royCritico
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo PERT con tiempos y camino crítico"

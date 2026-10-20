@@ -277,6 +277,9 @@ resumen
 display(Markdown(pregunta_2))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT con duraciones medias y camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

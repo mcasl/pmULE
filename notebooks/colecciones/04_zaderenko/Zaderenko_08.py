@@ -276,6 +276,12 @@ display(Markdown(pregunta_2))
 #| label: tbl-zaderenko
 proyecto.zaderenko(durations=datos_proyecto['duration'])
 
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+
 # %%
 #| tbl-cap: "Tiempos tempranos y tardíos de los nodos"
 #| label: tbl-tiemposNodos
@@ -319,6 +325,9 @@ calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin
 #| tbl-cap: "Fechas de cada actividad a partir de los tiempos de sus nodos"
 #| label: tbl-fechasPaso
 detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d', 'H_total = LS − ES']]
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"
