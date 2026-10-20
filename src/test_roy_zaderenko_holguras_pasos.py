@@ -248,11 +248,11 @@ class TestPertRoyTikzPorDefecto(unittest.TestCase):
 
     def test_critico_en_rojo_brillante_con_nodos_rellenos(self):
         cod = project().plot_tikz_pert(DUR)
-        self.assertIn("fill=red!10, draw=red, very thick", cod)
+        self.assertIn("fill=white!90!red, draw=red, very thick", cod)
         self.assertIn("red, very thick", cod)
         self.assertNotIn("red!75!black", cod)
         cod = project().plot_tikz_roy(DUR)
-        self.assertIn("fill=red!10, draw=red, very thick", cod)
+        self.assertIn("fill=white!90!red, draw=red, very thick", cod)
         self.assertNotIn("red!75!black", cod)
 
     def test_sin_duraciones_no_hay_tiempos_ni_rojo(self):
