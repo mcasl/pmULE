@@ -82,7 +82,8 @@ fi
 echo "→ Tiempo en el clúster: $(( $(date +%s) - t0 )) s"
 
 echo "→ rsync de vuelta"
-rsync -az "$HOST:$REMOTO/out/docs/" docs/
+# Quarto genera un docs/index.html que redirige a un cuaderno: no se trae (el índice es docs/index.md)
+rsync -az --exclude '/index.html' "$HOST:$REMOTO/out/docs/" docs/
 generados="$(ssh "$HOST" "cd ~/$REMOTO/out/docs 2>/dev/null && find . -name '*.html' | sed 's|^\./||'" || true)"
 ok=0; fallos=(); hechos=(); htmls=()
 for nb in "${cuadernos[@]}"; do
