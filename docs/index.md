@@ -368,6 +368,40 @@ Situaciones en las que proveedor, cliente, contratista, inspector, otros jefes d
 [Caso 10](colecciones/18_casos/Caso_10.html) — *comite-inversion* (nivel 3): comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%  
 [Caso 11](colecciones/18_casos/Caso_11.html) — *contingencia-planta* (nivel 3): límite de 3 operarios, plazo mes 16, penalización 6 k€/mes y VAN  
 
+## Ética en el desarrollo de proyectos
+
+Situaciones típicas de un proyecto (informes de avance, estimaciones, riesgos, horas extra, compresión, línea base, pagos, adjudicaciones, holguras, coste hundido, ofertas) en las que alguien propone algo discutible. Cada caso pide (A) calcular la magnitud que la situación esconde o distorsiona, (B) aplicar un criterio de referencia con respuesta determinada (Código Ético del PMI, ICB4, PMBOK o una norma legal, parafraseados en la lección 19) y (C) deliberar y redactar la comunicación.  
+📖 **[Lección: conceptos y algoritmos](colecciones/lecciones/19_etica.html)** — qué se aprende, definiciones, cómo se calcula, ejemplo guía y uso de la librería.  
+
+[Dilema 01](colecciones/19_etica/Dilema_01.html) — *informe-maquillado* (nivel 2): informe con avance = gastado/presupuesto: SPI 1.05 y CPI 1,00 frente a 0.89 y 0.85 verificados  
+[Dilema 02](colecciones/19_etica/Dilema_02.html) — *verdad-a-medias* (nivel 2): «la ruta crítica acaba en la semana 22» frente a P(T ≤ 22) = 0.50 (PERT) y 0.45 (MC)  
+[Dilema 03](colecciones/19_etica/Dilema_03.html) — *colchones-ocultos* (nivel 2): peores casos entregados + 10 %: 27 semanas frente a 18 esperadas y 20 con el 80 %  
+[Dilema 04](colecciones/19_etica/Dilema_04.html) — *riesgo-silenciado* (nivel 3): riesgo en G (30%, +2 semanas): P(T ≤ 23) pasa de 0.83 a 0.62, umbral 70%  
+[Dilema 05](colecciones/19_etica/Dilema_05.html) — *horas-extra* (nivel 2): 4 operarios, pico 6: 110 horas extra por operario frente a 80 legales; con límite, 23 semanas  
+[Dilema 06](colecciones/19_etica/Dilema_06.html) — *inspeccion-suprimida* (nivel 2): adelantar 2 semanas: 6 k€ por Ackoff frente a «quitar I» (coste esperado del defecto 20 k€)  
+[Dilema 07](colecciones/19_etica/Dilema_07.html) — *linea-base-reescrita* (nivel 2): arranque 3 semanas tarde por el cliente: SPI 0.79 contra la línea base y 1,00 contra la desplazada sin aprobar  
+[Dilema 08](colecciones/19_etica/Dilema_08.html) — *pago-subcontratistas* (nivel 2): pagar a 90 días: +5.5 k€ para el contratista, −11.4 k€ para las subcontratas; máximo legal 60  
+[Dilema 09](colecciones/19_etica/Dilema_09.html) — *adjudicacion-conflicto* (nivel 1): contrato privado: la Oferta 3 queda 9.8 puntos por debajo con los criterios del pliego  
+[Dilema 10](colecciones/19_etica/Dilema_10.html) — *holgura-oculta* (nivel 2): A con holguras 3/1/1 y «no tiene ningún margen»; ceder 1 a H  
+[Dilema 11](colecciones/19_etica/Dilema_11.html) — *coste-hundido* (nivel 2): VAN restante -59 k€ (cancelar) aunque los flujos nominales (300) superen la inversión que falta (290)  
+[Dilema 12](colecciones/19_etica/Dilema_12.html) — *recurso-desviado* (nivel 2): parar B 3 semanas (holgura 1): 2 de retraso, 4.2 k€ de penalidad frente a 2.1 k€ del otro proyecto  
+[Dilema 13](colecciones/19_etica/Dilema_13.html) — *baja-temeraria* (nivel 3): baja 29.0 % (umbral 27.9 %) y plazo 14 con P = 0.12: temeraria y sin buena fe  
+[Dilema 14](colecciones/19_etica/Dilema_14.html) — *imputacion-cruzada* (nivel 1): 530 h (26 k€) de A a B: CPI de A de 0.79 a 1.01; no subvencionable  
+[Dilema 15](colecciones/19_etica/Dilema_15.html) — *informe-maquillado* (nivel 2): informe con avance = gastado/presupuesto: SPI 1.06 y CPI 1,00 frente a 0.90 y 0.85 verificados  
+[Dilema 16](colecciones/19_etica/Dilema_16.html) — *verdad-a-medias* (nivel 2): «la ruta crítica acaba en la semana 22» frente a P(T ≤ 23) = 0.69 (PERT) y 0.61 (MC)  
+[Dilema 17](colecciones/19_etica/Dilema_17.html) — *colchones-ocultos* (nivel 2): peores casos entregados + 10 %: 43 semanas frente a 22 esperadas y 25 con el 80 %  
+[Dilema 18](colecciones/19_etica/Dilema_18.html) — *riesgo-silenciado* (nivel 3): riesgo en G (50%, +3 semanas): P(T ≤ 22) pasa de 0.83 a 0.56, umbral 70%  
+[Dilema 19](colecciones/19_etica/Dilema_19.html) — *horas-extra* (nivel 2): 4 operarios, pico 7: 110 horas extra por operario frente a 80 legales; con límite, 23 semanas  
+[Dilema 20](colecciones/19_etica/Dilema_20.html) — *inspeccion-suprimida* (nivel 2): adelantar 3 semanas: 14 k€ por Ackoff frente a «quitar H» (coste esperado del defecto 45 k€)  
+[Dilema 21](colecciones/19_etica/Dilema_21.html) — *linea-base-reescrita* (nivel 2): arranque 2 semanas tarde por el cliente: SPI 0.85 contra la línea base y 1,00 contra la desplazada sin aprobar  
+[Dilema 22](colecciones/19_etica/Dilema_22.html) — *pago-subcontratistas* (nivel 2): pagar a 90 días: +4.2 k€ para el contratista, −11.4 k€ para las subcontratas; máximo legal 60  
+[Dilema 23](colecciones/19_etica/Dilema_23.html) — *adjudicacion-conflicto* (nivel 1): contrato privado: la Oferta 1 queda 15.0 puntos por debajo con los criterios del pliego  
+[Dilema 24](colecciones/19_etica/Dilema_24.html) — *holgura-oculta* (nivel 2): A con holguras 5/2/2 y «no tiene ningún margen»; ceder 1 a H  
+[Dilema 25](colecciones/19_etica/Dilema_25.html) — *coste-hundido* (nivel 2): VAN restante 224 k€ (continuar) con VAN total -216 k€  
+[Dilema 26](colecciones/19_etica/Dilema_26.html) — *recurso-desviado* (nivel 2): parar B 2 semanas (holgura 0): 2 de retraso, 9.9 k€ de penalidad frente a 14.9 k€ del otro proyecto  
+[Dilema 27](colecciones/19_etica/Dilema_27.html) — *baja-temeraria* (nivel 3): baja 28.3 % (umbral 27.7 %) y plazo 18 con P = 0.09: temeraria y sin buena fe  
+[Dilema 28](colecciones/19_etica/Dilema_28.html) — *imputacion-cruzada* (nivel 1): 530 h (32 k€) de A a B: CPI de A de 0.72 a 1.02; no subvencionable  
+
 ## Exámenes montados con las plantillas
 
 Generados con `python -m scripts.colecciones.examen` (enunciado y solución por separado, datos nuevos).  

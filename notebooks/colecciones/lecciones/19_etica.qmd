@@ -1,0 +1,143 @@
+---
+title: "Lección 19 — Ética en el desarrollo de proyectos"
+subtitle: "Calcular lo que la situación esconde, aplicar un criterio de referencia y deliberar con método"
+lang: es
+toc: true
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+---
+
+## Qué se aprende
+
+Las situaciones éticas de un proyecto rara vez se presentan como dilemas abstractos: llegan como un informe de avance que «hay que cuadrar», una estimación con colchón, un riesgo que «mejor no mencionar el jueves», unas horas extra «que se pagan y punto», una inspección «que sobra», una línea base que «se ajusta», un pago a 90 días, una adjudicación al cuñado, un margen que «es mío», un proyecto que «ya no se puede parar», una oferta que «luego se renegocia» o unas horas que «se imputan donde hay presupuesto». Esta colección entrena tres cosas distintas y las separa a propósito:
+
+1. **Calcular la magnitud que la situación esconde o distorsiona** (bloque A). Casi siempre hay un número que alguien no quiere ver: el SPI con el avance real, la probabilidad de la fecha prometida, las horas extra por operario, el umbral de temeridad, el VAN de lo que queda. Es la parte que ya se sabe hacer con las lecciones 04 a 17.
+2. **Aplicar un criterio de referencia** (bloque B). Dado un criterio enunciado de antemano (los de esta lección, que remiten al Código Ético del PMI, a la ICB4 de IPMA, al PMBOK o a una norma legal), decidir si la conducta descrita lo cumple, cuál incumple y de qué tipo es. Con los hechos del enunciado cerrados, la respuesta es única: no es «lo que a mí me parece», sino «lo que dice el criterio aplicado a estos hechos».
+3. **Deliberar con método** (bloque C). Qué haría, qué alternativas hay, a quién afecta cada una y cómo se comunica. Aquí no hay respuesta única; lo que se evalúa es el procedimiento.
+
+La distinción importa porque mezclar los tres niveles es la forma habitual de no resolver nada: se discute de opiniones (C) lo que era un cálculo (A) o una regla (B).
+
+## Los tres niveles de pregunta
+
+| Nivel | Qué se pregunta | Por qué la respuesta es única | Cómo se evalúa |
+|---|---|---|---|
+| **A — Cálculo** | La magnitud que la situación esconde, distorsiona o ignora | Es un número reproducible con pmULE | Como en las colecciones 01–18: resultado y cálculos intermedios |
+| **B — Criterio** | Si la conducta descrita cumple un criterio de referencia dado; cuál incumple; de qué tipo es; si se supera un umbral legal | La determina el texto del criterio, **siempre que el enunciado fije los hechos** (qué sabe y qué pretende el personaje) | Tipo test o verdadero/falso con justificación por criterio y fuente; exportable a Moodle (GIFT) |
+| **C — Deliberación** | Qué haría, alternativas, afectados, comunicación | Abierta | Rúbrica de procedimiento (más abajo) |
+
+Dos reglas de lectura de los enunciados. Primera: en los bloques A y B los hechos están cerrados («el jefe de proyecto sabe que…», «con la intención de…», «sin comunicarlo a…»); no hay que suponer intenciones, están escritas. Segunda: la respuesta B es objetiva *respecto al criterio*; si el criterio es bueno, si la ley es justa o si «todo el mundo lo hace» son preguntas legítimas, pero son del bloque C.
+
+## Los criterios de referencia
+
+Los criterios están redactados por el curso con palabras propias y remiten a la fuente de la que proceden. Los textos del PMI, de IPMA y del PMBOK son obras protegidas y no se reproducen aquí ni en los cuadernos; se citan por su numeración y se enlazan al final. Las normas legales sí pueden reproducirse (no son objeto de propiedad intelectual), y se citan por artículo.
+
+| Id | Criterio | Enunciado (redacción del curso) | Fuente a la que remite |
+|---|---|---|---|
+| **C1** | Afirmación falsa | Comunicar como cierto un dato que quien lo comunica sabe que no lo es (un porcentaje de avance, una causa, una oferta que no existe). | Código Ético del PMI, estándar obligatorio 5.3.1; ICB4, Personas 2 |
+| **C2** | Verdad a medias | Comunicar un dato cierto omitiendo la parte que cambiaría su interpretación (la fecha de la ruta crítica sin la probabilidad de cumplirla). | PMI 5.3.1 |
+| **C3** | Información fuera de contexto | Presentar un dato cierto en un marco que lleva a una conclusión equivocada (un índice calculado sobre una línea base reescrita). | PMI 5.3.1 |
+| **C4** | Retención de información | Callar un hecho conocido que la otra parte necesitaría para decidir (un riesgo, una holgura, una discrepancia). | PMI 5.3.1 y 5.2.3 |
+| **C5** | Beneficio propio a costa de otro | Obtener una ventaja trasladando el coste a una parte que no lo ha aceptado. | PMI 5.3.2 y 3.3.2 |
+| **C6** | Conflicto de interés no revelado | Participar en una decisión teniendo un interés personal en el resultado sin comunicarlo ni obtener el consentimiento de los afectados; lo exigible es revelarlo y abstenerse. | PMI 4.3.1–4.3.3; ICB4, Perspectiva 3; LCSP art. 64 en contratos públicos |
+| **C7** | Cumplimiento de la ley y de la seguridad | El plan no puede incumplir una norma legal o de seguridad aunque salga más barato o más rápido; una actividad exigida por una norma no es una opción de compresión. | PMI 2.3.1 y 2.2.1; ICB4, Perspectiva 3; PMBOK 8, calidad integrada |
+| **C8** | Reserva declarada frente a colchón oculto | La reserva de contingencia se dimensiona con un nivel de confianza y se comunica; el mismo margen escondido en las estimaciones es C4. | PMBOK, reservas de contingencia; PMI 5.2.3 |
+| **C9** | Línea base y control de cambios | La línea base sólo cambia por una solicitud de cambio aprobada; medir contra una línea base reescrita sin aprobación es C3. | PMBOK 8, dominio de gobernanza |
+| **C10** | Buena fe en la negociación | No revelar la propia alternativa es legítimo; afirmar hechos falsos para presionar es C1. | PMI 3.3.1 y 5.3.1; ICB4, Personas 9 |
+| **C11** | Reconocer los errores propios | Quien decide asume las consecuencias; atribuirlas a otros o seguir adelante para no reconocerlas incumple el criterio. | PMI 2.2.4; ICB4, Personas 2 |
+| **C12** | Decidir sobre el futuro, no sobre lo gastado | Continuar se justifica sólo por el VAN de los flujos que quedan; «así recuperamos la inversión» con VAN restante negativo es C1. | Lección 17; PMI 5.2.1 |
+| **C13** | Compromisos de buena fe | Prometer un plazo o un precio que se sabe inalcanzable, contando con renegociar, no es un compromiso de buena fe. | PMI 5.2.4 y 2.2.3 |
+
+Los cuatro primeros forman la **taxonomía del engaño**: toda comunicación engañosa de un proyecto cae en una de las cuatro casillas (afirmar algo falso, decir una parte, descontextualizar, callar). Clasificar un caso en su casilla es una pregunta con respuesta única, y es más útil que preguntar «¿está bien?»: obliga a mirar qué se dijo, qué se sabía y qué faltaba.
+
+## Los marcos de referencia
+
+**Código Ético y de Conducta Profesional del PMI.** Se organiza en cuatro valores —responsabilidad, respeto, equidad y honestidad— y, dentro de cada uno, distingue estándares *aspiracionales* (lo que se procura) de estándares *obligatorios* (lo que se exige, redactado como obligaciones y prohibiciones concretas). Los obligatorios son el instrumento del bloque B: dicen, por ejemplo, que no se engaña (en las cuatro formas de la taxonomía), que los conflictos de interés se revelan y se deja de participar en la decisión, que no se adjudica ni se contrata por consideraciones personales, que se cumple la normativa aplicable y que la conducta ilegal o no ética se comunica a quien corresponde. Formalmente obliga a los miembros y certificados del PMI; en este curso se usa como criterio estipulado, igual que se estipula un método de cálculo. El PMI publica además un marco de decisión ética en cinco pasos (evaluar los hechos, generar alternativas, analizarlas, aplicar los principios, actuar) que esta lección adapta como rúbrica del bloque C.
+
+**PMBOK.** La séptima edición (2021) organiza la dirección de proyectos en principios, entre ellos el de ser un administrador diligente y cuidadoso (integridad, cumplimiento, confianza); la octava (2025) reduce los principios a seis —visión holística, enfoque en el valor, calidad integrada, liderazgo responsable, sostenibilidad integrada y equipos empoderados— y define siete dominios de desempeño (gobernanza, alcance, cronograma, finanzas, interesados, recursos y riesgo). El PMBOK no es un código de conducta, pero fija definiciones que zanjan preguntas del bloque B: qué es una reserva de contingencia (C8), que la línea base cambia por el control integrado de cambios (C9) y que la calidad es parte del alcance, de modo que suprimir una verificación no es comprimir el cronograma (C7).
+
+**ICB4 de IPMA.** La *Individual Competence Baseline* describe 28 elementos de competencia en tres áreas: *perspectiva* (estrategia; gobernanza, estructuras y procesos; cumplimiento, estándares y regulaciones; poder e interés; cultura y valores), *personas* (autorreflexión y autogestión; integridad personal y fiabilidad; comunicación; relaciones y compromiso; liderazgo; trabajo en equipo; conflictos y crisis; ingenio; negociación; orientación a resultados) y *práctica* (diseño; requisitos y objetivos; alcance; tiempo; organización e información; calidad; finanzas; recursos; aprovisionamiento; planificación y control; riesgos y oportunidades; interesados; cambio y transformación). Los elementos con carga ética directa son *integridad personal y fiabilidad* (aplicar los propios valores a cada decisión, promover la sostenibilidad de los resultados, asumir la responsabilidad de las propias decisiones, actuar y comunicar de forma coherente, completar el trabajo con rigor), *cumplimiento, estándares y regulaciones* (legislación; salud, seguridad y medio ambiente; códigos de conducta; sostenibilidad), *poder e interés* y *cultura y valores*. La ICB4 sirve aquí sobre todo como **mapa**: cada elemento sugiere una situación típica, y los catorce casos de la colección cubren las tres áreas. La versión española la publica AEIPRO.
+
+**Normas legales con cifra.** Varias situaciones tienen, además del criterio ético, una norma con un umbral numérico que convierte el dilema en un cálculo. Las cifras que usan los cuadernos (comprobadas el 20 de octubre de 2026; antes de usarlas en un examen conviene verificarlas en la versión consolidada del BOE):
+
+| Norma | Regla | Caso |
+|---|---|---|
+| Ley 9/2017 (LCSP), art. 193.3 | Penalidad diaria por demora, salvo que el pliego fije otra: 0,60 € por cada 1 000 € del precio del contrato (IVA excluido) y día natural | recurso desviado |
+| RD 1098/2001 (RGLCAP), art. 85; LCSP art. 149 | Presunción de oferta anormalmente baja (criterio precio): un licitador, más de 25 puntos bajo el presupuesto; dos, más de 20 puntos bajo la otra; tres o más, más de 10 puntos bajo la media de las ofertas, dejando fuera de la media las que la superan en más de 10 puntos (y, si quedan menos de tres, con las tres más bajas). Presunción ⇒ trámite de justificación; sin justificación convincente, exclusión | oferta temeraria |
+| Ley 3/2004 (morosidad), art. 4 | Pago entre empresas a 30 días naturales si no se pacta otro; por pacto, nunca más de 60 | pago a subcontratistas |
+| Estatuto de los Trabajadores, arts. 34.1 y 35.2 | Jornada ordinaria máxima de 40 horas semanales de promedio anual; máximo de 80 horas extraordinarias por trabajador y año, sin contar las compensadas con descanso en los cuatro meses siguientes | horas extra |
+| Ley 38/2003 (subvenciones), arts. 31 y 37 | Sólo es subvencionable el gasto que responde de manera indubitada a la actividad subvencionada y se realiza en plazo; lo justificado indebidamente se reintegra con intereses | imputación cruzada |
+| LCSP, art. 64 | Obligación de prevenir, detectar y resolver los conflictos de interés en la contratación pública | adjudicación |
+
+En los cuadernos, las cifras están en el diccionario `CONSTANTES_LEGALES` de la plantilla, con su referencia, para actualizarlas sin tocar los casos.
+
+## Cómo se responde una pregunta B
+
+1. **Fijar los hechos** tal como los da el enunciado: qué se dijo o se hizo, qué sabía quien lo hizo, qué pretendía, a quién afecta. No añadir intenciones que no estén escritas.
+2. **Elegir el criterio** entre los que el enunciado propone (y, si procede, la norma con cifra) y **calcular** lo que el criterio necesita: la probabilidad que falta, la cifra que cruza el umbral, el indicador con la referencia correcta.
+3. **Aplicar y clasificar**: ¿cumple o no? ¿Qué casilla de la taxonomía? ¿Qué dato haría que cumpliera? (Esta última pregunta también tiene respuesta determinada: la probabilidad, el riesgo omitido, el avance verificado, la solicitud de cambio.)
+4. **Citar**: el criterio por su identificador y la fuente por su numeración o su artículo. «Es poco ético» no es una respuesta; «incumple C4 (cf. PMI 5.3.1): calla un riesgo que mueve la probabilidad de 0,78 a 0,61, por debajo del umbral del comité» sí lo es.
+
+Dos trampas frecuentes. La primera es confundir **no revelar** con **engañar**: callar el propio precio de reserva en una negociación es legítimo (C10); afirmar que existe una oferta que no existe es C1. La segunda es confundir **legal** con **ético**: cumplir la ley es condición necesaria (C7) y no suficiente; pagar a 60 días es legal y puede seguir siendo C5 si se impone con la amenaza de sustituir al proveedor.
+
+## Cómo se responde una pregunta C: la rúbrica
+
+Una respuesta del bloque C se evalúa por su procedimiento, en cuatro pasos:
+
+1. **Afectados.** Quiénes son todos (no sólo el cliente y el jefe: el equipo, los subcontratistas, el financiador, los usuarios finales, la empresa a largo plazo) y qué pierde o gana cada uno, con las cifras del bloque A.
+2. **Alternativas.** Al menos dos además de la que propone el enunciado. Casi siempre hay una opción que nadie ha puesto en la tabla porque obliga a decir algo incómodo (pedir una modificación, declarar la reserva, negociar el plazo con el cliente).
+3. **Tres pruebas** para cada alternativa: *legalidad* (¿cumple la norma?), *publicidad* (¿la defendería si se hiciera pública, si el cliente leyera el correo?) y *reversibilidad* (¿la aceptaría en el papel del afectado?).
+4. **Decisión y comunicación.** Qué se hace, y el mensaje a cada parte con el número que le importa, lo que se le pide y cuándo se le volverá a informar (lección 18).
+
+Una respuesta que opina sin cifras, sin alternativas y sin pasar las pruebas no supera la rúbrica aunque la opinión sea «correcta». Y una decisión incómoda bien argumentada la supera aunque no sea la que el profesor habría tomado.
+
+## Ejemplo guía
+
+Con el proyecto de las lecciones anteriores (A 3, B 2, C 4 ← A, D 1 ← A y B, E 2 ← B, F 3 ← C y D, G 2 ← E; $T = 10$, crítica A–C–F) y una desviación típica de 1,2 semanas en el camino crítico:
+
+**Verdad a medias.** El cliente pregunta si estará en la semana 10. «La ruta crítica termina en la semana 10» es cierto y es C2: $P(T \le 10) = \Phi(0) = 0{,}50$; con un 80 % de confianza la semana es $10 + 0{,}84 \cdot 1{,}2 \approx 11$. El dato que falta es la probabilidad, y la respuesta que cumple el criterio es «50 % en la semana 10; con un 80 %, la 11».
+
+**Holgura escondida.** B tiene holgura total 4 (fin más tardío 6, fin más temprano 2) y holgura libre 0 (D y E empiezan en cuanto B acaba). «B no tiene ningún margen» es C1: tiene 4 semanas sin retrasar el proyecto. Pero si B consume las 4, D (6–7), E (6–8) y G (8–10) se vuelven críticas: el margen era de la ruta, no de B. La pregunta «¿a quién pertenece?» es del bloque C; la de «¿cuánto hay y a quién afecta?» es del A.
+
+**Riesgo silenciado.** Si el proveedor de C puede fallar con probabilidad 0,4 añadiendo 3 semanas, $P(T \le 11) \approx 0{,}6 \cdot \Phi(0{,}83) + 0{,}4 \cdot \Phi(-1{,}67) = 0{,}6 \cdot 0{,}80 + 0{,}4 \cdot 0{,}05 = 0{,}50$ frente a 0,80 sin el riesgo. Si el comité autoriza con un 70 %, el dato cambia la decisión: la omisión es material y es C4.
+
+## Lo que suele fallar
+
+- Responder la B con una opinión («me parece mal») en lugar de con el criterio y la fuente.
+- Suponer intenciones que el enunciado no da, o ignorar las que da («el jefe de proyecto sabe que…»).
+- Confundir reserva con colchón (C8): la diferencia no es el tamaño sino que se calcule y se declare.
+- Confundir farol con mentira (C10): callar no es afirmar.
+- Creer que suprimir una actividad es comprimir (C7): es recortar el alcance.
+- Creer que el Código del PMI «sólo obliga a los del PMI»: para el curso es el criterio estipulado; para un ingeniero colegiado, el código deontológico de su colegio dice lo mismo.
+- Confundir «es legal» con «es ético», en los dos sentidos: lo ilegal no entra en la tabla de opciones, y lo legal todavía tiene que pasar las pruebas de publicidad y reversibilidad.
+- En el bloque C, no poner cifras: una deliberación sin el bloque A es una conversación de pasillo.
+
+## Qué practica cada variante
+
+- `informe-maquillado` — avance definido como gastado/presupuesto: EV = AC y CPI = 1 por construcción; índices y EAC con el avance verificado; C1 y C3.
+- `verdad-a-medias` — «la ruta crítica termina en la semana T» frente a $P(T \le F)$ con PERT y Monte Carlo (sesgo de fusión); el dato que falta; C2.
+- `colchones-ocultos` — peores casos entregados más 10 % frente a la reserva para el 80 %; por qué las desviaciones no se suman; C8 y C4.
+- `riesgo-silenciado` — Monte Carlo con y sin el riesgo (duración con componente Bernoulli) frente al umbral del comité; materialidad; C4.
+- `horas-extra` — diagrama de cargas, exceso sobre la plantilla, horas extraordinarias por operario frente a las 80 legales, asignación con límite; C7.
+- `inspeccion-suprimida` — Ackoff con la inspección a coste infinito frente a «quitarla a coste cero»; coste esperado del defecto; C7.
+- `linea-base-reescrita` — SPI contra la línea base aprobada y contra la desplazada sin solicitud de cambio; qué cambia y qué no; C9 y C3.
+- `pago-subcontratistas` — valor actual de pagar a 30, 60 y 90 días para contratista y subcontratas; destrucción de valor; máximo legal; C5 y C10.
+- `adjudicacion-conflicto` — puntuación con los criterios publicados, sobrecoste de adjudicar al pariente, revelar y abstenerse; C6.
+- `holgura-oculta` — holguras total, libre e independiente; qué pasa al consumir cada una; C1 y C4.
+- `coste-hundido` — VAN de los flujos restantes frente al VAN total; continuar o cancelar; C12 y C11.
+- `recurso-desviado` — parar una actividad para otro proyecto: retraso, penalidad legal, óptimo de empresa frente a la verdad al cliente; C1 y C5.
+- `baja-temeraria` — umbral de presunción de anormalidad (art. 85 RGLCAP) y probabilidad del plazo ofertado; C13 y C1.
+- `imputacion-cruzada` — reimputar horas del proyecto subvencionado al privado: CPI antes y después, gasto subvencionable; C1 y C5.
+
+Las preguntas del bloque B de cada cuaderno se exportan en formato GIFT (como en la colección 14) para montar cuestionarios en Moodle; `examen.py` admite `19:<variante>` para incluir un caso en un examen.
+
+## Fuentes (no reproducidas; consultar en el original)
+
+- Código Ético y de Conducta Profesional del PMI: [pmi.org/about/ethics](https://www.pmi.org/about/ethics) (descarga gratuita; numeración de los estándares 2.x–5.x).
+- *A Guide to the Project Management Body of Knowledge (PMBOK® Guide)*, 7.ª (2021) y 8.ª (2025) ediciones, PMI.
+- IPMA, *Individual Competence Baseline* 4.0: [ipma.world](https://www.ipma.world/individuals/standard/); versión española de AEIPRO, *Bases para la Competencia Individual en Dirección de Proyectos, Programas y Carteras*.
+- Ley 9/2017, de Contratos del Sector Público: [BOE-A-2017-12902](https://www.boe.es/buscar/act.php?id=BOE-A-2017-12902). Real Decreto 1098/2001, Reglamento general de la Ley de Contratos: [BOE-A-2001-19995](https://www.boe.es/buscar/act.php?id=BOE-A-2001-19995).
+- Ley 3/2004, de lucha contra la morosidad: [BOE-A-2004-21830](https://www.boe.es/buscar/act.php?id=BOE-A-2004-21830).
+- Estatuto de los Trabajadores (RDL 2/2015): [BOE-A-2015-11430](https://www.boe.es/buscar/act.php?id=BOE-A-2015-11430).
+- Ley 38/2003, General de Subvenciones: [BOE-A-2003-20977](https://www.boe.es/buscar/act.php?id=BOE-A-2003-20977).
