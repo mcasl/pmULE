@@ -254,6 +254,11 @@ datos_proyecto['duration'] = datos_proyecto.eval('(a + 4 * m + b) / 6').round().
 datos_proyecto['variance'] = datos_proyecto.eval('((b - a) / 6) ** 2')
 datos_proyecto
 
+# %%
+#| tbl-cap: "Media y varianza PERT de cada actividad con los números sustituidos"
+#| label: tbl-estimaciones
+detalle_estimaciones(datos_proyecto)
+
 # %% [markdown]
 # Cuando $a = m = b$ la varianza es $(b-a)^2/36 = 0$: la actividad no aporta incertidumbre, aunque sí aporta duración.
 

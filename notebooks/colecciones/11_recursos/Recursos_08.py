@@ -262,6 +262,15 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
+#| tbl-cap: "Calendario: fechas y holgura total de cada actividad"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %% [markdown]
+# En el Gantt cada actividad empieza en su inicio más temprano y la casilla lleva los operarios que ocupa; la fila *Total* suma la columna (carga de la semana) y la fila *Cuadrados* eleva cada carga al cuadrado (su suma, en la última columna, es la medida de desnivel que usa la nivelación).
+
+# %%
 #| fig-cap: "Diagrama de Gantt con las cargas de operarios (inicios más tempranos)"
 #| label: fig-ganttInicial
 proyecto_inicial = proyecto.copy()
@@ -301,6 +310,15 @@ display(Markdown(pregunta_3))
 
 # %% [markdown]
 # El algoritmo recorre las actividades no críticas (por orden de fin más temprano) y, para cada una, prueba todos los desplazamientos dentro de su holgura eligiendo el que minimiza la suma de cuadrados. La tabla muestra la suma de cuadrados para cada desplazamiento posible, con el mínimo resaltado.
+
+# %%
+#| tbl-cap: "Actividades no críticas en el orden en que las recorre el algoritmo (fin más temprano creciente; a igualdad, más holgura primero)"
+#| label: tbl-ordenNivelacion
+no_criticas = calendario[calendario['H_total'] > 0].sort_values(['fin_mas_temprano', 'H_total'], ascending=[True, False])
+no_criticas[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']].T
+
+# %% [markdown]
+# Para cada una de ellas se prueba cada desplazamiento de 0 a su holgura total (las columnas de la tabla siguiente), se recalculan las cargas y su suma de cuadrados, y se aplica el desplazamiento de suma mínima antes de pasar a la siguiente actividad; por eso el resultado depende del orden.
 
 # %%
 #| tbl-cap: "Suma de cuadrados para cada desplazamiento posible"

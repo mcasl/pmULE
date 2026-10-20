@@ -231,15 +231,57 @@ dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}
 tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']
 
 # %% [markdown]
+# La duración esperada de una triangular es $(a + m + b)/3$; el cuadro la da ya redondeada en *duration*. Con esas duraciones esperadas se calcula el calendario determinista.
+
+# %%
+#| tbl-cap: "Media de cada triangular frente a la duración esperada del cuadro"
+#| label: tbl-medias
+pd.DataFrame({'(a + m + b)/3': [f"({r['a']:g} + {r['m']:g} + {r['b']:g})/3 = {(r['a'] + r['m'] + r['b']) / 3:.2f}" for _, r in datos_proyecto.iterrows()],
+              'duration': datos_proyecto['duration']}, index=datos_proyecto.index).T
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo PERT con las duraciones esperadas y el camino crítico"
+#| label: fig-pert
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %%
+#| tbl-cap: "Duración esperada de cada ruta"
+#| label: tbl-rutas
+R = proyecto.path_matrix(dummies=False)
+detalle_rutas(R, datos_proyecto['duration'][R.columns])
+
+# %% [markdown]
 # ## Apartado 1
 
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cada réplica sortea una duración por actividad con su triangular; la duración del proyecto es el máximo de las rutas (τ = ‖R·t‖∞). La probabilidad de cumplir es la fracción de réplicas con τ ≤ plazo.
+
+# %%
+mc0 = proyecto.monte_carlo(dists, n_samples=5000, seed=7)
+display(mc0.summary().round(2))
+p0 = float((mc0.tau_samples <= plazo).mean())
+Markdown(f'Sin acelerar: duración media simulada {mc0.tau_mean:.2f} semanas (determinista: {proyecto.duration(datos_proyecto["duration"])}) y P(τ ≤ {plazo}) = {p0:.3f}.')
+
+# %%
+#| fig-cap: "Distribución simulada de la duración sin acelerar"
+#| label: fig-histograma
+from matplotlib import pyplot as plt
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.hist(mc0.tau_samples, bins=40, density=True, alpha=0.6)
+ax.axvline(plazo, color='red', linestyle='--', label=f'plazo ({plazo})')
+ax.set_xlabel('duración del proyecto (semanas)'); ax.legend(); plt.show()
+
 # %%
 tabla = proyecto.monte_carlo_crashing(dists, datos_proyecto, 'duration', tope, ucr, plazo=plazo,
                                        reduccion_max=8, n_samples=5000, seed=7)
-Markdown(f'Sin acelerar: duración media simulada {tabla.loc[0, "τ media"]:.2f} semanas y P(τ ≤ {plazo}) = {tabla.loc[0, "P(τ ≤ plazo)"]:.3f}.')
+Markdown(f'`monte_carlo_crashing` hace lo mismo para cada número de semanas recortadas, con los mismos números aleatorios: '
+         f'sin recortar, duración media {tabla.loc[0, "τ media"]:.2f} y P(τ ≤ {plazo}) = {tabla.loc[0, "P(τ ≤ plazo)"]:.3f}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -249,9 +291,35 @@ display(Markdown(pregunta_2))
 
 # %%
 r_det = int(tabla.index[tabla['duración determinista'] <= plazo].min())
-Markdown(f'Reducir las duraciones esperadas hasta {plazo} semanas exige {r_det} semana(s) de reducción y {tabla.loc[r_det, "coste"]:.0f} k€; '
-         f'pero la probabilidad real de cumplir es {tabla.loc[r_det, "P(τ ≤ plazo)"]:.3f}: reducir las duraciones esperadas hasta el plazo '
-         'deja una probabilidad muy inferior al 90 % que suele exigirse.')
+Markdown(f'Con las duraciones esperadas hay que recortar {r_det} semana(s) para llegar a {plazo}.')
+
+# %% [markdown]
+# En cada paso del algoritmo de Ackoff-Sasieni se acorta una semana la ruta (o rutas) crítica(s) eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a la vez.
+
+# %%
+#| tbl-cap: "Algoritmo de Ackoff-Sasieni con las duraciones esperadas hasta el plazo"
+#| label: tbl-ackoff
+tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(
+    durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=r_det, report=False)
+tabla_ackoff
+
+# %%
+#| tbl-cap: "Opciones consideradas en cada paso"
+#| label: tbl-ackoffPaso
+detalle_ackoff(proyecto, datos_proyecto['duration'], tope, ucr, pasos)
+
+# %%
+resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos.values()],
+                        'coste del paso': [float(sum(ucr[acts])) for acts in pasos.values()]},
+                       index=pd.Index(range(1, len(pasos) + 1), name='paso'))
+resumen['sobrecoste acumulado'] = resumen['coste del paso'].cumsum()
+resumen
+
+# %%
+Markdown(f'Reducir las duraciones esperadas hasta {plazo} semanas exige {r_det} semana(s) de reducción y {tabla.loc[r_det, "coste"]:.0f} k€ '
+         f'(duración determinista {proyecto.duration(duraciones_reducidas)}); pero la probabilidad real de cumplir es {tabla.loc[r_det, "P(τ ≤ plazo)"]:.3f}: '
+         'con la duración esperada justo en el plazo se cumple poco más de la mitad de las veces (y menos, por el sesgo de fusión de las rutas), '
+         'muy lejos del 90 % que suele exigirse.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -259,10 +327,27 @@ Markdown(f'Reducir las duraciones esperadas hasta {plazo} semanas exige {r_det} 
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Para cada número de semanas recortadas $r$, la tabla da las reducciones que aplica Ackoff-Sasieni (paso a paso, separadas por |), el coste, la duración determinista, la media y el percentil 90 simulados y la probabilidad de cumplir, siempre con las mismas 5 000 réplicas de duraciones (a cada réplica se le restan las semanas recortadas, sin bajar de la duración tope).
+
 # %%
 #| tbl-cap: "Probabilidad de cumplir el plazo según las semanas recortadas"
 #| label: tbl-crashingMC
+acortadas = {0: '—'}
+for r in tabla.index[1:]:
+    _, p_r, _, _ = proyecto.ackoff(durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=int(r), report=False)
+    acortadas[r] = ' | '.join(', '.join(p_r[j]) for j in sorted(p_r))
+tabla.insert(0, 'actividades acortadas (paso a paso)', pd.Series(acortadas))
 tabla.round(3)
+
+# %%
+#| fig-cap: "Probabilidad de cumplir y coste de reducción según las semanas recortadas"
+#| label: fig-probCoste
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.plot(tabla.index, tabla['P(τ ≤ plazo)'], marker='o', label='P(τ ≤ plazo)'); ax.axhline(0.9, color='grey', linestyle=':')
+ax.set_xlabel('semanas recortadas'); ax.set_ylabel('probabilidad')
+ax2 = ax.twinx(); ax2.plot(tabla.index, tabla['coste'], marker='s', color='tab:red', label='coste (k€)'); ax2.set_ylabel('k€')
+ax.legend(loc='upper left'); ax2.legend(loc='lower right'); plt.show()
 
 # %% [markdown]
 # ## Apartado 4

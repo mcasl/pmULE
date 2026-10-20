@@ -208,14 +208,14 @@ for item in sorted(dir()):
 #| label: tbl-datosEnunciado
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor
-    ('G'     , 'C,F'      ),
+    ('G'     , 'B,F'      ),
     ('B'     , '---'      ),
     ('D'     , 'A,B,C'    ),
     ('F'     , 'B,E'      ),
     ('E'     , 'A,C'      ),
     ('I'     , 'H'        ),
     ('C'     , '---'      ),
-    ('H'     , 'A,D,G'    ),
+    ('H'     , 'C,D,G'    ),
     ('A'     , '---'      ),
 ], columns=['activity', 'predecessor']).set_index('activity')
 datos_enunciado

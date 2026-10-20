@@ -250,6 +250,13 @@ duracion_media = proyecto.duration(datos_proyecto['duration'])
 camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
 Markdown(f'Duración media del proyecto: {duracion_media} semanas. Actividades expuestas al factor común: {", ".join(expuestas)}.')
 
+# %%
+#| tbl-cap: "Duración media de cada ruta y actividades expuestas que contiene"
+#| label: tbl-rutas
+rutas = detalle_rutas(path_matrix, datos_proyecto['duration'][path_matrix.columns], nombre='duración media')
+rutas['expuestas en la ruta'] = [', '.join(a for a in path_matrix.columns[path_matrix.loc[r] == 1] if a in expuestas) or 'ninguna' for r in path_matrix.index]
+rutas
+
 # %% [markdown]
 # ## Apartado 2
 

@@ -249,6 +249,15 @@ duracion_media = proyecto.duration(datos_proyecto['duration'])
 criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts))
 Markdown(f'Duración media {duracion_media} semanas; ruta crítica {" - ".join(criticas)}. {X} {"sí" if X in criticas else "no"} está en ella.')
 
+# %%
+#| tbl-cap: "Media de cada ruta y varianza de las actividades de desviación conocida"
+#| label: tbl-rutas
+R = proyecto.path_matrix(dummies=False)
+sd_conocida = pd.to_numeric(datos_proyecto['standard_deviation'], errors='coerce').fillna(0.0)
+medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')
+varianzas = detalle_rutas(R, (sd_conocida ** 2)[R.columns], 'varianza sin ' + X, 3)
+pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)
+
 # %% [markdown]
 # ## Apartado 2
 

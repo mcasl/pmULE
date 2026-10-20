@@ -243,6 +243,15 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
+#| tbl-cap: "Calendario: fechas y holgura total de cada actividad"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %% [markdown]
+# En el Gantt cada actividad empieza en su inicio más temprano y la casilla lleva los operarios que ocupa; la fila *Total* suma la columna (carga de la semana) y la fila *Cuadrados* eleva cada carga al cuadrado (su suma, en la última columna, es la medida de desnivel que usa la nivelación).
+
+# %%
 #| fig-cap: "Diagrama de Gantt con las cargas de operarios (inicios más tempranos)"
 #| label: fig-ganttInicial
 proyecto_inicial = proyecto.copy()

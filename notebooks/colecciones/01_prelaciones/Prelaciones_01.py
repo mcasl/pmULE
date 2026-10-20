@@ -209,7 +209,7 @@ for item in sorted(dir()):
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor
     ('A'     , '---'      ),
-    ('J'     , 'A,I'      ),
+    ('J'     , 'E,I'      ),
     ('H'     , 'E,G'      ),
     ('C'     , '---'      ),
     ('B'     , '---'      ),

@@ -214,7 +214,7 @@ datos_enunciado = pd.DataFrame([
     ('D'     , 'A,C'      ),
     ('E'     , 'A,B'      ),
     ('G'     , 'D'        ),
-    ('I'     , 'E,F,H'    ),
+    ('I'     , 'F,G,H'    ),
     ('A'     , '---'      ),
     ('B'     , '---'      ),
 ], columns=['activity', 'predecessor']).set_index('activity')

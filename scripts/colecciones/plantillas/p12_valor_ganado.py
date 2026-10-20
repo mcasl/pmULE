@@ -195,6 +195,8 @@ def _base(k, rng):
                          "$$ES = C + \\frac{EV - PV_C}{PV_{C+1} - PV_C}$$\n\n"
                          "donde $C$ es la última semana completa con $PV_C \\le EV$. Entonces $SPI(t) = ES / AT$, siendo "
                          "$AT$ el tiempo real transcurrido."))
+        celdas.append(code('#| tbl-cap: "Valor planificado acumulado al final de cada semana (de la fila Total del Gantt del PV)"\n#| label: tbl-pvAcumulado\n'
+                           "acumulados[['PV']].T.round(1)"))
         celdas.append(code("pv_acumulado = pd.concat([pd.Series({0: 0.0}), acumulados['PV'].astype(float)])\n"
                            "C = int(pv_acumulado[pv_acumulado <= EV].index.max())\n"
                            "PV_C, PV_C1 = float(pv_acumulado[C]), float(pv_acumulado[C + 1])\n"
@@ -234,6 +236,26 @@ def _base(k, rng):
                            "indicadores = pd.DataFrame(filas).T\n"
                            "indicadores.index.name = 'semana'\n"
                            "indicadores.round(1)"))
+        celdas.append(md("De dónde sale cada cifra en cada punto de control: el valor planificado de cada actividad es su "
+                         "BAC por la fracción de su duración que debería haberse ejecutado (según el calendario de inicios "
+                         "más tempranos); el valor ganado, su BAC por el porcentaje realizado; el coste real, lo gastado en ella."))
+        celdas.append(code("calendario_plan = proyecto.calendar(datos_proyecto['duration'])\n"
+                           "for semana, seguimiento in seguimientos.items():\n"
+                           "    display(Markdown(f'**Punto de control: final de la semana {semana}**'))\n"
+                           "    det = detalle_valor_ganado(pd.concat([datos_proyecto, seguimiento], axis=1), calendario_plan, semana)\n"
+                           "    display(det[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']])\n"
+                           "    display(Markdown(f'Sumas: PV = {det[\"PV_i\"].sum():.1f}, EV = {det[\"EV_i\"].sum():.1f}, AC = {det[\"AC\"].sum():.1f} k€.'))"))
+        celdas.append(md("Los tres diagramas de Gantt del valor ganado en el último punto de control:"))
+        celdas.append(code("datos_vg_ultimo = pd.concat([datos_proyecto, seguimientos[max(seguimientos)]], axis=1)\n"
+                           "gantts_ultimo = EarnedValue(proyecto.copy()).calcula_gantts(datos_vg_ultimo, planned_durations_label='duration',\n"
+                           "                                                             actual_durations_label='actual_duration', PV_label='BAC', AC_label='AC',\n"
+                           "                                                             percentage_complete_label='performed', tikz=True,\n"
+                           "                                                             " + params + ")"))
+        celdas.append(code('#| fig-cap: "PV: valor planificado (último punto de control)"\n#| label: fig-ganttPV\npinta_tikz(gantts_ultimo[\'gantt_PV\'])'))
+        celdas.append(code('#| fig-cap: "EV: valor ganado (último punto de control)"\n#| label: fig-ganttEV\npinta_tikz(gantts_ultimo[\'gantt_EV\'])'))
+        celdas.append(code('#| fig-cap: "AC: coste real (último punto de control)"\n#| label: fig-ganttAC\npinta_tikz(gantts_ultimo[\'gantt_AC\'])'))
+        celdas.append(code('#| fig-cap: "Curvas S hasta el último punto de control"\n#| label: fig-curvasS\n'
+                           "plot_curvas_valor_ganado(gantts_ultimo)"))
         celdas += apartado(ap); ap += 1
         celdas.append(code("indicadores['CV'] = indicadores['EV'] - indicadores['AC']\n"
                            "indicadores['SV'] = indicadores['EV'] - indicadores['PV']\n"
@@ -354,14 +376,29 @@ def _situacion(rng, modo):
                        "                                             actual_durations_label='actual_duration', PV_label='BAC', AC_label='AC',\n"
                        "                                             percentage_complete_label='performed', tikz=True, params=dict(GANTT_PARAMS))"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la planificación", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario planificado (inicios más tempranos): de él sale la fracción planificada de cada actividad en la semana de control"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]"))
+    celdas.append(md("En el Gantt del valor planificado cada casilla lleva el coste planificado de la semana (BAC / duración); "
+                     "en el del valor ganado, el BAC por el porcentaje realizado repartido entre las semanas trabajadas."))
     celdas.append(code('#| fig-cap: "PV: valor planificado"\n#| label: fig-ganttPV\npinta_tikz(gantts[\'gantt_PV\'])'))
     celdas.append(code('#| fig-cap: "EV: valor ganado"\n#| label: fig-ganttEV\npinta_tikz(gantts[\'gantt_EV\'])'))
+    celdas.append(code('#| fig-cap: "AC: coste real"\n#| label: fig-ganttAC\npinta_tikz(gantts[\'gantt_AC\'])'))
+    celdas.append(code('#| tbl-cap: "PV, EV y AC actividad a actividad en el punto de control"\n#| label: tbl-valorGanadoPaso\n'
+                       "detalle_vg = detalle_valor_ganado(datos_valor_ganado, calendario, semana_control)\n"
+                       "detalle_vg[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]"))
     celdas.append(code("acumulados = gantts['acumulados']\n"
                        "PV = float(acumulados.loc[semana_control, 'PV'])\n"
                        "EV = float((datos_valor_ganado['BAC'] * datos_valor_ganado['performed'] / 100).sum())\n"
                        "AC = float(datos_valor_ganado['AC'].sum())\n"
                        "CPI, SPI = EV / AC, EV / PV\n"
                        "pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV = EV − AC': EV - AC, 'SV = EV − PV': EV - PV, 'CPI': CPI, 'SPI': SPI}).round(3).to_frame('valor').T"))
+    celdas.append(code("Markdown(f'''Sumando las columnas de la tabla anterior: PV = {detalle_vg[\"PV_i\"].sum():.1f}, EV = {detalle_vg[\"EV_i\"].sum():.1f}, AC = {detalle_vg[\"AC\"].sum():.1f} k€. Y con ellas:\n\n"
+                       "- CV = EV − AC = {EV:.1f} − {AC:.1f} = {EV - AC:.1f} k€\n"
+                       "- SV = EV − PV = {EV:.1f} − {PV:.1f} = {EV - PV:.1f} k€\n"
+                       "- CPI = EV / AC = {EV:.1f} / {AC:.1f} = {CPI:.3f}\n"
+                       "- SPI = EV / PV = {EV:.1f} / {PV:.1f} = {SPI:.3f}''')"))
     celdas.append(code('#| fig-cap: "Curvas S"\n#| label: fig-curvasS\nplot_curvas_valor_ganado(gantts)'))
     celdas += apartado(2)
     if modo == "coste-bien-plazo-mal":
@@ -459,6 +496,15 @@ def _diagnostico_vg(rng):
                        "                                             actual_durations_label='actual_duration', PV_label='BAC', AC_label='AC',\n"
                        "                                             percentage_complete_label='performed', tikz=False)"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la planificación", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario planificado (inicios más tempranos): de él sale la fracción planificada de cada actividad en la semana de control"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]"))
+    celdas.append(md("PV de cada actividad = BAC por la fracción planificada transcurrida en la semana de control; "
+                     "EV = BAC por el porcentaje realizado; AC = coste real anotado. Los totales son las sumas."))
+    celdas.append(code('#| tbl-cap: "PV, EV y AC actividad a actividad"\n#| label: tbl-valorGanadoPaso\n'
+                       "detalle_vg = detalle_valor_ganado(datos_valor_ganado, calendario, semana_control)\n"
+                       "detalle_vg[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]"))
     celdas.append(code("PV = float(gantts['acumulados'].loc[semana_control, 'PV'])\n"
                        "EV = float((datos_valor_ganado['BAC'] * datos_valor_ganado['performed'] / 100).sum())\n"
                        "AC = float(datos_valor_ganado['AC'].sum())\n"
@@ -648,6 +694,11 @@ def _coste_no_uniforme(rng):
                        f"semana_control = {t}\n"
                        "BAC_total = float(datos_proyecto['BAC'].sum())"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la planificación", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario de inicios más tempranos"\n#| label: tbl-calendario\n'
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]"))
+    celdas.append(md("Con el inicio más temprano de cada actividad se reparte su BAC semana a semana según su perfil; la "
+                     "fila *suma* comprueba que se recupera el BAC."))
     celdas.append(code("def perfil_semanal(BAC, d, perfil):\n"
                        "    d = int(d)\n"
                        "    if perfil == 'uniforme' or d == 1:\n"
@@ -753,6 +804,15 @@ def _vigilar(rng):
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        f"semana_control = {t}"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la planificación con el camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario planificado (inicios más tempranos y holguras)"\n#| label: tbl-calendario\n'
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]"))
+    celdas.append(md("PV de cada actividad = BAC por la fracción planificada transcurrida en la semana de control; "
+                     "EV = BAC por el porcentaje realizado; AC = coste real anotado:"))
+    celdas.append(code('#| tbl-cap: "Cómo se obtiene el PV y el EV de cada actividad"\n#| label: tbl-valorGanadoPaso\n'
+                       "datos_valor_ganado = pd.concat([datos_proyecto, seguimiento], axis=1)\n"
+                       "detalle = detalle_valor_ganado(datos_valor_ganado, calendario, semana_control)\n"
+                       "detalle[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]"))
     celdas.append(code('#| tbl-cap: "Valor ganado por actividad"\n#| label: tbl-porActividad\n'
                        "datos_valor_ganado = pd.concat([datos_proyecto, seguimiento], axis=1)\n"
                        "detalle = detalle_valor_ganado(datos_valor_ganado, calendario, semana_control)\n"
@@ -855,8 +915,19 @@ def _prevision_incertidumbre(rng):
                        "factor_coste = {a: ('triangular', 0.9, 1.0, 1.4) for a in datos_proyecto.index}\n"
                        "plan = datos_proyecto['m']"))
     celdas += apartado(1)
-    celdas.append(code("T_plan = proyecto.duration(plan)\n"
-                       "Markdown(f'Línea base: {T_plan} semanas, BAC = {datos_proyecto[\"BAC\"].sum():.0f} k€.')"))
+    celdas += fig_grafo(durations="plan", cap="Grafo PERT de la línea base (duraciones más probables) con el camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario de la línea base"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(plan)\n"
+                       "T_plan = proyecto.duration(plan)\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]"))
+    celdas.append(md("El valor planificado de cada actividad en una fecha es su BAC por la fracción de su duración que, "
+                     "según el calendario, debería haberse ejecutado; el PV del proyecto es la suma."))
+    celdas.append(code('#| tbl-cap: "Valor planificado de cada actividad en cada fecha de control (k€)"\n#| label: tbl-pvFechas\n'
+                       "pv_fechas = pd.DataFrame({f'semana {t}': datos_proyecto['BAC'] * ((t - calendario['inicio_mas_temprano']).clip(lower=0).clip(upper=calendario['duracion']) / calendario['duracion']) for t in puntos})\n"
+                       "pv_fechas.loc['Total (PV)'] = pv_fechas.sum()\n"
+                       "pv_fechas.round(1)"))
+    celdas.append(code("Markdown(f'Línea base: {T_plan} semanas, BAC = {datos_proyecto[\"BAC\"].sum():.0f} k€; PV en las fechas de control: '\n"
+                       "         + ', '.join(f'semana {t}: {v:.1f} k€' for t, v in zip(puntos, pv_fechas.loc[\"Total (PV)\"])) + '.')"))
     celdas += apartado(2)
     celdas.append(code("resultados = {t: proyecto.monte_carlo_valor_ganado(dists, plan, datos_proyecto['BAC'], t, n_samples=3000, seed=11, factor_coste=factor_coste)\n"
                        "              for t in puntos}\n"
@@ -931,8 +1002,26 @@ def _ev_recursos(rng):
                        f"t_control = {tc}\n"
                        "BAC = datos_proyecto['BAC']"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la línea base (sin recursos) con el camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario de la línea base (inicios más tempranos, sin mirar los operarios)"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
+    celdas.append(code('#| fig-cap: "Carga de operarios de la línea base frente al límite"\n#| label: fig-cargasInicial\n'
+                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)\n"
+                       "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=limite)"))
+    celdas.append(md("La ejecución real sigue el algoritmo de asignación: semana a semana, cada actividad disponible "
+                     "(predecesoras terminadas) empieza si caben sus operarios durante toda su duración; si no, espera. "
+                     "Traza semana a semana y Gantt resultante (filas 💤: esperas):"))
+    celdas.append(code("res = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)"))
+    celdas.append(code('#| fig-cap: "Gantt de la ejecución real con el límite de operarios"\n#| label: fig-ganttReal\n'
+                       "pinta_tikz(res.dibujos['operarios'])"))
+    celdas.append(code('#| tbl-cap: "Inicio de cada actividad en la línea base y en la ejecución real"\n#| label: tbl-inicios\n'
+                       "pd.DataFrame({'inicio línea base': calendario['inicio_mas_temprano'].astype(int), 'inicio real': res.inicios, 'fin real': res.fines,\n"
+                       "              'espera (semanas)': res.esperas}).fillna(0).astype(int).T"))
+    celdas.append(md("El PV de cada semana es la suma, sobre las actividades, del BAC por la fracción planificada "
+                     "transcurrida (línea base); el EV, lo mismo con el calendario real (nadie trabaja más despacio, así "
+                     "que la fracción ejecutada es la real del calendario con recursos)."))
     celdas.append(code("tabla = proyecto.valor_ganado_recursos(datos_proyecto, 'duration', ['operarios'], limite, BAC)\n"
-                       "res = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operarios'], limite)\n"
                        "T_plan, T_real = tabla.attrs['T_plan'], tabla.attrs['T_real']\n"
                        "Markdown(f'Línea base {T_plan:.0f} semanas; con {limite[0]} operarios el calendario real dura {T_real:.0f}.')"))
     celdas += apartado(2)
@@ -1018,6 +1107,22 @@ def _ev_recursos_incertidumbre(rng):
                        "dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}\n"
                        "demanda = datos_proyecto[['operarios']]"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones esperadas (línea base ingenua)", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario de la línea base ingenua (sin recursos)"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
+    celdas.append(md("La línea base realista aplica el algoritmo de asignación a las duraciones esperadas: traza semana a "
+                     "semana y Gantt (filas 💤: esperas)."))
+    celdas.append(code("res = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)"))
+    celdas.append(code('#| fig-cap: "Gantt de la línea base realista (con el límite de operarios)"\n#| label: fig-ganttRealista\n'
+                       "pinta_tikz(res.dibujos['operarios'])"))
+    celdas.append(code('#| tbl-cap: "Valor planificado de cada actividad en la semana de control con cada línea base"\n#| label: tbl-pvLineas\n'
+                       "frac_ingenua = ((t_control - calendario['inicio_mas_temprano']).clip(lower=0).clip(upper=calendario['duracion']) / calendario['duracion'])\n"
+                       "frac_realista = ((t_control - res.inicios.reindex(datos_proyecto.index)).clip(lower=0).clip(upper=datos_proyecto['duration']) / datos_proyecto['duration'])\n"
+                       "pv_lineas = pd.DataFrame({'inicio ingenuo': calendario['inicio_mas_temprano'].astype(int), 'inicio realista': res.inicios.reindex(datos_proyecto.index).astype(int),\n"
+                       "                          'PV ingenuo': BAC * frac_ingenua, 'PV realista': BAC * frac_realista})\n"
+                       "pv_lineas.loc['Total'] = ['', '', pv_lineas['PV ingenuo'].sum(), pv_lineas['PV realista'].sum()]\n"
+                       "pv_lineas"))
     celdas.append(code("r = proyecto.monte_carlo_valor_ganado_recursos(dists, datos_proyecto['duration'], demanda, ['operarios'], limite, BAC, t_control, n_samples=3000, seed=11)\n"
                        "Markdown(f'Línea base ingenua: {r.T_libre:.0f} semanas, PV({t_control}) = {r.pv_libre:.1f} k€. '\n"
                        "         f'Línea base realista: {r.T_recursos:.0f} semanas, PV({t_control}) = {r.pv_recursos:.1f} k€. '\n"

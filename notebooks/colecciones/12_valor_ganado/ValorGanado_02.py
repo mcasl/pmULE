@@ -353,6 +353,11 @@ display(Markdown(pregunta_2))
 # donde $C$ es la última semana completa con $PV_C \le EV$. Entonces $SPI(t) = ES / AT$, siendo $AT$ el tiempo real transcurrido.
 
 # %%
+#| tbl-cap: "Valor planificado acumulado al final de cada semana (de la fila Total del Gantt del PV)"
+#| label: tbl-pvAcumulado
+acumulados[['PV']].T.round(1)
+
+# %%
 pv_acumulado = pd.concat([pd.Series({0: 0.0}), acumulados['PV'].astype(float)])
 C = int(pv_acumulado[pv_acumulado <= EV].index.max())
 PV_C, PV_C1 = float(pv_acumulado[C]), float(pv_acumulado[C + 1])

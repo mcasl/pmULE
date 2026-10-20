@@ -270,6 +270,11 @@ for nombre, acts in rutas_criticas.items():
     print(f'{nombre}: {" - ".join(acts)}')
 Markdown(f'Duración normal: {duracion_normal} semanas.')
 
+# %%
+#| tbl-cap: "Duración de cada ruta con las duraciones normales"
+#| label: tbl-rutas
+detalle_rutas(R, datos_proyecto['duration'][R.columns])
+
 # %% [markdown]
 # ## Apartado 2
 

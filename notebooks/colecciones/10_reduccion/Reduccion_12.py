@@ -253,6 +253,24 @@ duracion_normal = proyecto.duration(datos_proyecto['duration'])
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Duración de cada ruta con las duraciones normales"
+#| label: tbl-rutas
+R = proyecto.path_matrix(dummies=False)
+camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
+detalle_rutas(R, datos_proyecto['duration'][R.columns])
+
+# %% [markdown]
+# En cada paso del algoritmo se acorta una semana la ruta (o rutas) crítica(s) eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a la vez. La tabla muestra, para cada ruta, el CUR de sus actividades y su duración tras cada paso.
+
+# %%
 #| tbl-cap: "Algoritmo de Ackoff-Sasieni"
 #| label: tbl-ackoff
 tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(

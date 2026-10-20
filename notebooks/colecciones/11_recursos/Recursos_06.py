@@ -236,6 +236,14 @@ limite = 4
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo PERT con tiempos y camino crítico"
+#| label: fig-pert
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %%
 #| tbl-cap: "Calendario sin restricción de recursos"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
@@ -298,7 +306,7 @@ def planificar(datos, prelaciones, limite, prioridad, interrumpible=False, max_p
 def gantt_texto(trabajo, limite):
     '''Tabla actividad × semana con el recurso usado y fila de carga total.'''
     T = max(max(s) for s in trabajo.values() if s)
-    g = pd.DataFrame('', index=list(trabajo), columns=range(1, T + 1))
+    g = pd.DataFrame('', index=list(trabajo), columns=range(1, T + 1), dtype=object)   # object: admite enteros y texto
     for a, semanas in trabajo.items():
         for t in semanas:
             g.loc[a, t] = int(datos_proyecto.loc[a, 'resources'])
@@ -344,6 +352,12 @@ duraciones.to_frame().T
 
 # %%
 display(Markdown(pregunta_3))
+
+# %% [markdown]
+# La librería recorre también las semanas, pero en vez de admitir actividades hasta llenar el límite aplaza una semana, cuando la carga lo supera, las que tienen más holgura (y las ya empezadas no se tocan). Traza semana a semana:
+
+# %%
+_ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources', maximo=[limite], report=True)
 
 # %%
 #| fig-cap: "Asignación de la librería (Wiest-Levy)"

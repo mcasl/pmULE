@@ -267,6 +267,14 @@ criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['durat
 suma_sigmas = float(datos_proyecto.loc[criticas, 'standard_deviation'].sum())
 pd.Series({'suma de σ (incorrecto)': suma_sigmas, 'raíz de la suma de varianzas (correcto)': desviacion_proyecto}).round(3).to_frame('σ del proyecto')
 
+# %%
+#| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"
+#| label: tbl-rutas
+R = proyecto.path_matrix(dummies=False)
+medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')
+varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'varianza', 3)
+pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)
+
 # %% [markdown]
 # ## Apartado 3
 

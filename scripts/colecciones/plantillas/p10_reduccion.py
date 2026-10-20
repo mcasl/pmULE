@@ -131,6 +131,17 @@ def _base(k, rng):
                            "datos_proyecto[['duration', 'cap_duration', 'cost_normal', 'cost_cap', 'ucr']]"))
     celdas += apartado(ap); ap += 1
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones normales y el camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario con las duraciones normales"\n#| label: tbl-calendario\n'
+                       "calendario_normal = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario_normal[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
+    celdas.append(md("La duración del proyecto es la de su ruta más larga. Conviene tener a la vista la duración de "
+                     "*todas* las rutas: al acortar la crítica, las que están a una o dos semanas de ella serán las "
+                     "primeras en volverse críticas y obligarán a acortar varias actividades a la vez."))
+    celdas.append(code('#| tbl-cap: "Duración de cada ruta con las duraciones normales"\n#| label: tbl-rutasNormal\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "rutas_normal = detalle_rutas(R, datos_proyecto['duration'][R.columns])\n"
+                       "rutas_normal['margen hasta la crítica'] = (rutas_normal['duración'].max() - rutas_normal['duración']).astype(int)\n"
+                       "rutas_normal"))
     if variante == 1:
         celdas.append(code("duracion_normal = proyecto.duration(datos_proyecto['duration'])\n"
                            "coste_normal = int(datos_proyecto['cost_normal'].sum())\n"
@@ -180,6 +191,13 @@ def _base(k, rng):
                        "resumen['duración'] = duracion_normal - resumen.index\n"
                        "resumen['sobrecoste acumulado'] = resumen['sobrecoste del paso'].cumsum()\n"
                        "resumen"))
+    celdas.append(md("Comprobación paso a paso: la duración de cada ruta tras cada paso es la que figura en las "
+                     "columnas numeradas de la tabla de Ackoff-Sasieni; tras el último paso, las rutas que empatan "
+                     "en la duración máxima son las críticas del proyecto reducido."))
+    celdas.append(code('#| tbl-cap: "Duración de cada ruta tras la reducción"\n#| label: tbl-rutasReducidas\n'
+                       "rutas_reducidas = detalle_rutas(R, duraciones_reducidas[R.columns])\n"
+                       "rutas_reducidas['crítica'] = np.where(rutas_reducidas['duración'] == rutas_reducidas['duración'].max(), 'sí', '')\n"
+                       "rutas_reducidas"))
     celdas += apartado(ap); ap += 1
     if variante == 1:
         celdas.append(code("duracion_reducida = proyecto.duration(duraciones_reducidas)\n"
@@ -302,6 +320,8 @@ def _barata_no_optima(rng):
                        "    print(f'{nombre}: {\" - \".join(acts)}')\n"
                        "comunes = set.intersection(*[set(a) for a in rutas_criticas.values()])\n"
                        "Markdown(f'Duración {duracion_normal} semanas con {len(rutas_criticas)} rutas críticas; actividades comunes a todas: {\", \".join(sorted(comunes)) or \"ninguna\"}.')"))
+    celdas.append(code('#| tbl-cap: "Duración de cada ruta (suma de sus actividades)"\n#| label: tbl-rutas\n'
+                       "detalle_rutas(R, datos_proyecto['duration'][R.columns])"))
     celdas += apartado(2)
     celdas.append(md(f"No funcionará: {barata} está en una sola de las rutas críticas. Al acortarla, esa ruta se "
                      "acorta, pero la otra sigue midiendo lo mismo y el proyecto también. Para reducir el proyecto "
@@ -312,6 +332,8 @@ def _barata_no_optima(rng):
                        "d1 = datos_proyecto['duration'].copy(); d1[barata] -= 1\n"
                        "Markdown(f'Acortando {barata} una semana la duración del proyecto es {proyecto.duration(d1)} semanas (antes {duracion_normal}): '\n"
                        "         f'se han gastado {datos_proyecto.loc[barata, \"ucr\"]:.0f} k€ para nada; la ruta {[r for r, a in rutas_criticas.items() if barata not in a][0]} sigue siendo crítica.')"))
+    celdas.append(code('#| tbl-cap: "Duración de cada ruta tras acortar sólo la actividad más barata"\n#| label: tbl-rutasBarata\n'
+                       "detalle_rutas(R, d1[R.columns])"))
     celdas += apartado(4)
     celdas.append(code('#| tbl-cap: "Algoritmo de Ackoff-Sasieni"\n#| label: tbl-ackoff\n'
                        "tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(\n"
@@ -382,6 +404,14 @@ def _desaceleracion(rng):
                        "proyecto = prelaciones.create_project()\n"
                        "duracion_normal = proyecto.duration(datos_proyecto['duration'])"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones normales y el camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Duración de cada ruta con las duraciones normales"\n#| label: tbl-rutas\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
+                       "detalle_rutas(R, datos_proyecto['duration'][R.columns])"))
+    celdas.append(md("En cada paso del algoritmo se acorta una semana la ruta (o rutas) crítica(s) eligiendo, entre las "
+                     "actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a "
+                     "la vez. La tabla muestra, para cada ruta, el CUR de sus actividades y su duración tras cada paso."))
     celdas.append(code('#| tbl-cap: "Algoritmo de Ackoff-Sasieni"\n#| label: tbl-ackoff\n'
                        "tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(\n"
                        "    durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],\n"
@@ -538,6 +568,8 @@ def _programacion_lineal(rng):
     celdas.append(code("duraciones_lp = datos_proyecto['duration'] - x_lp.reindex(datos_proyecto.index).fillna(0)\n"
                        "Markdown(f'La programación lineal acorta {\", \".join(f\"{a} ({x:g})\" for a, x in x_lp[x_lp > 0].items())} con sobrecoste {coste_lp:.0f} k€; '\n"
                        "         f'todas las rutas quedan en como mucho {float((R @ duraciones_lp[acts]).max()):g} semanas (objetivo {T_objetivo}).')"))
+    celdas.append(code('#| tbl-cap: "Duración de cada ruta con la solución del programa lineal"\n#| label: tbl-rutasLP\n'
+                       "detalle_rutas(R, duraciones_lp[acts], decimales=1)"))
     celdas += apartado(4)
     if mejora:
         texto = ("Aquí el programa lineal es **más barato** que Ackoff-Sasieni: el algoritmo voraz decide semana a "
@@ -609,6 +641,8 @@ def _cur_por_tramos(rng):
                        "for nombre, acts in rutas_criticas.items():\n"
                        "    print(f'{nombre}: {\" - \".join(acts)}')\n"
                        "Markdown(f'Duración normal: {duracion_normal} semanas.')"))
+    celdas.append(code('#| tbl-cap: "Duración de cada ruta con las duraciones normales"\n#| label: tbl-rutas\n'
+                       "detalle_rutas(R, datos_proyecto['duration'][R.columns])"))
     celdas += apartado(2)
     celdas.append(md("En cada paso el coste marginal de una actividad es `ucr_1` si aún no se ha acortado y "
                      "`ucr_2` si ya se acortó una semana (infinito si no le queda margen). Las opciones son las "
@@ -742,48 +776,122 @@ def _crashing_recursos(rng):
                        f"limite = [{L}]\n"
                        "base = datos_proyecto[['predecessor', 'duration', 'operarios']]"))
     celdas += apartado(1)
-    celdas.append(code("duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
-                       "res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], limite)\n"
-                       "cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], limite)\n"
-                       "Markdown(f'Sin límite: {duracion_libre} semanas. Con {limite[0]} operarios: {res0.duracion} semanas. '\n"
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones normales y el camino crítico (sin límite de operarios)", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario sin límite de recursos"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
+    celdas.append(code('#| fig-cap: "Gantt de inicios más tempranos con los operarios de cada actividad (fila Total: carga semanal)"\n#| label: fig-ganttInicial\n'
+                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)\n"
+                       "pinta_tikz(dibujo)"))
+    celdas.append(code('#| fig-cap: "Carga de operarios frente al límite"\n#| label: fig-cargasInicial\n'
+                       "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=limite)"))
+    celdas.append(code("cargas = gantt_inicial.data.loc['Total'].drop('H_total').astype(float)\n"
+                       "exceso = cargas[cargas > limite[0]]\n"
+                       "Markdown(f'Sin límite el proyecto dura {duracion_libre} semanas, pero en las semanas {\", \".join(str(t) for t in exceso.index)} harían falta '\n"
+                       "         f'{\", \".join(f\"{int(c)}\" for c in exceso)} operarios, más de los {limite[0]} disponibles: hay que reprogramar.')"))
+    celdas.append(md("El algoritmo de asignación recorre las semanas una a una. En cada semana son *candidatas* las "
+                     "actividades no empezadas cuyas predecesoras han terminado; se ordenan por prioridad (menor inicio "
+                     "más tardío en el calendario sin recursos, después menor duración) y cada una empieza si, en todas las "
+                     "semanas que ocuparía, los operarios ya comprometidos más los suyos no superan el límite; si no, "
+                     "espera. La traza muestra la decisión de cada semana y, entre paréntesis, el recurso que bloquea a las que esperan."))
+    celdas.append(code("res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)"))
+    celdas.append(code('#| fig-cap: "Gantt con el límite de operarios (filas 💤: esperas por falta de operarios)"\n#| label: fig-ganttAsignado\n'
+                       "pinta_tikz(res0.dibujos['operarios'])"))
+    celdas.append(code('#| tbl-cap: "Calendario con recursos: inicio, fin y espera de cada actividad"\n#| label: tbl-calendarioRecursos\n'
+                       "calendario_recursos = pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int), 'inicio con límite': res0.inicios,\n"
+                       "                                    'fin con límite': res0.fines, 'espera (semanas)': res0.esperas}).fillna(0).astype(int)\n"
+                       "calendario_recursos"))
+    celdas.append(code('#| tbl-cap: "Carga de operarios semana a semana frente al límite"\n#| label: tbl-cargasRecursos\n'
+                       "pd.concat([res0.cargas['operarios'].rename('operarios ocupados'), res0.limites['operarios'].rename('límite')], axis=1).T"))
+    celdas.append(code("cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], limite)\n"
+                       "Markdown(f'Sin límite: {duracion_libre} semanas. Con {limite[0]} operarios: {res0.duracion} semanas ({res0.duracion - duracion_libre} más). '\n"
                        "         f'Cadena crítica con recursos: {\", \".join(sorted(cadena[\"actividades\"]))}.')"))
     celdas.append(code('#| tbl-cap: "Arcos de la cadena crítica con recursos"\n#| label: tbl-cadena\n'
                        "cadena['arcos'].rename(columns={'de': 'de', 'a': 'a', 'motivo': 'motivo (precedencia o recurso)'})"))
-    celdas.append(md("Los arcos de *recurso* son esperas: una actividad no puede empezar porque otra que usa los mismos "
-                     "operarios aún no ha terminado. La duración la fija esa cadena (precedencias más esperas), no el camino crítico."))
+    celdas.append(md("La cadena crítica con recursos se lee hacia atrás desde la última actividad: cada arco une una "
+                     "actividad con otra que empieza justo cuando ella termina, bien porque es su predecesora "
+                     "(*precedencia*), bien porque le libera los operarios que esperaba (*recurso*). Los arcos de "
+                     "recurso son esperas, no prelaciones: la duración la fija esa cadena (precedencias más esperas), "
+                     "no el camino crítico del grafo."))
     celdas += apartado(2)
-    celdas.append(code("tabla_ack, pasos_ack, dur_ack, margen = proyecto.ackoff(durations=datos_proyecto['duration'],\n"
+    celdas.append(md("Ackoff-Sasieni sólo mira el grafo: acorta en cada paso, una semana, la combinación más barata de "
+                     "actividades que reduce todas las rutas críticas *sin recursos*. La tabla muestra, para cada ruta, "
+                     "el CUR de sus actividades y su duración tras cada paso."))
+    celdas.append(code('#| tbl-cap: "Algoritmo de Ackoff-Sasieni sin tener en cuenta los recursos"\n#| label: tbl-ackoff\n'
+                       "tabla_ack, pasos_ack, dur_ack, margen = proyecto.ackoff(durations=datos_proyecto['duration'],\n"
                        "    min_durations=datos_proyecto['cap_duration'], costs=datos_proyecto['ucr'], reduction=2, report=False)\n"
-                       "coste_ack = float(sum(datos_proyecto.loc[a, 'ucr'] for acts in pasos_ack.values() for a in acts))\n"
-                       "res_ack = proyecto.copy().asignar_multi(base.assign(duration=dur_ack), 'duration', ['operarios'], limite)\n"
-                       "Markdown(f'Ackoff sin recursos reduce el proyecto a {proyecto.duration(dur_ack)} semanas (coste {coste_ack:.0f} k€), '\n"
+                       "tabla_ack"))
+    celdas.append(code('#| tbl-cap: "Opciones consideradas en cada paso"\n#| label: tbl-ackoffPaso\n'
+                       "detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duration'], datos_proyecto['ucr'], pasos_ack)"))
+    celdas.append(code("resumen_ack = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos_ack.values()],\n"
+                       "                            'coste del paso': [float(sum(datos_proyecto.loc[acts, 'ucr'])) for acts in pasos_ack.values()]},\n"
+                       "                           index=pd.Index(range(1, len(pasos_ack) + 1), name='paso'))\n"
+                       "coste_ack = float(resumen_ack['coste del paso'].sum())\n"
+                       "resumen_ack"))
+    celdas.append(md("Aplicadas esas reducciones, se vuelve a programar con el límite de operarios:"))
+    celdas.append(code("res_ack = proyecto.copy().asignar_multi(base.assign(duration=dur_ack.reindex(base.index).astype(int)), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)"))
+    celdas.append(code('#| fig-cap: "Gantt con el límite de operarios tras las reducciones de Ackoff-Sasieni"\n#| label: fig-ganttAckoff\n'
+                       "pinta_tikz(res_ack.dibujos['operarios'])"))
+    celdas.append(code('#| tbl-cap: "Duración e inicio de cada actividad antes y después de aplicar Ackoff-Sasieni (con el límite)"\n#| label: tbl-inicioAckoff\n'
+                       "pd.DataFrame({'duración normal': datos_proyecto['duration'], 'duración Ackoff': dur_ack.reindex(datos_proyecto.index).astype(int),\n"
+                       "              'inicio con límite (antes)': res0.inicios, 'inicio con límite (después)': res_ack.inicios,\n"
+                       "              'fin con límite (antes)': res0.fines, 'fin con límite (después)': res_ack.fines}).T"))
+    celdas.append(code("Markdown(f'Ackoff sin recursos reduce el proyecto a {proyecto.duration(dur_ack)} semanas sobre el papel (coste {coste_ack:.0f} k€), '\n"
                        "         f'pero con el límite de operarios la duración es {res_ack.duracion} semanas (antes {res0.duracion}). '\n"
-                       "         'Ackoff eligió por el camino crítico sin recursos, y eso no acorta la cadena crítica con recursos: '\n"
-                       "         'el dinero se gasta sin acortar lo que de verdad manda.')"))
+                       "         f'Las actividades acortadas ({\", \".join(sorted(set(a for acts in pasos_ack.values() for a in acts)))}) están en el camino crítico del grafo, '\n"
+                       "         f'pero lo que manda con recursos es la cadena {\", \".join(sorted(cadena[\"actividades\"]))}: '\n"
+                       "         'el dinero se gasta sin acortar lo que de verdad fija el plazo.')"))
     celdas += apartado(3)
-    celdas.append(code('#| tbl-cap: "Crashing con recursos limitados"\n#| label: tbl-crashing\n'
+    celdas.append(md("`crashing_recursos` repite en cada paso cuatro operaciones: (1) programa con el límite, (2) halla la "
+                     "cadena crítica con recursos, (3) evalúa como candidatos las actividades reducibles de esa cadena "
+                     "una a una, por parejas y el corte de coste mínimo de la cadena, **replanificando** con cada "
+                     "candidato, y (4) se queda con el más barato que de verdad acorta la duración replanificada. La "
+                     "tabla muestra, paso a paso, la cadena crítica, lo que habría elegido Ackoff-Sasieni sin recursos, "
+                     "cuántos candidatos se evaluaron y cuántas reducciones de una sola actividad no acortaron nada."))
+    celdas.append(code('#| tbl-cap: "Crashing con recursos limitados, paso a paso"\n#| label: tbl-crashing\n'
                        "cr = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], limite,\n"
                        "                                       datos_proyecto['cap_duration'], datos_proyecto['ucr'], reduccion=2)\n"
-                       "cr.pasos[['actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]"))
-    celdas.append(code("Markdown(f'Duración {res0.duracion} → {cr.duracion_final} semanas con un sobrecoste de {cr.coste_total:.0f} k€, '\n"
+                       "cr.pasos[['cadena_critica', 'ackoff_sin_recursos', 'candidatos_evaluados', 'reducciones_sin_efecto', 'actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]"))
+    celdas.append(code('#| tbl-cap: "Duraciones finales y semanas recortadas a cada actividad"\n#| label: tbl-duracionesCrashing\n'
+                       "pd.DataFrame({'duración normal': datos_proyecto['duration'], 'duración tope': datos_proyecto['cap_duration'],\n"
+                       "              'duración final': cr.duraciones.reindex(datos_proyecto.index).astype(int), 'recortado': cr.reducciones.reindex(datos_proyecto.index).astype(int),\n"
+                       "              'CUR': datos_proyecto['ucr']}).T"))
+    celdas.append(code("datos_cr = base.assign(duration=cr.duraciones.reindex(base.index).astype(int))\n"
+                       "res_cr = proyecto.copy().asignar_multi(datos_cr, 'duration', ['operarios'], limite, report=False, tikz=True, params=GANTT_PARAMS)"))
+    celdas.append(code('#| fig-cap: "Gantt con el límite de operarios tras el crashing con recursos"\n#| label: fig-ganttCrashing\n'
+                       "pinta_tikz(res_cr.dibujos['operarios'])"))
+    celdas.append(code("Markdown(f'Duración {res0.duracion} → {cr.duracion_final} semanas (parada: «{cr.motivo_parada}») con un sobrecoste de {cr.coste_total:.0f} k€, '\n"
                        "         f'frente a {coste_ack:.0f} k€ de Ackoff sin recursos, que no consiguió reducir la duración con recursos '\n"
-                       "         f'(quedó en {res_ack.duracion}).')"))
+                       "         f'(quedó en {res_ack.duracion}). La diferencia está en qué actividades se acortan: las de la cadena crítica con recursos, '\n"
+                       "         'comprobando en cada paso que la replanificación realmente termina antes.')"))
     celdas += apartado(4)
-    celdas.append(code("extra = {a: {'operarios': 1} for a in datos_proyecto.index if np.isfinite(datos_proyecto.loc[a, 'ucr'])}\n"
+    celdas.append(md("En el modelo *con recurso*, acelerar una actividad consume operarios: cada semana recortada añade un "
+                     "operario a su demanda, de modo que la reducción puede chocar con el mismo límite que intenta esquivar."))
+    celdas.append(code('#| tbl-cap: "Crashing con recursos cuando acelerar consume un operario por semana recortada"\n#| label: tbl-crashingRecurso\n'
+                       "extra = {a: {'operarios': 1} for a in datos_proyecto.index if np.isfinite(datos_proyecto.loc[a, 'ucr'])}\n"
                        "cr_b = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], limite,\n"
                        "                                         datos_proyecto['cap_duration'], datos_proyecto['ucr'], reduccion=2,\n"
                        "                                         demanda_extra=extra)\n"
-                       "if cr_b.duracion_final <= res0.duracion - 2:\n"
-                       "    cierre = 'Aun consumiendo el recurso, el límite todavía permite la reducción pedida, con otras actividades o con un coste distinto.'\n"
+                       "cr_b.pasos[['cadena_critica', 'candidatos_evaluados', 'actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]"))
+    celdas.append(code('#| tbl-cap: "Demanda de operarios de cada actividad tras las reducciones (modelo con recurso)"\n#| label: tbl-demandaRecurso\n'
+                       "pd.DataFrame({'operarios (normal)': datos_proyecto['operarios'], 'operarios (tras recortar)': cr_b.demanda['operarios'].reindex(datos_proyecto.index),\n"
+                       "              'recortado': cr_b.reducciones.reindex(datos_proyecto.index).astype(int)}).T"))
+    celdas.append(code("if cr_b.duracion_final <= res0.duracion - 2 and cr_b.coste_total == cr.coste_total and (cr_b.reducciones == cr.reducciones).all():\n"
+                       "    cierre = 'Aun consumiendo el recurso, el límite todavía permite la reducción pedida con las mismas actividades y el mismo coste: la demanda extra cabe en las semanas en que se aplica.'\n"
+                       "elif cr_b.duracion_final <= res0.duracion - 2:\n"
+                       "    cierre = 'Aun consumiendo el recurso, el límite todavía permite la reducción pedida, pero con otras actividades o con un coste distinto.'\n"
                        "else:\n"
                        "    cierre = 'Como acelerar consume el recurso escaso, el límite frena también las reducciones: no se alcanza lo pedido sin ampliar el recurso.'\n"
                        "Markdown(f'Modelo con recurso: parada «{cr_b.motivo_parada}», duración final {cr_b.duracion_final} semanas, '\n"
-                       "         f'sobrecoste {cr_b.coste_total:.0f} k€. {cierre}')"))
+                       "         f'sobrecoste {cr_b.coste_total:.0f} k€ (modelo con dinero: {cr.duracion_final} semanas y {cr.coste_total:.0f} k€). {cierre}')"))
     celdas += apartado(5)
-    celdas.append(code("mas = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [limite[0] + 1])\n"
-                       "Markdown(f'Con {limite[0] + 1} operarios, sin acelerar nada: {mas.duracion} semanas (antes {res0.duracion}). '\n"
+    celdas.append(code("mas = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [limite[0] + 1], report=True, tikz=True, params=GANTT_PARAMS)"))
+    celdas.append(code('#| fig-cap: "Gantt con un operario más, sin acelerar ninguna actividad"\n#| label: fig-ganttMasOperarios\n'
+                       "pinta_tikz(mas.dibujos['operarios'])"))
+    celdas.append(code("Markdown(f'Con {limite[0] + 1} operarios, sin acelerar nada: {mas.duracion} semanas (antes {res0.duracion}). '\n"
                        "         f'Se ahorran {res0.duracion - mas.duracion} semana(s). Reducir {res0.duracion - cr.duracion_final} semanas acelerando cuesta '\n"
-                       "         f'{cr.coste_total:.0f} k€. Compensa contratar si el coste del operario adicional durante esas semanas es menor que ese sobrecoste '\n"
+                       "         f'{cr.coste_total:.0f} k€. Compensa contratar si el coste del operario adicional durante las {mas.duracion} semanas del proyecto es menor que ese sobrecoste '\n"
                        "         '(y la comparación es justa solo con el mismo número de semanas ahorradas).')"))
     return celdas, f"{n} actividades; límite {L} operarios, reducir dos semanas (Ackoff sin recursos falla)"
 
@@ -851,18 +959,71 @@ def _crashing_incertidumbre(rng):
                        f"plazo = {plazo}\n"
                        "dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}\n"
                        "tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']"))
+    celdas.append(md("La duración esperada de una triangular es $(a + m + b)/3$; el cuadro la da ya redondeada en "
+                     "*duration*. Con esas duraciones esperadas se calcula el calendario determinista."))
+    celdas.append(code('#| tbl-cap: "Media de cada triangular frente a la duración esperada del cuadro"\n#| label: tbl-medias\n'
+                       "pd.DataFrame({'(a + m + b)/3': [f\"({r['a']:g} + {r['m']:g} + {r['b']:g})/3 = {(r['a'] + r['m'] + r['b']) / 3:.2f}\" for _, r in datos_proyecto.iterrows()],\n"
+                       "              'duration': datos_proyecto['duration']}, index=datos_proyecto.index).T"))
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones esperadas y el camino crítico", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Duración esperada de cada ruta"\n#| label: tbl-rutas\n'
+                       "R = proyecto.path_matrix(dummies=False)\n"
+                       "detalle_rutas(R, datos_proyecto['duration'][R.columns])"))
     celdas += apartado(1)
+    celdas.append(md("Cada réplica sortea una duración por actividad con su triangular; la duración del proyecto es el "
+                     "máximo de las rutas (τ = ‖R·t‖∞). La probabilidad de cumplir es la fracción de réplicas con τ ≤ plazo."))
+    celdas.append(code("mc0 = proyecto.monte_carlo(dists, n_samples=5000, seed=7)\n"
+                       "display(mc0.summary().round(2))\n"
+                       "p0 = float((mc0.tau_samples <= plazo).mean())\n"
+                       "Markdown(f'Sin acelerar: duración media simulada {mc0.tau_mean:.2f} semanas (determinista: {proyecto.duration(datos_proyecto[\"duration\"])}) y P(τ ≤ {plazo}) = {p0:.3f}.')"))
+    celdas.append(code('#| fig-cap: "Distribución simulada de la duración sin acelerar"\n#| label: fig-histograma\n'
+                       "from matplotlib import pyplot as plt\n"
+                       "fig, ax = plt.subplots(figsize=(8, 4))\n"
+                       "ax.hist(mc0.tau_samples, bins=40, density=True, alpha=0.6)\n"
+                       "ax.axvline(plazo, color='red', linestyle='--', label=f'plazo ({plazo})')\n"
+                       "ax.set_xlabel('duración del proyecto (semanas)'); ax.legend(); plt.show()"))
     celdas.append(code("tabla = proyecto.monte_carlo_crashing(dists, datos_proyecto, 'duration', tope, ucr, plazo=plazo,\n"
                        "                                       reduccion_max=8, n_samples=5000, seed=7)\n"
-                       "Markdown(f'Sin acelerar: duración media simulada {tabla.loc[0, \"τ media\"]:.2f} semanas y P(τ ≤ {plazo}) = {tabla.loc[0, \"P(τ ≤ plazo)\"]:.3f}.')"))
+                       "Markdown(f'`monte_carlo_crashing` hace lo mismo para cada número de semanas recortadas, con los mismos números aleatorios: '\n"
+                       "         f'sin recortar, duración media {tabla.loc[0, \"τ media\"]:.2f} y P(τ ≤ {plazo}) = {tabla.loc[0, \"P(τ ≤ plazo)\"]:.3f}.')"))
     celdas += apartado(2)
     celdas.append(code("r_det = int(tabla.index[tabla['duración determinista'] <= plazo].min())\n"
-                       "Markdown(f'Reducir las duraciones esperadas hasta {plazo} semanas exige {r_det} semana(s) de reducción y {tabla.loc[r_det, \"coste\"]:.0f} k€; '\n"
-                       "         f'pero la probabilidad real de cumplir es {tabla.loc[r_det, \"P(τ ≤ plazo)\"]:.3f}: reducir las duraciones esperadas hasta el plazo '\n"
-                       "         'deja una probabilidad muy inferior al 90 % que suele exigirse.')"))
+                       "Markdown(f'Con las duraciones esperadas hay que recortar {r_det} semana(s) para llegar a {plazo}.')"))
+    celdas.append(md("En cada paso del algoritmo de Ackoff-Sasieni se acorta una semana la ruta (o rutas) crítica(s) "
+                     "eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce "
+                     "*todas* las rutas críticas a la vez."))
+    celdas.append(code('#| tbl-cap: "Algoritmo de Ackoff-Sasieni con las duraciones esperadas hasta el plazo"\n#| label: tbl-ackoff\n'
+                       "tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(\n"
+                       "    durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=r_det, report=False)\n"
+                       "tabla_ackoff"))
+    celdas.append(code('#| tbl-cap: "Opciones consideradas en cada paso"\n#| label: tbl-ackoffPaso\n'
+                       "detalle_ackoff(proyecto, datos_proyecto['duration'], tope, ucr, pasos)"))
+    celdas.append(code("resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos.values()],\n"
+                       "                        'coste del paso': [float(sum(ucr[acts])) for acts in pasos.values()]},\n"
+                       "                       index=pd.Index(range(1, len(pasos) + 1), name='paso'))\n"
+                       "resumen['sobrecoste acumulado'] = resumen['coste del paso'].cumsum()\n"
+                       "resumen"))
+    celdas.append(code("Markdown(f'Reducir las duraciones esperadas hasta {plazo} semanas exige {r_det} semana(s) de reducción y {tabla.loc[r_det, \"coste\"]:.0f} k€ '\n"
+                       "         f'(duración determinista {proyecto.duration(duraciones_reducidas)}); pero la probabilidad real de cumplir es {tabla.loc[r_det, \"P(τ ≤ plazo)\"]:.3f}: '\n"
+                       "         'con la duración esperada justo en el plazo se cumple poco más de la mitad de las veces (y menos, por el sesgo de fusión de las rutas), '\n"
+                       "         'muy lejos del 90 % que suele exigirse.')"))
     celdas += apartado(3)
+    celdas.append(md("Para cada número de semanas recortadas $r$, la tabla da las reducciones que aplica Ackoff-Sasieni "
+                     "(paso a paso, separadas por |), el coste, la duración determinista, la media y el percentil 90 "
+                     "simulados y la probabilidad de cumplir, siempre con las mismas 5 000 réplicas de duraciones (a "
+                     "cada réplica se le restan las semanas recortadas, sin bajar de la duración tope)."))
     celdas.append(code('#| tbl-cap: "Probabilidad de cumplir el plazo según las semanas recortadas"\n#| label: tbl-crashingMC\n'
+                       "acortadas = {0: '—'}\n"
+                       "for r in tabla.index[1:]:\n"
+                       "    _, p_r, _, _ = proyecto.ackoff(durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=int(r), report=False)\n"
+                       "    acortadas[r] = ' | '.join(', '.join(p_r[j]) for j in sorted(p_r))\n"
+                       "tabla.insert(0, 'actividades acortadas (paso a paso)', pd.Series(acortadas))\n"
                        "tabla.round(3)"))
+    celdas.append(code('#| fig-cap: "Probabilidad de cumplir y coste de reducción según las semanas recortadas"\n#| label: fig-probCoste\n'
+                       "fig, ax = plt.subplots(figsize=(8, 4))\n"
+                       "ax.plot(tabla.index, tabla['P(τ ≤ plazo)'], marker='o', label='P(τ ≤ plazo)'); ax.axhline(0.9, color='grey', linestyle=':')\n"
+                       "ax.set_xlabel('semanas recortadas'); ax.set_ylabel('probabilidad')\n"
+                       "ax2 = ax.twinx(); ax2.plot(tabla.index, tabla['coste'], marker='s', color='tab:red', label='coste (k€)'); ax2.set_ylabel('k€')\n"
+                       "ax.legend(loc='upper left'); ax2.legend(loc='lower right'); plt.show()"))
     celdas += apartado(4)
     celdas.append(code("r90 = int(tabla.index[tabla['P(τ ≤ plazo)'] >= 0.9].min())\n"
                        "marginal = (tabla['coste'].diff() / (100 * tabla['P(τ ≤ plazo)'].diff())).rename('k€ por punto de probabilidad')\n"

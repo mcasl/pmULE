@@ -278,6 +278,23 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
 
 # %%
+#| tbl-cap: "Calendario con las duraciones normales"
+#| label: tbl-calendario
+calendario_normal = proyecto.calendar(datos_proyecto['duration'])
+calendario_normal[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %% [markdown]
+# La duración del proyecto es la de su ruta más larga. Conviene tener a la vista la duración de *todas* las rutas: al acortar la crítica, las que están a una o dos semanas de ella serán las primeras en volverse críticas y obligarán a acortar varias actividades a la vez.
+
+# %%
+#| tbl-cap: "Duración de cada ruta con las duraciones normales"
+#| label: tbl-rutasNormal
+R = proyecto.path_matrix(dummies=False)
+rutas_normal = detalle_rutas(R, datos_proyecto['duration'][R.columns])
+rutas_normal['margen hasta la crítica'] = (rutas_normal['duración'].max() - rutas_normal['duración']).astype(int)
+rutas_normal
+
+# %%
 duracion_normal = proyecto.duration(datos_proyecto['duration'])
 coste_normal = int(datos_proyecto['cost_normal'].sum())
 camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
@@ -315,6 +332,16 @@ resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pa
 resumen['duración'] = duracion_normal - resumen.index
 resumen['sobrecoste acumulado'] = resumen['sobrecoste del paso'].cumsum()
 resumen
+
+# %% [markdown]
+# Comprobación paso a paso: la duración de cada ruta tras cada paso es la que figura en las columnas numeradas de la tabla de Ackoff-Sasieni; tras el último paso, las rutas que empatan en la duración máxima son las críticas del proyecto reducido.
+
+# %%
+#| tbl-cap: "Duración de cada ruta tras la reducción"
+#| label: tbl-rutasReducidas
+rutas_reducidas = detalle_rutas(R, duraciones_reducidas[R.columns])
+rutas_reducidas['crítica'] = np.where(rutas_reducidas['duración'] == rutas_reducidas['duración'].max(), 'sí', '')
+rutas_reducidas
 
 # %% [markdown]
 # ## Apartado 4

@@ -254,6 +254,11 @@ duraciones_rutas_medias = path_matrix @ datos_proyecto['duration'][path_matrix.c
 duracion_media = float(duraciones_rutas_medias.max())
 Markdown(f'Con las medias, la ruta más larga es {duraciones_rutas_medias.idxmax()} ({" - ".join(path_matrix.columns[path_matrix.loc[duraciones_rutas_medias.idxmax()] == 1])}) y la duración {duracion_media:.2f} semanas.')
 
+# %%
+#| tbl-cap: "Duración media de cada ruta"
+#| label: tbl-rutas
+detalle_rutas(path_matrix, datos_proyecto['duration'][path_matrix.columns], nombre='duración media', decimales=2)
+
 # %% [markdown]
 # ## Apartado 2
 

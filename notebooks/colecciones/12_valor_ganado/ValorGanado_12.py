@@ -330,6 +330,49 @@ indicadores.index.name = 'semana'
 indicadores.round(1)
 
 # %% [markdown]
+# De dónde sale cada cifra en cada punto de control: el valor planificado de cada actividad es su BAC por la fracción de su duración que debería haberse ejecutado (según el calendario de inicios más tempranos); el valor ganado, su BAC por el porcentaje realizado; el coste real, lo gastado en ella.
+
+# %%
+calendario_plan = proyecto.calendar(datos_proyecto['duration'])
+for semana, seguimiento in seguimientos.items():
+    display(Markdown(f'**Punto de control: final de la semana {semana}**'))
+    det = detalle_valor_ganado(pd.concat([datos_proyecto, seguimiento], axis=1), calendario_plan, semana)
+    display(det[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']])
+    display(Markdown(f'Sumas: PV = {det["PV_i"].sum():.1f}, EV = {det["EV_i"].sum():.1f}, AC = {det["AC"].sum():.1f} k€.'))
+
+# %% [markdown]
+# Los tres diagramas de Gantt del valor ganado en el último punto de control:
+
+# %%
+datos_vg_ultimo = pd.concat([datos_proyecto, seguimientos[max(seguimientos)]], axis=1)
+gantts_ultimo = EarnedValue(proyecto.copy()).calcula_gantts(datos_vg_ultimo, planned_durations_label='duration',
+                                                             actual_durations_label='actual_duration', PV_label='BAC', AC_label='AC',
+                                                             percentage_complete_label='performed', tikz=True,
+                                                             params=dict(period_width=1, row_height=0.7, activity_relative_height=0.6, **GANTT_PARAMS,
+                                       critical_background_color='white!90!green', regular_background_color='white!90!green',
+                                       regular_text_color='black', critical_text_color='black'))
+
+# %%
+#| fig-cap: "PV: valor planificado (último punto de control)"
+#| label: fig-ganttPV
+pinta_tikz(gantts_ultimo['gantt_PV'])
+
+# %%
+#| fig-cap: "EV: valor ganado (último punto de control)"
+#| label: fig-ganttEV
+pinta_tikz(gantts_ultimo['gantt_EV'])
+
+# %%
+#| fig-cap: "AC: coste real (último punto de control)"
+#| label: fig-ganttAC
+pinta_tikz(gantts_ultimo['gantt_AC'])
+
+# %%
+#| fig-cap: "Curvas S hasta el último punto de control"
+#| label: fig-curvasS
+plot_curvas_valor_ganado(gantts_ultimo)
+
+# %% [markdown]
 # ## Apartado 2
 
 # %%

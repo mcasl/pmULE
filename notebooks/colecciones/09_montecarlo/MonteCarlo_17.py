@@ -258,8 +258,44 @@ dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con las duraciones más probables y el camino crítico (sin límite)"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario sin límite de recursos"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_libre = proyecto.duration(datos_proyecto['duration'])
-res0 = proyecto.copy().asignar_multi(demanda.copy(), 'duration', ['operarios'], limite)
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %%
+#| fig-cap: "Carga de operarios con los inicios más tempranos frente al límite"
+#| label: fig-cargasInicial
+gantt_inicial, dibujo = proyecto.copy().gantt_cargas(demanda.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)
+plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=limite)
+
+# %% [markdown]
+# El algoritmo de asignación recorre las semanas: cada actividad disponible (predecesoras terminadas) empieza, por orden de prioridad (menor inicio más tardío), si caben sus operarios durante toda su duración; si no, espera. Traza semana a semana y Gantt resultante (filas 💤: esperas):
+
+# %%
+res0 = proyecto.copy().asignar_multi(demanda.copy(), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt con el límite de operarios y las duraciones más probables"
+#| label: fig-ganttAsignado
+pinta_tikz(res0.dibujos['operarios'])
+
+# %%
+#| tbl-cap: "Inicio de cada actividad sin y con límite"
+#| label: tbl-inicios
+pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int), 'inicio con límite': res0.inicios, 'fin con límite': res0.fines,
+              'espera (semanas)': res0.esperas}).fillna(0).astype(int).T
+
+# %%
 Markdown(f'Con las duraciones más probables: {duracion_libre} semanas sin límite y {res0.duracion} semanas con {limite[0]} operarios.')
 
 # %% [markdown]
@@ -268,11 +304,25 @@ Markdown(f'Con las duraciones más probables: {duracion_libre} semanas sin lími
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# En cada réplica se sortean las duraciones (triangulares, redondeadas a semanas enteras), se calcula la duración sin recursos (camino más largo) y se vuelve a aplicar el algoritmo de asignación con el límite: dos duraciones por réplica. `monte_carlo_recursos` hace las 2000 réplicas y guarda ambas.
+
 # %%
 #| tbl-cap: "Distribución de la duración con y sin límite de recursos"
 #| label: tbl-mcRecursos
 mc = proyecto.copy().monte_carlo_recursos(dists, demanda[['operarios']].copy(), ['operarios'], limite, n_samples=2000, seed=11)
 mc.summary().round(2)
+
+# %%
+#| fig-cap: "Distribución simulada de la duración sin y con el límite de operarios"
+#| label: fig-histograma
+from matplotlib import pyplot as plt
+fig, ax = plt.subplots(figsize=(8, 4))
+bins = np.arange(min(mc.tau_libre_samples.min(), mc.tau_recursos_samples.min()) - 0.5, max(mc.tau_libre_samples.max(), mc.tau_recursos_samples.max()) + 1.5, 1)
+ax.hist(mc.tau_libre_samples, bins=bins, alpha=0.5, label='sin límite')
+ax.hist(mc.tau_recursos_samples, bins=bins, alpha=0.5, label=f'con {limite[0]} operarios')
+ax.axvline(plazo, color='red', linestyle='--', label=f'plazo ({plazo})')
+ax.set_xlabel('duración del proyecto (semanas)'); ax.set_ylabel('réplicas'); ax.legend(); plt.show()
 
 # %%
 Markdown(f'La media sube de {mc.tau_libre_samples.mean():.2f} a {mc.tau_recursos_samples.mean():.2f} semanas '

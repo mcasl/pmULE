@@ -260,9 +260,46 @@ dist_base = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrow
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con las duraciones esperadas y el camino crítico (sin límite de operarios)"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario sin límite de recursos (meses)"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %%
+#| fig-cap: "Carga de operarios con los inicios más tempranos frente al límite"
+#| label: fig-cargasInicial
+gantt_inicial, dibujo = proyecto.copy().gantt_cargas(base.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)
+plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[L])
+
+# %% [markdown]
+# El algoritmo de asignación recorre los meses: cada actividad disponible (predecesoras terminadas) empieza, por orden de prioridad (menor inicio más tardío), si caben sus operarios durante toda su duración; si no, espera. Traza mes a mes y Gantt resultante (filas 💤: esperas):
+
+# %%
+res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [L], report=True, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt con el límite de operarios y las duraciones esperadas"
+#| label: fig-ganttAsignado
+pinta_tikz(res0.dibujos['operarios'])
+
+# %%
+#| tbl-cap: "Inicio de cada actividad sin y con límite"
+#| label: tbl-inicios
+pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int), 'inicio con límite': res0.inicios, 'fin con límite': res0.fines,
+              'espera (meses)': res0.esperas}).fillna(0).astype(int).T
+
+# %%
 duracion_libre = proyecto.duration(datos_proyecto['duration'])
-res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [L])
 cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], [L])
+display(cadena['arcos'].rename(columns={'motivo': 'motivo (precedencia o recurso)'}))
 esperas = res0.traza[res0.traza.decision == 'espera']
 Markdown(f'Sin límite {duracion_libre} meses; con {L} operarios {res0.duracion}. Cadena crítica con recursos: '
          f'{", ".join(sorted(cadena["actividades"]))}. Esperan: {", ".join(sorted(set(esperas.actividad)))}.')
@@ -296,9 +333,24 @@ Markdown(f'Sin hacer nada: P(entregar en el mes {plazo}) = {A["P(τ≤plazo)"]:.
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Las reducciones de C y D se calculan con `crashing_recursos`: en cada paso se programa con el límite, se halla la cadena crítica con recursos, se prueban como candidatos sus actividades reducibles (sueltas, por parejas y el corte de coste mínimo) replanificando con cada uno, y se elige el más barato que de verdad acorta el proyecto replanificado. Paso a paso, con el límite actual (C) y con un operario más (D):
+
 # %%
-red_c = pd.Series(proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L], tope, ucr, reduccion=2).reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)
-red_d = pd.Series(proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L + 1], tope, ucr, reduccion=2).reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)
+#| tbl-cap: "Crashing con recursos para la opción C (límite actual)"
+#| label: tbl-crashingC
+cr_c = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L], tope, ucr, reduccion=2)
+cr_c.pasos[['cadena_critica', 'ackoff_sin_recursos', 'candidatos_evaluados', 'actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]
+
+# %%
+#| tbl-cap: "Crashing con recursos para la opción D (un operario más)"
+#| label: tbl-crashingD
+cr_d = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L + 1], tope, ucr, reduccion=2)
+cr_d.pasos[['cadena_critica', 'ackoff_sin_recursos', 'candidatos_evaluados', 'actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]
+
+# %%
+red_c = pd.Series(cr_c.reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)
+red_d = pd.Series(cr_d.reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)
 opciones = {'A: no hacer nada': (L, ceros), 'B: un operario más': (L + 1, ceros),
             'C: acelerar dos meses': (L, red_c), 'D: operario más y acelerar': (L + 1, red_d)}
 tabla = pd.DataFrame({n: evaluar(Lo, r) for n, (Lo, r) in opciones.items()}).T

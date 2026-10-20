@@ -248,6 +248,20 @@ Markdown(f'No: {", ".join(imposibles)} necesita(n) {int(datos_proyecto["resource
 display(Markdown(pregunta_2))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con tiempos y camino crítico"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario: fechas y holgura total de cada actividad"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %%
 #| fig-cap: "Cargas con las actividades en su inicio más temprano"
 #| label: fig-cargasInicial
 gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'duration', 'resources', report=False, tikz=True, params=GANTT_PARAMS)
@@ -259,7 +273,14 @@ proyecto_nivelado = proyecto.copy()
 desplazamientos, cuadrados, datos_nivelados, gantt_nivelado, dibujo = proyecto_nivelado.nivelar(
     data=datos_proyecto.copy(), duration_label='duration', resource_label='resources')
 cargas_niveladas = gantt_nivelado.data.loc['Total'].drop('H_total').astype(float)
-Markdown(f'Máximo de operarios: {int(cargas.max())} con inicios más tempranos y {int(cargas_niveladas.max())} tras nivelar (duración {duracion_minima} en ambos casos).')
+display(desplazamientos[desplazamientos['desplazamientos'] > 0].T)
+Markdown(f'Máximo de operarios: {int(cargas.max())} con inicios más tempranos y {int(cargas_niveladas.max())} tras nivelar (duración {duracion_minima} en ambos casos). '
+         f'Sumas de cuadrados: {(cargas ** 2).sum():.0f} antes y {(cargas_niveladas ** 2).sum():.0f} después.')
+
+# %%
+#| fig-cap: "Cargas tras la nivelación"
+#| label: fig-cargasNivelado
+plot_cargas(gantt_df=gantt_nivelado, limite_maximo_recursos=None)
 
 # %% [markdown]
 # ## Apartado 3
@@ -267,21 +288,38 @@ Markdown(f'Máximo de operarios: {int(cargas.max())} con inicios más tempranos 
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Para cada número de operarios se aplica el algoritmo de asignación (semana a semana, aplazando primero las actividades con más holgura). Con el mínimo factible se muestra la traza completa y el Gantt:
+
 # %%
 minimo = int(datos_proyecto['resources'].max())
 maximo = int(cargas_niveladas.max())
+p_min = proyecto.copy()
+datos_min, gantt_min, dibujo_min = p_min.asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',
+                                                 maximo=[minimo], report=True, params=dict(period_width=1, **GANTT_PARAMS))
+
+# %%
+#| fig-cap: "Gantt con el mínimo de operarios factible"
+#| label: fig-ganttMinimo
+pinta_tikz(dibujo_min)
+
+# %%
 filas = {}
 for L in range(minimo, maximo + 1):
     p = proyecto.copy()
-    _, g, _ = p.asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources', maximo=[L], report=False)
-    filas[L] = len(g.data.columns.drop('H_total'))
-tabla = pd.Series(filas, name='duración (semanas)').rename_axis('operarios').to_frame()
-tabla.T
+    d_L, g, _ = p.asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources', maximo=[L], report=False)
+    esperas_L = d_L[d_L.index.str.startswith('💤')]
+    filas[L] = {'duración (semanas)': len(g.data.columns.drop('H_total')),
+                'esperas introducidas': ', '.join(f'{i[1:]} ({int(f.duration)} sem.)' for i, f in esperas_L.iterrows()) or 'ninguna'}
+tabla = pd.DataFrame(filas).T.rename_axis('operarios')
+tabla.index = tabla.index.astype(int)
+tabla['duración (semanas)'] = tabla['duración (semanas)'].astype(int)
+tabla
 
 # %%
 #| fig-cap: "Duración del proyecto según los operarios disponibles"
 #| label: fig-duracionOperarios
-ax = tabla.plot(marker='o', legend=False, figsize=(7, 4)); ax.set_ylabel('semanas');
+ax = tabla['duración (semanas)'].plot(marker='o', legend=False, figsize=(7, 4)); ax.set_ylabel('semanas'); ax.set_xlabel('operarios');
 
 # %% [markdown]
 # ## Apartado 4

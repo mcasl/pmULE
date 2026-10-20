@@ -1576,9 +1576,25 @@ def _contingencia_planta(rng):
                        "tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']\n"
                        "dist_base = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones esperadas y el camino crítico (sin límite de operarios)", label="fig-pert")
+    celdas.append(code('#| tbl-cap: "Calendario sin límite de recursos (meses)"\n#| label: tbl-calendario\n'
+                       "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]"))
+    celdas.append(code('#| fig-cap: "Carga de operarios con los inicios más tempranos frente al límite"\n#| label: fig-cargasInicial\n'
+                       "gantt_inicial, dibujo = proyecto.copy().gantt_cargas(base.copy(), 'duration', 'operarios', report=False, tikz=True, params=GANTT_PARAMS)\n"
+                       "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[L])"))
+    celdas.append(md("El algoritmo de asignación recorre los meses: cada actividad disponible (predecesoras terminadas) "
+                     "empieza, por orden de prioridad (menor inicio más tardío), si caben sus operarios durante toda su "
+                     "duración; si no, espera. Traza mes a mes y Gantt resultante (filas 💤: esperas):"))
+    celdas.append(code("res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [L], report=True, tikz=True, params=GANTT_PARAMS)"))
+    celdas.append(code('#| fig-cap: "Gantt con el límite de operarios y las duraciones esperadas"\n#| label: fig-ganttAsignado\n'
+                       "pinta_tikz(res0.dibujos['operarios'])"))
+    celdas.append(code('#| tbl-cap: "Inicio de cada actividad sin y con límite"\n#| label: tbl-inicios\n'
+                       "pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int), 'inicio con límite': res0.inicios, 'fin con límite': res0.fines,\n"
+                       "              'espera (meses)': res0.esperas}).fillna(0).astype(int).T"))
     celdas.append(code("duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
-                       "res0 = proyecto.copy().asignar_multi(base.copy(), 'duration', ['operarios'], [L])\n"
                        "cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], [L])\n"
+                       "display(cadena['arcos'].rename(columns={'motivo': 'motivo (precedencia o recurso)'}))\n"
                        "esperas = res0.traza[res0.traza.decision == 'espera']\n"
                        "Markdown(f'Sin límite {duracion_libre} meses; con {L} operarios {res0.duracion}. Cadena crítica con recursos: '\n"
                        "         f'{\", \".join(sorted(cadena[\"actividades\"]))}. Esperan: {\", \".join(sorted(set(esperas.actividad)))}.')"))
@@ -1589,8 +1605,18 @@ def _contingencia_planta(rng):
                        "Markdown(f'Sin hacer nada: P(entregar en el mes {plazo}) = {A[\"P(τ≤plazo)\"]:.3f}; duración media {A[\"τ medio\"]:.2f} meses; '\n"
                        "         f'VAN esperado neto {A[\"VAN medio\"]:.1f} k€; P(VAN<0) = {A[\"P(VAN<0)\"]:.3f}.')"))
     celdas += apartado(3)
-    celdas.append(code("red_c = pd.Series(proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L], tope, ucr, reduccion=2).reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)\n"
-                       "red_d = pd.Series(proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L + 1], tope, ucr, reduccion=2).reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)\n"
+    celdas.append(md("Las reducciones de C y D se calculan con `crashing_recursos`: en cada paso se programa con el límite, "
+                     "se halla la cadena crítica con recursos, se prueban como candidatos sus actividades reducibles (sueltas, "
+                     "por parejas y el corte de coste mínimo) replanificando con cada uno, y se elige el más barato que de "
+                     "verdad acorta el proyecto replanificado. Paso a paso, con el límite actual (C) y con un operario más (D):"))
+    celdas.append(code('#| tbl-cap: "Crashing con recursos para la opción C (límite actual)"\n#| label: tbl-crashingC\n'
+                       "cr_c = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L], tope, ucr, reduccion=2)\n"
+                       "cr_c.pasos[['cadena_critica', 'ackoff_sin_recursos', 'candidatos_evaluados', 'actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]"))
+    celdas.append(code('#| tbl-cap: "Crashing con recursos para la opción D (un operario más)"\n#| label: tbl-crashingD\n'
+                       "cr_d = proyecto.copy().crashing_recursos(base.copy(), 'duration', ['operarios'], [L + 1], tope, ucr, reduccion=2)\n"
+                       "cr_d.pasos[['cadena_critica', 'ackoff_sin_recursos', 'candidatos_evaluados', 'actividades', 'coste_paso', 'coste_acumulado', 'duracion_antes', 'duracion_despues']]"))
+    celdas.append(code("red_c = pd.Series(cr_c.reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)\n"
+                       "red_d = pd.Series(cr_d.reducciones, dtype=float).reindex(datos_proyecto.index).fillna(0.0)\n"
                        "opciones = {'A: no hacer nada': (L, ceros), 'B: un operario más': (L + 1, ceros),\n"
                        "            'C: acelerar dos meses': (L, red_c), 'D: operario más y acelerar': (L + 1, red_d)}\n"
                        "tabla = pd.DataFrame({n: evaluar(Lo, r) for n, (Lo, r) in opciones.items()}).T\n"

@@ -211,8 +211,8 @@ datos_enunciado = pd.DataFrame([
 #  activity, predecessor
     ('F'     , 'D'        ),
     ('G'     , 'E,F'      ),
-    ('B'     , 'G'        ),
-    ('I'     , 'A,C,E'    ),
+    ('B'     , 'E'        ),
+    ('I'     , 'A,B,E'    ),
     ('H'     , 'G'        ),
     ('E'     , 'C'        ),
     ('D'     , 'C'        ),
@@ -271,11 +271,11 @@ ciclos = list(nx.simple_cycles(G))
 ciclos
 
 # %% [markdown]
-# En el ciclo participa la prelación «G precede a B». Como G es, por el resto del cuadro, descendiente de B, esa anotación es la errata: eliminándola el cuadro vuelve a ser acíclico.
+# En el ciclo participa la prelación «E precede a B». Como E es, por el resto del cuadro, descendiente de B, esa anotación es la errata: eliminándola el cuadro vuelve a ser acíclico.
 
 # %%
-prelaciones_dadas['B'].discard('G')
-G.remove_edge('G', 'B')
+prelaciones_dadas['B'].discard('E')
+G.remove_edge('E', 'B')
 print('Ciclos restantes:', list(nx.simple_cycles(G)))
 
 # %% [markdown]

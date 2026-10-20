@@ -239,6 +239,41 @@ demanda = datos_proyecto[['operarios']]
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo PERT con las duraciones esperadas (línea base ingenua)"
+#| label: fig-pert
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %%
+#| tbl-cap: "Calendario de la línea base ingenua (sin recursos)"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %% [markdown]
+# La línea base realista aplica el algoritmo de asignación a las duraciones esperadas: traza semana a semana y Gantt (filas 💤: esperas).
+
+# %%
+res = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operarios'], limite, report=True, tikz=True, params=GANTT_PARAMS)
+
+# %%
+#| fig-cap: "Gantt de la línea base realista (con el límite de operarios)"
+#| label: fig-ganttRealista
+pinta_tikz(res.dibujos['operarios'])
+
+# %%
+#| tbl-cap: "Valor planificado de cada actividad en la semana de control con cada línea base"
+#| label: tbl-pvLineas
+frac_ingenua = ((t_control - calendario['inicio_mas_temprano']).clip(lower=0).clip(upper=calendario['duracion']) / calendario['duracion'])
+frac_realista = ((t_control - res.inicios.reindex(datos_proyecto.index)).clip(lower=0).clip(upper=datos_proyecto['duration']) / datos_proyecto['duration'])
+pv_lineas = pd.DataFrame({'inicio ingenuo': calendario['inicio_mas_temprano'].astype(int), 'inicio realista': res.inicios.reindex(datos_proyecto.index).astype(int),
+                          'PV ingenuo': BAC * frac_ingenua, 'PV realista': BAC * frac_realista})
+pv_lineas.loc['Total'] = ['', '', pv_lineas['PV ingenuo'].sum(), pv_lineas['PV realista'].sum()]
+pv_lineas
+
+# %%
 r = proyecto.monte_carlo_valor_ganado_recursos(dists, datos_proyecto['duration'], demanda, ['operarios'], limite, BAC, t_control, n_samples=3000, seed=11)
 Markdown(f'Línea base ingenua: {r.T_libre:.0f} semanas, PV({t_control}) = {r.pv_libre:.1f} k€. '
          f'Línea base realista: {r.T_recursos:.0f} semanas, PV({t_control}) = {r.pv_recursos:.1f} k€. '

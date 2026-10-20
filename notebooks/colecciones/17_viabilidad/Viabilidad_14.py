@@ -241,6 +241,39 @@ descripciones.to_frame()
 # # Resolución
 
 # %%
+def van(flujos, k):
+    '''Valor actual neto de una lista de flujos (el primero en t = 0) a la tasa k.'''
+    return float(sum(f / (1 + k) ** t for t, f in enumerate(flujos)))
+
+def tir(flujos):
+    '''Tasa que anula el VAN (por bisección entre −99 % y 1000 %).'''
+    from scipy.optimize import brentq
+    return float(brentq(lambda k: van(flujos, k), -0.99, 10.0))
+
+def tabla_descuento(flujos, k):
+    '''Año, flujo, factor de descuento, valor actual y valores acumulados (simple y descontado).'''
+    t = pd.DataFrame({'flujo': list(flujos)}, index=pd.Index(range(len(flujos)), name='año'))
+    t['(1 + k)^-t'] = [(1 + k) ** -i for i in t.index]
+    t['valor actual'] = t['flujo'] * t['(1 + k)^-t']
+    t['acumulado'] = t['flujo'].cumsum()
+    t['acumulado descontado'] = t['valor actual'].cumsum()
+    return t
+
+def payback(flujos, k=None):
+    '''Periodo de recuperación (años, con interpolación lineal dentro del año); descontado si se da k.'''
+    acum = 0.0
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return float(t - 1 + (-acum) / v)
+        acum += v
+    return float('inf')
+
+def anualidad_equivalente(VAN, k, n):
+    '''Anualidad constante durante n años cuyo valor actual es VAN.'''
+    return float(VAN * k / (1 - (1 + k) ** -n))
+
+# %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -255,8 +288,58 @@ tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico"
+#| label: fig-grafo
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario con las duraciones normales (meses)"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+duracion_normal = int(proyecto.duration(datos_proyecto['duration']))
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %% [markdown]
+# El coste mensual de cada actividad es su BAC entre su duración; la fila *Total* del Gantt es el desembolso de cada mes. En los meses 1…T el flujo es −desembolso y en los T+1…T+N, +F; la tasa mensual equivalente cumple $(1 + k_m)^{12} = 1 + k$.
+
+# %%
+#| fig-cap: "Gantt de inicios más tempranos con el coste mensual de cada actividad (k€)"
+#| label: fig-ganttCostes
+datos_gantt = datos_proyecto.copy()
+datos_gantt['coste_mensual'] = datos_gantt['BAC'] / datos_gantt['duration']
+gantt_costes, dibujo = proyecto.gantt(datos_gantt, 'duration', 'coste_mensual', total='ambas', acumulado=True, tikz=True,
+                                      params=dict(inner_text_digits=1, **GANTT_PARAMS))
+pinta_tikz(dibujo)
+
+# %%
+def desembolsos(duraciones, sobrecoste=None):
+    '''Desembolso de cada mes con unas duraciones dadas (inicios más tempranos); el sobrecoste de reducción
+    de cada actividad se suma a su BAC y se reparte en su nueva duración.'''
+    cal = proyecto.calendar(duraciones)
+    T = int(cal['fin_mas_temprano'].max())
+    pagos = pd.Series(0.0, index=range(1, T + 1))
+    for a in datos_proyecto.index:
+        es, d = int(cal.loc[a, 'inicio_mas_temprano']), int(duraciones[a])
+        total = float(BAC[a]) + (0.0 if sobrecoste is None else float(sobrecoste[a]))
+        for m in range(es + 1, es + d + 1):
+            pagos[m] += total / d
+    return pagos
+def flujo_mensual(pagos):
+    return [0.0] + [-float(x) for x in pagos] + [F] * N
+k_mensual = (1 + k) ** (1 / 12) - 1
+pagos0 = desembolsos(datos_proyecto['duration'])
+VAN0 = van(flujo_mensual(pagos0), k_mensual)
+display(pd.DataFrame({'desembolso (k€)': pagos0}).T.round(1))
+Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin reducir: {duracion_normal} meses de inversión ({pagos0.sum():.0f} k€ = Σ BAC) y '
+         f'VAN = {VAN0:.1f} k€ (valor actual de los ingresos {van([0.0] * (duracion_normal + 1) + [F] * N, k_mensual):.1f} menos el de los desembolsos '
+         f'{-van([0.0] + [-float(x) for x in pagos0], k_mensual):.1f}).')
+
+# %%
 tabla = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, F, N, k, reduccion_max=8)
-Markdown(f'Sin reducir: {tabla.loc[0, "duración"]:.0f} meses y VAN {tabla.loc[0, "VAN"]:.1f} k€.')
+Markdown(f'`crashing_van` da lo mismo: sin reducir, {tabla.loc[0, "duración"]:.0f} meses y VAN {tabla.loc[0, "VAN"]:.1f} k€.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -264,10 +347,45 @@ Markdown(f'Sin reducir: {tabla.loc[0, "duración"]:.0f} meses y VAN {tabla.loc[0
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# En cada paso del algoritmo de Ackoff-Sasieni se acorta un mes la ruta (o rutas) crítica(s) eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a la vez. La tabla muestra, para cada ruta, el CUR de sus actividades y su duración tras cada paso; las últimas filas, el margen que le queda a cada actividad.
+
 # %%
-#| tbl-cap: "Reducción mes a mes: coste, duración y VAN"
+#| tbl-cap: "Algoritmo de Ackoff-Sasieni (hasta ocho meses)"
+#| label: tbl-ackoff
+tabla_ackoff, pasos, duraciones_reducidas, margen = proyecto.ackoff(
+    durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=8, report=False)
+tabla_ackoff
+
+# %%
+#| tbl-cap: "Opciones consideradas en cada paso"
+#| label: tbl-ackoffPaso
+detalle_ackoff(proyecto, datos_proyecto['duration'], tope, ucr, pasos)
+
+# %% [markdown]
+# Para cada mes recortado: el coste de reducción se suma al BAC de las actividades acortadas (y se reparte en su nueva duración), el proyecto termina antes y los ingresos empiezan antes. La tabla repite el cálculo del VAN mes a mes, con las reducciones acumuladas de cada paso (separadas por |):
+
+# %%
+#| tbl-cap: "Reducción mes a mes: actividades acortadas, coste, duración y VAN"
 #| label: tbl-crashingVan
+acortadas = {0: '—'}
+for r in tabla.index[1:]:
+    acortadas[r] = ' | '.join(', '.join(pasos[j]) for j in sorted(pasos) if j < r)
+tabla.insert(0, 'actividades acortadas (paso a paso)', pd.Series(acortadas))
 tabla.round(2)
+
+# %%
+comprobacion = []
+d = datos_proyecto['duration'].astype(float).copy(); sobrecoste = pd.Series(0.0, index=datos_proyecto.index)
+for r in tabla.index[1:]:
+    for a in pasos[r - 1]:
+        d[a] -= 1; sobrecoste[a] += float(ucr[a])
+    comprobacion.append({'meses recortados': r, 'duración': int(proyecto.duration(d.astype(int))), 'coste de reducción': float(sobrecoste.sum()),
+                         'VAN mes a mes': van(flujo_mensual(desembolsos(d.astype(int), sobrecoste)), k_mensual)})
+pd.DataFrame(comprobacion).set_index('meses recortados').round(2)
+
+# %% [markdown]
+# La comprobación mes a mes (desembolsos con el sobrecoste incluido y los ingresos adelantados) coincide con la columna VAN de `crashing_van`.
 
 # %% [markdown]
 # ## Apartado 3

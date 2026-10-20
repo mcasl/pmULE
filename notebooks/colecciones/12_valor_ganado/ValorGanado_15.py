@@ -257,6 +257,29 @@ gantts = EarnedValue(proyecto).calcula_gantts(datos_valor_ganado, planned_durati
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| fig-cap: "Grafo Roy de la planificación"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Calendario planificado (inicios más tempranos): de él sale la fracción planificada de cada actividad en la semana de control"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+
+# %% [markdown]
+# PV de cada actividad = BAC por la fracción planificada transcurrida en la semana de control; EV = BAC por el porcentaje realizado; AC = coste real anotado. Los totales son las sumas.
+
+# %%
+#| tbl-cap: "PV, EV y AC actividad a actividad"
+#| label: tbl-valorGanadoPaso
+detalle_vg = detalle_valor_ganado(datos_valor_ganado, calendario, semana_control)
+detalle_vg[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]
+
+# %%
 PV = float(gantts['acumulados'].loc[semana_control, 'PV'])
 EV = float((datos_valor_ganado['BAC'] * datos_valor_ganado['performed'] / 100).sum())
 AC = float(datos_valor_ganado['AC'].sum())

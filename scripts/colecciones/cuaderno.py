@@ -240,7 +240,7 @@ def apartado(n: int) -> list[tuple]:
 
 def _lit(v) -> str:
     if isinstance(v, str):
-        return repr(v)
+        return repr(str(v))          # np.str_ -> str (mismo literal con numpy 2 y pandas 2/3)
     if v is None:
         return "None"
     if isinstance(v, (bool, np.bool_)):
