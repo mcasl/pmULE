@@ -3949,19 +3949,19 @@ class ProjectGraph:
             if nodo in actuales:
                 relleno = "fill=orange!20, draw=orange!80!black, very thick"
             elif es_critico:
-                relleno = "fill=red!10, draw=red, very thick"
+                relleno = "fill=white!90!red, draw=red, very thick"
             else:
                 relleno = "fill=white, draw, thick"
             L.append(rf"  \node[circle, {relleno}, minimum size=1.1cm, inner sep=0pt]"
                      rf" (n{nodo}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
             L.append(rf"  \draw[gray] (n{nodo}.center) -- (n{nodo}.45)"
                      rf" (n{nodo}.center) -- (n{nodo}.135) (n{nodo}.center) -- (n{nodo}.270);")
-            L.append(rf"  \node[font=\footnotesize\bfseries{', text=red' if es_critico else ''}]"
+            L.append(rf"  \node[font=\footnotesize\bfseries]"
                      rf" at ($(n{nodo}.center)+(90:0.28)$) {{{self._tex_texto(f"{nodo}")}}};")
             if nodo in tempranos:
-                L.append(rf"  \node[font=\scriptsize] at ($(n{nodo}.center)+(210:0.27)$) {{{f(tempranos[nodo])}}};")
+                L.append(rf"  \node[font=\scriptsize{r'\bfseries' if es_critico else ''}] at ($(n{nodo}.center)+(210:0.27)$) {{{f(tempranos[nodo])}}};")
             if nodo in tardios:
-                L.append(rf"  \node[font=\scriptsize] at ($(n{nodo}.center)+(330:0.27)$) {{{f(tardios[nodo])}}};")
+                L.append(rf"  \node[font=\scriptsize{r'\bfseries' if es_critico else ''}] at ($(n{nodo}.center)+(330:0.27)$) {{{f(tardios[nodo])}}};")
         L += A
         if texto:
             L.append(rf"  \node[anchor=north, font=\small, align=center] at ({x_mid:.2f}cm, {y_min - 1.2:.2f}cm) {{{texto}}};")
@@ -4432,7 +4432,7 @@ class ProjectGraph:
                 if nodo == actual:
                     estilo = "fill=orange!20, draw=orange!80!black, very thick"
                 elif nodo in criticos:
-                    estilo = "fill=red!10, draw=red, very thick"
+                    estilo = "fill=white!90!red, draw=red, very thick"
                 else:
                     estilo = "fill=white, draw, thick"
                 L.append(rf"  \node[rectangle, {estilo}, minimum width=1.5cm, minimum height=0.9cm,"
@@ -4440,14 +4440,14 @@ class ProjectGraph:
                 L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
                          rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
                          rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
-                L.append(rf"  \node[font=\footnotesize\bfseries{', text=red' if nodo in criticos else ''}]"
+                L.append(rf"  \node[font=\footnotesize\bfseries]"
                          rf" at ($({r}.center)+(0,0.22)$) {{{self._tex_texto(f"{et.get(nodo, nodo)}")}}};")
                 if con_duracion:
-                    L.append(rf"  \node[font=\scriptsize, gray] at ($({r}.center)+(0,-0.22)$) {{{f(dur[nodo])}}};")
+                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}, gray] at ($({r}.center)+(0,-0.22)$) {{{f(dur[nodo])}}};")
                 if nodo in minimos:
-                    L.append(rf"  \node[font=\scriptsize] at ($({r}.center)+(-0.5,-0.22)$) {{{f(minimos[nodo])}}};")
+                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}] at ($({r}.center)+(-0.5,-0.22)$) {{{f(minimos[nodo])}}};")
                 if nodo in maximos:
-                    L.append(rf"  \node[font=\scriptsize] at ($({r}.center)+(0.5,-0.22)$) {{{f(maximos[nodo])}}};")
+                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}] at ($({r}.center)+(0.5,-0.22)$) {{{f(maximos[nodo])}}};")
             L += A
             if texto:
                 L.append(rf"  \node[anchor=north, font=\small] at ({x_mid:.2f}cm, {y_min - 1.0:.2f}cm) {{{texto}}};")
