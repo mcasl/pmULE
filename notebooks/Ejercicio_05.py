@@ -153,6 +153,12 @@ proyecto.roy(ranksep=1, nodesep=1)
 proyecto.zaderenko(datos_proyecto['duration'])
 
 # %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+
+# %% [markdown]
 # Los tiempos tempranos y tardíos obtenidos para cada nodo son:
 
 # %%
@@ -197,12 +203,18 @@ proyecto.display_critical_path(datos_proyecto['duration'])
 # ##### Grafo PERT con indicación de tiempos y camino crítico
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Pert del proyecto con indicación del camino crítico"
 #| label: fig-pertCritico
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 
 # %% [markdown]
 # Alternativamente, se muestra el grafo roy correspondiente con indicación del camino crítico.
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo Roy del proyecto con indicación del camino crítico"

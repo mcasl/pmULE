@@ -297,6 +297,9 @@ duracion = int(proyecto.duration(datos_proyecto['duration']))
 calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-grafo
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)

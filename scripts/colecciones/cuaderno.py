@@ -353,7 +353,9 @@ def render(celdas: list[tuple], titulo: str, subtitulo: str, coleccion: str = ""
     partes.append(_celda_code(TEMP))
     for tipo, texto in celdas:
         partes.append(_celda_md(texto) if tipo == "md" else _celda_code(texto))
-    return "\n\n".join(partes) + "\n"
+    # Cálculo paso a paso de los tiempos (PERT, Roy) y de la matriz de Zaderenko
+    from .pasos import anade_pasos
+    return anade_pasos("\n\n".join(partes) + "\n")
 
 
 def despachar(variantes: list, k: int, rng):

@@ -282,6 +282,9 @@ def semaforo(indice):
     return 'verde' if indice >= 0.95 else ('ámbar' if indice >= 0.85 else 'rojo')
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy de la planificación"
 #| label: fig-pert
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)

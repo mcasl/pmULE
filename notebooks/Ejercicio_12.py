@@ -132,6 +132,12 @@ proyecto.pert()
 proyecto.zaderenko(durations=datos_proyecto['duration'])
 
 # %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+
+# %% [markdown]
 # Los tiempos tempranos y tardios han resultado ser:
 
 # %%
@@ -179,6 +185,9 @@ calendario
 # %% [markdown]
 # ### Grafo PERT con indicación de tiempos y rutas del camino crítico de acuerdo a la planificación inicial
 # A continuación se muestra el grafo Pert del proyecto, con indicación de las actividades críticas:
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 proyecto.pert(durations=datos_proyecto['duration'])

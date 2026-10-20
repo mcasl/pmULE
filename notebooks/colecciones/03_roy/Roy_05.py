@@ -255,9 +255,15 @@ print('Finales (sin sucesoras):     ', ', '.join(sorted(prelaciones.end_activiti
 display(Markdown(pregunta_2))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy"
 #| label: fig-roy
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo PERT"

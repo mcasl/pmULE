@@ -283,6 +283,12 @@ display(Markdown(pregunta_3))
 #| label: tbl-zaderenko
 proyecto.zaderenko(durations=datos_proyecto['duration'])
 
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+
 # %%
 resultados_pert = proyecto.calculate_pert(durations=datos_proyecto['duration'])
 display(resultados_pert['nodes'].T)

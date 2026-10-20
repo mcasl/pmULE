@@ -370,7 +370,7 @@
    }
   },
   {
-   "index": 19,
+   "index": 21,
    "source": "#| tbl-cap: \"Valores de los tiempos tempranos y tardíos de los nodos\"",
    "vars": {
     "resultados_pert": {
@@ -505,14 +505,14 @@
    }
   },
   {
-   "index": 21,
+   "index": 23,
    "source": "duracion_media_proyecto = proyecto.duration(durations=datos_proyecto['duration'])",
    "vars": {
     "duracion_media_proyecto": 20
    }
   },
   {
-   "index": 23,
+   "index": 25,
    "source": "#| tbl-cap: \"Calendario del proyecto\"",
    "vars": {
     "calendario": {
@@ -645,14 +645,14 @@
    }
   },
   {
-   "index": 28,
+   "index": 30,
    "source": "camino_critico = proyecto.display_critical_path(durations=datos_proyecto['duration'])",
    "vars": {
     "camino_critico": null
    }
   },
   {
-   "index": 34,
+   "index": 38,
    "source": "desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=datos_proyecto['durati",
    "vars": {
     "desviacion_proyecto": 2.23606797749979,
@@ -680,7 +680,7 @@
    }
   },
   {
-   "index": 38,
+   "index": 42,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_a": 0.08985624743949988,
@@ -689,7 +689,7 @@
    }
   },
   {
-   "index": 42,
+   "index": 46,
    "source": "ackoff, best_option, duration, available = proyecto.ackoff(durations=datos_proyecto['duration'],",
    "vars": {
     "ackoff": {
@@ -1215,7 +1215,7 @@
    }
   },
   {
-   "index": 45,
+   "index": 49,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {
@@ -1228,14 +1228,14 @@
    }
   },
   {
-   "index": 49,
+   "index": 53,
    "source": "duracion_media_proyecto = proyecto.duration(duration)",
    "vars": {
     "duracion_media_proyecto": 18
    }
   },
   {
-   "index": 53,
+   "index": 57,
    "source": "# duration ha sido calculada en el Ackoff Sasieni",
    "vars": {
     "varianza_caminos": {
@@ -1267,7 +1267,7 @@
    }
   },
   {
-   "index": 57,
+   "index": 61,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_a": 0.32736042300928847,
@@ -1276,7 +1276,7 @@
    }
   },
   {
-   "index": 62,
+   "index": 66,
    "source": "#| fig-cap: \"Diagrama de Gantt del proyecto antes de la nivelación\"",
    "vars": {
     "dibujo": {
@@ -1687,7 +1687,7 @@
    }
   },
   {
-   "index": 67,
+   "index": 71,
    "source": "proyecto_nivelacion = proyecto.copy()",
    "vars": {
     "cuadrados": {
@@ -2302,7 +2302,7 @@
    }
   },
   {
-   "index": 78,
+   "index": 82,
    "source": "#| fig-cap: \"Diagrama de Gantt previo a la asignación\"",
    "vars": {
     "dibujo": {
@@ -2689,7 +2689,7 @@
    }
   },
   {
-   "index": 82,
+   "index": 86,
    "source": "#| fig-cap: \"Diagrama de Gantt del proyecto tras la asignación\"",
    "vars": {
     "datos_proyecto_tras_asignar": {

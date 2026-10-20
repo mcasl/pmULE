@@ -252,6 +252,9 @@ datos_proyecto[['predecessor', 'duration']]
 display(Markdown(pregunta_2))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy reconstruido, con tiempos y camino crítico"
 #| label: fig-grafo
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)

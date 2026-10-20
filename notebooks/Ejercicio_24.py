@@ -187,6 +187,15 @@ proyecto.pert(durations=False, ranksep=1)
 #| label: tbl-MatrizZaderenko
 proyecto.zaderenko(duraciones)
 
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(duraciones)
+
+# %%
+proyecto.display_pert_pasos(duraciones)
+
 # %%
 #| fig-cap: "Grafo Pert con indicación de tiempos y rutas del camino crítico"
 #| label: fig-PertConTiempos

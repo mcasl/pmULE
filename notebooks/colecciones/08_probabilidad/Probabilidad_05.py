@@ -237,6 +237,9 @@ X, plazo, probabilidad_objetivo = 'I', 37, 0.9
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT con tiempos y camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

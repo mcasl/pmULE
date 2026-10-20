@@ -259,6 +259,12 @@ display(Markdown(pregunta_1))
 #| label: tbl-zaderenko
 proyecto.zaderenko(durations=datos_proyecto['duration'])
 
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+
 # %%
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario

@@ -252,6 +252,9 @@ t = datos_proyecto['duration'][R.columns]
 Markdown(f'{len(proyecto)} actividades (incluidas las dos ficticias del formato, de duración 0), {len(proyecto.dummies)} ficticias añadidas por el grafo, {len(proyecto.nodes)} nodos y {R.shape[0]} rutas.')
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT de la instancia"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=0.6, nodesep=0.3)

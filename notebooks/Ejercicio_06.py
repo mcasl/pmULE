@@ -133,6 +133,12 @@ proyecto.roy(ranksep=1.2, nodesep=1)
 proyecto.zaderenko(datos_proyecto['duration'])
 
 # %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
+proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+
+# %% [markdown]
 # Los tiempos tempranos y tardíos obtenidos para cada nodo son:
 
 # %%
@@ -172,9 +178,15 @@ resultados_pert['activities'][['H_total']]
 # Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas, cuyas actividades se listan en orden alfabético:
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Pert con indicación con indicación del camino crítico"
 #| label: fig-pertcritico
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1.5, nodesep=0.7)
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo Roy con indicación con indicación del camino crítico"

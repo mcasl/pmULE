@@ -339,6 +339,9 @@ Markdown(f'El cuadro recuperado reproduce el Gantt: {compatible}. Una predecesor
          'Por eso el Gantt no determina el cuadro de prelaciones.')
 
 # %%
+proyecto.display_pert_pasos(prelaciones_recuperadas['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=prelaciones_recuperadas['duration'], ranksep=1)

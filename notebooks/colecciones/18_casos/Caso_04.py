@@ -291,6 +291,9 @@ display(datos_proyecto[['optimista', 'mas_probable', 'pesimista', 'duration', 'v
 calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT con las duraciones medias y el camino crítico"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

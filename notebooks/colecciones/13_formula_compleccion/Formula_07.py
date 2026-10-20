@@ -261,6 +261,9 @@ t = datos_proyecto['duration'][R.columns]
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo PERT original"
 #| label: fig-pert
 proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)

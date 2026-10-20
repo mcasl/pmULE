@@ -238,6 +238,9 @@ X, plazo = 'D', 37
 p_plazo = float(norm.cdf((plazo - duracion) / sigma))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-pert
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)

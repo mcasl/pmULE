@@ -240,6 +240,9 @@ duracion_proyecto = proyecto.duration(datos_proyecto['duration'])
 display(Markdown(pregunta_1))
 
 # %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-pert-p1
 proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
@@ -368,6 +371,9 @@ proyecto = prelaciones.create_project()
 
 # %%
 display(Markdown(pregunta_1))
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"
