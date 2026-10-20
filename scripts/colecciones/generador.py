@@ -13,6 +13,7 @@ Uso (desde la raíz del repositorio):
     python -m scripts.colecciones.generador --ejecutar      # además ejecuta los .ipynb (nbconvert)
     python -m scripts.colecciones.generador --semilla 7     # otra familia de proyectos
     python -m scripts.colecciones.generador --forzar        # reescribir los que ya existen
+    python -m scripts.colecciones.generador --solo 20 --anadir   # sólo las variantes nuevas (sin cuaderno), numeradas a continuación
 
 Cada colección tiene una lista de variantes (`VARIANTES` en su plantilla); el
 ejercicio k usa la variante ((k-1) mod número de variantes) + 1, de modo que con
@@ -20,6 +21,12 @@ ejercicio k usa la variante ((k-1) mod número de variantes) + 1, de modo que co
 distintos. Los cuadernos
 son deterministas: la misma semilla produce los mismos datos. Un ejercicio ya
 existente no se reescribe salvo con --forzar.
+
+Cuando se añaden variantes a una colección ya generada, `--anadir` genera sólo las
+que no tienen cuaderno (se reconocen por la cabecera `variante:` de los existentes),
+numeradas a continuación del último, `--repeticiones` veces cada una (PERT en la
+primera vuelta y Roy en la segunda para las de grafo 'alterno'); los cuadernos
+existentes no se renumeran ni cambian de datos, y `regenerar.py` los reproduce todos.
 
 Para montar un examen a partir de las plantillas: `python -m scripts.colecciones.examen`.
 """
@@ -90,6 +97,49 @@ def generar_coleccion(plantilla, n, semilla, forzar, ejecutar, indice):
         _emparejar(ruta_py)
         if ejecutar:
             _ejecutar(ruta_py.with_suffix(".ipynb"))
+    return entradas
+
+
+def anadir_variantes(plantilla, semilla, repeticiones, ejecutar, indice):
+    """Genera sólo las variantes de la plantilla que aún no tienen cuaderno, numeradas a continuación
+    del último existente (no renumera ni toca los que hay). Devuelve las entradas de toda la colección."""
+    meta = plantilla.META
+    carpeta = COLECCIONES / meta["slug"]
+    carpeta.mkdir(parents=True, exist_ok=True)
+    existentes = sorted(carpeta.glob(f"{meta['prefijo']}_*.py"))
+    entradas = []
+    for r in existentes:
+        en = _entrada_desde_fichero(meta, r.stem, r)
+        en["semilla"] = semilla_de(semilla, indice, int(r.stem.rsplit("_", 1)[1]))
+        texto = r.read_text(encoding="utf8")
+        en["grafo"] = "roy" if ".roy(" in texto else ("pert" if ".pert(" in texto else None)
+        entradas.append(en)
+    usadas = {en["variante"] for en in entradas}
+    nuevas = [v for v in plantilla.VARIANTES if v.nombre not in usadas]
+    if not nuevas:
+        print("  (todas las variantes tienen ya cuaderno)")
+        return entradas
+    k = max([int(r.stem.rsplit("_", 1)[1]) for r in existentes], default=0)
+    for vuelta in range(repeticiones):
+        for v in nuevas:
+            k += 1
+            nombre = f"{meta['prefijo']}_{k:02d}"
+            ruta_py = carpeta / f"{nombre}.py"
+            rng = np.random.default_rng(semilla_de(semilla, indice, k))
+            ESTADO["grafo"] = v.grafo if v.grafo != "alterno" else ("pert" if vuelta % 2 == 0 else "roy")
+            celdas, subtitulo = v.fn(rng)
+            if meta.get("contexto", True) and rng.random() < PROB_CONTEXTO:
+                celdas = contextos.inyectar(celdas, rng)
+            texto = render(celdas, titulo=f"{meta['prefijo']} {k:02d}", subtitulo=subtitulo,
+                           coleccion=meta["slug"], variante=v.nombre, nivel=v.nivel)
+            ruta_py.write_text(texto, encoding="utf8")
+            print(f"  + {ruta_py.relative_to(REPO)}  —  [{v.nombre}, nivel {v.nivel}, {ESTADO['grafo']}] {subtitulo}")
+            entradas.append(dict(nombre=nombre, coleccion=meta["slug"], variante=v.nombre, nivel=v.nivel,
+                                 subtitulo=subtitulo, grafo=ESTADO["grafo"], ruta=str(ruta_py.relative_to(REPO)),
+                                 semilla=semilla_de(semilla, indice, k)))
+            _emparejar(ruta_py)
+            if ejecutar:
+                _ejecutar(ruta_py.with_suffix(".ipynb"))
     return entradas
 
 
@@ -234,6 +284,8 @@ def main(argv=None):
     p.add_argument("--repeticiones", type=int, default=2, help="ejercicios por variante cuando no se da --n (por defecto 2)")
     p.add_argument("--semilla", type=int, default=2026)
     p.add_argument("--forzar", action="store_true", help="regenerar los que ya existen")
+    p.add_argument("--anadir", action="store_true",
+                   help="generar sólo las variantes que aún no tienen cuaderno, numeradas a continuación (no renumera)")
     p.add_argument("--ejecutar", action="store_true", help="ejecutar los .ipynb con nbconvert")
     p.add_argument("--sin-index", action="store_true", help="no tocar docs/index.md, el README ni el catálogo")
     p.add_argument("--listar", action="store_true", help="listar colecciones y variantes")
@@ -251,8 +303,11 @@ def main(argv=None):
                 resumen.append((plantilla, [_entrada_desde_fichero(meta, r.stem, r) for r in existentes]))
             continue
         print(f"[{meta['slug']}] {meta['titulo']}")
-        n = args.n or args.repeticiones * len(plantilla.VARIANTES)
-        entradas = generar_coleccion(plantilla, n, args.semilla, args.forzar, args.ejecutar, indice)
+        if args.anadir:
+            entradas = anadir_variantes(plantilla, args.semilla, args.repeticiones, args.ejecutar, indice)
+        else:
+            n = args.n or args.repeticiones * len(plantilla.VARIANTES)
+            entradas = generar_coleccion(plantilla, n, args.semilla, args.forzar, args.ejecutar, indice)
         resumen.append((plantilla, entradas))
     if not args.sin_index:
         escribir_readme(resumen)

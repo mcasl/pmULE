@@ -568,3 +568,72 @@ Variantes:
 - `Dilema_26` [recurso-desviado, nivel 2] — parar B 2 semanas (holgura 0): 2 de retraso, 9.9 k€ de penalidad frente a 14.9 k€ del otro proyecto
 - `Dilema_27` [baja-temeraria, nivel 3] — baja 28.3 % (umbral 27.7 %) y plazo 18 con P = 0.09: temeraria y sin buena fe
 - `Dilema_28` [imputacion-cruzada, nivel 1] — 530 h (32 k€) de A a B: CPI de A de 0.72 a 1.02; no subvencionable
+
+## 20_sostenibilidad — Sostenibilidad en el desarrollo de proyectos
+
+Situaciones típicas de un proyecto (comprimir el plazo, elegir equipo o proveedor, gestionar los residuos de obra, tramitar la evaluación ambiental, informar de la huella, anunciar el proyecto como «neutro», planificar en verano, cubrir picos de personal, dar energía a la obra, cerrar el caso de negocio sin el fin de vida, desbrozar en época de cría, llevar las tierras al vertedero, cumplir la cláusula social del contrato, elegir el hormigón, comprimir con turno de noche, prefabricar o no, regar con la cuota de sequía, abrir una pista por un espacio protegido, retirar una cubierta de amianto) en las que alguien propone trasladar un impacto al medio, a la comunidad, a los trabajadores o al futuro. Cada caso pide (A) calcular la magnitud del impacto y su coste con las herramientas del curso, (B) aplicar un criterio de referencia con respuesta determinada (principio de sostenibilidad del PMBOK 8, GHG Protocol, ICB4 o una norma legal, parafraseados en la lección 20) y (C) deliberar y redactar la comunicación.
+
+Lección (teoría): `lecciones/20_sostenibilidad.qmd` → `docs/colecciones/lecciones/20_sostenibilidad.html`.
+
+Variantes:
+  - `compresion-con-carbono` (nivel 3): Ackoff con el coste monetario frente a Ackoff con el carbono al precio sombra; coste total y emisiones de cada plan; S2 y S1
+  - `coste-ciclo-de-vida` (nivel 2): dos equipos: precio de compra frente a coste del ciclo de vida (energía, mantenimiento, fin de vida, carbono); precio de equilibrio; S3, S2 y S4
+  - `residuos-de-obra` (nivel 2): demolición selectiva frente a contenedor único: semanas, coste de gestión por fracciones e impuesto al vertido; art. 30 Ley 7/2022; S8 y S1
+  - `fraccionamiento-eia` (nivel 3): fraccionar la planta para esquivar el anexo I: duración y P(hito) con la evaluación simplificada y con la ordinaria; art. 7.1.a Ley 21/2013; S9 y S11
+  - `huella-del-proyecto` (nivel 3): valor ganado de carbono: PE, EE, AE, EPI y previsión al cierre frente al indicador del acta; alcances 1, 2 y 3 de las fuentes; S5 y S6
+  - `neutro-en-carbono` (nivel 2): compensar toda la huella con créditos baratos frente a la curva de coste marginal de reducción; afirmaciones prohibidas por la Directiva 2024/825; S7, S1 y S2
+  - `ola-de-calor` (nivel 3): pérdida esperada por avisos de calor en las actividades exteriores; P(plazo) con y sin el calor (Monte Carlo binomial); RD 486/1997 DA única; S10 y S11
+  - `subcontratacion-en-cadena` (nivel 2): pico de operarios, nivelación y asignación con límite frente a una cadena de cuatro subcontratas; art. 5 Ley 32/2006; S10 y S1
+  - `energia-en-obra` (nivel 2): cargas eléctricas niveladas para caber en la acometida: coste y emisiones del grupo electrógeno frente a la red; alcances 1 y 2; S2, S1 y S6
+  - `acero-importado` (nivel 3): acero importado: precio, transporte, certificados CBAM, retraso frente a la holgura y emisiones de alcance 3; umbral de minimis; S2 y S6
+  - `desmantelamiento` (nivel 2): VAN con y sin el desmantelamiento al final de la vida útil; provisión según el PGC y cuota anual; S4 y S1
+  - `ventana-ambiental` (nivel 2): la DIA prohíbe desbroces en la época de cría: actividades afectadas que terminan antes o esperan, esperas dentro de la holgura, adelantar o retrasar el inicio; art. 55.3.c Ley 21/2013; S12 y S11
+  - `tierras-sobrantes` (nivel 2): balance de tierras: vertedero y préstamo frente a reutilizar según las fechas del desmonte y del terraplén (holgura, acopio o retraso); art. 3.2.b Ley 7/2022; S13, S8 y S1
+  - `clausula-social` (nivel 3): condición especial de ejecución (porcentaje de operario-semanas de inserción): capacidad con inicios más tempranos y tras nivelar, coste frente a penalidad; art. 202 LCSP; S14 y S10
+  - `hormigon-bajo-carbono` (nivel 3): cemento con menos clínker que alarga una semana el hormigonado: emisiones, retraso, Ackoff para recuperarlo y coste total al precio sombra; S15, S2, S6 y S1
+  - `turno-de-noche` (nivel 2): Ackoff con turno de noche en todas las actividades frente a sólo en las no ruidosas; coste esperado con denuncia; ordenanza y Ley 37/2003; S12, S10 y S1
+  - `prefabricacion` (nivel 2): in situ frente a prefabricado: duración, operario-semanas, residuo evitado (prevención), transporte de alcance 3 y coste total al precio sombra; S2, S6, S8 y S4
+  - `restriccion-de-agua` (nivel 2): cuota semanal de agua del bando de sequía: cargas, nivelación, asignación con límite, camión cuba para el exceso frente al hidrante; TRLA arts. 55, 58 y 116; S16, S11 y S1
+  - `pista-de-obra` (nivel 3): pista corta por una ZEC frente a la pista evaluada: semanas, transporte, restauración y compensación; la evaluación de la modificación como actividad previa del cronograma; art. 46.5 Ley 42/2007; S18, S17, S1 y S2
+  - `amianto` (nivel 2): cubierta de fibrocemento antes de la demolición: plan de trabajo de 45 días y retirada por empresa RERA como actividades del cronograma, retraso y antelación necesaria, residuo peligroso; arts. 11, 12 y 17 RD 396/2006; S17, S10, S8 y S1
+
+- `Sostenibilidad_01` [compresion-con-carbono, nivel 3] — adelantar 3 semanas: 11 k€ y 28 t frente a 14 k€ y 12 t con el carbono a 300 €/t
+- `Sostenibilidad_02` [coste-ciclo-de-vida, nivel 2] — A 150 k€ frente a B 240 k€ de inversión; ciclo de vida 481 frente a 460 k€ con el carbono a 250 €/t (equilibrio 59 €/t)
+- `Sostenibilidad_03` [residuos-de-obra, nivel 2] — demolición mecánica con contenedor único: 1 semana(s) y 10 k€ frente a 12.4 k€ más de gestión y el 93% valorizable a vertedero; art. 30 Ley 7/2022
+- `Sostenibilidad_04` [fraccionamiento-eia, nivel 3] — un parque eólico de 8 aerogeneradores de 5.0 MW (40 MW) fraccionado: P(hito) 0.94 con simplificada frente a 0.30 con la ordinaria que corresponde; art. 7.1.a Ley 21/2013
+- `Sostenibilidad_05` [huella-del-proyecto, nivel 3] — AE 189 t < PE 201 t a la semana 10, pero EPI 0.75 y previsión 480 t sobre 360; alcances de las fuentes
+- `Sostenibilidad_06` [neutro-en-carbono, nivel 2] — 1420 t compensadas a 9 €/t (13 k€) frente a reducir el 40%; «neutro» prohibido por la Directiva 2024/825
+- `Sostenibilidad_07` [ola-de-calor, nivel 3] — calor en las semanas 5–14 (40% por semana): duración esperada 22.3 frente a 21, P(T ≤ 22) de 0.85 a 0.40
+- `Sostenibilidad_08` [subcontratacion-en-cadena, nivel 2] — pico 12 → 9 nivelado frente a 7 de plantilla; cadena de 4 escalones 11 k€ frente a ETT 18 k€; art. 5 Ley 32/2006
+- `Sostenibilidad_09` [energia-en-obra, nivel 2] — pico 65 kW → 45 kW nivelado: grupo toda la obra 26 k€ y 19 t frente a grupo + acometida 18 k€ y 9 t
+- `Sostenibilidad_10` [acero-importado, nivel 3] — 210 t de acero: importado 241 k€ frente a europeo 247 k€, pero 299 k€ con CBAM y 2 semana(s) de retraso; alcance 3
+- `Sostenibilidad_11` [desmantelamiento, nivel 2] — VAN 91 k€ sin el fin de vida frente a -40 k€ con desmantelamiento (530 k€ en el año 20); provisión según el PGC
+- `Sostenibilidad_12` [compresion-con-carbono, nivel 3] — adelantar 3 semanas: 7 k€ y 36 t frente a 9 k€ y 12 t con el carbono a 150 €/t
+- `Sostenibilidad_13` [coste-ciclo-de-vida, nivel 2] — A 90 k€ frente a B 130 k€ de inversión; ciclo de vida 322 frente a 283 k€ con el carbono a 150 €/t (B gana ya sin el carbono)
+- `Sostenibilidad_14` [residuos-de-obra, nivel 2] — demolición mecánica con contenedor único: 2 semana(s) y 30 k€ frente a 11.7 k€ más de gestión y el 93% valorizable a vertedero; art. 30 Ley 7/2022
+- `Sostenibilidad_15` [fraccionamiento-eia, nivel 3] — un parque eólico de 12 aerogeneradores de 5.0 MW (60 MW) fraccionado: P(hito) 0.97 con simplificada frente a 0.17 con la ordinaria que corresponde; art. 7.1.a Ley 21/2013
+- `Sostenibilidad_16` [huella-del-proyecto, nivel 3] — AE 213 t < PE 227 t a la semana 11, pero EPI 0.80 y previsión 585 t sobre 470; alcances de las fuentes
+- `Sostenibilidad_17` [neutro-en-carbono, nivel 2] — 1200 t compensadas a 6 €/t (7 k€) frente a reducir el 30%; «neutro» prohibido por la Directiva 2024/825
+- `Sostenibilidad_18` [ola-de-calor, nivel 3] — calor en las semanas 5–14 (50% por semana): duración esperada 23.0 frente a 21, P(T ≤ 23) de 0.92 a 0.49
+- `Sostenibilidad_19` [subcontratacion-en-cadena, nivel 2] — pico 10 → 8 nivelado frente a 5 de plantilla; cadena de 4 escalones 22 k€ frente a ETT 36 k€; art. 5 Ley 32/2006
+- `Sostenibilidad_20` [energia-en-obra, nivel 2] — pico 55 kW → 45 kW nivelado: grupo toda la obra 20 k€ y 19 t frente a grupo + acometida 14 k€ y 7 t
+- `Sostenibilidad_21` [acero-importado, nivel 3] — 170 t de acero: importado 171 k€ frente a europeo 193 k€, pero 214 k€ con CBAM y 1 semana(s) de retraso; alcance 3
+- `Sostenibilidad_22` [desmantelamiento, nivel 2] — VAN 256 k€ sin el fin de vida frente a 192 k€ con desmantelamiento (320 k€ en el año 20); provisión según el PGC
+- `Sostenibilidad_23` [ventana-ambiental, nivel 2] — ventana 1 de abril–30 de junio (semanas 13–26): 2 actividades esperan; 26 → 33 semanas (+7); adelantar 6 o retrasar 26 el inicio
+- `Sostenibilidad_24` [tierras-sobrantes, nivel 2] — 34,000 m³ de desmonte y 34,000 m³ de terraplén: vertedero + préstamo 846 k€ frente a reutilizar 77 k€ con 3 semana(s) de retraso; art. 3.2.b Ley 7/2022
+- `Sostenibilidad_25` [clausula-social, nivel 3] — cláusula del 15 %: 14 de 90 operario-semanas; capacidad 13 con inicios más tempranos y 16 tras nivelar (máx. 1/semana); art. 202 LCSP
+- `Sostenibilidad_26` [hormigon-bajo-carbono, nivel 3] — 1,690 m³: B emite 152 t menos y retrasa 3 semana(s); recuperarlas cuesta 3 k€; al precio sombra de 150 €/t gana B comprimido
+- `Sostenibilidad_27` [turno-de-noche, nivel 2] — adelantar 3 semanas: 9 k€ con noche en todo (E ruidosas) frente a 10 k€ legal; esperado con denuncia 18 k€
+- `Sostenibilidad_28` [prefabricacion, nivel 2] — prefabricar acorta 3 semanas (21 → 18) y evita 57 t de residuo; 230 t a 250 km (6 t CO₂, alcance 3); total al precio sombra 217 frente a 223 k€
+- `Sostenibilidad_29` [ventana-ambiental, nivel 2] — ventana 1 de marzo–31 de mayo (semanas 9–22): 2 actividades esperan; 19 → 25 semanas (+6); adelantar 5 o retrasar 22 el inicio
+- `Sostenibilidad_30` [tierras-sobrantes, nivel 2] — 31,000 m³ de desmonte y 37,000 m³ de terraplén: vertedero + préstamo 864 k€ frente a reutilizar 130 k€ sin retraso; art. 3.2.b Ley 7/2022
+- `Sostenibilidad_31` [clausula-social, nivel 3] — cláusula del 20 %: 16 de 78 operario-semanas; capacidad 14 con inicios más tempranos y 20 tras nivelar (máx. 2/semana); art. 202 LCSP
+- `Sostenibilidad_32` [hormigon-bajo-carbono, nivel 3] — 1,350 m³: B emite 149 t menos y retrasa 2 semana(s); recuperarlas cuesta 6 k€; al precio sombra de 150 €/t gana B comprimido
+- `Sostenibilidad_33` [turno-de-noche, nivel 2] — adelantar 3 semanas: 3 k€ con noche en todo (E ruidosas) frente a 6 k€ legal; esperado con denuncia 29 k€
+- `Sostenibilidad_34` [prefabricacion, nivel 2] — prefabricar acorta 2 semanas (15 → 13) y evita 49 t de residuo; 280 t a 440 km (12 t CO₂, alcance 3); total al precio sombra 154 frente a 127 k€
+- `Sostenibilidad_35` [restriccion-de-agua, nivel 2] — cuota de 100 m³/semana: pico 130 → 100 m³ nivelado, exceso 120 → 0 m³; cabe tras nivelar; hidrante: 23 k€ esperados
+- `Sostenibilidad_36` [pista-de-obra, nivel 3] — pista corta por la ZEC: 2 semana(s) y 27 k€ de semanas y camiones frente a 20 k€ de restauración (neto 7 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 17 a 33; art. 46.5 Ley 42/2007
+- `Sostenibilidad_37` [amianto, nivel 2] — 1900 m² de fibrocemento antes de D: plan de trabajo de 7 semanas y retirada de 1; 22 → 24 semanas (+2), o +1 presentando el plan 1 semana(s) antes; arts. 11, 12 y 17 RD 396/2006
+- `Sostenibilidad_38` [restriccion-de-agua, nivel 2] — cuota de 50 m³/semana: pico 90 → 50 m³ nivelado, exceso 80 → 0 m³; cabe tras nivelar; hidrante: 21 k€ esperados
+- `Sostenibilidad_39` [pista-de-obra, nivel 3] — pista corta por la ZEC: 3 semana(s) y 38 k€ de semanas y camiones frente a 15 k€ de restauración (neto 23 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 23 a 38; art. 46.5 Ley 42/2007
+- `Sostenibilidad_40` [amianto, nivel 2] — 2100 m² de fibrocemento antes de F: plan de trabajo de 7 semanas y retirada de 2; 20 → 24 semanas (+4), o +2 presentando el plan 2 semana(s) antes; arts. 11, 12 y 17 RD 396/2006
