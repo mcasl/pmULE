@@ -205,7 +205,7 @@ class TestAckoffPasos(unittest.TestCase):
         self.assertIn("Iteración 0", html)
         self.assertIn("background:#ffff00", html)      # actividad acortada
         self.assertIn("background:#adff2f", html)      # ruta crítica
-        self.assertIn("background:#fde3cc", html)      # rutas y actividades que actúan
+        self.assertIn("background:#fde3cc", html)      # celdas de cruce ruta crítica × actividad acortada
 
     def test_primer_fotograma_es_la_tabla_completa_y_el_segundo_solo_datos(self):
         html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=2)
@@ -233,3 +233,17 @@ class TestAckoffPasos(unittest.TestCase):
         self.assertEqual(verdes[3], 2)                       # columnas 0 y 1
         self.assertEqual(verdes[4], 4)                       # 0, 1 y 2 (en la 2 empatan dos rutas)
         self.assertEqual(verdes[0], 6)                       # tabla completa: también la columna 3 (dos rutas)
+
+    def test_solo_se_sombrean_las_celdas_de_cruce(self):
+        html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=3)
+        fotos = html.split('class="pmule-paso"')[1:]
+        # iteración 0: crítica Route_5, se acorta A -> una sola celda
+        self.assertEqual(fotos[2].count("background:#fde3cc"), 1)
+        # iteración 2: críticas Route_3 y Route_5, se acorta F -> dos celdas
+        self.assertEqual(fotos[4].count("background:#fde3cc"), 2)
+
+    def test_costes_infinitos_no_rompen_el_visor(self):
+        c = self.c.copy()
+        c["A"] = float("inf")
+        html = self.pg.ackoff_pasos_html(self.d, self.mn, c, reduction=2)
+        self.assertIn("∞", html)

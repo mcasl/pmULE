@@ -358,7 +358,11 @@ display(Markdown(pregunta_2))
 #| label: tbl-ackoff
 tabla_ackoff, pasos, duraciones_reducidas, margen = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=8, report=False)
-tabla_ackoff
+proyecto.display_ackoff_pasos(
+    durations=datos_proyecto['duration'],
+    min_durations=tope,
+    costs=ucr,
+    reduction=8)
 
 # %%
 #| tbl-cap: "Opciones consideradas en cada paso"

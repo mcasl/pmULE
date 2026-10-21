@@ -261,7 +261,11 @@ detalle_rutas(R, datos_proyecto['duration'][R.columns])
 tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'], reduction=4, report=False)
-tabla_ackoff
+proyecto.display_ackoff_pasos(
+    durations=datos_proyecto['duration'],
+    min_durations=datos_proyecto['cap_duration'],
+    costs=datos_proyecto['ucr'],
+    reduction=4)
 
 # %% [markdown]
 # Lo que se compara en cada paso: las rutas críticas en ese momento, las opciones que acortan todas a la vez (una actividad común con margen, o una pareja con una actividad de cada ruta) con su coste, y la elegida (la más barata).

@@ -3202,35 +3202,38 @@ class ProjectGraph:
         k = len(pasos) - 1
 
         def num(v):
-            return "" if pd.isna(v) else (f"{int(v)}" if float(v) == int(v) else f"{v:g}")
+            if pd.isna(v):
+                return ""
+            if np.isinf(v):
+                return "∞" if v > 0 else "-∞"
+            return f"{int(v)}" if float(v) == int(v) else f"{v:g}"
 
         def criticas(r):
             col = df.loc[rutas, r]
             return [x for x in rutas if col[x] == col.max()]
 
-        SOMBRA = "background:#fde3cc;"          # lo que actúa en la iteración (como en Zaderenko)
+        SOMBRA = "background:#fde3cc;"          # celdas ruta crítica × actividad acortada
         linea = "border-bottom:1px solid #ccc;"
         rejilla = "border:1px solid #000;"
 
         def fotograma(vis, texto, actuan_rutas=(), actuan_acts=(), amarillo_hasta=0, verde=None):
             """``vis``: pasos visibles (columnas y filas 0..vis-1); se sombrean las rutas
-            críticas y las actividades que se acortan (``actuan_*``); en verde el máximo de
+            críticas y las actividades que se acortan (``actuan_*``; solo sus celdas de cruce); en verde el máximo de
             cada una de las ``verde`` primeras columnas (por defecto, todas las visibles); en amarillo, las actividades acortadas de las filas
             anteriores a ``amarillo_hasta``."""
             borde = "border-bottom:1px solid #444"
             sep = ";border-right:1px solid #444"
             cab = ['<th style="' + borde + sep + '">ruta \\ act.</th>']
-            cab += [f'<th style="{borde}{";" + SOMBRA if a in actuan_acts else ""}">{_h.escape(str(a))}</th>'
-                    for a in actividades]
+            cab += [f'<th style="{borde}">{_h.escape(str(a))}</th>' for a in actividades]
             cab += [f'<th style="{borde}">' + (f"{pasos[j]}" if j < vis else "&nbsp;") + "</th>"
                     for j in range(k + 1)]
             filas = ["<tr>" + "".join(cab) + "</tr>"]
             for ruta in rutas:
                 fila_actua = ruta in actuan_rutas
-                celdas = [f'<td style="font-weight:bold{sep};{linea}{SOMBRA if fila_actua else ""}">'
+                celdas = [f'<td style="font-weight:bold{sep};{linea}">'
                           f'{_h.escape(str(ruta))}</td>']
                 for a in actividades:
-                    sombra = SOMBRA if (fila_actua or a in actuan_acts) else ""
+                    sombra = SOMBRA if (fila_actua and a in actuan_acts and pd.notna(df.loc[ruta, a])) else ""
                     celdas.append(f'<td style="{rejilla}{sombra}">{num(df.loc[ruta, a])}</td>')
                 for j in range(k + 1):
                     if j < vis:
