@@ -118,7 +118,7 @@ class TestPlotTikzPasos(unittest.TestCase):
         # El fotograma vacío no tiene tiempos; el último paso hacia delante
         # muestra la duración del proyecto; el final marca el camino crítico.
         self.assertNotIn("(210:0.27)", frames[0])
-        self.assertIn("= 31$", frames[self.n])
+        self.assertIn(r"= \mathbf{31}$", frames[self.n])
         self.assertIn("red, very thick", frames[-1])
         self.assertNotIn("red, very thick", frames[self.n])
 
@@ -182,7 +182,7 @@ class TestHolgurasPasos(unittest.TestCase):
         fotos_h = cods[1 + 2 * n_sucesos: -1]
         for c in fotos_h:                              # actividad y sus 2 sucesos en naranja
             self.assertEqual(c.count("fill=orange!20"), 2)
-            self.assertIn("orange!80!black, very thick]", c)
+            self.assertIn("blue!80!black, ultra thick]", c)
         rojas = [c.count(", red, very thick") for c in fotos_h]
         self.assertEqual(rojas, sorted(rojas))          # las flechas rojas no se quitan
         self.assertEqual(cods[1 + 2 * n_sucesos - 1].count(", red, very thick"), 0)
@@ -248,3 +248,45 @@ class TestAckoffPasos(unittest.TestCase):
         c["A"] = float("inf")
         html = self.pg.ackoff_pasos_html(self.d, self.mn, c, reduction=2)
         self.assertIn("∞", html)
+
+
+class TestColoresPorFlecha(unittest.TestCase):
+    def setUp(self):
+        import pmule
+        self.pm = pmule
+        self.pg = project()
+        self.n = len(self.pg.nodes)
+
+    def test_calculo_con_un_color_por_termino(self):
+        pasos = self.pg.pert_pasos(DUR, formato="latex", colores=["red", "blue"])
+        fila = pasos["tempranos"].iloc[2]                      # suceso con dos actividades que llegan
+        self.assertEqual(len(fila["arcos"]), 2)
+        self.assertIn(r"\textcolor{red}{", fila["calculo"])
+        self.assertIn(r"\textcolor{blue}{", fila["calculo"])
+        sin = self.pg.pert_pasos(DUR, formato="latex")["tempranos"].iloc[2]["calculo"]
+        self.assertNotIn("textcolor", sin)
+        self.assertEqual(self.pg.pert_pasos(DUR)["tempranos"].iloc[2]["calculo"].count("textcolor"), 0)
+
+    def test_fotogramas_pert_cada_flecha_su_color(self):
+        cods = self.pg.plot_tikz_pasos(DUR)
+        paleta = self.pm.PALETA_FLECHAS
+        # suceso 3 del ejemplo tiene dos actividades que llegan: dos colores distintos
+        doble = [c for c in cods[1:1 + self.n + 1]
+                 if paleta[0] + ", ultra thick" in c and paleta[1] + ", ultra thick" in c]
+        self.assertTrue(doble)
+        c = doble[0]
+        self.assertIn(rf"\textcolor{{{paleta[0]}}}{{", c)          # valor del nodo y fórmula
+        self.assertGreaterEqual(c.count(rf"\textcolor{{{paleta[1]}}}"), 2)
+
+    def test_roy_colores_en_nodos_y_formula(self):
+        paleta = self.pm.PALETA_FLECHAS
+        fotos = self.pg.plot_tikz_roy_pasos(DUR)
+        con_dos = [c for c in fotos if paleta[0] + ", ultra thick" in c and paleta[1] + ", ultra thick" in c]
+        self.assertTrue(con_dos)
+        self.assertIn(rf"\textcolor{{{paleta[1]}}}{{", con_dos[0])
+
+    def test_holgura_en_un_color(self):
+        paleta = self.pm.PALETA_FLECHAS
+        cods = self.pg.plot_tikz_pasos(DUR)
+        h = cods[1 + 2 * self.n]                               # primera holgura
+        self.assertIn(rf"\textcolor{{{paleta[0]}}}{{\mathbf{{t_", h)
