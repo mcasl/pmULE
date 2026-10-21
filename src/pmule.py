@@ -860,14 +860,17 @@ class PredecessorTable:
                               "color: #5b6573;"},
                 ]))
 
-    def display_distant_linkage_matrix(self):
-        """Matriz de predecesoras distantes como figura (``MatrizEnlace``)."""
-        return MatrizEnlace(self.distant_linkage_dataframe)
+    def display_distant_linkage_matrix(self, ordenar: bool = False):
+        """Matriz de predecesoras distantes como figura (``MatrizEnlace``). Con
+        ``ordenar=True`` filas y columnas van en orden de precedencia."""
+        return MatrizEnlace(self.distant_linkage_dataframe, ordenar=ordenar)
 
-    def display_immediate_linkage_matrix(self):
+    def display_immediate_linkage_matrix(self, ordenar: bool = False):
         """Matriz de predecesoras inmediatas (cuadro de prelaciones expandido) como
-        figura TikZ (``MatrizEnlace``); ``.data`` es el ``DataFrame`` booleano."""
-        return MatrizEnlace(self.immediate_linkage_matrix)
+        figura TikZ (``MatrizEnlace``); ``.data`` es el ``DataFrame`` booleano. Con
+        ``ordenar=True`` filas y columnas van en orden de precedencia (triangular
+        inferior); por defecto se conserva el orden de la tabla."""
+        return MatrizEnlace(self.immediate_linkage_matrix, ordenar=ordenar)
 
 
 class ProjectGraph:
@@ -6931,38 +6934,76 @@ def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: s
     return svgs
 
 
-def _ancho_celda_matriz(data: pd.DataFrame) -> float:
-    """Ancho (cm) de la celda de una matriz de enlace: 0,78 cm, o más si los nombres de
-    las actividades son largos."""
+def _ordenar_por_precedencia(data: pd.DataFrame) -> pd.DataFrame:
+    """Filas y columnas de una matriz de enlace en orden de precedencia: primero las
+    actividades sin predecesoras, luego las que solo dependen de ellas, etc. (dentro de
+    cada nivel, alfabético). La matriz queda triangular inferior. Si las dependencias
+    tuvieran un ciclo se conserva el orden original."""
+    pred = {a: [b for b in data.columns if bool(data.loc[a, b])] for a in data.index}
+    nivel = {}
+    def calcula(a, visita=()):
+        if a in nivel:
+            return nivel[a]
+        if a in visita:
+            raise ValueError("ciclo")
+        nivel[a] = 1 + max([calcula(b, visita + (a,)) for b in pred.get(a, [])], default=-1)
+        return nivel[a]
+    try:
+        for a in data.index:
+            calcula(a)
+    except ValueError:
+        return data
+    orden = sorted(data.index, key=lambda a: (nivel[a], f"{a}"))
+    return data.loc[orden, orden]
+
+
+def _geometria_matriz(data: pd.DataFrame):
+    """Geometría de la figura de una matriz de enlace, en unidades de celda:
+    ``(modo, ancho_celda_cm, margen, alto_cabecera)``. Con nombres cortos (hasta 3
+    caracteres) cada celda lleva la letra de la predecesora; con nombres largos las
+    celdas son estrechas con una marca ✓ y los nombres de las columnas van girados."""
     largo = max([len(f"{n}") for n in list(data.index) + list(data.columns)] + [1])
-    return max(0.78, 0.2 * largo + 0.3)
+    if largo <= 3:
+        return "letra", max(0.78, 0.2 * largo + 0.3), 3.3, 1.1
+    margen = max(3.3, (0.17 * largo + 0.6) / 0.78)
+    return "marca", 0.78, margen, (0.16 * largo + 0.6) / 0.78
 
 
 def _codigo_matriz_tikz(data: pd.DataFrame) -> str:
     """``tikzpicture`` de una matriz booleana de enlace: cuadrícula fina, celdas
-    redondeadas en naranja claro con una marca, y cabeceras en gris."""
+    redondeadas en naranja claro (con la letra de la predecesora o una marca) y
+    cabeceras en gris."""
     nombres = [f"{n}" for n in data.index]
     n = len(nombres)
     tex = ProjectGraph._tex_texto
-    ancho = _ancho_celda_matriz(data)
+    modo, ancho, margen, alto = _geometria_matriz(data)
     L = [rf"\begin{{tikzpicture}}[x={ancho:.2f}cm,y=0.78cm,font=\small]",
          r"\definecolor{narosc}{RGB}{204,102,0}\definecolor{narcl}{RGB}{255,229,204}",
          r"\definecolor{gris}{RGB}{213,219,227}\definecolor{grisosc}{RGB}{91,101,115}",
-         rf"\fill[gris!25,rounded corners=3pt] (-3.3,0) rectangle ({n},1.1);"]
+         rf"\fill[gris!25,rounded corners=3pt] ({-margen:.2f},0) rectangle ({n},{alto:.2f});"]
     for k in range(n + 1):
         L.append(rf"\draw[gris,line width=0.4pt] (0,{-k}) -- ({n},{-k}); "
                  rf"\draw[gris,line width=0.4pt] ({k},0) -- ({k},{-n});")
     for k, nom in enumerate(nombres):
         L.append(rf"\node[font=\bfseries,grisosc,anchor=east] at (-0.35,{-k - 0.5}) {{{tex(nom)}}};")
-        L.append(rf"\node[font=\bfseries,grisosc] at ({k + 0.5},0.55) {{{tex(nom)}}};")
-    L.append(r"\node[font=\footnotesize\itshape,grisosc,anchor=east,align=right] at (-0.25,0.55) "
+    for k, nom in enumerate(data.columns):
+        if modo == "letra":
+            L.append(rf"\node[font=\bfseries,grisosc] at ({k + 0.5},{alto / 2:.2f}) {{{tex(f'{nom}')}}};")
+        else:
+            L.append(rf"\node[font=\bfseries,grisosc,rotate=90,anchor=west,inner sep=0pt] "
+                     rf"at ({k + 0.5},0.25) {{{tex(f'{nom}')}}};")
+    L.append(rf"\node[font=\footnotesize\itshape,grisosc,anchor=east,align=right] at (-0.25,{alto / 2:.2f}) "
              r"{precedente $\to$\\ actividad $\downarrow$};")
-    for i, fila in enumerate(nombres):
+    for i in range(n):
         for j, col in enumerate(data.columns):
             if bool(data.iloc[i, j]):
                 cx, cy = j + 0.5, -i - 0.5
                 L.append(rf"\fill[narcl,rounded corners=2pt] ({j + 0.08},{cy - 0.42}) rectangle ({j + 0.92},{cy + 0.42});")
-                L.append(rf"\node[narosc,font=\bfseries] at ({cx},{cy}) {{{tex(f'{col}')}}};")
+                if modo == "letra":
+                    L.append(rf"\node[narosc,font=\bfseries] at ({cx},{cy}) {{{tex(f'{col}')}}};")
+                else:
+                    L.append(rf"\draw[narosc,line width=1pt,line cap=round,line join=round] "
+                             rf"({cx - 0.19},{cy - 0.01}) -- ({cx - 0.05},{cy - 0.14}) -- ({cx + 0.2},{cy + 0.15});")
     L.append(r"\end{tikzpicture}")
     return "\n".join(L)
 
@@ -6971,7 +7012,9 @@ class MatrizEnlace:
     """Figura (SVG incrustado, vía ``_repr_html_``) de una matriz booleana de enlace entre
     actividades; el ``DataFrame`` original está en ``.data``."""
 
-    def __init__(self, data: pd.DataFrame):
+    def __init__(self, data: pd.DataFrame, ordenar: bool = False):
+        if ordenar:
+            data = _ordenar_por_precedencia(data)
         self.data = data
         self._svg = _svgs_de_tikz([_codigo_matriz_tikz(data)], "calc")[0]
 
@@ -6981,8 +7024,8 @@ class MatrizEnlace:
 
     def _repr_html_(self):
         import base64
-        k = _ancho_celda_matriz(self.data) / 0.78
-        n = (len(self.data) + 3.3) * k
+        _, ancho, margen, _ = _geometria_matriz(self.data)
+        n = (len(self.data) + margen) * ancho / 0.78
         ideal, minimo = round(n * self.PX_CELDA), round(n * self.PX_CELDA_MIN)
         b64 = base64.b64encode(self._svg.encode("utf8")).decode("ascii")
         return (f'<div style="overflow-x:auto"><img alt="matriz de enlace" style="display:block;'
