@@ -219,9 +219,10 @@ class TestAckoffPasos(unittest.TestCase):
         html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=3)
         self.assertIn("paso -1 de 3", html)
         self.assertIn('data-inicio="-1"', html)
-        zad = self.pg.zaderenko_pasos_html(DUR)
-        self.assertIn('data-inicio="1"', zad)
-        self.assertRegex(zad, r"paso 1 de \d+")
+        import pmule
+        otro = pmule._html_pasos(["<p>a</p>", "<p>b</p>"])
+        self.assertIn('data-inicio="1"', otro)
+        self.assertIn("paso 1 de 2", otro)
 
     def test_la_columna_nueva_no_va_en_verde(self):
         html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=3)

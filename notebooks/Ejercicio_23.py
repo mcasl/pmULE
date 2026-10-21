@@ -219,15 +219,12 @@ pd.Series({key: ', '.join(sorted(list(value))) for key, value in proyecto.distan
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Matriz de Zaderenko paso a paso. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
+
 # %%
 #| tbl-cap: "Matriz de Zaderenko para el cálculo de tiempos tempranos y tardíos"
 #| label: tbl-Zaderenko
-proyecto.zaderenko(duraciones)
-
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso (avance con los botones):
-
-# %%
 proyecto.display_zaderenko_pasos(duraciones)
 
 # %%

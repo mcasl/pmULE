@@ -656,7 +656,7 @@
    }
   },
   {
-   "index": 27,
+   "index": 26,
    "source": "resultados_pert = proyecto.calculate_pert(datos_proyecto['duration'])",
    "vars": {
     "resultados_pert": {
@@ -799,14 +799,14 @@
    }
   },
   {
-   "index": 29,
+   "index": 28,
    "source": "duracion_media_proyecto = int(float(proyecto.duration(datos_proyecto['duration'])))",
    "vars": {
     "duracion_media_proyecto": 15
    }
   },
   {
-   "index": 31,
+   "index": 30,
    "source": "#| tbl-cap: \"Calendario del proyecto\"",
    "vars": {
     "calendario": {
@@ -972,7 +972,7 @@
    }
   },
   {
-   "index": 35,
+   "index": 34,
    "source": "camino_critico = proyecto.critical_path(datos_proyecto['duration'])",
    "vars": {
     "camino_critico": {
@@ -1028,7 +1028,7 @@
    }
   },
   {
-   "index": 56,
+   "index": 55,
    "source": "datos_proyecto['variance'] = datos_proyecto.eval('standard_deviation ** 2')",
    "vars": {
     "datos_proyecto": {
@@ -1274,14 +1274,14 @@
    }
   },
   {
-   "index": 61,
+   "index": 60,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_b": 22.66
    }
   },
   {
-   "index": 67,
+   "index": 66,
    "source": "ackoff, best_option, durations, available = proyecto.ackoff(durations=datos_proyecto['duration'],",
    "vars": {
     "ackoff": {
@@ -1925,7 +1925,7 @@
    }
   },
   {
-   "index": 70,
+   "index": 69,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {

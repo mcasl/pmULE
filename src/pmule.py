@@ -4354,7 +4354,8 @@ class ProjectGraph:
     def zaderenko_pasos_html(self, durations, textos: dict = None) -> str:
         """La matriz de Zaderenko paso a paso como HTML autocontenido: los
         mismos fotogramas que :meth:`zaderenko_pasos` (mismos colores) con
-        botones para avanzar y retroceder."""
+        botones para avanzar y retroceder. El primer fotograma (paso 0) es el
+        resultado final; a partir del paso 1 se construye desde el principio."""
         rot = self._rotulos_zaderenko(textos)
         rot["inicio"] = rot["inicio"].replace(r"$t_{ij}$", "t<sub>ij</sub>")
         css = {"azul": "color:#1f3c99;font-weight:bold", "rojo": "color:#b01c1c;font-weight:bold"}
@@ -4367,7 +4368,8 @@ class ProjectGraph:
             return f'<td style="{";".join(estilo)}{extra}">{texto}</td>'
 
         fotos_html = []
-        for fo in self._zaderenko_fotogramas(durations, formato="texto"):
+        fotogramas = self._zaderenko_fotogramas(durations, formato="texto")
+        for fo in [fotogramas[-1]] + fotogramas:        # primero el resultado final (paso 0)
             N = fo["nodos"]
             sep = ";border-right:1px solid #444"
             filas = ['<tr><th style="border-bottom:1px solid #444' + sep + '">t<sub>i</sub>↓</th>'
@@ -4385,7 +4387,7 @@ class ProjectGraph:
             fotos_html.append('<table class="pmule-zad" style="border-collapse:collapse;text-align:center;'
                               'margin:0 auto">' + "".join(filas) + "</table>"
                               f'<p style="text-align:center;margin-top:.5em">{texto}</p>')
-        return _html_pasos(fotos_html)
+        return _html_pasos(fotos_html, inicio=0)
 
     def display_zaderenko_pasos(self, durations, textos: dict = None) -> None:
         """Muestra en un cuaderno la matriz de Zaderenko paso a paso (HTML con botones)."""

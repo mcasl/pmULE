@@ -88,8 +88,13 @@ class TestZaderenkoHtml(unittest.TestCase):
         pg = project()
         h = pg.zaderenko_pasos_html(DUR)
         n = len(pg.nodes)
-        self.assertEqual(h.count('class="pmule-paso"'), 2 * n + 2)
+        self.assertEqual(h.count('class="pmule-paso"'), 2 * n + 3)    # resultado + vacío + n + n + final
         self.assertIn("pmulePaso", h)
+        self.assertIn('data-inicio="0"', h)
+        fotos = h.split('class="pmule-paso"')[1:]
+        tabla = lambda f: f[f.index("<table"):f.index("</table>")]
+        self.assertEqual(tabla(fotos[0]), tabla(fotos[-1]))             # el primero es el resultado final
+        self.assertNotEqual(tabla(fotos[1]), tabla(fotos[0]))
         self.assertEqual(h, pg.zaderenko_pasos_html(DUR))      # determinista
 
 

@@ -2407,6 +2407,7 @@ Tabla 2: Descripción de las actividades
 </ol>
 </div>
 </div>
+<p>Matriz de Zaderenko paso a paso. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):</p>
 <div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.278418Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.278120Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.305038Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.301312Z&quot;}}" data-execution_count="9">
 <div id="tbl-zaderenko" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.278418Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.278120Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.305038Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.301312Z&quot;}}" data-execution_count="9">
 <figure class="quarto-float quarto-float-tbl figure">
@@ -2414,142 +2415,125 @@ Tabla 2: Descripción de las actividades
 Tabla 3: Matriz de Zaderenko
 </figcaption>
 <div aria-describedby="tbl-zaderenko-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="9">
-<div>
-
-
-<table class="dataframe do-not-create-environment cell caption-top table table-sm table-striped small" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">1</th>
-<th data-quarto-table-cell-role="th">2</th>
-<th data-quarto-table-cell-role="th">3</th>
-<th data-quarto-table-cell-role="th">4</th>
-<th data-quarto-table-cell-role="th">5</th>
-<th data-quarto-table-cell-role="th">6</th>
-<th data-quarto-table-cell-role="th">7</th>
-<th data-quarto-table-cell-role="th">8</th>
-<th data-quarto-table-cell-role="th">9</th>
-<th data-quarto-table-cell-role="th">10</th>
-<th data-quarto-table-cell-role="th">early</th>
-</tr>
-</thead>
+<div class="cell-output cell-output-display">
+<div id="pmpce4d1f8078" class="pmule-pasos" style="margin:1em 0"><div style="text-align:center;margin-bottom:.5em"><button style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;border-radius:3px;background:#f4f4f4;cursor:pointer" onclick="pmulePaso(&#39;pmpce4d1f8078&#39;,-23)">«</button><button style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;border-radius:3px;background:#f4f4f4;cursor:pointer" onclick="pmulePaso(&#39;pmpce4d1f8078&#39;,-1)">‹ anterior</button><span class="pmule-contador" data-inicio="0" style="margin:0 .8em">paso 0 de 22</span><button style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;border-radius:3px;background:#f4f4f4;cursor:pointer" onclick="pmulePaso(&#39;pmpce4d1f8078&#39;,1)">siguiente ›</button><button style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;border-radius:3px;background:#f4f4f4;cursor:pointer" onclick="pmulePaso(&#39;pmpce4d1f8078&#39;,23)">»</button></div><div class="pmule-paso" style="display:block">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">1</th>
-<td></td>
-<td>6.0</td>
-<td>4.0</td>
-<td>1.0</td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td>0.0</td>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">i \ j</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">1</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">2</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">3</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">4</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">5</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">6</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">7</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">8</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">9</th>
+<th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444">10</th>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">2</th>
+<td style="color: #b01c1c; font-weight: bold; border-right: 1px solid #444">0</td>
+<td style="font-weight: bold; border-right: 1px solid #444">1</td>
+<td>×</td>
+<td style="color: #b01c1c; font-weight: bold">6</td>
+<td>4</td>
+<td>1</td>
 <td></td>
 <td></td>
 <td></td>
-<td>0.0</td>
 <td></td>
 <td></td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td>6.0</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">3</th>
+<td style="color: #b01c1c; font-weight: bold; border-right: 1px solid #444">6</td>
+<td style="font-weight: bold; border-right: 1px solid #444">2</td>
+<td></td>
+<td>×</td>
+<td></td>
+<td style="color: #b01c1c; font-weight: bold">0</td>
 <td></td>
 <td></td>
 <td></td>
-<td>0.0</td>
 <td></td>
 <td></td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td>4.0</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">4</th>
+<td style=";border-right: 1px solid #444">4</td>
+<td style="font-weight: bold; border-right: 1px solid #444">3</td>
+<td></td>
+<td></td>
+<td>×</td>
+<td>0</td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
-<td>7.0</td>
 <td></td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td>6.0</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">5</th>
+<td style="color: #b01c1c; font-weight: bold; border-right: 1px solid #444">6</td>
+<td style="font-weight: bold; border-right: 1px solid #444">4</td>
+<td></td>
+<td></td>
+<td></td>
+<td>×</td>
+<td style="color: #b01c1c; font-weight: bold">7</td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
-<td>4.0</td>
-<td>5.0</td>
-<td></td>
-<td></td>
-<td></td>
-<td>13.0</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">6</th>
+<td style="color: #b01c1c; font-weight: bold; border-right: 1px solid #444">13</td>
+<td style="font-weight: bold; border-right: 1px solid #444">5</td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
+<td>×</td>
+<td>4</td>
+<td style="color: #b01c1c; font-weight: bold">5</td>
 <td></td>
 <td></td>
-<td>0.0</td>
 <td></td>
-<td></td>
-<td></td>
-<td>17.0</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">7</th>
+<td style=";border-right: 1px solid #444">17</td>
+<td style="font-weight: bold; border-right: 1px solid #444">6</td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
+<td>×</td>
+<td>0</td>
 <td></td>
 <td></td>
-<td>4.0</td>
 <td></td>
-<td></td>
-<td>18.0</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">8</th>
+<td style="color: #b01c1c; font-weight: bold; border-right: 1px solid #444">18</td>
+<td style="font-weight: bold; border-right: 1px solid #444">7</td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
+<td>×</td>
+<td style="color: #b01c1c; font-weight: bold">4</td>
 <td></td>
 <td></td>
-<td>2.0</td>
-<td></td>
-<td>22.0</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">9</th>
+<td style="color: #b01c1c; font-weight: bold; border-right: 1px solid #444">22</td>
+<td style="font-weight: bold; border-right: 1px solid #444">8</td>
 <td></td>
 <td></td>
 <td></td>
@@ -2557,13 +2541,13 @@ Tabla 3: Matriz de Zaderenko
 <td></td>
 <td></td>
 <td></td>
+<td>×</td>
+<td style="color: #b01c1c; font-weight: bold">2</td>
 <td></td>
-<td></td>
-<td>7.0</td>
-<td>24.0</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">10</th>
+<td style="color: #b01c1c; font-weight: bold; border-right: 1px solid #444">24</td>
+<td style="font-weight: bold; border-right: 1px solid #444">9</td>
 <td></td>
 <td></td>
 <td></td>
@@ -2572,38 +2556,41 @@ Tabla 3: Matriz de Zaderenko
 <td></td>
 <td></td>
 <td></td>
-<td></td>
-<td></td>
-<td>31.0</td>
+<td>×</td>
+<td style="color: #b01c1c; font-weight: bold">7</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">late</th>
-<td>0.0</td>
-<td>6.0</td>
-<td>6.0</td>
-<td>6.0</td>
-<td>13.0</td>
-<td>18.0</td>
-<td>18.0</td>
-<td>22.0</td>
-<td>24.0</td>
-<td>31.0</td>
+<td style="color: #b01c1c; font-weight: bold; border-right: 1px solid #444">31</td>
+<td style="font-weight: bold; border-right: 1px solid #444">10</td>
 <td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>×</td>
+</tr>
+<tr class="even" style="border-top:1px solid #444">
+<td style="border-top: 1px solid #444; border-right: 1px solid #444"></td>
+<td style="border-top: 1px solid #444; border-right: 1px solid #444">t*<sub>j</sub>←</td>
+<td style="color: #b01c1c; font-weight: bold; border-top: 1px solid #444">0</td>
+<td style="color: #b01c1c; font-weight: bold; border-top: 1px solid #444">6</td>
+<td style=";border-top: 1px solid #444">6</td>
+<td style="color: #b01c1c; font-weight: bold; border-top: 1px solid #444">6</td>
+<td style="color: #b01c1c; font-weight: bold; border-top: 1px solid #444">13</td>
+<td style=";border-top: 1px solid #444">18</td>
+<td style="color: #b01c1c; font-weight: bold; border-top: 1px solid #444">18</td>
+<td style="color: #b01c1c; font-weight: bold; border-top: 1px solid #444">22</td>
+<td style="color: #b01c1c; font-weight: bold; border-top: 1px solid #444">24</td>
+<td style="color: #b01c1c; font-weight: bold; border-top: 1px solid #444">31</td>
 </tr>
 </tbody>
 </table>
-
-</div>
-</div>
-</div>
-</figure>
-</div>
-</div>
-<p>Algoritmo de Zaderenko paso a paso (avance con los botones):</p>
-<div id="664da6a1" class="cell" data-execution_count="10">
-<div class="cell-output cell-output-display">
-<div id="pmp1dba55f9c9" class="pmule-pasos" style="margin:1em 0"><div style="text-align:center;margin-bottom:.5em"><button style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;border-radius:3px;background:#f4f4f4;cursor:pointer" onclick="pmulePaso(&#39;pmp1dba55f9c9&#39;,-22)">«</button><button style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;border-radius:3px;background:#f4f4f4;cursor:pointer" onclick="pmulePaso(&#39;pmp1dba55f9c9&#39;,-1)">‹ anterior</button><span class="pmule-contador" style="margin:0 .8em">paso 1 de 22</span><button style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;border-radius:3px;background:#f4f4f4;cursor:pointer" onclick="pmulePaso(&#39;pmp1dba55f9c9&#39;,1)">siguiente ›</button><button style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;border-radius:3px;background:#f4f4f4;cursor:pointer" onclick="pmulePaso(&#39;pmp1dba55f9c9&#39;,22)">»</button></div><div class="pmule-paso" style="display:block">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<p style="text-align:center;margin-top:.5em">Camino crítico</p></div><div class="pmule-paso" style="display:none">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -2776,7 +2763,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Matriz de duraciones t<sub>ij</sub></p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -2949,7 +2936,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 1: t1 = 0</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -3122,7 +3109,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 2: t2 = 0 + 6 = 6</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -3295,7 +3282,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 3: t3 = 0 + 4 = 4</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -3468,7 +3455,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 4: t4 = máx{6 + 0, 4 + 0, 0 + 1} = 6</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -3641,7 +3628,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 5: t5 = 6 + 7 = 13</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -3814,7 +3801,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 6: t6 = 13 + 4 = 17</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -3987,7 +3974,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 7: t7 = máx{17 + 0, 13 + 5} = 18</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -4160,7 +4147,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 8: t8 = 18 + 4 = 22</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -4333,7 +4320,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 9: t9 = 22 + 2 = 24</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -4506,7 +4493,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Columna 10: t10 = 24 + 7 = 31</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -4679,7 +4666,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 10: t10* = t10 = 31</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -4852,7 +4839,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 9: t9* = 31 - 7 = 24</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -5025,7 +5012,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 8: t8* = 24 - 2 = 22</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -5198,7 +5185,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 7: t7* = 22 - 4 = 18</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -5371,7 +5358,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 6: t6* = 18 - 0 = 18</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -5544,7 +5531,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 5: t5* = mín{18 - 4, 18 - 5} = 13</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -5717,7 +5704,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 4: t4* = 13 - 7 = 6</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -5890,7 +5877,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 3: t3* = 6 - 0 = 6</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -6063,7 +6050,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 2: t2* = 6 - 0 = 6</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -6236,7 +6223,7 @@ Tabla 3: Matriz de Zaderenko
 </tbody>
 </table>
 <p style="text-align:center;margin-top:.5em">Fila 1: t1* = mín{6 - 4, 6 - 6, 6 - 1} = 0</p></div><div class="pmule-paso" style="display:none">
-<table class="pmule-zad caption-top table table-sm table-striped small">
+<table class="pmule-zad do-not-create-environment cell caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th" style="border-bottom: 1px solid #444; border-right: 1px solid #444">t<sub>i</sub>↓</th>
@@ -6408,17 +6395,20 @@ Tabla 3: Matriz de Zaderenko
 </tr>
 </tbody>
 </table>
-<p style="text-align:center;margin-top:.5em">Camino crítico</p></div></div><script>window.pmulePaso = window.pmulePaso || function(id, d) {var c = document.getElementById(id), p = c.querySelectorAll(".pmule-paso"), k = 0;for (var i = 0; i < p.length; i++) { if (p[i].style.display !== "none") k = i; p[i].style.display = "none"; }k = Math.max(0, Math.min(p.length - 1, k + d)); p[k].style.display = "block";c.querySelector(".pmule-contador").textContent = "paso " + (k + 1) + " de " + p.length; };</script>
+<p style="text-align:center;margin-top:.5em">Camino crítico</p></div></div><script>window.pmulePaso = window.pmulePaso || function(id, d) {var c = document.getElementById(id), p = c.querySelectorAll(".pmule-paso"), k = 0;for (var i = 0; i < p.length; i++) { if (p[i].style.display !== "none") k = i; p[i].style.display = "none"; }k = Math.max(0, Math.min(p.length - 1, k + d)); p[k].style.display = "block";var e = c.querySelector(".pmule-contador"), o = parseInt(e.getAttribute("data-inicio") || "1", 10); e.textContent = "paso " + (k + o) + " de " + (p.length + o - 1); };</script>
 </div>
 </div>
-<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.308763Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.308416Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.340284Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.338159Z&quot;}}" data-execution_count="11">
-<div id="tbl-calendario" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.308763Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.308416Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.340284Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.338159Z&quot;}}" data-execution_count="11">
+</figure>
+</div>
+</div>
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.308763Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.308416Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.340284Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.338159Z&quot;}}" data-execution_count="10">
+<div id="tbl-calendario" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.308763Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.308416Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.340284Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.338159Z&quot;}}" data-execution_count="10">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-calendario-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Tabla 4: Calendario del proyecto
 </figcaption>
 <div aria-describedby="tbl-calendario-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="11">
+<div class="cell-output cell-output-display" data-execution_count="10">
 <div>
 
 
@@ -6523,15 +6513,15 @@ Tabla 4: Calendario del proyecto
 </figure>
 </div>
 </div>
-<div id="64e274f3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.343061Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.342720Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.349963Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.348634Z&quot;}}" data-execution_count="12">
-<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="12">
+<div id="64e274f3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.343061Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.342720Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.349963Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.348634Z&quot;}}" data-execution_count="11">
+<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="11">
 <p>La duración del proyecto es 31 semanas, 3 más que el plazo: no se cumple.</p>
 </div>
 </div>
 </section>
 <section id="apartado-2" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-2">Apartado 2</h2>
-<div id="a84aa777" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.352378Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.352126Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.359143Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.357712Z&quot;}}" data-execution_count="13">
+<div id="a84aa777" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.352378Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.352126Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.359143Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.357712Z&quot;}}" data-execution_count="12">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="2" type="1">
 <li>Recalcule los tiempos tardíos tomando como tiempo tardío del último nodo el plazo impuesto (28) en lugar de la duración del proyecto. ¿Qué actividades tienen ahora holgura total negativa y qué significa?<br>
@@ -6540,8 +6530,8 @@ Tabla 4: Calendario del proyecto
 </div>
 </div>
 <p>Los tiempos tempranos no dependen del plazo. Los tardíos sí: si el último nodo debe alcanzarse en la semana del plazo, todos los tiempos tardíos (y los inicios y fines más tardíos de las actividades) se adelantan en la diferencia entre la duración y el plazo, y la holgura total de cada actividad disminuye en esa misma cantidad.</p>
-<div id="6b0e7d94" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.361653Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.361165Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.376250Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.374971Z&quot;}}" data-execution_count="14">
-<div class="cell-output cell-output-display" data-execution_count="14">
+<div id="6b0e7d94" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.361653Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.361165Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.376250Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.374971Z&quot;}}" data-execution_count="13">
+<div class="cell-output cell-output-display" data-execution_count="13">
 <div>
 
 
@@ -6643,15 +6633,15 @@ Tabla 4: Calendario del proyecto
 </div>
 </div>
 </div>
-<div id="45e77992" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.378721Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.378470Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.387597Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.385795Z&quot;}}" data-execution_count="15">
-<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="15">
+<div id="45e77992" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.378721Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.378470Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.387597Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.385795Z&quot;}}" data-execution_count="14">
+<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="14">
 <p>Con el plazo impuesto, 8 actividades tienen holgura total negativa: A, B, D, E, F, G, H, I. Una holgura −h significa que, aun empezando lo antes posible, la actividad termina h semanas más tarde de lo que el plazo permite: son las actividades de las rutas que exceden el plazo (las críticas tienen −3), y hay que acortar alguna de ellas en cada una de esas rutas.</p>
 </div>
 </div>
 </section>
 <section id="apartado-3" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-3">Apartado 3</h2>
-<div id="26db9936" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.390293Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.389989Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.396494Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.394993Z&quot;}}" data-execution_count="16">
+<div id="26db9936" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.390293Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.389989Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.396494Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.394993Z&quot;}}" data-execution_count="15">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="3" type="1">
 <li>¿Cuántas rutas del proyecto exceden el plazo y en cuánto cada una? ¿Hay alguna actividad que esté en todas ellas? ¿Cuántas semanas habría que acortarla para cumplir el plazo si fuera la única que se acorta?<br>
@@ -6659,14 +6649,14 @@ Tabla 4: Calendario del proyecto
 </ol>
 </div>
 </div>
-<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.398723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.398485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.417812Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.416373Z&quot;}}" data-execution_count="17">
-<div id="tbl-rutasexceden" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.398723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.398485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.417812Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.416373Z&quot;}}" data-execution_count="17">
+<div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.398723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.398485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.417812Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.416373Z&quot;}}" data-execution_count="16">
+<div id="tbl-rutasexceden" class="cell quarto-float quarto-figure quarto-figure-center anchored" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.398723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.398485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.417812Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.416373Z&quot;}}" data-execution_count="16">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-rutasexceden-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Tabla 5: Rutas que exceden el plazo
 </figcaption>
 <div aria-describedby="tbl-rutasexceden-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div class="cell-output cell-output-display" data-execution_count="17">
+<div class="cell-output cell-output-display" data-execution_count="16">
 <div>
 
 
@@ -6707,7 +6697,7 @@ Tabla 5: Rutas que exceden el plazo
 </figure>
 </div>
 </div>
-<div id="2693509e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.421422Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.421139Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.434153Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.432419Z&quot;}}" data-execution_count="18">
+<div id="2693509e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.421422Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.421139Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.434153Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.432419Z&quot;}}" data-execution_count="17">
 <div class="cell-output cell-output-display cell-output-markdown">
 <p>Las actividades D, G, H, I están en todas las rutas que exceden el plazo. Acortando una sola de ellas 3 semanas (el mayor exceso) se cumpliría el plazo, siempre que su duración lo permita.</p>
 </div>
@@ -6715,7 +6705,7 @@ Tabla 5: Rutas que exceden el plazo
 </section>
 <section id="apartado-4" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-4">Apartado 4</h2>
-<div id="b09b65fb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.436643Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.436386Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.442747Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.441642Z&quot;}}" data-execution_count="19">
+<div id="b09b65fb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.436643Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.436386Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.442747Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.441642Z&quot;}}" data-execution_count="18">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="4" type="1">
 <li>Si en lugar de acortar actividades se negociara el plazo, ¿cuál es el mínimo plazo que no obliga a acortar nada?<br>
@@ -6723,8 +6713,8 @@ Tabla 5: Rutas que exceden el plazo
 </ol>
 </div>
 </div>
-<div id="6f0abd2a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.445269Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.444995Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.452372Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.451063Z&quot;}}" data-execution_count="20">
-<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="20">
+<div id="6f0abd2a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:42:43.445269Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:42:43.444995Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:42:43.452372Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:42:43.451063Z&quot;}}" data-execution_count="19">
+<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="19">
 <p>El mínimo plazo que no obliga a acortar nada es la duración del proyecto, 31 semanas: con cualquier plazo mayor o igual todas las holguras son no negativas.</p>
 </div>
 </div>

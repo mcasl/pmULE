@@ -424,7 +424,7 @@
    }
   },
   {
-   "index": 20,
+   "index": 19,
    "source": "#| tbl-cap: \"Valores de los tiempos tempranos y tardíos de los nodos\"",
    "vars": {
     "resultados_pert": {
@@ -581,7 +581,7 @@
    }
   },
   {
-   "index": 24,
+   "index": 23,
    "source": "camino_critico = proyecto.critical_path(datos_proyecto['duration'])",
    "vars": {
     "camino_critico": {
@@ -606,7 +606,7 @@
    }
   },
   {
-   "index": 34,
+   "index": 33,
    "source": "#| tbl-cap: \"Calendario del proyecto\"",
    "vars": {
     "calendario": {
@@ -772,7 +772,7 @@
    }
   },
   {
-   "index": 38,
+   "index": 37,
    "source": "proyecto_asignacion = proyecto.copy()",
    "vars": {
     "dibujo": {
@@ -1443,7 +1443,7 @@
    }
   },
   {
-   "index": 44,
+   "index": 43,
    "source": "duracion_y_recursos = datos_proyecto[['duration', 'resources']]",
    "vars": {
     "dibujo": {
@@ -2437,7 +2437,7 @@
    }
   },
   {
-   "index": 50,
+   "index": 49,
    "source": "proyecto_ackoff = proyecto.copy()",
    "vars": {
     "ackoff": {
@@ -3343,7 +3343,7 @@
    }
   },
   {
-   "index": 52,
+   "index": 51,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {
@@ -3356,7 +3356,7 @@
    }
   },
   {
-   "index": 57,
+   "index": 56,
    "source": "#| tbl-cap: \"Cuadro del algoritmo de Ackoff Sasieni para reducción a tiempo tope del proyecto\"",
    "vars": {
     "ackoff": {
@@ -5485,7 +5485,7 @@
    }
   },
   {
-   "index": 58,
+   "index": 57,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {
@@ -5499,7 +5499,7 @@
    }
   },
   {
-   "index": 62,
+   "index": 61,
    "source": "prelaciones_modificadas =  PredecessorTable.from_dict_of_sets(",
    "vars": {
     "prelaciones_modificadas": {
@@ -5558,7 +5558,7 @@
    }
   },
   {
-   "index": 63,
+   "index": 62,
    "source": "proyecto_modificado = prelaciones_modificadas.create_project()",
    "vars": {
     "proyecto_modificado": {
@@ -5674,7 +5674,7 @@
    }
   },
   {
-   "index": 64,
+   "index": 63,
    "source": "duracion_modificado = datos_proyecto['duration'].drop('F')",
    "vars": {
     "duracion_modificado": {
@@ -5718,7 +5718,7 @@
    }
   },
   {
-   "index": 66,
+   "index": 65,
    "source": "gantt_df, dibujo = proyecto_modificado.gantt(duracion_modificado.to_frame(),",
    "vars": {
     "dibujo": {
@@ -6342,7 +6342,7 @@
    }
   },
   {
-   "index": 69,
+   "index": 68,
    "source": "duracion_proyecto_modificado = proyecto_modificado.duration(durations=duracion_modificado.to_frame()",
    "vars": {
     "duracion_proyecto_modificado": 35

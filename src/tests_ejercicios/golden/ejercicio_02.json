@@ -358,7 +358,7 @@
    }
   },
   {
-   "index": 24,
+   "index": 23,
    "source": "#| tbl-cap: \"Valores de los tiempos tempranos y tardíos de los nodos\"",
    "vars": {
     "duraciones_medias": {
@@ -512,14 +512,14 @@
    }
   },
   {
-   "index": 25,
+   "index": 24,
    "source": "duracion_media_proyecto = int(proyecto.duration(durations=duraciones_medias))",
    "vars": {
     "duracion_media_proyecto": 9
    }
   },
   {
-   "index": 28,
+   "index": 27,
    "source": "#| tbl-cap: \"Calendario del proyecto\"",
    "vars": {
     "calendario": {
@@ -652,7 +652,7 @@
    }
   },
   {
-   "index": 30,
+   "index": 29,
    "source": "#| fig-cap: \"Diagrama de Gantt del proyecto\"",
    "vars": {
     "dibujo": "\n\\begin{tikzpicture}[>= latex, scale=1]\n% Cuadrícula\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 1.5cm, 0.8cm) rectangle ++(1.5cm,-8.8cm);\n\\fill[color=white!90!cyan] ( 4.5cm, 0.8cm) rectangle ++(1.5cm,-8.8cm);\n\\fill[color=white!90!cyan] ( 7.5cm, 0.8cm) rectangle ++(1.5cm,-8.8cm);\n\\fill[color=white!90!cyan] ( 10.5cm, 0.8cm) rectangle ++(1.5cm,-8.8cm);\n%Recuadro exterior\n\\draw (0,0) rectangle ++(13.5cm,  0.8cm);\n\\draw (0,0) rectangle ++(13.5cm, -8.0cm);\n%Columna de actividades\n\\draw (-2,0) rectangle ++(2,0.8 )   node[pos=0.5, anchor=center, transform shape] {Actividad};\n\\draw (-2,-0.8cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {A};\n  \\draw[white!80!blue,very thin] (0, -0.8) -- (13.5, -0.8);\n\\draw (-2,-1.6cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {B};\n  \\draw[white!80!blue,very thin] (0, -1.6) -- (13.5, -1.6);\n\\draw (-2,-2.4000000000000004cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {C};\n  \\draw[white!80!blue,very thin] (0, -2.4000000000000004) -- (13.5, -2.4000000000000004);\n\\draw (-2,-3.2cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {D};\n  \\draw[white!80!blue,very thin] (0, -3.2) -- (13.5, -3.2);\n\\draw (-2,-4.0cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {E};\n  \\draw[white!80!blue,very thin] (0, -4.0) -- (13.5, -4.0);\n\\draw (-2,-4.800000000000001cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {F};\n  \\draw[white!80!blue,very thin] (0, -4.800000000000001) -- (13.5, -4.800000000000001);\n\\draw (-2,-5.6000000000000005cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {G};\n  \\draw[white!80!blue,very thin] (0, -5.6000000000000005) -- (13.5, -5.6000000000000005);\n\\draw (-2,-6.4cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {H};\n  \\draw[white!80!blue,very thin] (0, -6.4) -- (13.5, -6.4);\n\\draw (-2,-7.2cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {I};\n  \\draw[white!80!blue,very thin] (0, -7.2) -- (13.5, -7.2);\n\\draw (-2,-8.0cm) rectangle ++(2,0.8)   node[pos=0.5, anchor=center, transform shape] {J};\n  \\draw[white!80!blue,very thin] (0, -8.0) -- (13.5, -8.0);\n%Columnas extra\n%Fila de periodos\n\\draw (0.75,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {1}; \n\\draw (2.25,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {2}; \n\\draw (3.75,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {3}; \n\\draw (5.25,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {4}; \n\\draw (6.75,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {5}; \n\\draw (8.25,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {6}; \n\\draw (9.75,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {7}; \n\\draw (11.25,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {8}; \n\\draw (12.75,0.4) node[transform shape, minimum width=1.5, minimum height=0.8] {9}; \n% Fin de la cuadrícula principal\n%Filas extra\n%Barras verticales fondo\n\\fill[color=white!90!cyan] ( 1.5cm, -8.0cm ) rectangle ++(1.5cm, -0.0cm);\n\\fill[color=white!90!cyan] ( 4.5cm, -8.0cm ) rectangle ++(1.5cm, -0.0cm);\n\\fill[color=white!90!cyan] ( 7.5cm, -8.0cm ) rectangle ++(1.5cm, -0.0cm);\n\\fill[color=white!90!cyan] ( 10.5cm, -8.0cm ) rectangle ++(1.5cm, -0.0cm);\n%Fin retícula adicional inferior\n%Flechas de prelación (debajo de las barras)\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (3.000,-0.400) -- (3.225,-0.400) -- (3.225,-0.920);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (3.000,-0.400) -- (3.225,-0.400) -- (3.225,-4.120);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (3.000,-0.400) -- (3.225,-0.400) -- (3.225,-7.320);\n\\draw[->, black!60, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (6.000,-1.200) -- (6.225,-1.200) -- (6.225,-1.720);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (6.000,-1.200) -- (6.225,-1.200) -- (6.225,-2.520);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (6.000,-1.200) -- (6.225,-1.200) -- (6.225,-3.320);\n\\draw[->, black!60, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (6.000,-1.200) -- (6.225,-1.200) -- (6.225,-6.520);\n\\draw[->, black!60, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (10.500,-2.000) -- (11.250,-2.000) -- (11.250,-5.200) -- (12.000,-5.200);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (12.000,-2.800) -- (12.225,-2.800) -- (12.225,-4.920);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (7.500,-3.600) -- (7.725,-3.600) -- (7.725,-5.720);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (6.000,-4.400) -- (6.225,-4.400) -- (6.225,-3.880);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (6.000,-7.600) -- (6.225,-7.600) -- (6.225,-3.080);\n\\draw[->, red!70!black, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (6.000,-7.600) -- (6.225,-7.600) -- (6.225,-3.880);\n\\draw[->, black!60, line width=1pt, rounded corners=1.5pt, shorten >=1.5pt] (6.000,-7.600) -- (6.225,-7.600) -- (6.225,-7.080);%Dibujo de las actividades\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=3.0cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( A ) at ( 0.0, -0.68 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 0.75, -0.4 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 2.25, -0.4 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=3.0cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( B ) at ( 3.0, -1.4800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 3.75, -1.2000000000000002 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.25, -1.2000000000000002 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=4.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( C ) at ( 6.0, -2.2800000000000002 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 6.75, -2.0 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 8.25, -2.0 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 9.75, -2.0 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=6.0cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( D ) at ( 6.0, -3.08 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 6.75, -2.8000000000000003 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 8.25, -2.8000000000000003 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 9.75, -2.8000000000000003 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 11.25, -2.8000000000000003 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( E ) at ( 6.0, -3.88 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 6.75, -3.6 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=3.0cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( F ) at ( 3.0, -4.68 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 3.75, -4.4 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.25, -4.4 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( G ) at ( 12.0, -5.48 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 12.75, -5.2 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=6.0cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( H ) at ( 7.5, -6.28 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 8.25, -6.0 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 9.75, -6.0 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 11.25, -6.0 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 12.75, -6.0 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( I ) at ( 6.0, -7.08 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 6.75, -6.800000000000001 ) {    };\n\\node[draw=black, fill=white!90!green, inner sep=0pt, outer sep=0pt, anchor=south west, minimum width=3.0cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] ( J ) at ( 3.0, -7.88 ) {  \\strut };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 3.75, -7.6000000000000005 ) {    };\n\\node[anchor=center, inner sep=0pt, outer sep=0pt, minimum width=1.5cm, minimum height=0.5599999999999999cm, font=\\bfseries\\large, transform shape, text= black ] \n\t\t\t\tat ( 5.25, -7.6000000000000005 ) {    };%Dibujo de los desplazamientos\n\\end{tikzpicture}",
@@ -797,7 +797,7 @@
    }
   },
   {
-   "index": 41,
+   "index": 40,
    "source": "#| tbl-cap: \"Rutas del camino crítico\"",
    "vars": {
     "camino_critico": {
@@ -878,7 +878,7 @@
    }
   },
   {
-   "index": 48,
+   "index": 47,
    "source": "#| tbl-cap: \"Cálculo de la varianza de la duración de las actividades\"",
    "vars": {
     "datos_proyecto": {
@@ -1000,7 +1000,7 @@
    }
   },
   {
-   "index": 50,
+   "index": 49,
    "source": "desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations = datos_proyecto['dura",
    "vars": {
     "desviacion_proyecto": 0.6,
@@ -1043,14 +1043,14 @@
    }
   },
   {
-   "index": 55,
+   "index": 54,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_tau": 0.9522096477271853
    }
   },
   {
-   "index": 60,
+   "index": 59,
    "source": "#| fig-cap: \"Distribución inicial del consumo de recursos\"",
    "vars": {
     "datos_proyecto": {
@@ -1412,7 +1412,7 @@
    }
   },
   {
-   "index": 64,
+   "index": 63,
    "source": "#| fig-cap: \"Planificación del proyecto tras aplicar el algoritmo de asignación\"",
    "vars": {
     "datos_proyecto_tras_asignacion": {
@@ -1832,7 +1832,7 @@
    }
   },
   {
-   "index": 70,
+   "index": 69,
    "source": "#| fig-cap: \"Planificación del proyecto tras aplicar el algoritmo de asignación con el nuevo límite\"",
    "vars": {
     "datos_proyecto_tras_asignar": {

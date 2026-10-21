@@ -271,15 +271,12 @@ display(Markdown(pregunta_2))
 # %% [markdown]
 # En la matriz de Zaderenko la casilla (i, j) contiene la duración de la actividad que va del nodo i al nodo j (cero para las ficticias). El tiempo más temprano de un nodo es el máximo, sobre su columna, de «tiempo temprano del origen más duración»; el más tardío es el mínimo, sobre su fila, de «tiempo tardío del destino menos duración». Los tempranos se calculan de izquierda a derecha y los tardíos de derecha a izquierda, partiendo del tiempo temprano del último nodo.
 
+# %% [markdown]
+# Matriz de Zaderenko paso a paso. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
+
 # %%
 #| tbl-cap: "Matriz de Zaderenko"
 #| label: tbl-zaderenko
-proyecto.zaderenko(durations=datos_proyecto['duration'])
-
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso (avance con los botones):
-
-# %%
 proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
 
 # %%
