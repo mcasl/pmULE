@@ -809,7 +809,7 @@
    }
   },
   {
-   "index": 31,
+   "index": 30,
    "source": "#| tbl-cap: \"Valores de los tiempos tempranos y tardíos de los nodos\"",
    "vars": {
     "resultados_pert": {
@@ -978,7 +978,7 @@
    }
   },
   {
-   "index": 50,
+   "index": 49,
    "source": "#| include: false",
    "vars": {
     "ackoff": {
@@ -2107,7 +2107,7 @@
    }
   },
   {
-   "index": 51,
+   "index": 50,
    "source": "for item, value in best_option.items():",
    "vars": {
     "item": 1,

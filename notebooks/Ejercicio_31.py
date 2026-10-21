@@ -216,16 +216,13 @@ proyecto.roy(ranksep=1.2, nodesep=1)
 # ### Matriz de Zaderenko
 # Determinamos a continuación los tiempos tempranos y tardíos de los nodos del grafo Pert mediante el algoritmo de Zaderenko:
 
+# %% [markdown]
+# Matriz de Zaderenko paso a paso. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
+
 # %%
 #| tbl-cap: "Matriz de Zaderenko para el cálculo de tiempos tempranos y tardíos"
 #| label: tbl-Zaderenko
 duraciones_medias = datos_proyecto['duration']
-proyecto.zaderenko(durations=duraciones_medias)
-
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso (avance con los botones):
-
-# %%
 proyecto.display_zaderenko_pasos(duraciones_medias)
 
 # %% [markdown]

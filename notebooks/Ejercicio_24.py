@@ -182,15 +182,12 @@ display(Markdown(pregunta_3))
 #| label: fig-PertSinTiempos
 proyecto.pert(durations=False, ranksep=1)
 
+# %% [markdown]
+# Matriz de Zaderenko paso a paso. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
+
 # %%
 #| tbl-cap: "Cálculo de los tiempos tempranos y tardíos con el método de Zaderenko"
 #| label: tbl-MatrizZaderenko
-proyecto.zaderenko(duraciones)
-
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso (avance con los botones):
-
-# %%
 proyecto.display_zaderenko_pasos(duraciones)
 
 # %%
