@@ -159,7 +159,7 @@ prelaciones_distantes
 # %%
 #| tbl-cap: "Matriz de Zaderenko para el cálculo de tiempos tempranos y tardíos"
 #| label: tbl-Zaderenko
-proyecto.display_zaderenko_pasos(datos_proyecto['duracion'])
+proyecto.display_zaderenko_tikz(datos_proyecto['duracion'])
 
 # %% [markdown]
 # De manera condensada, se muestran los tiempos tempranos y tardíos en la siguiente tabla:

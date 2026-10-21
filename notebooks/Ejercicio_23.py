@@ -225,7 +225,7 @@ display(Markdown(pregunta_4))
 # %%
 #| tbl-cap: "Matriz de Zaderenko para el cálculo de tiempos tempranos y tardíos"
 #| label: tbl-Zaderenko
-proyecto.display_zaderenko_pasos(duraciones)
+proyecto.display_zaderenko_tikz(duraciones)
 
 # %%
 #| tbl-cap: "Valores de los tiempos tempranos y tardíos de los nodos"

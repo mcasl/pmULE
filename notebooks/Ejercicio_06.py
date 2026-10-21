@@ -133,7 +133,7 @@ proyecto.roy(ranksep=1.2, nodesep=1)
 # %%
 #| tbl-cap: "Matriz de Zaderenko para el cálculo de tiempos tempranos y tardíos"
 #| label: tbl-Zaderenko
-proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 
 # %% [markdown]
 # Los tiempos tempranos y tardíos obtenidos para cada nodo son:
