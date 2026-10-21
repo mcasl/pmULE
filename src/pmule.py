@@ -818,7 +818,7 @@ class PredecessorTable:
            ``distant_linkage_dataframe``. Para mostrarla coloreada de forma
            explícita usa ``display_distant_linkage_matrix()``.
         """
-        return self.display_distant_linkage_matrix()
+        return self._estilo_matriz(self.distant_linkage_dataframe)
 
     @property
     def distant_linkage_dataframe(self) -> pd.DataFrame:
@@ -833,25 +833,41 @@ class PredecessorTable:
                 linkage_matrix.loc[activity, ancestor] = True
         return linkage_matrix
 
-    def display_distant_linkage_matrix(self):
-        def highlight_true(value):
-            if value:
-                return "background-color: cyan;  border: 1px solid black;"
-            else:
-                return "background-color: white;  border:1px solid black;"
+    @staticmethod
+    def _estilo_matriz(data: pd.DataFrame):
+        """``Styler`` de una matriz booleana de enlace: cuadrícula fina y suave, celdas
+        cuadradas de igual ancho, sin rayado de filas y las celdas verdaderas con un
+        tono azul y una marca ✓."""
+        data = data.copy()
+        data.columns.name = "precedente →"
+        data.index.name = "actividad ↓"
+        celda = ("text-align: center; padding: 0.3em 0; border: 1px solid #d5dbe3; "
+                 "box-shadow: none; ")
+        return (data.style
+                .format(lambda v: "✓" if v else "")
+                .map(lambda v: celda + ("background-color: #ffe5cc; color: #cc6600; "
+                                        "font-weight: bold;" if v else "background-color: white;"))
+                .set_table_styles([
+                    {"selector": "", "props": "border-collapse: collapse; table-layout: fixed; "
+                                              "width: auto; margin: 0.5em auto;"},
+                    {"selector": "th", "props": "text-align: center; border: 1px solid #d5dbe3; "
+                                                "background-color: #f4f6f9; box-shadow: none; "
+                                                "padding: 0.3em 0; width: 2.4em;"},
+                    {"selector": "th.row_heading", "props": "text-align: right; width: 7em; "
+                                                            "padding: 0.3em 0.7em 0.3em 0;"},
+                    {"selector": "th.index_name, th.col_heading.level0:first-child",
+                     "props": "font-style: italic; font-weight: normal; width: 7em; "
+                              "color: #5b6573;"},
+                ]))
 
-        data = self.distant_linkage_dataframe
-        return data.replace(False, "").style.map(highlight_true)
+    def display_distant_linkage_matrix(self):
+        """Matriz de predecesoras distantes como figura (``MatrizEnlace``)."""
+        return MatrizEnlace(self.distant_linkage_dataframe)
 
     def display_immediate_linkage_matrix(self):
-        def highlight_true(value):
-            if value:
-                return "background-color: cyan;  border: 1px solid black;"
-            else:
-                return "background-color: white;  border:1px solid black;"
-
-        data = self.immediate_linkage_matrix
-        return data.replace(False, "").style.map(highlight_true)
+        """Matriz de predecesoras inmediatas (cuadro de prelaciones expandido) como
+        figura TikZ (``MatrizEnlace``); ``.data`` es el ``DataFrame`` booleano."""
+        return MatrizEnlace(self.immediate_linkage_matrix)
 
 
 class ProjectGraph:
@@ -6913,6 +6929,68 @@ def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: s
                                 "f.pdf", str(destino.with_suffix(""))], cwd=d, check=True,
                                capture_output=True)
     return svgs
+
+
+def _ancho_celda_matriz(data: pd.DataFrame) -> float:
+    """Ancho (cm) de la celda de una matriz de enlace: 0,78 cm, o más si los nombres de
+    las actividades son largos."""
+    largo = max([len(f"{n}") for n in list(data.index) + list(data.columns)] + [1])
+    return max(0.78, 0.2 * largo + 0.3)
+
+
+def _codigo_matriz_tikz(data: pd.DataFrame) -> str:
+    """``tikzpicture`` de una matriz booleana de enlace: cuadrícula fina, celdas
+    redondeadas en naranja claro con una marca, y cabeceras en gris."""
+    nombres = [f"{n}" for n in data.index]
+    n = len(nombres)
+    tex = ProjectGraph._tex_texto
+    ancho = _ancho_celda_matriz(data)
+    L = [rf"\begin{{tikzpicture}}[x={ancho:.2f}cm,y=0.78cm,font=\small]",
+         r"\definecolor{narosc}{RGB}{204,102,0}\definecolor{narcl}{RGB}{255,229,204}",
+         r"\definecolor{gris}{RGB}{213,219,227}\definecolor{grisosc}{RGB}{91,101,115}",
+         rf"\fill[gris!25,rounded corners=3pt] (-3.3,0) rectangle ({n},1.1);"]
+    for k in range(n + 1):
+        L.append(rf"\draw[gris,line width=0.4pt] (0,{-k}) -- ({n},{-k}); "
+                 rf"\draw[gris,line width=0.4pt] ({k},0) -- ({k},{-n});")
+    for k, nom in enumerate(nombres):
+        L.append(rf"\node[font=\bfseries,grisosc,anchor=east] at (-0.35,{-k - 0.5}) {{{tex(nom)}}};")
+        L.append(rf"\node[font=\bfseries,grisosc] at ({k + 0.5},0.55) {{{tex(nom)}}};")
+    L.append(r"\node[font=\footnotesize\itshape,grisosc,anchor=east,align=right] at (-0.25,0.55) "
+             r"{precedente $\to$\\ actividad $\downarrow$};")
+    for i, fila in enumerate(nombres):
+        for j, col in enumerate(data.columns):
+            if bool(data.iloc[i, j]):
+                cx, cy = j + 0.5, -i - 0.5
+                L.append(rf"\fill[narcl,rounded corners=2pt] ({j + 0.08},{cy - 0.42}) rectangle ({j + 0.92},{cy + 0.42});")
+                L.append(rf"\node[narosc,font=\bfseries] at ({cx},{cy}) {{{tex(f'{col}')}}};")
+    L.append(r"\end{tikzpicture}")
+    return "\n".join(L)
+
+
+class MatrizEnlace:
+    """Figura (SVG incrustado, vía ``_repr_html_``) de una matriz booleana de enlace entre
+    actividades; el ``DataFrame`` original está en ``.data``."""
+
+    def __init__(self, data: pd.DataFrame):
+        self.data = data
+        self._svg = _svgs_de_tikz([_codigo_matriz_tikz(data)], "calc")[0]
+
+    #: píxeles por celda: el ancho ideal es (n + 3,3) celdas; se encoge hasta el mínimo
+    #: y por debajo aparece una barra de desplazamiento dentro de la figura
+    PX_CELDA, PX_CELDA_MIN = 46, 32
+
+    def _repr_html_(self):
+        import base64
+        k = _ancho_celda_matriz(self.data) / 0.78
+        n = (len(self.data) + 3.3) * k
+        ideal, minimo = round(n * self.PX_CELDA), round(n * self.PX_CELDA_MIN)
+        b64 = base64.b64encode(self._svg.encode("utf8")).decode("ascii")
+        return (f'<div style="overflow-x:auto"><img alt="matriz de enlace" style="display:block;'
+                f'margin:0 auto;width:100%;min-width:{minimo}px;max-width:{ideal}px;height:auto" '
+                f'src="data:image/svg+xml;base64,{b64}"></div>')
+
+    def __repr__(self):
+        return f"MatrizEnlace({len(self.data)} actividades)"
 
 
 def _html_fotogramas_tikz(codigos: list, librerias: str = "calc,arrows.meta",
