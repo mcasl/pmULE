@@ -379,7 +379,11 @@ display(Markdown(pregunta_4))
 tabla_ackoff, pasos, duraciones_reducidas, margen = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'], reduction=3, report=False)
-tabla_ackoff
+proyecto.display_ackoff_pasos(
+    durations=datos_proyecto['duration'],
+    min_durations=datos_proyecto['cap_duration'],
+    costs=datos_proyecto['ucr'],
+    reduction=3)
 
 # %%
 filas = []

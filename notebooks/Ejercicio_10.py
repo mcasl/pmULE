@@ -242,7 +242,11 @@ ackoff, best_option, duration, available = proyecto.ackoff(durations=datos_proye
 # %%
 #| tbl-cap: "Cuadro del algoritmo de Ackoff Sasieni"
 #| label: tbl-ackoffƒ
-ackoff
+proyecto.display_ackoff_pasos(
+    durations=datos_proyecto['duracion'],
+    min_durations=datos_proyecto['duracion_tope'],
+    costs=datos_proyecto['cur'],
+    reduction=1)
 
 # %% [markdown]
 # En la Ruta 5 (B-D-G) la actividad más barata es la G pero ya está en su duración tope. La siguiente más barata es la actividad B que dispone de 3 periodos de reducción.

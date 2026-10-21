@@ -250,7 +250,10 @@ for item, value in best_option.items():
 # %%
 #| tbl-cap: "Cuadro del algoritmo de Ackoff Sasieni"
 #| label: tbl-ackoffƒ
-ackoff
+proyecto.display_ackoff_pasos(
+    durations=datos_proyecto['duracion'],
+    min_durations=datos_proyecto['duracion_tope'],
+    costs=datos_proyecto['cur'])
 
 # %% [markdown]
 # La suma del sobrecoste de la primera y segunda iteración es de 18.

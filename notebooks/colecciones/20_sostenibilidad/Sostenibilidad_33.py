@@ -277,7 +277,11 @@ display(Markdown(pregunta_1))
 #| label: tbl-ackoffPropuesta
 tabla_1, pasos_1, duraciones_1, margen_1 = proyecto.ackoff(durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
                                                          costs=datos_proyecto['ucr_propuesta'], reduction=semanas_pedidas, report=False)
-tabla_1
+proyecto.display_ackoff_pasos(
+    durations=datos_proyecto['duration'],
+    min_durations=datos_proyecto['cap_duration'],
+    costs=datos_proyecto['ucr_propuesta'],
+    reduction=semanas_pedidas)
 
 # %%
 #| tbl-cap: "Opciones consideradas en cada paso (propuesta)"
@@ -301,7 +305,11 @@ display(Markdown(pregunta_2))
 #| label: tbl-ackoffLegal
 tabla_2, pasos_2, duraciones_2, margen_2 = proyecto.ackoff(durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
                                                          costs=datos_proyecto['ucr_legal'], reduction=semanas_pedidas, report=False)
-tabla_2
+proyecto.display_ackoff_pasos(
+    durations=datos_proyecto['duration'],
+    min_durations=datos_proyecto['cap_duration'],
+    costs=datos_proyecto['ucr_legal'],
+    reduction=semanas_pedidas)
 
 # %%
 #| tbl-cap: "Opciones consideradas en cada paso (legal)"

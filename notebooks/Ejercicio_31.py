@@ -534,7 +534,11 @@ ackoff, best_option, duracion_ackoff, disponibles = proyecto.ackoff(durations=du
                                                                     min_durations=datos_proyecto['cap_duration'],
                                                                     costs=datos_proyecto['ucr'],
                                                                     reduction=semanas_necesarias)
-ackoff
+proyecto.display_ackoff_pasos(
+    durations=duraciones_medias,
+    min_durations=datos_proyecto['cap_duration'],
+    costs=datos_proyecto['ucr'],
+    reduction=semanas_necesarias)
 
 # %%
 Markdown(f"""Reducir {semanas_necesarias - 1} semanas deja la probabilidad en {analisis[semanas_necesarias - 1]['probabilidad']*100:.1f}%, que se queda justo por debajo del objetivo. Hay que reducir **{semanas_necesarias} semanas**, acortando las actividades {opcion_90['reducidas']}. El sobrecoste es de **{opcion_90['sobrecoste']} k€** y la probabilidad de terminar antes de la nevada pasa a ser del **{opcion_90['probabilidad']*100:.1f}%**.""")

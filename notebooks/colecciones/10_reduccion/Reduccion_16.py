@@ -304,7 +304,11 @@ Markdown(f'Con las duraciones esperadas hay que recortar {r_det} semana(s) para 
 #| label: tbl-ackoff
 tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=r_det, report=False)
-tabla_ackoff
+proyecto.display_ackoff_pasos(
+    durations=datos_proyecto['duration'],
+    min_durations=tope,
+    costs=ucr,
+    reduction=r_det)
 
 # %%
 #| tbl-cap: "Opciones consideradas en cada paso"
