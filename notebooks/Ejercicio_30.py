@@ -193,7 +193,7 @@ pinta_tikz(dibujo)
 # %%
 #| fig-cap: "Grafo Pert con indicación de los números de nodos"
 #| label: fig-pertNumeracionNodos
-proyecto.pert()
+proyecto.display_pert_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # #### Grafo Roy

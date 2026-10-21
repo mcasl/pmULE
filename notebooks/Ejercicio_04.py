@@ -104,7 +104,7 @@ proyecto = prelaciones.create_project()
 # %%
 #| fig-cap: "Grafo Pert con indicación con indicación de los números de nodos"
 #| label: fig-pertNumeracionNodos
-proyecto.pert()
+proyecto.display_pert_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # Alternativamente podríamos haber representado su grafo Roy.

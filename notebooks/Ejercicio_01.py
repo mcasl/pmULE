@@ -137,7 +137,7 @@ prelaciones.display_immediate_linkage_matrix()
 # %%
 #| fig-cap: "Grafo Pert con indicación de los números de nodos"
 #| label: fig-pertNumeracionNodos
-proyecto.pert(durations=False, ranksep=1)
+proyecto.display_pert_construccion(tabla=prelaciones)
 
 # %%
 #| tbl-cap: "Cuadro de ancestros (prelaciones transitivas)"

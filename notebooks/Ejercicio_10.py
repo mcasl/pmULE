@@ -106,7 +106,7 @@ prelaciones.display_immediate_linkage_matrix()
 #| label: fig-pertNumeracionNodos
 proyecto = prelaciones.create_project()
 datos_proyecto = datos_enunciado.copy()
-proyecto.pert(nodesep=0.6)
+proyecto.display_pert_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # ### Matriz de Zaderenko

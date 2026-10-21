@@ -133,7 +133,7 @@ datos_proyecto[['b', 'm', 'a', 'duration', 'standard_deviation', 'ucr']]
 #| fig-cap: "Grafo Pert con indicación con indicación de los números de nodos"
 #| label: fig-pertNumeracionNodos
 proyecto = prelaciones.create_project()
-proyecto.pert(ranksep=1, nodesep=0.6)
+proyecto.display_pert_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # Alternativamente podríamos haber representado su grafo Roy.

@@ -120,7 +120,7 @@ prelaciones.display_immediate_linkage_matrix()
 # %%
 #| fig-cap: "Grafo Pert con indicación de los números de nodos"
 #| label: fig-pertNumeracionNodos
-proyecto.pert(ranksep=1.5, nodesep=0.8)
+proyecto.display_pert_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # ### Matriz de Zaderenko

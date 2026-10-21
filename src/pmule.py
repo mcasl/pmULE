@@ -3799,6 +3799,229 @@ class ProjectGraph:
         holguras = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
         return dict(tempranos=tempranos, tardios=tardios, holguras=holguras)
 
+    # ------------------------------------------------------------------
+    # Visor de la construcción del grafo PERT a partir del cuadro de prelaciones
+    # ------------------------------------------------------------------
+
+    def _matriz_prelaciones(self, tabla=None) -> pd.DataFrame:
+        """Matriz booleana de predecesoras inmediatas (filas: actividad; columnas:
+        predecesora). Con ``tabla`` (una :class:`PredecessorTable`) es la suya; sin ella
+        se deduce del proyecto."""
+        if tabla is not None:
+            return tabla.immediate_linkage_matrix
+        dist = self.distant_predecessor()
+        nombres = sorted(dist)
+        M = pd.DataFrame(False, index=nombres, columns=nombres, dtype=bool)
+        M.index.name = "activities"
+        for a, preds in dist.items():
+            for p in preds:
+                if not any(p in dist[q] for q in preds if q != p):
+                    M.loc[a, p] = True
+        return M
+
+    def plot_tikz_construccion(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
+                               textos: dict = None) -> list:
+        """Fotogramas TikZ (uno por ``tikzpicture``) de la construcción del grafo PERT
+        a partir del cuadro de prelaciones: a la izquierda el cuadro y a la derecha el
+        grafo con la numeración de nodos y sin tiempos.
+
+        Secuencia: (1) las actividades iniciales (filas sin predecesoras) se señalan en
+        el cuadro y en el grafo, y lo que no actúa queda en gris claro; (2) una actividad
+        por fotograma (con las ficticias que necesite), que pasa a negro mientras se
+        señala su fila; (3) cuando todas las actividades con columnas iguales en el cuadro
+        (mismas sucesoras, o ninguna) ya están dibujadas, se resaltan esas columnas y el
+        suceso en que se fusionan sus finales; y el grafo completo al final. Con
+        ``ordenar=True`` el cuadro va en orden de precedencia. ``textos`` cambia los
+        rótulos (``{"completo": ..., "iniciales": ...}``)."""
+        rot = {"completo": "Cuadro de prelaciones y grafo PERT con la numeración de nodos",
+               "iniciales": "Actividades iniciales (sin predecesoras): {acts}",
+               "actividad": "Actividad {act}: predecesoras {preds}",
+               "ficticia": "se añade la actividad ficticia {fict}",
+               "iguales": "Las columnas {cols} son iguales: sus actividades terminan en el mismo suceso ({nodo})",
+               "vacias": "Las columnas {cols} están vacías: sus actividades terminan en el suceso final ({nodo})"}
+        rot.update(textos or {})
+        tex = self._tex_texto
+        G = self.pert_graph
+        datos = self._matriz_prelaciones(tabla)
+        orden = list(_ordenar_por_precedencia(datos).index)            # orden de dibujo
+        datos = _ordenar_por_precedencia(datos) if ordenar else datos
+        nombres = [f"{n}" for n in datos.index]
+        preds = {f"{a}": [f"{p}" for p in datos.columns if bool(datos.loc[a, p])] for a in datos.index}
+        arco = {}                                                         # actividad -> (u, v)
+        ficticias = []
+        for u, v, d in G.edges(data=True):
+            act = d.get("activity", "")
+            if (not act) or act.startswith("@"):
+                ficticias.append((f"{u}", f"{v}"))
+            else:
+                arco[act] = (f"{u}", f"{v}")
+        paso_de = {a: k for k, a in enumerate(orden)}
+        # cada ficticia se dibuja con la primera actividad que sale de su destino
+        # (o, si no hay, con la última que llega a su origen)
+        ficticia_en = {}
+        for (u, v) in ficticias:
+            sale = [a for a, (x, _) in arco.items() if x == v]
+            llega = [a for a, (_, y) in arco.items() if y == u]
+            cand = min(sale, key=paso_de.get) if sale else (max(llega, key=paso_de.get) if llega else orden[-1])
+            ficticia_en.setdefault(cand, []).append((u, v))
+        # grupos de columnas iguales (mismas sucesoras) y paso en que se completan
+        suc = {a: frozenset(r for r in nombres if a in preds[r]) for a in nombres}
+        grupos = {}
+        for a in nombres:
+            grupos.setdefault(suc[a], []).append(a)
+        fusion = {}                                                       # actividad final -> grupo
+        for s_, miembros in grupos.items():
+            if len(miembros) < 2:
+                continue
+            fin = {arco[a][1] for a in miembros if a in arco}
+            if len(fin) != 1:
+                continue
+            ultimo = max(miembros, key=paso_de.get)
+            fusion[ultimo] = (sorted(miembros, key=paso_de.get), fin.pop(), not s_)
+
+        # geometría y diseño del grafo (el de pert(), sin tiempos)
+        trazado = self._trazado_pert({}, escala, False)
+        pos = trazado["pos"] if trazado else self._pert_posiciones(escala, None)
+        xs = [x for x, _ in pos.values()]
+        ys = [y for _, y in pos.values()]
+        if trazado:
+            for x, y in trazado["etiquetas"].values():
+                xs.append(x); ys.append(y)
+            for r in trazado["rutas"].values():
+                for x, y in r:
+                    xs.append(x); ys.append(y)
+        xmin, xmax, ymin, ymax = min(xs) - 0.7, max(xs) + 0.7, min(ys) - 0.7, max(ys) + 0.7
+        _, ancho, margen, alto = _geometria_matriz(datos)
+        n = len(nombres)
+        Wm, Hm = (n + margen) * ancho, (n + alto) * 0.78
+        hueco = 1.0
+        yc_g = (ymin + ymax) / 2
+        yc_m = (alto - n) / 2 * 0.78
+        ancho_total = Wm + hueco + (xmax - xmin)
+        y_texto = min(ymin, yc_g - Hm / 2) - 0.4
+        f = lambda *a, **k: self._pert_fotograma(pos, {}, {}, escala, {}, {}, trazado=trazado,
+                                                 con_duracion=False, **k)
+
+        def lista(xs_):
+            xs_ = list(xs_)
+            return xs_[0] if len(xs_) == 1 else ", ".join(xs_[:-1]) + " y " + xs_[-1]
+
+        def _previas(actuales, ficticias_actuales):
+            """Actividades (y ficticias) previas que dan origen a las que se añaden."""
+            if not actuales and not ficticias_actuales:
+                return set(), set()
+            prev = {p for a in actuales for p in preds.get(a, [])}
+            origen = {arco[a][0] for a in actuales if a in arco}
+            origen |= {u for (u, _) in ficticias_actuales}
+            pf, cambio = set(), True
+            while cambio:                    # ficticias existentes que desembocan en el origen
+                cambio = False
+                for (u, v) in ficticias:
+                    if (u, v) not in ficticias_actuales and (u, v) not in pf and v in origen:
+                        pf.add((u, v)); origen.add(u); cambio = True
+            return prev, pf
+
+        def fotograma(hechas, actuales, ficticias_hechas, ficticias_actuales, texto,
+                      filas=None, columnas=(), nodo_resaltado=None, completo=False):
+            ea = {}
+            previas, previas_f = _previas(actuales, ficticias_actuales)
+            for u, v, d in G.edges(data=True):
+                clave = (f"{u}", f"{v}")
+                act = d.get("activity", "")
+                fict = (not act) or act.startswith("@")
+                if completo:
+                    ea[clave] = "hecho"
+                elif (clave in ficticias_actuales) if fict else (act in actuales):
+                    ea[clave] = "actual"
+                elif (clave in previas_f) if fict else (act in previas):
+                    ea[clave] = "previa"
+                elif (clave in ficticias_hechas) if fict else (act in hechas):
+                    ea[clave] = "hecho"
+                else:
+                    ea[clave] = "oculto"
+            tocados = {x for k, e in ea.items() if e != "oculto" for x in k}
+            en = {nd: ("hecho" if nd in tocados else "oculto") for nd in pos}
+            if nodo_resaltado is not None:
+                en[nodo_resaltado] = "actual"
+            cuerpo = self._pert_fotograma(pos, {}, {}, escala, {}, {}, trazado=trazado,
+                                          con_duracion=False, estilo_arcos=ea, estilo_nodos=en,
+                                          numeros=completo)
+            L = [r"\begin{tikzpicture}[>=stealth]", _COLORES_MATRIZ,
+                 rf"\begin{{scope}}[xshift={margen * ancho:.2f}cm,yshift={yc_g - yc_m:.2f}cm,"
+                 rf"x={ancho:.2f}cm,y=0.78cm,font=\small]"]
+            L += _cuerpo_matriz_tikz(datos, filas, columnas)
+            L += [r"\end{scope}",
+                  rf"\begin{{scope}}[xshift={Wm + hueco - xmin:.2f}cm]", cuerpo, r"\end{scope}",
+                  rf"\node[anchor=north, font=\small, align=center, text width={ancho_total:.2f}cm] "
+                  rf"at ({ancho_total / 2:.2f}cm, {y_texto:.2f}cm) {{{texto}}};",
+                  r"\end{tikzpicture}"]
+            return "\n".join(L)
+
+        codigos = []
+        hechas, fict_hechas = set(), set()
+        iniciales = [a for a in orden if not preds[a]]
+
+        def estado_filas(actuales):
+            return {a: ("actual" if a in actuales else None if a in hechas else "gris") for a in nombres}
+
+        # (1) actividades iniciales
+        fict_ini = [fc for a in iniciales for fc in ficticia_en.get(a, [])]
+        codigos.append(fotograma(hechas, set(iniciales), fict_hechas, set(fict_ini),
+                                 tex(rot["iniciales"].format(acts=lista(iniciales))),
+                                 filas=estado_filas(set(iniciales))))
+        hechas |= set(iniciales)
+        fict_hechas |= set(fict_ini)
+        for a in iniciales:
+            if a in fusion:
+                grp, nodo, vacia = fusion[a]
+                codigos.append(self._paso_fusion(fotograma, grp, nodo, vacia, hechas, fict_hechas, rot, lista, tex))
+        # (2) y (3) el resto, una actividad por fotograma
+        for a in orden:
+            if a in iniciales:
+                continue
+            fi = ficticia_en.get(a, [])
+            texto = rot["actividad"].format(act=a, preds=lista(preds[a]))
+            if fi:
+                texto += "; " + rot["ficticia"].format(fict=lista([f"@{u}→{v}" for u, v in fi]))
+            codigos.append(fotograma(hechas, {a}, fict_hechas, set(fi), tex(texto),
+                                     filas=estado_filas({a})))
+            hechas.add(a)
+            fict_hechas |= set(fi)
+            if a in fusion:
+                grp, nodo, vacia = fusion[a]
+                codigos.append(self._paso_fusion(fotograma, grp, nodo, vacia, hechas, fict_hechas, rot, lista, tex))
+        codigos.append(fotograma(hechas, set(), fict_hechas, set(), tex(rot["completo"]), completo=True))
+        return codigos
+
+    @staticmethod
+    def _paso_fusion(fotograma, grupo, nodo, vacia, hechas, fict_hechas, rot, lista, tex):
+        """Fotograma de las columnas iguales de ``grupo`` y del suceso donde terminan."""
+        texto = rot["vacias" if vacia else "iguales"].format(cols=lista(grupo), nodo=nodo)
+        return fotograma(hechas, set(), fict_hechas, set(), tex(texto),
+                         columnas=grupo, nodo_resaltado=nodo)
+
+    def pert_construccion_html(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
+                               textos: dict = None) -> str:
+        """Visor HTML con botones de la construcción del grafo PERT (véase
+        :meth:`plot_tikz_construccion`). El primer fotograma (paso 0) es el cuadro con
+        el grafo completo; a partir del paso 1 se construye desde el principio."""
+        codigos = self.plot_tikz_construccion(escala, tabla, ordenar, textos)
+        return _html_fotogramas_tikz(codigos, resultado_primero=True)
+
+    def display_pert_construccion(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
+                                  textos: dict = None, visor: bool = True) -> None:
+        """Muestra en un cuaderno la construcción del grafo PERT a partir del cuadro de
+        prelaciones, con botones (``visor=True``, :meth:`pert_construccion_html`). Con
+        ``visor=False``, o si no hay LaTeX, se muestra el grafo final con :meth:`pert`."""
+        if visor:
+            try:
+                display(HTML(self.pert_construccion_html(escala, tabla, ordenar, textos)))
+                return
+            except (FileNotFoundError, RuntimeError) as e:
+                import warnings
+                warnings.warn(f"No se pudo generar el visor TikZ ({e}); se muestra el grafo final.")
+        display(self.pert())
+
     def pert_pasos_html(self, durations, escala: float = 1.0, posiciones: dict = None,
                         textos: dict = None) -> str:
         """El cálculo de los tiempos del PERT como visor HTML con botones
@@ -4093,13 +4316,17 @@ class ProjectGraph:
     def _pert_fotograma(self, pos, dur, holguras, escala, tempranos, tardios,
                         actual=None, arcos_activos=(), texto="", critico=False,
                         trazado=None, con_duracion=True, criticas=None, colores_valores=None,
-                        negrita=None, colores_region=None):
+                        negrita=None, colores_region=None,
+                        estilo_arcos=None, estilo_nodos=None, numeros=True):
         """Un fotograma TikZ del grafo PERT (cuerpo, sin ``tikzpicture``).
 
         ``arcos_activos`` puede ser un ``dict`` ``{(i, j): color}`` (un color por arco) y
         ``colores_valores`` un ``dict`` ``{(suceso, "e" | "l"): color}`` que tiñe el tiempo
         temprano o tardío de ese suceso con el color del arco que lo usa en el cálculo;
         ``negrita`` es un conjunto de esas mismas claves cuyo número va en negrita;
+        ``estilo_arcos`` y ``estilo_nodos`` (``{(i, j): estado}`` y ``{suceso: estado}``,
+        estados ``"hecho"`` negro, ``"actual"`` naranja y grueso, ``"gris"`` gris claro)
+        fijan el aspecto de cada arco y cada suceso (visor de construcción del grafo);
         ``colores_region`` da el color de los radios del quesito resaltado (por defecto el
         de ``colores_valores``). En un
         paso de cálculo los arcos de ``arcos_activos`` se dibujan más gruesos y con la
@@ -4124,6 +4351,8 @@ class ProjectGraph:
             return rf"\textcolor{{{c}}}{{{texto}}}" if c else texto
 
         GRIS = "gray!55"
+        CL = "gray!40"
+        COLOR_PREVIA = "blue!70!black"
         atenuar = bool(arcos_activos) or bool(actuales)
         col_nodo = ({x: c for (u, v), c in arcos_activos.items() for x in (u, v)
                      if x not in actuales} if isinstance(arcos_activos, dict) else {})
@@ -4145,7 +4374,22 @@ class ProjectGraph:
             color = ""
             col_act = (arcos_activos.get((f"{u}", f"{v}")) if isinstance(arcos_activos, dict)
                        else ("orange!80!black" if (f"{u}", f"{v}") in arcos_activos else None))
-            if col_act:
+            st = (estilo_arcos or {}).get((f"{u}", f"{v}"))
+            if st == "oculto":
+                estilo.append("white")
+                color = "white"
+            elif st == "gris":
+                estilo.append(CL)
+                color = CL
+            elif st == "hecho":
+                pass
+            elif st == "previa":
+                estilo += [COLOR_PREVIA, "ultra thick"]
+                color = col_act = COLOR_PREVIA
+            elif st == "actual":
+                estilo += ["orange!80!black", "ultra thick"]
+                color = col_act = "orange!80!black"
+            elif col_act:
                 estilo += [col_act, "ultra thick"]
                 color = col_act
             elif (act in criticas if criticas is not None
@@ -4182,7 +4426,14 @@ class ProjectGraph:
             else:
                 es_critico = (critico and nodo in tempranos and nodo in tardios
                               and tempranos[nodo] == tardios[nodo])
-            if nodo in actuales:
+            est = (estilo_nodos or {}).get(nodo)
+            if est == "oculto":
+                relleno = "fill=white, draw=white, thick"
+            elif est == "gris":
+                relleno = f"fill=white, draw={CL}, thick"
+            elif est == "hecho":
+                relleno = "fill=white, draw, thick"
+            elif est == "actual" or nodo in actuales:
                 relleno = "fill=orange!20, draw=orange!80!black, very thick"
             elif es_critico:
                 relleno = "fill=white!90!red, draw=red, very thick"
@@ -4192,11 +4443,13 @@ class ProjectGraph:
                 relleno = f"fill=white, draw={GRIS}, thick"
             else:
                 relleno = "fill=white, draw, thick"
-            gris = (f", text={GRIS}" if (atenuar and nodo not in implicados and not es_critico)
-                    else "")
+            gris = (", text=white" if est == "oculto" else
+                    f", text={CL}" if est == "gris" else
+                    f", text={GRIS}" if (est is None and atenuar and nodo not in implicados
+                                         and not es_critico) else "")
             L.append(rf"  \node[circle, {relleno}, minimum size=1.1cm, inner sep=0pt]"
                      rf" (n{nodo}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
-            L.append(rf"  \draw[gray] (n{nodo}.center) -- (n{nodo}.45)"
+            L.append(rf"  \draw[{'white' if est == 'oculto' else CL if est == 'gris' else 'gray'}] (n{nodo}.center) -- (n{nodo}.45)"
                      rf" (n{nodo}.center) -- (n{nodo}.135) (n{nodo}.center) -- (n{nodo}.270);")
             # «quesito» del valor que interviene: sus dos radios, más gruesos y del color de la flecha
             for clave, (ini, fin) in (("e", (135, 270)), ("l", (270, 45))):
@@ -4205,8 +4458,9 @@ class ProjectGraph:
                         (nodo, clave), "orange!80!black" if nodo in actuales else "black")
                     L.append(rf"  \draw[{c}, ultra thick] (n{nodo}.{ini}) -- (n{nodo}.center)"
                              rf" -- (n{nodo}.{fin});")
-            L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
-                     rf" at ($(n{nodo}.center)+(90:0.28)$) {{{self._tex_texto(f"{nodo}")}}};")
+            if numeros:
+                L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
+                         rf" at ($(n{nodo}.center)+(90:0.28)$) {{{self._tex_texto(f"{nodo}")}}};")
             if nodo in tempranos:
                 L.append(rf"  \node[font=\scriptsize{r'\bfseries' if es_critico else ''}{gris}] at ($(n{nodo}.center)+(210:0.27)$) {{{tinta(nodo, 'e', f(tempranos[nodo]))}}};")
             if nodo in tardios:
@@ -6873,12 +7127,31 @@ def _html_pasos(fotos: list, inicio: int = 1) -> str:
         f'<span class="pmule-contador" data-inicio="{inicio}" style="margin:0 .8em">paso {inicio} de {n + inicio - 1}</span>'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',1)">siguiente ›</button>'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',{n})">»</button>'
+        f'<button {boton} title="Ampliar a pantalla completa (Esc para cerrar)" '
+        f'onclick="pmulePantalla(\'{uid}\')">⛶</button>'
         f'</div>{divs}</div>'
         '<script>window.pmulePaso = window.pmulePaso || function(id, d) {'
         'var c = document.getElementById(id), p = c.querySelectorAll(".pmule-paso"), k = 0;'
         'for (var i = 0; i < p.length; i++) { if (p[i].style.display !== "none") k = i; p[i].style.display = "none"; }'
         'k = Math.max(0, Math.min(p.length - 1, k + d)); p[k].style.display = "block";'
-        'var e = c.querySelector(".pmule-contador"), o = parseInt(e.getAttribute("data-inicio") || "1", 10); e.textContent = "paso " + (k + o) + " de " + (p.length + o - 1); };</script>')
+        'var e = c.querySelector(".pmule-contador"), o = parseInt(e.getAttribute("data-inicio") || "1", 10); e.textContent = "paso " + (k + o) + " de " + (p.length + o - 1); };'
+        'window.pmulePantalla = window.pmulePantalla || function(id) {'
+        'var c = document.getElementById(id), abierto = c.getAttribute("data-pantalla") === "1";'
+        'var imgs = c.querySelectorAll("img");'
+        'if (abierto) { c.removeAttribute("data-pantalla"); c.style.cssText = c.getAttribute("data-estilo");'
+        'for (var i = 0; i < imgs.length; i++) imgs[i].style.cssText = imgs[i].getAttribute("data-estilo");'
+        'document.body.style.overflow = c.getAttribute("data-overflow") || ""; return; }'
+        'c.setAttribute("data-pantalla", "1"); c.setAttribute("data-estilo", c.style.cssText);'
+        'c.setAttribute("data-overflow", document.body.style.overflow);'
+        'c.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#fff;margin:0;padding:.8em;overflow:auto";'
+        'document.body.style.overflow = "hidden";'
+        'for (var i = 0; i < imgs.length; i++) { imgs[i].setAttribute("data-estilo", imgs[i].style.cssText);'
+        'imgs[i].style.cssText = "display:block;margin:0 auto;width:100%;height:calc(100vh - 5em);object-fit:contain"; } };'
+        'if (!window.pmuleTeclas) { window.pmuleTeclas = true; document.addEventListener("keydown", function(e) {'
+        'var c = document.querySelector(".pmule-pasos[data-pantalla=\'1\']"); if (!c) return;'
+        'if (e.key === "Escape") window.pmulePantalla(c.id);'
+        'else if (e.key === "ArrowRight") window.pmulePaso(c.id, 1);'
+        'else if (e.key === "ArrowLeft") window.pmulePaso(c.id, -1); }); }</script>')
 
 def _svg_ancho_columna(svg):
     """Quita ``width``/``height`` fijos de la raíz del SVG (conserva ``viewBox``)
@@ -6969,43 +7242,66 @@ def _geometria_matriz(data: pd.DataFrame):
     return "marca", 0.78, margen, (0.16 * largo + 0.6) / 0.78
 
 
-def _codigo_matriz_tikz(data: pd.DataFrame) -> str:
-    """``tikzpicture`` de una matriz booleana de enlace: cuadrícula fina, celdas
-    redondeadas en naranja claro (con la letra de la predecesora o una marca) y
-    cabeceras en gris."""
+_COLORES_MATRIZ = (r"\definecolor{narosc}{RGB}{204,102,0}\definecolor{narcl}{RGB}{255,229,204}" "\n"
+                   r"\definecolor{gris}{RGB}{213,219,227}\definecolor{grisosc}{RGB}{91,101,115}")
+
+
+def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=()) -> list:
+    """Líneas TikZ de una matriz booleana de enlace (sin ``tikzpicture``; con
+    ``x`` = ancho de celda e ``y`` = 0,78 cm). Cuadrícula fina, celdas redondeadas en
+    naranja claro (con la letra de la predecesora o una marca) y cabeceras en gris.
+    ``filas`` da el estado de cada fila: ``"actual"`` (resaltada) o ``"gris"``
+    (atenuada); ``columnas``, las columnas resaltadas."""
+    filas = filas or {}
+    columnas = {f"{c}" for c in columnas}
     nombres = [f"{n}" for n in data.index]
     n = len(nombres)
     tex = ProjectGraph._tex_texto
     modo, ancho, margen, alto = _geometria_matriz(data)
-    L = [rf"\begin{{tikzpicture}}[x={ancho:.2f}cm,y=0.78cm,font=\small]",
-         r"\definecolor{narosc}{RGB}{204,102,0}\definecolor{narcl}{RGB}{255,229,204}",
-         r"\definecolor{gris}{RGB}{213,219,227}\definecolor{grisosc}{RGB}{91,101,115}",
-         rf"\fill[gris!25,rounded corners=3pt] ({-margen:.2f},0) rectangle ({n},{alto:.2f});"]
+    L = [rf"\fill[gris!25,rounded corners=3pt] ({-margen:.2f},0) rectangle ({n},{alto:.2f});"]
+    for i, nom in enumerate(nombres):
+        if filas.get(nom) == "actual":
+            L.append(rf"\fill[narcl!60,rounded corners=2pt] ({-margen:.2f},{-i}) rectangle ({n},{-i - 1});")
+    for j, col in enumerate(data.columns):
+        if f"{col}" in columnas:
+            L.append(rf"\fill[narcl!60,rounded corners=2pt] ({j},{alto:.2f}) rectangle ({j + 1},{-n});")
     for k in range(n + 1):
         L.append(rf"\draw[gris,line width=0.4pt] (0,{-k}) -- ({n},{-k}); "
                  rf"\draw[gris,line width=0.4pt] ({k},0) -- ({k},{-n});")
     for k, nom in enumerate(nombres):
-        L.append(rf"\node[font=\bfseries,grisosc,anchor=east] at (-0.35,{-k - 0.5}) {{{tex(nom)}}};")
+        est = filas.get(nom)
+        c = "narosc" if est == "actual" else "grisosc!35" if est == "gris" else "grisosc"
+        L.append(rf"\node[font=\bfseries,{c},anchor=east] at (-0.35,{-k - 0.5}) {{{tex(nom)}}};")
     for k, nom in enumerate(data.columns):
+        c = "narosc" if f"{nom}" in columnas else "grisosc"
         if modo == "letra":
-            L.append(rf"\node[font=\bfseries,grisosc] at ({k + 0.5},{alto / 2:.2f}) {{{tex(f'{nom}')}}};")
+            L.append(rf"\node[font=\bfseries,{c}] at ({k + 0.5},{alto / 2:.2f}) {{{tex(f'{nom}')}}};")
         else:
-            L.append(rf"\node[font=\bfseries,grisosc,rotate=90,anchor=west,inner sep=0pt] "
+            L.append(rf"\node[font=\bfseries,{c},rotate=90,anchor=west,inner sep=0pt] "
                      rf"at ({k + 0.5},0.25) {{{tex(f'{nom}')}}};")
     L.append(rf"\node[font=\footnotesize\itshape,grisosc,anchor=east,align=right] at (-0.25,{alto / 2:.2f}) "
              r"{precedente $\to$\\ actividad $\downarrow$};")
     for i in range(n):
+        gris = filas.get(nombres[i]) == "gris"
         for j, col in enumerate(data.columns):
             if bool(data.iloc[i, j]):
                 cx, cy = j + 0.5, -i - 0.5
-                L.append(rf"\fill[narcl,rounded corners=2pt] ({j + 0.08},{cy - 0.42}) rectangle ({j + 0.92},{cy + 0.42});")
+                relleno = "gris!25" if gris else "narcl"
+                L.append(rf"\fill[{relleno},rounded corners=2pt] ({j + 0.08},{cy - 0.42}) rectangle ({j + 0.92},{cy + 0.42});")
+                tinta = "grisosc!35" if gris else "narosc"
                 if modo == "letra":
-                    L.append(rf"\node[narosc,font=\bfseries] at ({cx},{cy}) {{{tex(f'{col}')}}};")
+                    L.append(rf"\node[{tinta},font=\bfseries] at ({cx},{cy}) {{{tex(f'{col}')}}};")
                 else:
-                    L.append(rf"\draw[narosc,line width=1pt,line cap=round,line join=round] "
+                    L.append(rf"\draw[{tinta},line width=1pt,line cap=round,line join=round] "
                              rf"({cx - 0.19},{cy - 0.01}) -- ({cx - 0.05},{cy - 0.14}) -- ({cx + 0.2},{cy + 0.15});")
-    L.append(r"\end{tikzpicture}")
-    return "\n".join(L)
+    return L
+
+
+def _codigo_matriz_tikz(data: pd.DataFrame) -> str:
+    """``tikzpicture`` de una matriz booleana de enlace (véase :func:`_cuerpo_matriz_tikz`)."""
+    _, ancho, _, _ = _geometria_matriz(data)
+    return "\n".join([rf"\begin{{tikzpicture}}[x={ancho:.2f}cm,y=0.78cm,font=\small]",
+                      _COLORES_MATRIZ] + _cuerpo_matriz_tikz(data) + [r"\end{tikzpicture}"])
 
 
 class MatrizEnlace:

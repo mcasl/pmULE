@@ -99,7 +99,7 @@ display(Markdown(pregunta_1))
 datos_proyecto =  datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
-proyecto.pert()
+proyecto.display_pert_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # ## Apartado 2
