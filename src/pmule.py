@@ -3182,6 +3182,113 @@ class ProjectGraph:
             print("\n" + 80 * "-")
         return result, best_option, durations, periods_available
 
+    def ackoff_pasos_html(self, durations, min_durations, costs, reduction=100) -> str:
+        """El algoritmo de Ackoff-Sasieni como visor HTML con botones.
+
+        El primer fotograma es la tabla completa que devuelve :meth:`ackoff`; la
+        primera pulsación deja solo los datos (costes unitarios de reducción por
+        ruta y actividad, duración inicial de las rutas y periodos reducibles de
+        cada actividad) y las siguientes van mostrando, iteración a iteración, la
+        decisión (rutas críticas y actividades que se acortan, en amarillo) y la
+        fila y la columna que resultan (periodos disponibles y duración de las
+        rutas). Admite los mismos argumentos que :meth:`ackoff`."""
+        import html as _h
+        tabla, mejores, _, _ = self.ackoff(durations, min_durations, costs, reduction=reduction)
+        df = tabla.data
+        costes = pd.Series(costs, dtype=float) if not isinstance(costs, pd.Series) else costs.astype(float)
+        actividades = list(self.actual_activities)
+        rutas = [i for i in df.index if isinstance(i, str)]
+        pasos = [c for c in df.columns if not isinstance(c, str)]
+        k = len(pasos) - 1
+
+        def num(v):
+            return "" if pd.isna(v) else (f"{int(v)}" if float(v) == int(v) else f"{v:g}")
+
+        def criticas(r):
+            col = df.loc[rutas, r]
+            return [x for x in rutas if col[x] == col.max()]
+
+        SOMBRA = "background:#fde3cc;"          # lo que actúa en la iteración (como en Zaderenko)
+        linea = "border-bottom:1px solid #ccc;"
+        rejilla = "border:1px solid #000;"
+
+        def fotograma(vis, texto, actuan_rutas=(), actuan_acts=(), amarillo_hasta=0, verde=None):
+            """``vis``: pasos visibles (columnas y filas 0..vis-1); se sombrean las rutas
+            críticas y las actividades que se acortan (``actuan_*``); en verde el máximo de
+            cada una de las ``verde`` primeras columnas (por defecto, todas las visibles); en amarillo, las actividades acortadas de las filas
+            anteriores a ``amarillo_hasta``."""
+            borde = "border-bottom:1px solid #444"
+            sep = ";border-right:1px solid #444"
+            cab = ['<th style="' + borde + sep + '">ruta \\ act.</th>']
+            cab += [f'<th style="{borde}{";" + SOMBRA if a in actuan_acts else ""}">{_h.escape(str(a))}</th>'
+                    for a in actividades]
+            cab += [f'<th style="{borde}">' + (f"{pasos[j]}" if j < vis else "&nbsp;") + "</th>"
+                    for j in range(k + 1)]
+            filas = ["<tr>" + "".join(cab) + "</tr>"]
+            for ruta in rutas:
+                fila_actua = ruta in actuan_rutas
+                celdas = [f'<td style="font-weight:bold{sep};{linea}{SOMBRA if fila_actua else ""}">'
+                          f'{_h.escape(str(ruta))}</td>']
+                for a in actividades:
+                    sombra = SOMBRA if (fila_actua or a in actuan_acts) else ""
+                    celdas.append(f'<td style="{rejilla}{sombra}">{num(df.loc[ruta, a])}</td>')
+                for j in range(k + 1):
+                    if j < vis:
+                        v = df.loc[ruta, pasos[j]]
+                        estilo = ("background:#adff2f;" if j < (vis if verde is None else verde)
+                                  and v == df.loc[rutas, pasos[j]].max() else "")
+                        celdas.append(f'<td style="{linea}{estilo}">{num(v)}</td>')
+                    else:
+                        celdas.append(f'<td style="{linea}"></td>')
+                filas.append("<tr>" + "".join(celdas) + "</tr>")
+            for j in range(k + 1):
+                celdas = [f'<td style="font-weight:bold{sep};{linea}">'
+                          + (f"{pasos[j]}" if j < vis else "&nbsp;") + "</td>"]
+                for a in actividades:
+                    if j < vis:
+                        v = df.loc[pasos[j], a]
+                        estilo = ("background:#ffff00;" if (j < amarillo_hasta and a in mejores.get(pasos[j], []))
+                                  else "")
+                    else:
+                        v, estilo = float("nan"), ""
+                    celdas.append(f'<td style="{linea}{estilo}">{num(v)}</td>')
+                celdas += [f'<td style="{linea}"></td>'] * (k + 1)
+                filas.append("<tr>" + "".join(celdas) + "</tr>")
+            return ('<style>.pmule-ackoff td,.pmule-ackoff th{padding:.12em .55em;min-width:1.6em}</style>'
+                    '<table class="pmule-ackoff" style="border-collapse:collapse;text-align:center;margin:0 auto">'
+                    + "".join(filas) + "</table>"
+                    f'<p style="text-align:center;margin-top:.5em">{texto}</p>')
+
+        fotos = [fotograma(k + 1, "Algoritmo de Ackoff-Sasieni: tabla completa. Pulse «siguiente» para ver cómo se construye.",
+                           amarillo_hasta=k)]
+        fotos.append(fotograma(1, "Datos: coste unitario de reducción de cada actividad en las rutas que la contienen, "
+                                  "duración inicial de cada ruta (columna 0) y periodos que puede reducirse cada actividad (fila 0).",
+                               verde=0))
+        for r in range(k):
+            crit = criticas(pasos[r])
+            dur = df.loc[crit[0], pasos[r]]
+            cortadas = mejores.get(pasos[r], [])
+            coste = float(sum(costes[a] for a in cortadas))
+            nueva = df.loc[rutas, pasos[r + 1]].max()
+            texto = (f"Iteración {pasos[r]}: rutas críticas {', '.join(map(str, crit))} (duración {num(dur)}); "
+                     f"se acorta un periodo la combinación de menor coste: {', '.join(cortadas)} (coste {num(coste)}). "
+                     f"Resultado: periodos disponibles (fila {pasos[r + 1]}) y duración de las rutas "
+                     f"(columna {pasos[r + 1]}); el proyecto dura {num(nueva)}.")
+            if r + 1 == k:
+                crit_f = criticas(pasos[k])
+                libres = df.loc[pasos[k], actividades]
+                reducible = all(any(pd.notna(df.loc[x, a]) and libres[a] > 0 for a in actividades) for x in crit_f)
+                texto += (" Se alcanzó el número de reducciones pedido." if reducible
+                          else " Alguna ruta crítica ya no puede acortarse más: fin del algoritmo.")
+            fotos.append(fotograma(r + 2, texto, actuan_rutas=crit, actuan_acts=cortadas, amarillo_hasta=r + 1,
+                                   verde=r + 1))
+        return _html_pasos(fotos, inicio=-1)
+
+    def display_ackoff_pasos(self, durations, min_durations, costs, reduction=100) -> None:
+        """Muestra en un cuaderno el algoritmo de Ackoff-Sasieni paso a paso (HTML con
+        botones, :meth:`ackoff_pasos_html`)."""
+        display(HTML(self.ackoff_pasos_html(durations, min_durations, costs, reduction)))
+
     def incidence_matrix(self):
         nodos_ordenados = self.nodes  # orden topológico (no lexicográfico)
         aristas_sin_ordenar = self.pert_graph.edges
@@ -6577,11 +6684,12 @@ def _disposicion_capas(nodos: dict, aristas: list, anchos_etiqueta: dict = None,
     return dict(pos=pos, rutas=rutas, curva=curva, etiquetas=etiquetas)
 
 
-def _html_pasos(fotos: list) -> str:
+def _html_pasos(fotos: list, inicio: int = 1) -> str:
     """Une fotogramas HTML en un visor autocontenido con botones
     (anterior / siguiente) para mostrar un cálculo paso a paso en un cuaderno
     o en el HTML de Quarto. El identificador se deriva del contenido para que
-    el resultado sea determinista."""
+    el resultado sea determinista. ``inicio`` es el número que lleva el primer
+    fotograma en el contador (por defecto 1; el último muestra ``n + inicio - 1``)."""
     import hashlib
     uid = "pmp" + hashlib.md5("".join(fotos).encode("utf-8")).hexdigest()[:10]
     n = len(fotos)
@@ -6595,7 +6703,7 @@ def _html_pasos(fotos: list) -> str:
         f'<div style="text-align:center;margin-bottom:.5em">'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',-{n})">«</button>'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',-1)">‹ anterior</button>'
-        f'<span class="pmule-contador" style="margin:0 .8em">paso 1 de {n}</span>'
+        f'<span class="pmule-contador" data-inicio="{inicio}" style="margin:0 .8em">paso {inicio} de {n + inicio - 1}</span>'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',1)">siguiente ›</button>'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',{n})">»</button>'
         f'</div>{divs}</div>'
@@ -6603,7 +6711,7 @@ def _html_pasos(fotos: list) -> str:
         'var c = document.getElementById(id), p = c.querySelectorAll(".pmule-paso"), k = 0;'
         'for (var i = 0; i < p.length; i++) { if (p[i].style.display !== "none") k = i; p[i].style.display = "none"; }'
         'k = Math.max(0, Math.min(p.length - 1, k + d)); p[k].style.display = "block";'
-        'c.querySelector(".pmule-contador").textContent = "paso " + (k + 1) + " de " + p.length; };</script>')
+        'var e = c.querySelector(".pmule-contador"), o = parseInt(e.getAttribute("data-inicio") || "1", 10); e.textContent = "paso " + (k + o) + " de " + (p.length + o - 1); };</script>')
 
 def _svg_ancho_columna(svg):
     """Quita ``width``/``height`` fijos de la raíz del SVG (conserva ``viewBox``)

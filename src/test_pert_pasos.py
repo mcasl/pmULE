@@ -187,3 +187,49 @@ class TestHolgurasPasos(unittest.TestCase):
         self.assertEqual(rojas, sorted(rojas))          # las flechas rojas no se quitan
         self.assertEqual(cods[1 + 2 * n_sucesos - 1].count(", red, very thick"), 0)
         self.assertGreater(rojas[-1], 0)
+
+
+class TestAckoffPasos(unittest.TestCase):
+    def setUp(self):
+        self.pg = project()
+        self.d = pd.Series(DUR, dtype=float)
+        self.mn = (self.d * 0.5).round()
+        self.c = pd.Series({k: i + 1 for i, k in enumerate(DUR)}, dtype=float)
+
+    def test_fotogramas_y_contenido(self):
+        reduccion = 3
+        html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=reduccion)
+        n = html.count('class="pmule-paso"')
+        self.assertEqual(n, 2 + reduccion)            # completa + datos + un paso por iteración
+        self.assertIn("siguiente", html)
+        self.assertIn("Iteración 0", html)
+        self.assertIn("background:#ffff00", html)      # actividad acortada
+        self.assertIn("background:#adff2f", html)      # ruta crítica
+        self.assertIn("background:#fde3cc", html)      # rutas y actividades que actúan
+
+    def test_primer_fotograma_es_la_tabla_completa_y_el_segundo_solo_datos(self):
+        html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=2)
+        fotos = html.split('class="pmule-paso"')[1:]
+        self.assertIn("background:#ffff00", fotos[0])
+        self.assertNotIn("background:#ffff00", fotos[1])
+        self.assertNotIn("background:#adff2f", fotos[1])
+        self.assertGreater(fotos[0].count("<td>") + fotos[0].count("<td style"), 0)
+
+    def test_contador_empieza_en_menos_uno(self):
+        html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=3)
+        self.assertIn("paso -1 de 3", html)
+        self.assertIn('data-inicio="-1"', html)
+        zad = self.pg.zaderenko_pasos_html(DUR)
+        self.assertIn('data-inicio="1"', zad)
+        self.assertRegex(zad, r"paso 1 de \d+")
+
+    def test_la_columna_nueva_no_va_en_verde(self):
+        html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=3)
+        fotos = html.split('class="pmule-paso"')[1:]
+        verdes = [f.count("background:#adff2f") for f in fotos]
+        self.assertEqual(verdes[1], 0)                       # solo datos
+        # iteración r: se resaltan las críticas de las columnas 0..r, no las de la nueva
+        self.assertEqual(verdes[2], 1)                       # columna 0: Route_5
+        self.assertEqual(verdes[3], 2)                       # columnas 0 y 1
+        self.assertEqual(verdes[4], 4)                       # 0, 1 y 2 (en la 2 empatan dos rutas)
+        self.assertEqual(verdes[0], 6)                       # tabla completa: también la columna 3 (dos rutas)
