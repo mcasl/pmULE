@@ -64,7 +64,6 @@ display(Markdown(pregunta_4))
 
 import pandas as pd
 import numpy as np
-pd.set_option('future.no_silent_downcasting', True)
 
 datos_enunciado = pd.DataFrame([
 #  actividad, precedentes, duracion, duracion_tope, desviación, coste_planificado, coste_real, duracion_real, realizado, cur, recursos

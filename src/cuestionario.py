@@ -7,7 +7,6 @@ from scipy.stats import norm
 import networkx as nx
 import numpy as np
 import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
 import pygraphviz as pgv
 from IPython.display import display, Image, SVG, Latex
 

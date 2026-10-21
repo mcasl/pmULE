@@ -50,7 +50,6 @@ display(Markdown(pregunta_3))
 # Alargamos el ancho de las celdas al 100%
 from IPython.display import display, HTML, Math, Latex, Markdown
 import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
 
 import numpy as np
 

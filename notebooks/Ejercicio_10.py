@@ -60,7 +60,6 @@ display(Markdown(pregunta_3))
 #| label: tbl-datosEnunciado
 
 import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
 import numpy as np
 
 datos_enunciado = pd.DataFrame([

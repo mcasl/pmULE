@@ -55,7 +55,6 @@ from IPython.display import display, HTML
 display(HTML("<style>.container { width:80% !important; }</style>"))
 
 import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
 import numpy as np
 
 datos_enunciado = pd.DataFrame([

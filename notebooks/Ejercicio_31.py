@@ -28,7 +28,6 @@ import pandas as pd
 import numpy as np
 from scipy.stats import norm
 from handcalcs.decorator import handcalc
-pd.set_option('future.no_silent_downcasting', True)
 
 # To find local version of the library
 sys.path.append('../src')
