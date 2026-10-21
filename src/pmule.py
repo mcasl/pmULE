@@ -3634,7 +3634,7 @@ class ProjectGraph:
             return str(int(xf))
         return f"{xf:g}"
 
-    def pert_pasos(self, durations, formato: str = "texto") -> dict:
+    def pert_pasos(self, durations, formato: str = "texto", colores=None) -> dict:
         """Cálculo paso a paso de los tiempos tempranos y tardíos de los sucesos.
 
         Reproduce el procedimiento que se enseña en clase: recorrido hacia
@@ -3651,6 +3651,10 @@ class ProjectGraph:
             Formato de la columna ``calculo``: texto legible
             (``t3 = máx{0 + 3, 2 + 7} = 9``) o expresión LaTeX para modo
             matemático (``t_{3} = \\max\\{0+3,\\ 2+7\\} = 9``).
+        colores : list[str] | None
+            Con ``formato="latex"``, colores TikZ para teñir cada término del cálculo
+            (uno por actividad que llega o sale, por orden); en las holguras, todo
+            el cálculo con el primero. Las filas llevan además ``arcos``.
 
         Returns
         -------
@@ -3674,23 +3678,33 @@ class ProjectGraph:
                 return f"t_{{{nodo}}}" + ("^{*}" if tipo == "tardio" else "")
             return f"t{nodo}" + ("*" if tipo == "tardio" else "")
 
+        def resultado(valor):
+            """El resultado en negrita cuando el cálculo va coloreado."""
+            return rf"\mathbf{{{f(valor)}}}" if (latex and colores) else f(valor)
+
         def expresion(tipo, nodo, operaciones, valor, base=None):
             izq = nombre(tipo, nodo)
             if base is not None:
                 if base == f(valor):
                     return f"{izq} = {base}"
-                return f"{izq} = {base} = {f(valor)}"
+                return f"{izq} = {base} = {resultado(valor)}"
             if len(operaciones) == 1:
-                return f"{izq} = {operaciones[0]} = {f(valor)}"
+                return f"{izq} = {operaciones[0]} = {resultado(valor)}"
             if latex:
                 op = r"\max" if tipo == "temprano" else r"\min"
                 cuerpo = r",\ ".join(operaciones)
-                return rf"{izq} = {op}\{{{cuerpo}\}} = {f(valor)}"
+                return rf"{izq} = {op}\{{{cuerpo}\}} = {resultado(valor)}"
             op = "máx" if tipo == "temprano" else "mín"
             return f"{izq} = {op}{{{', '.join(operaciones)}}} = {f(valor)}"
 
         sep = "+" if latex else " + "
         sem = "-" if latex else " - "
+
+        def tinta(ops):
+            """Cada término del cálculo con el color de su flecha (solo en LaTeX)."""
+            if not (latex and colores):
+                return ops
+            return [rf"\textcolor{{{colores[k % len(colores)]}}}{{\mathbf{{{o}}}}}" for k, o in enumerate(ops)]
 
         # Recorrido hacia delante
         early, filas = {}, []
@@ -3699,7 +3713,7 @@ class ProjectGraph:
                            key=lambda e: e2a[(f"{e[0]}", f"{e[1]}")])
             if not arcos:
                 early[nodo] = 0
-                filas.append(dict(suceso=nodo, actividades="", terminos=[],
+                filas.append(dict(suceso=nodo, actividades="", terminos=[], arcos=[],
                                   calculo=expresion("temprano", nodo, [], 0, base="0"),
                                   valor=0))
                 continue
@@ -3713,7 +3727,8 @@ class ProjectGraph:
             filas.append(dict(suceso=nodo,
                               actividades=", ".join(a for a, _ in terminos),
                               terminos=terminos,
-                              calculo=expresion("temprano", nodo, ops, early[nodo]),
+                              arcos=[(f"{u}", f"{v}") for u, v in arcos],
+                              calculo=expresion("temprano", nodo, tinta(ops), early[nodo]),
                               valor=early[nodo]))
         tempranos = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
 
@@ -3724,7 +3739,7 @@ class ProjectGraph:
                            key=lambda e: e2a[(f"{e[0]}", f"{e[1]}")])
             if not arcos:
                 late[nodo] = early[nodo]
-                filas.append(dict(suceso=nodo, actividades="", terminos=[],
+                filas.append(dict(suceso=nodo, actividades="", terminos=[], arcos=[],
                                   calculo=expresion("tardio", nodo, [], late[nodo],
                                                     base=nombre("temprano", nodo)),
                                   valor=late[nodo]))
@@ -3739,7 +3754,8 @@ class ProjectGraph:
             filas.append(dict(suceso=nodo,
                               actividades=", ".join(a for a, _ in terminos),
                               terminos=terminos,
-                              calculo=expresion("tardio", nodo, ops, late[nodo]),
+                              arcos=[(f"{u}", f"{v}") for u, v in arcos],
+                              calculo=expresion("tardio", nodo, tinta(ops), late[nodo]),
                               valor=late[nodo]))
         tardios = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
 
@@ -3754,10 +3770,13 @@ class ProjectGraph:
                 if latex:
                     cuerpo = (rf"t_{{{v}}}^{{*}} - t_{{{u}}} - d = "
                               rf"{f(late[f'{v}'])} - {f(early[f'{u}'])} - {f(d)}")
+                    if colores:
+                        cuerpo = rf"\textcolor{{{colores[0]}}}{{\mathbf{{{cuerpo}}}}}"
                 else:
                     cuerpo = f"t{v}* - t{u} - d = {f(late[f'{v}'])} - {f(early[f'{u}'])} - {f(d)}"
+                res = rf"\mathbf{{{f(h)}}}" if (latex and colores) else f(h)
                 filas.append(dict(actividad=act, origen=u, destino=v,
-                                  calculo=f"{izq} = {cuerpo} = {f(h)}", valor=h))
+                                  calculo=f"{izq} = {cuerpo} = {res}", valor=h))
         holguras = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
         return dict(tempranos=tempranos, tardios=tardios, holguras=holguras)
 
@@ -3867,7 +3886,7 @@ class ProjectGraph:
         list[str] | str
         """
         dur = self._normalize_durations(durations, dummies=True).to_dict()
-        pasos = self.pert_pasos(durations, formato="latex")
+        pasos = self.pert_pasos(durations, formato="latex", colores=PALETA_FLECHAS)
         holguras = self.calculate_pert(durations)["activities"]["H_total"]
         trazado = None
         if posiciones is None and layout == "auto":
@@ -3888,25 +3907,31 @@ class ProjectGraph:
         for _, fila in pasos["tempranos"].iterrows():
             nodo = fila["suceso"]
             tempranos[nodo] = fila["valor"]
-            arcos = {(f"{u}", f"{v}") for u, v in G.in_edges(nodo)}
+            arcos = {a: PALETA_FLECHAS[k % len(PALETA_FLECHAS)] for k, a in enumerate(fila["arcos"])}
+            valores = {(u, "e"): c for (u, _), c in arcos.items()}
             fotogramas.append(fotograma(dict(tempranos), {}, nodo, arcos,
-                                        f"${fila['calculo']}$"))
+                                        f"${fila['calculo']}$", colores_valores=valores,
+                                        negrita=set(valores) | {(nodo, "e")}))
         tardios: dict = {}
         for _, fila in pasos["tardios"].iterrows():
             nodo = fila["suceso"]
             tardios[nodo] = fila["valor"]
-            arcos = {(f"{u}", f"{v}") for u, v in G.out_edges(nodo)}
+            arcos = {a: PALETA_FLECHAS[k % len(PALETA_FLECHAS)] for k, a in enumerate(fila["arcos"])}
+            valores = {(v, "l"): c for (_, v), c in arcos.items()}
             fotogramas.append(fotograma(dict(tempranos), dict(tardios), nodo, arcos,
-                                        f"${fila['calculo']}$"))
+                                        f"${fila['calculo']}$", colores_valores=valores,
+                                        negrita=set(valores) | {(nodo, "l")}))
         criticas: set = set()
         for _, fila in pasos["holguras"].iterrows():
             act, u, v = fila["actividad"], f"{fila['origen']}", f"{fila['destino']}"
             # la actividad calculada y sus dos sucesos van en naranja; el rojo
             # (si es crítica) aparece en los fotogramas siguientes
-            fotogramas.append(fotograma(dict(tempranos), dict(tardios), {u, v}, {(u, v)},
+            fotogramas.append(fotograma(dict(tempranos), dict(tardios), {u, v}, {(u, v): PALETA_FLECHAS[0]},
                                         f"${fila['calculo']}$"
                                         + (r"\\ \small\textcolor{red}{actividad crítica}" if fila["valor"] == 0 else ""),
-                                        criticas=set(criticas)))
+                                        criticas=set(criticas),
+                                        colores_valores={(u, "e"): PALETA_FLECHAS[0], (v, "l"): PALETA_FLECHAS[0]},
+                                        negrita={(u, "e"), (v, "l")}))
             if fila["valor"] == 0:
                 criticas.add(act)
         duracion = max(tempranos.values())
@@ -4036,8 +4061,16 @@ class ProjectGraph:
 
     def _pert_fotograma(self, pos, dur, holguras, escala, tempranos, tardios,
                         actual=None, arcos_activos=(), texto="", critico=False,
-                        trazado=None, con_duracion=True, criticas=None):
+                        trazado=None, con_duracion=True, criticas=None, colores_valores=None,
+                        negrita=None):
         """Un fotograma TikZ del grafo PERT (cuerpo, sin ``tikzpicture``).
+
+        ``arcos_activos`` puede ser un ``dict`` ``{(i, j): color}`` (un color por arco) y
+        ``colores_valores`` un ``dict`` ``{(suceso, "e" | "l"): color}`` que tiñe el tiempo
+        temprano o tardío de ese suceso con el color del arco que lo usa en el cálculo;
+        ``negrita`` es un conjunto de esas mismas claves cuyo número va en negrita. En un
+        paso de cálculo los arcos de ``arcos_activos`` se dibujan más gruesos y con la
+        etiqueta en negrita, y lo que no participa (ni es crítico) va en gris.
 
         ``criticas``: conjunto de actividades ya reconocidas como críticas (holgura
         total 0); si se da, sustituye a ``critico`` y los nodos extremos de esas
@@ -4051,6 +4084,18 @@ class ProjectGraph:
             actuales = {f"{a}" for a in actual}
         else:
             actuales = {f"{actual}"} if actual is not None else set()
+        def tinta(nodo, clave, texto):
+            if (nodo, clave) in (negrita or ()):
+                texto = rf"\textbf{{{texto}}}"
+            c = (colores_valores or {}).get((nodo, clave))
+            return rf"\textcolor{{{c}}}{{{texto}}}" if c else texto
+
+        GRIS = "gray!55"
+        atenuar = bool(arcos_activos)
+        col_nodo = ({x: c for (u, v), c in arcos_activos.items() for x in (u, v)
+                     if x not in actuales} if isinstance(arcos_activos, dict) else {})
+        implicados = actuales | {x for a in arcos_activos for x in a}
+
         y_min = min(y for _, y in pos.values())
         if trazado:
             y_min = min([y_min] + [y for _, y in trazado["etiquetas"].values()]) - 0.2
@@ -4065,9 +4110,11 @@ class ProjectGraph:
             if ficticia:
                 estilo.append("dashed")
             color = ""
-            if (f"{u}", f"{v}") in arcos_activos:
-                estilo += ["orange!80!black", "very thick"]
-                color = "orange!80!black"
+            col_act = (arcos_activos.get((f"{u}", f"{v}")) if isinstance(arcos_activos, dict)
+                       else ("orange!80!black" if (f"{u}", f"{v}") in arcos_activos else None))
+            if col_act:
+                estilo += [col_act, "ultra thick"]
+                color = col_act
             elif (act in criticas if criticas is not None
                   else critico and holguras.get(act, 1) == 0):
                 estilo += ["red", "very thick"]
@@ -4075,6 +4122,9 @@ class ProjectGraph:
             elif ficticia and not con_duracion:
                 estilo.append("green!50!black")
                 color = "green!50!black"
+            elif atenuar:
+                estilo.append(GRIS)
+                color = GRIS
             etq = self._tex_texto(act) + (f" ({f(dur.get(act, 0))})" if con_duracion else "")
             if trazado and (f"{u}", f"{v}") in trazado["rutas"]:
                 clave = (f"{u}", f"{v}")
@@ -4083,7 +4133,7 @@ class ProjectGraph:
                                            trazado["curva"][clave], lambda n: f"n{n}") + ";")
                 if clave in trazado["etiquetas"]:
                     lx, ly = trazado["etiquetas"][clave]
-                    A.append(rf"  \node[font=\scriptsize, inner sep=1pt, fill=white{', text=' + color if color else ''}]"
+                    A.append(rf"  \node[font=\scriptsize{r'\bfseries' if col_act else ''}, inner sep=1pt, fill=white{', text=' + color if color else ''}]"
                              rf" at ({lx:.2f}cm, {ly:.2f}cm) {{{etq}}};")
                 continue
             etiqueta = etq
@@ -4091,7 +4141,7 @@ class ProjectGraph:
             trazo = f"to[{curva}]" if curva else "--"
             lado = "below" if curva.startswith("bend right") else "above"
             A.append(rf"  \draw[{', '.join(estilo)}] (n{u}) {trazo}"
-                     rf" node[midway, {lado}, sloped, font=\scriptsize] {{{etiqueta}}} (n{v});")
+                     rf" node[midway, {lado}, sloped, font=\scriptsize{r'\bfseries' if col_act else ''}{', text=' + color if color else ''}] {{{etiqueta}}} (n{v});")
         for nodo, (x, y) in pos.items():
             if criticas is not None:
                 es_critico = any(G.edges[e].get("activity", "") in criticas
@@ -4103,18 +4153,24 @@ class ProjectGraph:
                 relleno = "fill=orange!20, draw=orange!80!black, very thick"
             elif es_critico:
                 relleno = "fill=white!90!red, draw=red, very thick"
+            elif nodo in col_nodo:
+                relleno = f"fill=white, draw={col_nodo[nodo]}, ultra thick"
+            elif atenuar and nodo not in implicados:
+                relleno = f"fill=white, draw={GRIS}, thick"
             else:
                 relleno = "fill=white, draw, thick"
+            gris = (f", text={GRIS}" if (atenuar and nodo not in implicados and not es_critico)
+                    else "")
             L.append(rf"  \node[circle, {relleno}, minimum size=1.1cm, inner sep=0pt]"
                      rf" (n{nodo}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
             L.append(rf"  \draw[gray] (n{nodo}.center) -- (n{nodo}.45)"
                      rf" (n{nodo}.center) -- (n{nodo}.135) (n{nodo}.center) -- (n{nodo}.270);")
-            L.append(rf"  \node[font=\footnotesize\bfseries]"
+            L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
                      rf" at ($(n{nodo}.center)+(90:0.28)$) {{{self._tex_texto(f"{nodo}")}}};")
             if nodo in tempranos:
-                L.append(rf"  \node[font=\scriptsize{r'\bfseries' if es_critico else ''}] at ($(n{nodo}.center)+(210:0.27)$) {{{f(tempranos[nodo])}}};")
+                L.append(rf"  \node[font=\scriptsize{r'\bfseries' if es_critico else ''}{gris}] at ($(n{nodo}.center)+(210:0.27)$) {{{tinta(nodo, 'e', f(tempranos[nodo]))}}};")
             if nodo in tardios:
-                L.append(rf"  \node[font=\scriptsize{r'\bfseries' if es_critico else ''}] at ($(n{nodo}.center)+(330:0.27)$) {{{f(tardios[nodo])}}};")
+                L.append(rf"  \node[font=\scriptsize{r'\bfseries' if es_critico else ''}{gris}] at ($(n{nodo}.center)+(330:0.27)$) {{{tinta(nodo, 'l', f(tardios[nodo]))}}};")
         L += A
         if texto:
             L.append(rf"  \node[anchor=north, font=\small, align=center] at ({x_mid:.2f}cm, {y_min - 1.2:.2f}cm) {{{texto}}};")
@@ -4418,7 +4474,7 @@ class ProjectGraph:
         return capa
 
     def roy_pasos(self, durations, formato: str = "texto",
-                  etiquetas: dict = None) -> dict:
+                  etiquetas: dict = None, colores=None) -> dict:
         """Cálculo paso a paso de los tiempos mínimos y máximos del grafo Roy.
 
         Relaciones fin-comienzo: el arco I→J tiene atributo ``δ_IJ = D_I``.
@@ -4432,7 +4488,9 @@ class ProjectGraph:
         dict
             ``{"minimos": DataFrame, "maximos": DataFrame}`` con una fila por
             paso y las columnas ``nodo``, ``rotulo``, ``actividades``,
-            ``terminos``, ``calculo`` y ``valor``.
+            ``terminos``, ``vecinos`` (nodos de los términos, en orden),
+            ``calculo`` y ``valor``. Con ``formato="latex"`` y ``colores`` (lista de
+            colores TikZ), cada término del cálculo lleva el color de su arco.
         """
         if formato not in ("texto", "latex"):
             raise ValueError("formato debe ser 'texto' o 'latex'")
@@ -4458,23 +4516,31 @@ class ProjectGraph:
 
         def expresion(nodo, ops, valor, maximo, base=None):
             izq = T(nodo, maximo)
+            res = rf"\mathbf{{{f(valor)}}}" if (latex and colores) else f(valor)
             if base is not None:
-                return f"{izq} = {base}" if base == f(valor) else f"{izq} = {base} = {f(valor)}"
+                return f"{izq} = {base}" if base == f(valor) else f"{izq} = {base} = {res}"
             if len(ops) == 1:
-                return f"{izq} = {ops[0]} = {f(valor)}"
+                return f"{izq} = {ops[0]} = {res}"
             if latex:
                 op = r"\min" if maximo else r"\max"
-                return rf"{izq} = {op}\{{{r',\ '.join(ops)}\}} = {f(valor)}"
+                return rf"{izq} = {op}\{{{r',\ '.join(ops)}\}} = {res}"
             op = "mín" if maximo else "máx"
             return f"{izq} = {op}{{{', '.join(ops)}}} = {f(valor)}"
 
         sep, sem = ("+", "-") if latex else (" + ", " - ")
+
+        def tinta(ops):
+            """Cada término del cálculo con el color de su arco (solo en LaTeX)."""
+            if not (latex and colores):
+                return ops
+            return [rf"\textcolor{{{colores[k % len(colores)]}}}{{\mathbf{{{o}}}}}" for k, o in enumerate(ops)]
+
         minimo, filas = {}, []
         for nodo in orden:
             prev = sorted(G.predecessors(nodo), key=lambda n: (capa[n], f"{n}"))
             if not prev:
                 minimo[nodo] = 0
-                filas.append(dict(nodo=nodo, rotulo=rot(nodo), actividades="", terminos=[],
+                filas.append(dict(nodo=nodo, rotulo=rot(nodo), actividades="", terminos=[], vecinos=[],
                                   calculo=expresion(nodo, [], 0, False, base="0"), valor=0))
                 continue
             terminos = [(rot(p), minimo[p] + dur[p]) for p in prev]
@@ -4482,8 +4548,8 @@ class ProjectGraph:
             minimo[nodo] = max(t for _, t in terminos)
             filas.append(dict(nodo=nodo, rotulo=rot(nodo),
                               actividades=", ".join(a for a, _ in terminos),
-                              terminos=terminos,
-                              calculo=expresion(nodo, ops, minimo[nodo], False),
+                              terminos=terminos, vecinos=list(prev),
+                              calculo=expresion(nodo, tinta(ops), minimo[nodo], False),
                               valor=minimo[nodo]))
         minimos = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
 
@@ -4492,7 +4558,7 @@ class ProjectGraph:
             sig = sorted(G.successors(nodo), key=lambda n: (capa[n], f"{n}"))
             if not sig:
                 maximo[nodo] = minimo[nodo]
-                filas.append(dict(nodo=nodo, rotulo=rot(nodo), actividades="", terminos=[],
+                filas.append(dict(nodo=nodo, rotulo=rot(nodo), actividades="", terminos=[], vecinos=[],
                                   calculo=expresion(nodo, [], maximo[nodo], True,
                                                     base=T(nodo)),
                                   valor=maximo[nodo]))
@@ -4502,8 +4568,8 @@ class ProjectGraph:
             maximo[nodo] = min(t for _, t in terminos)
             filas.append(dict(nodo=nodo, rotulo=rot(nodo),
                               actividades=", ".join(a for a, _ in terminos),
-                              terminos=terminos,
-                              calculo=expresion(nodo, ops, maximo[nodo], True),
+                              terminos=terminos, vecinos=list(sig),
+                              calculo=expresion(nodo, tinta(ops), maximo[nodo], True),
                               valor=maximo[nodo]))
         maximos = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
         return dict(minimos=minimos, maximos=maximos)
@@ -4531,7 +4597,7 @@ class ProjectGraph:
         et.update(etiquetas or {})
         dur = self._normalize_durations(durations, dummies=False).to_dict()
         dur["start"] = dur["finish"] = 0
-        pasos = self.roy_pasos(durations, formato="latex", etiquetas=et)
+        pasos = self.roy_pasos(durations, formato="latex", etiquetas=et, colores=PALETA_FLECHAS)
         G = self._roy_grafo_actual()
         capa = self._roy_capas(G)
         trazado = None
@@ -4565,15 +4631,35 @@ class ProjectGraph:
         x_mid = (min(x for x, _ in pos.values()) + max(x for x, _ in pos.values())) / 2
 
         def fotograma(minimos, maximos, actual=None, arcos_activos=(), texto="",
-                      criticos=()):
+                      criticos=(), colores_valores=None, negrita=None):
+            """``arcos_activos``: ``{(u, v): color}`` (o un conjunto, en naranja), más
+            gruesos; ``colores_valores``: ``{(nodo, "min" | "dur" | "max"): color}``;
+            ``negrita``: conjunto de esas claves cuyo número va en negrita. En un paso de
+            cálculo lo que no participa (ni es crítico) va en gris."""
+            def tinta(nodo, clave, texto):
+                if (nodo, clave) in (negrita or ()):
+                    texto = rf"\textbf{{{texto}}}"
+                c = (colores_valores or {}).get((nodo, clave))
+                return rf"\textcolor{{{c}}}{{{texto}}}" if c else texto
+
+            GRIS = "gray!55"
+            atenuar = bool(arcos_activos)
+            col_nodo = ({x: c for (u, v), c in arcos_activos.items() for x in (u, v)
+                         if x != actual} if isinstance(arcos_activos, dict) else {})
+            implicados = ({actual} if actual is not None else set()) | {x for a in arcos_activos for x in a}
+
             L, A = [], []
             for u, v in G.edges():
                 u, v = f"{u}", f"{v}"
                 estilo = ["->", "thick"]
-                if (u, v) in arcos_activos:
-                    estilo += ["orange!80!black", "very thick"]
+                col_act = (arcos_activos.get((u, v)) if isinstance(arcos_activos, dict)
+                           else ("orange!80!black" if (u, v) in arcos_activos else None))
+                if col_act:
+                    estilo += [col_act, "ultra thick"]
                 elif u in criticos and v in criticos:
                     estilo += ["red", "very thick"]
+                elif atenuar:
+                    estilo.append(GRIS)
                 if trazado and (u, v) in trazado["rutas"]:
                     A.append(rf"  \draw[{', '.join(estilo)}] "
                              + self._ruta_tikz(u, v, pos, trazado["rutas"][(u, v)],
@@ -4588,21 +4674,27 @@ class ProjectGraph:
                     estilo = "fill=orange!20, draw=orange!80!black, very thick"
                 elif nodo in criticos:
                     estilo = "fill=white!90!red, draw=red, very thick"
+                elif nodo in col_nodo:
+                    estilo = f"fill=white, draw={col_nodo[nodo]}, ultra thick"
+                elif atenuar and nodo not in implicados:
+                    estilo = f"fill=white, draw={GRIS}, thick"
                 else:
                     estilo = "fill=white, draw, thick"
+                gris = (f", text={GRIS}" if (atenuar and nodo not in implicados
+                                          and nodo not in criticos and nodo != actual) else "")
                 L.append(rf"  \node[rectangle, {estilo}, minimum width=1.5cm, minimum height=0.9cm,"
                          rf" inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
                 L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
                          rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
                          rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
-                L.append(rf"  \node[font=\footnotesize\bfseries]"
+                L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
                          rf" at ($({r}.center)+(0,0.22)$) {{{self._tex_texto(f"{et.get(nodo, nodo)}")}}};")
                 if con_duracion:
-                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}, gray] at ($({r}.center)+(0,-0.22)$) {{{f(dur[nodo])}}};")
+                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}, gray] at ($({r}.center)+(0,-0.22)$) {{{tinta(nodo, 'dur', f(dur[nodo]))}}};")
                 if nodo in minimos:
-                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}] at ($({r}.center)+(-0.5,-0.22)$) {{{f(minimos[nodo])}}};")
+                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}{gris}] at ($({r}.center)+(-0.5,-0.22)$) {{{tinta(nodo, 'min', f(minimos[nodo]))}}};")
                 if nodo in maximos:
-                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}] at ($({r}.center)+(0.5,-0.22)$) {{{f(maximos[nodo])}}};")
+                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}{gris}] at ($({r}.center)+(0.5,-0.22)$) {{{tinta(nodo, 'max', f(maximos[nodo]))}}};")
             L += A
             if texto:
                 L.append(rf"  \node[anchor=north, font=\small] at ({x_mid:.2f}cm, {y_min - 1.0:.2f}cm) {{{texto}}};")
@@ -4621,14 +4713,22 @@ class ProjectGraph:
         for _, fila in pasos["minimos"].iterrows():
             n = f"{fila['nodo']}"
             minimos[n] = fila["valor"]
-            arcos = {(f"{u}", f"{v}") for u, v in G.in_edges(fila["nodo"])}
-            fotos.append(fotograma(dict(minimos), {}, n, arcos, f"${fila['calculo']}$"))
+            arcos = {(f"{p}", n): PALETA_FLECHAS[k % len(PALETA_FLECHAS)]
+                     for k, p in enumerate(fila["vecinos"])}
+            valores = {(p, c): col for (p, _), col in arcos.items() for c in ("min", "dur")}
+            fotos.append(fotograma(dict(minimos), {}, n, arcos, f"${fila['calculo']}$",
+                                   colores_valores=valores,
+                                   negrita=set(valores) | {(n, "min")}))
         maximos = {}
         for _, fila in pasos["maximos"].iterrows():
             n = f"{fila['nodo']}"
             maximos[n] = fila["valor"]
-            arcos = {(f"{u}", f"{v}") for u, v in G.out_edges(fila["nodo"])}
-            fotos.append(fotograma(dict(minimos), dict(maximos), n, arcos, f"${fila['calculo']}$"))
+            arcos = {(n, f"{q}"): PALETA_FLECHAS[k % len(PALETA_FLECHAS)]
+                     for k, q in enumerate(fila["vecinos"])}
+            valores = {(q, "max"): col for (_, q), col in arcos.items()}
+            fotos.append(fotograma(dict(minimos), dict(maximos), n, arcos, f"${fila['calculo']}$",
+                                   colores_valores=valores,
+                                   negrita=set(valores) | {(n, "max")}))
         criticos = {n for n in minimos if minimos[n] == maximos[n]}
         fotos.append(fotograma(dict(minimos), dict(maximos), criticos=criticos,
                                texto=rotulos["final"].format(duracion=f(minimos["finish"]))))
@@ -6690,6 +6790,11 @@ def _disposicion_capas(nodos: dict, aristas: list, anchos_etiqueta: dict = None,
         etiquetas[clave] = (mejor_c[1], mejor_c[2])
         ocupadas.append((mejor_c[1], mejor_c[2], w, h))
     return dict(pos=pos, rutas=rutas, curva=curva, etiquetas=etiquetas)
+
+
+# Colores de las flechas que intervienen en un cálculo (uno por flecha); el naranja queda
+# para el suceso o nodo que se calcula y el rojo para lo crítico.
+PALETA_FLECHAS = ["blue!80!black", "violet", "teal", "magenta!85!black", "brown", "cyan!70!black"]
 
 
 def _html_pasos(fotos: list, inicio: int = 1) -> str:
