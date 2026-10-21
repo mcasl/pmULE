@@ -7,6 +7,7 @@ camino crítico A-D-F-J-I.
 
 import os
 import sys
+import re
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -138,16 +139,23 @@ class TestVisoresTiempos(unittest.TestCase):
         html = self.pg.pert_pasos_html(DUR)
         n = len(self.pg.nodes)
         m = len(self.pg.pert_graph.edges)
-        total = 2 * n + m + 2                   # vacío + n + n + m holguras + final
+        total = 2 * n + m + 3                   # resultado + vacío + n + n + m holguras + final
         self.assertEqual(self._fotos(html), total)
         self.assertEqual(html.count("data:image/svg+xml;base64,"), total)
         self.assertIn("siguiente", html)
+        self.assertIn('data-inicio="0"', html)
+        imgs = re.findall(r'base64,([A-Za-z0-9+/=]+)"', html)
+        self.assertEqual(imgs[0], imgs[-1])               # el primero es el grafo resuelto
+        self.assertNotEqual(imgs[1], imgs[0])
 
     def test_roy_visor(self):
         html = self.pg.roy_pasos_html(DUR)
         n = len(DUR) + 2                                    # actividades + Inicio + Fin
-        self.assertEqual(self._fotos(html), 2 * n + 2)
-        self.assertEqual(html.count("data:image/svg+xml;base64,"), 2 * n + 2)
+        self.assertEqual(self._fotos(html), 2 * n + 3)
+        self.assertEqual(html.count("data:image/svg+xml;base64,"), 2 * n + 3)
+        self.assertIn('data-inicio="0"', html)
+        imgs = re.findall(r'base64,([A-Za-z0-9+/=]+)"', html)
+        self.assertEqual(imgs[0], imgs[-1])
 
     def test_svgs_validos(self):
         import base64, re

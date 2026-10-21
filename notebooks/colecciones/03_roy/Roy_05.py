@@ -254,26 +254,20 @@ print('Finales (sin sucesoras):     ', ', '.join(sorted(prelaciones.end_activiti
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy"
 #| label: fig-roy
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo PERT"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%

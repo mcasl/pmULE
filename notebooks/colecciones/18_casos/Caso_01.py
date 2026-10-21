@@ -304,15 +304,12 @@ display(Markdown(pregunta_1))
 _g, _d = p0.gantt(df0, 'duration', holguras=True, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))
 pinta_tikz(_d)
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT del plan original con los tiempos de los nodos"
 #| label: fig-grafo0
-p0.pert(durations=dur0, ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 p0.display_pert_pasos(dur0)
 
 # %%

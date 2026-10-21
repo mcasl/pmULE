@@ -250,15 +250,12 @@ duracion = int(proyecto.duration(datos_proyecto['duration']))
 sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])
 p_pert = float(norm.cdf((plazo - duracion) / sigma))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]

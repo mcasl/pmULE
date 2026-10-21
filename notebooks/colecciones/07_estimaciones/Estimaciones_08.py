@@ -272,15 +272,12 @@ display(Markdown(pregunta_2))
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con duraciones medias y camino crítico"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%

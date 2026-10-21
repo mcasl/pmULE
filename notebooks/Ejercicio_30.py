@@ -243,29 +243,23 @@ proyecto.display_critical_path(datos_proyecto['duration'])
 # %% [markdown]
 # #### Grafo PERT con indicación de tiempos, y rutas del camino crítico
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert del proyecto con indicación del camino crítico"
 #| label: fig-pertCritico
-proyecto.pert(durations=datos_proyecto['duration'])
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # #### Grafo Roy con indicación de tiempos, y rutas del camino crítico
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy del proyecto con indicación del camino crítico"
 #| label: fig-royCritico
-proyecto.roy(durations=datos_proyecto['duration'])
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -764,11 +758,14 @@ gantt, dibujo = proyecto.gantt(datos_proyecto_simplificado,
               )
 pinta_tikz(dibujo)
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| out-width: 100%
 #| fig-cap: "Pert del resto del proyecto por completar"
-
-proyecto_simplificado.pert(filename="pert_2.0.2_simplificado.pdf", durations=datos_proyecto_simplificado['duration'])
+_ = proyecto_simplificado.pert(filename="pert_2.0.2_simplificado.pdf", durations=datos_proyecto_simplificado['duration'])
+proyecto_simplificado.display_pert_pasos(datos_proyecto_simplificado['duration'])
 
 # %% [markdown]
 # {{< pagebreak >}}

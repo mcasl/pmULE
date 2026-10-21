@@ -187,15 +187,12 @@ proyecto.display_critical_path(durations=datos_proyecto['duration'])
 # %% [markdown]
 # ### Grafo PERT con indicación del camino crítico
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert con tiempos, y rutas críticas"
 #| label: fig-PertConTiempos
-proyecto.pert(durations=datos_proyecto['duration'])
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]

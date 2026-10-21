@@ -257,15 +257,12 @@ def resumen_plan(pasos):
                       'coste total al precio sombra (k€)': coste + emisiones * precio_sombra / 1000,
                       'compensar a precio de créditos (k€)': emisiones * precio_creditos / 1000})
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]

@@ -3766,10 +3766,11 @@ class ProjectGraph:
         """El cálculo de los tiempos del PERT como visor HTML con botones
         (anterior / siguiente) cuyos fotogramas son los dibujos TikZ de
         :meth:`plot_tikz_pasos`, compilados a SVG (hace falta ``pdflatex`` y
-        ``pdftocairo``)."""
+        ``pdftocairo``). El primer fotograma (paso 0) es el grafo resuelto; a partir
+        del paso 1 se calcula desde el principio."""
         codigos = self.plot_tikz_pasos(durations, beamer=False, escala=escala,
                                        posiciones=posiciones, textos=textos)
-        return _html_fotogramas_tikz(codigos)
+        return _html_fotogramas_tikz(codigos, resultado_primero=True)
 
     def display_pert_pasos(self, durations, escala: float = 1.0, posiciones: dict = None,
                            textos: dict = None, visor: bool = True) -> None:
@@ -4638,11 +4639,13 @@ class ProjectGraph:
                        textos: dict = None, etiquetas: dict = None) -> str:
         """El cálculo de los tiempos del Roy como visor HTML con botones cuyos
         fotogramas son los dibujos TikZ de :meth:`plot_tikz_roy_pasos`,
-        compilados a SVG (hace falta ``pdflatex`` y ``pdftocairo``)."""
+        compilados a SVG (hace falta ``pdflatex`` y ``pdftocairo``). El primer
+        fotograma (paso 0) es el grafo resuelto; a partir del paso 1 se calcula
+        desde el principio."""
         codigos = self.plot_tikz_roy_pasos(durations, beamer=False, escala=escala,
                                            posiciones=posiciones, textos=textos,
                                            etiquetas=etiquetas)
-        return _html_fotogramas_tikz(codigos)
+        return _html_fotogramas_tikz(codigos, resultado_primero=True)
 
     def display_roy_pasos(self, durations, etiquetas: dict = None, escala: float = 1.0,
                           posiciones: dict = None, textos: dict = None,
@@ -6772,17 +6775,23 @@ def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: s
     return svgs
 
 
-def _html_fotogramas_tikz(codigos: list, librerias: str = "calc,arrows.meta") -> str:
+def _html_fotogramas_tikz(codigos: list, librerias: str = "calc,arrows.meta",
+                          resultado_primero: bool = False) -> str:
     """Visor HTML con botones (:func:`_html_pasos`) de fotogramas TikZ compilados a
     SVG. Cada SVG va como imagen ``data:`` para que los identificadores de
-    glifos de unos no se mezclen con los de otros."""
+    glifos de unos no se mezclen con los de otros. Con ``resultado_primero`` el
+    último fotograma (el resultado) se repite como primero (paso 0) y el contador
+    empieza en 0."""
     import base64
     fotos = []
-    for svg in _svgs_de_tikz(codigos, librerias):
+    svgs = _svgs_de_tikz(codigos, librerias)
+    if resultado_primero:
+        svgs = [svgs[-1]] + list(svgs)
+    for svg in svgs:
         b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
         fotos.append('<img alt="paso" style="display:block;margin:0 auto;width:100%;max-width:1100px;height:auto" '
                      f'src="data:image/svg+xml;base64,{b64}">')
-    return _html_pasos(fotos)
+    return _html_pasos(fotos, inicio=0 if resultado_primero else 1)
 
 
 def pinta_tikz(dibujo, filename=None):

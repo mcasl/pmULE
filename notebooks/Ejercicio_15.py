@@ -120,15 +120,13 @@ proyecto = prelaciones.create_project()
 # %% [markdown]
 # ### Grafo PERT de la planificación inicial
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| out-width: 100%
 #| fig-cap: "Pert de la planificación inicial"
-proyecto.pert(filename="pert_1.2.2.pdf", durations=datos_proyecto['duracion_planificada'], ranksep=0.7, rowsep=1.5)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
+_ = proyecto.pert(filename="pert_1.2.2.pdf", durations=datos_proyecto['duracion_planificada'], ranksep=0.7, rowsep=1.5)
 proyecto.display_pert_pasos(datos_proyecto['duracion_planificada'])
 
 # %%
@@ -292,11 +290,14 @@ datos_proyecto_actualizado.loc[~empezadas, 'duracion_planificada'] = datos_proye
 # %% [markdown]
 # Una vez obtenidas las duraciones previstas de las actividades, se puede calcular la nueva fecha de fin de proyecto.
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| out-width: 100%
 #| fig-cap: "Pert de la previsión a futuro del proyecto"
-
-proyecto.pert(filename='pert_2.0.1_inicial.pdf', durations=datos_proyecto_actualizado['duracion_planificada'], ranksep=0.9)
+_ = proyecto.pert(filename='pert_2.0.1_inicial.pdf', durations=datos_proyecto_actualizado['duracion_planificada'], ranksep=0.9)
+proyecto.display_pert_pasos(datos_proyecto_actualizado['duracion_planificada'])
 
 # %% [markdown]
 # El proyecto presenta ahora una nueva duración de 36 periodos.
@@ -350,11 +351,14 @@ datos_proyecto_simplificado
 prelaciones_simplificado = PredecessorTable.from_dataframe_of_strings(datos_proyecto_simplificado, activity='actividad', predecessor='precedente')
 proyecto_simplificado    = prelaciones_simplificado.create_project()
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| out-width: 100%
 #| fig-cap: "Pert del resto del proyecto por completar"
-
-proyecto_simplificado.pert(filename="pert_2.0.2_simplificado.pdf", durations=datos_proyecto_simplificado['duracion'])
+_ = proyecto_simplificado.pert(filename="pert_2.0.2_simplificado.pdf", durations=datos_proyecto_simplificado['duracion'])
+proyecto_simplificado.display_pert_pasos(datos_proyecto_simplificado['duracion'])
 
 # %% [markdown]
 # ::: {.landscape}

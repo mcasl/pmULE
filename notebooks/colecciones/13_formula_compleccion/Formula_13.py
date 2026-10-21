@@ -259,15 +259,12 @@ R = proyecto.path_matrix(dummies=False)
 t = datos_proyecto['duration'][R.columns]
 Markdown(f'{len(proyecto)} actividades (incluidas las dos ficticias del formato, de duración 0), {len(proyecto.dummies)} ficticias añadidas por el grafo, {len(proyecto.nodes)} nodos y {R.shape[0]} rutas.')
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT de la instancia"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=0.6, nodesep=0.3)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]

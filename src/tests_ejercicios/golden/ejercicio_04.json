@@ -712,7 +712,7 @@
    }
   },
   {
-   "index": 42,
+   "index": 40,
    "source": "desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=datos_proyecto['durati",
    "vars": {
     "desviacion_proyecto": 3.605551275463989,
@@ -735,14 +735,14 @@
    }
   },
   {
-   "index": 46,
+   "index": 44,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_b": 0.08
    }
   },
   {
-   "index": 49,
+   "index": 47,
    "source": "ackoff, best_option, duration, available = proyecto.ackoff(durations=datos_proyecto['duration'],",
    "vars": {
     "ackoff": {
@@ -1448,7 +1448,7 @@
    }
   },
   {
-   "index": 51,
+   "index": 49,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {

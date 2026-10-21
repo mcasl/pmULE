@@ -797,7 +797,7 @@
    }
   },
   {
-   "index": 40,
+   "index": 39,
    "source": "#| tbl-cap: \"Rutas del camino crítico\"",
    "vars": {
     "camino_critico": {
@@ -878,7 +878,7 @@
    }
   },
   {
-   "index": 47,
+   "index": 45,
    "source": "#| tbl-cap: \"Cálculo de la varianza de la duración de las actividades\"",
    "vars": {
     "datos_proyecto": {
@@ -1000,7 +1000,7 @@
    }
   },
   {
-   "index": 49,
+   "index": 47,
    "source": "desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations = datos_proyecto['dura",
    "vars": {
     "desviacion_proyecto": 0.6,
@@ -1043,14 +1043,14 @@
    }
   },
   {
-   "index": 54,
+   "index": 52,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_tau": 0.9522096477271853
    }
   },
   {
-   "index": 59,
+   "index": 57,
    "source": "#| fig-cap: \"Distribución inicial del consumo de recursos\"",
    "vars": {
     "datos_proyecto": {
@@ -1412,7 +1412,7 @@
    }
   },
   {
-   "index": 63,
+   "index": 61,
    "source": "#| fig-cap: \"Planificación del proyecto tras aplicar el algoritmo de asignación\"",
    "vars": {
     "datos_proyecto_tras_asignacion": {
@@ -1832,7 +1832,7 @@
    }
   },
   {
-   "index": 69,
+   "index": 67,
    "source": "#| fig-cap: \"Planificación del proyecto tras aplicar el algoritmo de asignación con el nuevo límite\"",
    "vars": {
     "datos_proyecto_tras_asignar": {

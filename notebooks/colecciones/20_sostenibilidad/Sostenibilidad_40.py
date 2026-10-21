@@ -252,15 +252,12 @@ proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy del plan presentado"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -285,10 +282,13 @@ calendario_legal = proyecto_legal.calendar(datos_legal['duration'])
 duracion_legal = int(proyecto_legal.duration(datos_legal['duration']))
 retraso = duracion_legal - duracion
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con el plan de trabajo y la retirada"
 #| label: fig-pertLegal
-proyecto_legal.roy(durations=datos_legal['duration'], ranksep=1.2, nodesep=1.2)
+proyecto_legal.display_roy_pasos(datos_legal['duration'])
 
 # %%
 #| tbl-cap: "Calendario con las actividades exigidas por la norma"

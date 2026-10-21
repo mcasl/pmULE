@@ -294,15 +294,12 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 duraciones = datos_proyecto['duration'].round().astype(int)
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con las duraciones medias y el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=duraciones, ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(duraciones)
 
 # %%
