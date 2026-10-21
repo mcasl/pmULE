@@ -4091,7 +4091,7 @@ class ProjectGraph:
             return rf"\textcolor{{{c}}}{{{texto}}}" if c else texto
 
         GRIS = "gray!55"
-        atenuar = bool(arcos_activos)
+        atenuar = bool(arcos_activos) or bool(actuales)
         col_nodo = ({x: c for (u, v), c in arcos_activos.items() for x in (u, v)
                      if x not in actuales} if isinstance(arcos_activos, dict) else {})
         implicados = actuales | {x for a in arcos_activos for x in a}
@@ -4165,6 +4165,13 @@ class ProjectGraph:
                      rf" (n{nodo}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
             L.append(rf"  \draw[gray] (n{nodo}.center) -- (n{nodo}.45)"
                      rf" (n{nodo}.center) -- (n{nodo}.135) (n{nodo}.center) -- (n{nodo}.270);")
+            # «quesito» del valor que interviene: sus dos radios, más gruesos y del color de la flecha
+            for clave, (ini, fin) in (("e", (135, 270)), ("l", (270, 45))):
+                if (nodo, clave) in (negrita or ()):
+                    c = (colores_valores or {}).get((nodo, clave),
+                                                    "orange!80!black" if nodo in actuales else "black")
+                    L.append(rf"  \draw[{c}, ultra thick] (n{nodo}.{ini}) -- (n{nodo}.center)"
+                             rf" -- (n{nodo}.{fin});")
             L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
                      rf" at ($(n{nodo}.center)+(90:0.28)$) {{{self._tex_texto(f"{nodo}")}}};")
             if nodo in tempranos:
@@ -4643,7 +4650,7 @@ class ProjectGraph:
                 return rf"\textcolor{{{c}}}{{{texto}}}" if c else texto
 
             GRIS = "gray!55"
-            atenuar = bool(arcos_activos)
+            atenuar = bool(arcos_activos) or actual is not None
             col_nodo = ({x: c for (u, v), c in arcos_activos.items() for x in (u, v)
                          if x != actual} if isinstance(arcos_activos, dict) else {})
             implicados = ({actual} if actual is not None else set()) | {x for a in arcos_activos for x in a}
@@ -4687,10 +4694,22 @@ class ProjectGraph:
                 L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
                          rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
                          rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
+                # casilla del valor que interviene: sus segmentos interiores (no el borde
+                # exterior), más gruesos y del color de la flecha
+                def _m(t): return f"($({r}.west)!{t:.4f}!({r}.east)$)"
+                def _b(t): return f"($({r}.south west)!{t:.4f}!({r}.south east)$)"
+                trazos = {"min": [_m(0), _m(1 / 3), _b(1 / 3)],
+                          "dur": [_b(1 / 3), _m(1 / 3), _m(2 / 3), _b(2 / 3)],
+                          "max": [_b(2 / 3), _m(2 / 3), _m(1)]}
+                for clave, pts in trazos.items():
+                    if (nodo, clave) in (negrita or ()):
+                        c = (colores_valores or {}).get((nodo, clave),
+                                                        "orange!80!black" if nodo == actual else "black")
+                        L.append(rf"  \draw[{c}, ultra thick] " + " -- ".join(pts) + ";")
                 L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
                          rf" at ($({r}.center)+(0,0.22)$) {{{self._tex_texto(f"{et.get(nodo, nodo)}")}}};")
                 if con_duracion:
-                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}, gray] at ($({r}.center)+(0,-0.22)$) {{{tinta(nodo, 'dur', f(dur[nodo]))}}};")
+                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}{'' if (nodo, 'dur') in (negrita or ()) else ', gray'}] at ($({r}.center)+(0,-0.22)$) {{{tinta(nodo, 'dur', f(dur[nodo]))}}};")
                 if nodo in minimos:
                     L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}{gris}] at ($({r}.center)+(-0.5,-0.22)$) {{{tinta(nodo, 'min', f(minimos[nodo]))}}};")
                 if nodo in maximos:
@@ -4728,7 +4747,7 @@ class ProjectGraph:
             valores = {(q, "max"): col for (_, q), col in arcos.items()}
             fotos.append(fotograma(dict(minimos), dict(maximos), n, arcos, f"${fila['calculo']}$",
                                    colores_valores=valores,
-                                   negrita=set(valores) | {(n, "max")}))
+                                   negrita=set(valores) | {(n, "max"), (n, "dur")}))
         criticos = {n for n in minimos if minimos[n] == maximos[n]}
         fotos.append(fotograma(dict(minimos), dict(maximos), criticos=criticos,
                                texto=rotulos["final"].format(duracion=f(minimos["finish"]))))
