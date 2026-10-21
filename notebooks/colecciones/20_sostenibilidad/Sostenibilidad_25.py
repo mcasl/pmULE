@@ -256,15 +256,12 @@ def carga_por_semana(gantt_df, filas):
     filas = [f for f in filas if f in gantt_df.data.index]
     return gantt_df.data.loc[filas, cols].apply(pd.to_numeric, errors='coerce').fillna(0).sum()
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT del proyecto"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]

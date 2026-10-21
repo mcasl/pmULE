@@ -652,7 +652,7 @@
    }
   },
   {
-   "index": 39,
+   "index": 37,
    "source": "desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=datos_proyecto['durati",
    "vars": {
     "desviacion_proyecto": 2.23606797749979,
@@ -680,7 +680,7 @@
    }
   },
   {
-   "index": 43,
+   "index": 41,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_a": 0.08985624743949988,
@@ -689,7 +689,7 @@
    }
   },
   {
-   "index": 47,
+   "index": 45,
    "source": "ackoff, best_option, duration, available = proyecto.ackoff(durations=datos_proyecto['duration'],",
    "vars": {
     "ackoff": {
@@ -1215,7 +1215,7 @@
    }
   },
   {
-   "index": 50,
+   "index": 48,
    "source": "for iteracion, actividades in best_option.items():",
    "vars": {
     "actividades": {
@@ -1228,14 +1228,14 @@
    }
   },
   {
-   "index": 54,
+   "index": 52,
    "source": "duracion_media_proyecto = proyecto.duration(duration)",
    "vars": {
     "duracion_media_proyecto": 18
    }
   },
   {
-   "index": 58,
+   "index": 56,
    "source": "# duration ha sido calculada en el Ackoff Sasieni",
    "vars": {
     "varianza_caminos": {
@@ -1267,7 +1267,7 @@
    }
   },
   {
-   "index": 62,
+   "index": 60,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_a": 0.32736042300928847,
@@ -1276,7 +1276,7 @@
    }
   },
   {
-   "index": 67,
+   "index": 65,
    "source": "#| fig-cap: \"Diagrama de Gantt del proyecto antes de la nivelación\"",
    "vars": {
     "dibujo": {
@@ -1687,7 +1687,7 @@
    }
   },
   {
-   "index": 72,
+   "index": 70,
    "source": "proyecto_nivelacion = proyecto.copy()",
    "vars": {
     "cuadrados": {
@@ -2302,7 +2302,7 @@
    }
   },
   {
-   "index": 83,
+   "index": 81,
    "source": "#| fig-cap: \"Diagrama de Gantt previo a la asignación\"",
    "vars": {
     "dibujo": {
@@ -2689,7 +2689,7 @@
    }
   },
   {
-   "index": 87,
+   "index": 85,
    "source": "#| fig-cap: \"Diagrama de Gantt del proyecto tras la asignación\"",
    "vars": {
     "datos_proyecto_tras_asignar": {

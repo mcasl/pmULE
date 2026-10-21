@@ -251,15 +251,12 @@ proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT del plan presentado"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -284,10 +281,13 @@ calendario_legal = proyecto_legal.calendar(datos_legal['duration'])
 duracion_legal = int(proyecto_legal.duration(datos_legal['duration']))
 retraso = duracion_legal - duracion
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con el plan de trabajo y la retirada"
 #| label: fig-pertLegal
-proyecto_legal.pert(durations=datos_legal['duration'], ranksep=1)
+proyecto_legal.display_pert_pasos(datos_legal['duration'])
 
 # %%
 #| tbl-cap: "Calendario con las actividades exigidas por la norma"

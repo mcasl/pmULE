@@ -183,11 +183,8 @@ calendario
 # ### Grafo PERT con indicación de tiempos y rutas del camino crítico de acuerdo a la planificación inicial
 # A continuación se muestra el grafo Pert del proyecto, con indicación de las actividades críticas:
 
-# %%
-proyecto.pert(durations=datos_proyecto['duration'])
-
 # %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])

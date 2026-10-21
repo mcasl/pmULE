@@ -1274,7 +1274,7 @@
    }
   },
   {
-   "index": 42,
+   "index": 40,
    "source": "#| tbl-cap: \"Calendario del proyecto\"",
    "vars": {
     "calendario": {
@@ -1436,7 +1436,7 @@
    }
   },
   {
-   "index": 43,
+   "index": 41,
    "source": "#| fig-cap: \"Diagrama de Gantt del proyecto\"",
    "vars": {
     "dibujo": {
@@ -1870,7 +1870,7 @@
    }
   },
   {
-   "index": 48,
+   "index": 46,
    "source": "#| tbl-cap: \"Varianza de las rutas del camino crítico\"",
    "vars": {
     "desviacion_proyecto": 1.632993161855452,
@@ -1893,21 +1893,21 @@
    }
   },
   {
-   "index": 51,
+   "index": 49,
    "source": "probabilidad_normal = norm.cdf(semana_nevada, loc=duracion_media_proyecto, scale=desviacion_proyecto",
    "vars": {
     "probabilidad_normal": 0.5
    }
   },
   {
-   "index": 53,
+   "index": 51,
    "source": "duracion_comprometida_normal = norm.ppf(probabilidad_objetivo, loc=duracion_media_proyecto, scale=de",
    "vars": {
     "duracion_comprometida_normal": 24.092764943099482
    }
   },
   {
-   "index": 58,
+   "index": 56,
    "source": "def muestras_beta_pert(a, m, b, size, rng):",
    "vars": {
     "duraciones_montecarlo": {
@@ -2004,7 +2004,7 @@
    }
   },
   {
-   "index": 63,
+   "index": 61,
    "source": "#| tbl-cap: \"Matriz de caminos del proyecto\"",
    "vars": {
     "path_matrix": {
@@ -2271,7 +2271,7 @@
    }
   },
   {
-   "index": 65,
+   "index": 63,
    "source": "duraciones_montecarlo = duraciones_montecarlo[path_matrix.columns]",
    "vars": {
     "duracion_proyecto_mc": {
@@ -2394,7 +2394,7 @@
    }
   },
   {
-   "index": 67,
+   "index": 65,
    "source": "#| fig-cap: \"Distribución de la duración del proyecto: MonteCarlo frente a la aproximación normal\"",
    "vars": {
     "x": {
@@ -2708,7 +2708,7 @@
    }
   },
   {
-   "index": 68,
+   "index": 66,
    "source": "media_mc = duracion_proyecto_mc.mean()",
    "vars": {
     "desviacion_mc": 1.558064358606325,
@@ -2718,7 +2718,7 @@
    }
   },
   {
-   "index": 72,
+   "index": 70,
    "source": "#| tbl-cap: \"Índice de criticidad de las rutas (se omiten las que nunca resultan críticas)\"",
    "vars": {
     "actividades_ruta": {
@@ -2794,7 +2794,7 @@
    }
   },
   {
-   "index": 73,
+   "index": 71,
    "source": "#| tbl-cap: \"Índice de criticidad de las actividades frente a su holgura total\"",
    "vars": {
     "criticidad_actividades": {
@@ -2836,14 +2836,14 @@
    }
   },
   {
-   "index": 74,
+   "index": 72,
    "source": "criticidad_A = criticidad_actividades['A']",
    "vars": {
     "criticidad_A": 32.58
    }
   },
   {
-   "index": 79,
+   "index": 77,
    "source": "def analiza_reduccion(semanas):",
    "vars": {
     "analisis": {
@@ -3256,7 +3256,7 @@
    }
   },
   {
-   "index": 80,
+   "index": 78,
    "source": "#| tbl-cap: \"Efecto de cada semana de reducción sobre la probabilidad de terminar antes de la nevada",
    "vars": {
     "tabla_reducciones": {
@@ -3324,7 +3324,7 @@
    }
   },
   {
-   "index": 81,
+   "index": 79,
    "source": "semanas_necesarias = min(semanas for semanas, r in analisis.items() if r['probabilidad'] >= probabil",
    "vars": {
     "opcion_90": {
@@ -3395,7 +3395,7 @@
    }
   },
   {
-   "index": 83,
+   "index": 81,
    "source": "#| tbl-cap: \"Cuadro del algoritmo de Ackoff-Sasieni\"",
    "vars": {
     "ackoff": {
@@ -4204,7 +4204,7 @@
    }
   },
   {
-   "index": 87,
+   "index": 86,
    "source": "#| tbl-cap: \"Coste total esperado para cada número de semanas de reducción\"",
    "vars": {
     "coste_esperado": {
@@ -4265,14 +4265,14 @@
    }
   },
   {
-   "index": 89,
+   "index": 88,
    "source": "semanas_optimas = int(coste_esperado['Coste total esperado (k€)'].astype(float).idxmin())",
    "vars": {
     "semanas_optimas": 2
    }
   },
   {
-   "index": 91,
+   "index": 90,
    "source": "#| tbl-cap: \"Probabilidad de terminar antes de la nevada: aproximación normal frente a MonteCarlo\"",
    "vars": {
     "probabilidades_mc": {
@@ -4348,14 +4348,14 @@
    }
   },
   {
-   "index": 92,
+   "index": 91,
    "source": "semanas_necesarias_mc = min(semanas for semanas, p in probabilidades_mc.items() if p >= probabilidad",
    "vars": {
     "semanas_necesarias_mc": 4
    }
   },
   {
-   "index": 97,
+   "index": 96,
    "source": "#| fig-cap: \"Diagrama de Gantt del proyecto original con la demanda de operarios\"",
    "vars": {
     "proyecto_asignacion": {
@@ -4476,7 +4476,7 @@
    }
   },
   {
-   "index": 101,
+   "index": 100,
    "source": "#| fig-cap: \"Diagrama de Gantt del proyecto tras aplicar el algoritmo de asignación\"",
    "vars": {
     "datos_tras_asignar": {
@@ -5189,7 +5189,7 @@
    }
   },
   {
-   "index": 103,
+   "index": 102,
    "source": "duracion_tras_asignar = int(gantt_df.data.columns.drop('H_total').max())",
    "vars": {
     "conclusion": "Tras la asignación, la duración media del proyecto pasa a ser de **23 semanas**, 1 más que la planificación original. Si se mantiene la desviación típica original como aproximación, la probabilidad de terminar antes de la nevada cae al **27.0%**.\n\nLa escasez de operarios al inicio es, por tanto, un riesgo serio. Las alternativas son contratar operarios adicionales durante esas semanas o combinar la asignación con la reducción del apartado 4. Esta segunda opción tiene un coste que podría compararse con el de contratar.",
@@ -5199,7 +5199,7 @@
    }
   },
   {
-   "index": 108,
+   "index": 107,
    "source": "datos_valor_ganado = pd.concat([datos_proyecto[['predecessor', 'duration', 'BAC']], datos_seguimient",
    "vars": {
     "datos_valor_ganado": {
@@ -6276,7 +6276,7 @@
    }
   },
   {
-   "index": 113,
+   "index": 112,
    "source": "acumulados = gantts['acumulados']",
    "vars": {
     "AC": 131.0,
@@ -6364,7 +6364,7 @@
    }
   },
   {
-   "index": 116,
+   "index": 115,
    "source": "CPI, SPI = EV / AC, EV / PV",
    "vars": {
     "CPI": 0.8740458015267175,
@@ -6373,7 +6373,7 @@
    }
   },
   {
-   "index": 119,
+   "index": 118,
    "source": "pv_acumulado = pd.concat([pd.Series({0: 0.0}), acumulados['PV'].astype(float)])",
    "vars": {
     "AT": 11,
@@ -6416,7 +6416,7 @@
    }
   },
   {
-   "index": 120,
+   "index": 119,
    "source": "ES = C + (EV - PV_C) / (PV_C1 - PV_C)",
    "vars": {
     "ES": 9.114285714285714,

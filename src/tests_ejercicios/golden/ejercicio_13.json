@@ -628,7 +628,7 @@
    }
   },
   {
-   "index": 33,
+   "index": 32,
    "source": "desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(durations=datos_proyecto['duration",
    "vars": {
     "desviacion_proyecto": 2.23606797749979,
@@ -656,7 +656,7 @@
    }
   },
   {
-   "index": 37,
+   "index": 36,
    "source": "import scipy",
    "vars": {
     "probabilidad_de_terminar_antes_de_a": 0.09,
@@ -665,7 +665,7 @@
    }
   },
   {
-   "index": 42,
+   "index": 41,
    "source": "ackoff, best_option, duration, available = proyecto.ackoff(durations=datos_proyecto['duration'],",
    "vars": {
     "ackoff": {
@@ -1075,7 +1075,7 @@
    }
   },
   {
-   "index": 49,
+   "index": 48,
    "source": "#| fig-cap: \"Distribución inicial del consumo de recursos\"",
    "vars": {
     "dibujo": {
@@ -1518,7 +1518,7 @@
    }
   },
   {
-   "index": 53,
+   "index": 52,
    "source": "desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nivelar(data=datos_proye",
    "vars": {
     "cuadrados": {
@@ -2128,7 +2128,7 @@
    }
   },
   {
-   "index": 61,
+   "index": 60,
    "source": "proyecto_asignacion = proyecto_nivelacion.copy()",
    "vars": {
     "dibujo": {
@@ -2516,7 +2516,7 @@
    }
   },
   {
-   "index": 65,
+   "index": 64,
    "source": "duracion_y_recursos = datos_proyecto[['duration', 'resources']]",
    "vars": {
     "dibujo": {

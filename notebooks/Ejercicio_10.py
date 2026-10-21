@@ -167,15 +167,12 @@ calendario
 # ### Grafo PERT con indicación de tiempos y rutas del camino crítico de acuerdo a la planificación inicial
 # A continuación se muestra el grafo Pert del proyecto, con indicación de las actividades críticas:
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert con indicación del camino crítico"
 #| label: fig-pertrutasCriticas
-proyecto.pert(durations=datos_proyecto['duracion'])
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duracion'])
 
 # %% [markdown]
@@ -330,8 +327,11 @@ plot_cargas(gantt_df, limite_maximo_recursos=1000)
 # %% [markdown]
 # Con esta única acción la demanda de recursos del proyecto ya no supera las 1000 unidades que nos ponía de límite en el enunciado. La duración no obstante ha subido a 17 meses y el camino crítico ha cambiado.
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
-proyecto_asignacion.pert(durations=datos_proyecto_tras_asignar['duracion'])
+proyecto_asignacion.display_pert_pasos(datos_proyecto_tras_asignar['duracion'])
 
 # %%
 camino_critico = proyecto_asignacion.critical_path(durations=datos_proyecto_tras_asignar['duracion'])

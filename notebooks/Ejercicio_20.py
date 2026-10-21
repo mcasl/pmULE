@@ -169,29 +169,23 @@ proyecto.display_critical_path(datos_proyecto['duracion'])
 # %% [markdown]
 # ### Grafo PERT con indicación de tiempos y rutas del camino crítico
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert con tiempos, y rutas críticas"
 #| label: fig-PertConTiempos
-proyecto.pert(durations=datos_proyecto['duracion'])
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duracion'])
 
 # %% [markdown]
 # ### Grafo Roy con indicación de tiempos y rutas del camino crítico
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con tiempos, y rutas críticas"
 #| label: fig-RoyConTiempos
-proyecto.roy(durations=datos_proyecto['duracion'])
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duracion'])
 
 # %% [markdown]
@@ -233,9 +227,12 @@ for item, value in best_option.items():
 # %% [markdown]
 # El grafo Roy con indicación de tiempos y rutas críticas tras la reducción de la duración es el siguiente:
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con indicación de tiempos tras la reducción del proyecto"
 #| label: fig-RoyReduccionTiempos
-proyecto.roy(durations=duration)
+proyecto.display_roy_pasos(duration)
 
 # %%

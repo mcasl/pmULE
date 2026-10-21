@@ -185,29 +185,23 @@ calendario
 # %% [markdown]
 # A continuación se muestra el grafo Pert del proyecto, con indicación de las actividades críticas:
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert con indicación del camino crítico"
 #| label: fig-pertrutasCriticas
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1.5, nodesep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # A continuación se muestra el grafo Roy del proyecto, con indicación de las actividades críticas:
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy del proyecto con indicación de las actividades críticas"
 #| label: fig-RoyCríticas
-proyecto.roy(ranksep=1.25, nodesep=1.25, durations=datos_proyecto['duration'])
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]

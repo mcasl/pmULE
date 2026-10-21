@@ -252,26 +252,20 @@ resultados_pert['activities'][['H_total']].T
 # %%
 proyecto.display_critical_path(durations=duraciones_medias)
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert con indicación de tiempos y del camino crítico"
 #| label: fig-pertCritico
-proyecto.pert(durations=duraciones_medias, ranksep=1.2, nodesep=0.8)
+proyecto.display_pert_pasos(duraciones_medias)
 
 # %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
-proyecto.display_pert_pasos(duraciones_medias)
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo Roy con indicación del camino crítico"
 #| label: fig-royCritico
-proyecto.roy(durations=duraciones_medias, ranksep=1.2, nodesep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(duraciones_medias)
 
 # %% [markdown]
@@ -540,10 +534,13 @@ proyecto.display_ackoff_pasos(
 # %%
 Markdown(f"""Reducir {semanas_necesarias - 1} semanas deja la probabilidad en {analisis[semanas_necesarias - 1]['probabilidad']*100:.1f}%, que se queda justo por debajo del objetivo. Hay que reducir **{semanas_necesarias} semanas**, acortando las actividades {opcion_90['reducidas']}. El sobrecoste es de **{opcion_90['sobrecoste']} k€** y la probabilidad de terminar antes de la nevada pasa a ser del **{opcion_90['probabilidad']*100:.1f}%**.""")
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert del proyecto tras la reducción: aparecen nuevas rutas críticas"
 #| label: fig-pertReducido
-proyecto.pert(durations=opcion_90['duraciones'], ranksep=1.2, nodesep=0.8)
+proyecto.display_pert_pasos(opcion_90['duraciones'])
 
 # %% [markdown]
 # ### Minimización del coste total esperado

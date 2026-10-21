@@ -190,15 +190,12 @@ proyecto.pert(durations=False, ranksep=1)
 #| label: tbl-MatrizZaderenko
 proyecto.display_zaderenko_pasos(duraciones)
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert con indicación de tiempos y rutas del camino crítico"
 #| label: fig-PertConTiempos
-proyecto.pert(durations=duraciones, ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(duraciones)
 
 # %% [markdown]

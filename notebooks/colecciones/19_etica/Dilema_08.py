@@ -259,15 +259,12 @@ def valor_actual(dias, m):
     '''Valor actual de las facturas pagadas «dias» días después de cada fin de mes, al tipo mensual m.'''
     return float(sum(f / (1 + m) ** (t + dias / 30) for t, f in factura.items()))
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT del proyecto"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]

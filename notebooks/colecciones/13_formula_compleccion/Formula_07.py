@@ -260,15 +260,12 @@ t = datos_proyecto['duration'][R.columns]
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT original"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
@@ -336,10 +333,13 @@ nuevas = [rutas2[r] for r in R2.index if frozenset(R2.columns[R2.loc[r] == 1]) i
 tau2 = float(R2t.max())
 Markdown(f'''Rutas que desaparecen: {'; '.join(perdidas) or 'ninguna'}.\n\nRutas nuevas: {'; '.join(nuevas) or 'ninguna'}.\n\nNuevo τ = {tau2:.0f} (antes {tau:.0f}); ruta crítica {R2t.idxmax()}: {rutas2[R2t.idxmax()]}.''')
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT modificado"
 #| label: fig-pert2
-proyecto2.pert(durations=datos_modificados['duration'], ranksep=1)
+proyecto2.display_pert_pasos(datos_modificados['duration'])
 
 # %% [markdown]
 # ## Apartado 4

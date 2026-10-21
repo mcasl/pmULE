@@ -253,15 +253,12 @@ datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2
 duraciones_ordinaria = datos_proyecto['duration'].copy(); duraciones_ordinaria[tramitacion] += meses_mas
 duracion_ordinaria = int(proyecto.duration(duraciones_ordinaria))
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con el procedimiento simplificado"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]

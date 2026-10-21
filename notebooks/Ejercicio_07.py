@@ -164,29 +164,23 @@ proyecto.display_critical_path(datos_proyecto['duration'])
 # %% [markdown]
 # ##### Grafo PERT con indicación de tiempos
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert del proyecto con indicación del camino crítico"
 #| label: fig-pertCritico
-proyecto.pert(durations=datos_proyecto['duration'])
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # Alternativamente, se muestra el grafo Roy correspondiente con indicación del camino crítico.
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy del proyecto con indicación del camino crítico"
 #| label: fig-royCritico
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1, nodesep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -363,10 +357,13 @@ duracion_modificado['F1'] = 3
 duracion_modificado['F2'] = 3
 duracion_modificado['💤L'] = 2
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Pert del proyecto modificado con indicación del camino crítico"
 #| label: fig-pertcriticoModificado
-proyecto_modificado.pert(durations=duracion_modificado, ranksep=0.5)
+proyecto_modificado.display_pert_pasos(duracion_modificado)
 
 # %%
 gantt_df, dibujo = proyecto_modificado.gantt(duracion_modificado.to_frame(),

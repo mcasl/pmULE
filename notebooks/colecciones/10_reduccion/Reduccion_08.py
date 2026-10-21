@@ -269,15 +269,12 @@ datos_proyecto[['duration', 'cap_duration', 'cost_normal', 'cost_cap', 'ucr']]
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
@@ -363,7 +360,11 @@ camino_critico_reducido = proyecto.display_critical_path(duraciones_reducidas)
 pasos_dobles = [p for p, acts in pasos.items() if len(acts) > 1]
 Markdown(f'''El proyecto pasa a durar {duracion_reducida} semanas con un coste de {coste_normal} + {resumen["sobrecoste del paso"].sum():.0f} = {coste_final:.0f} k€. Al acortar la ruta crítica, otras rutas con holgura pequeña alcanzan su duración y pasan a ser críticas; a partir de ese momento reducir una sola actividad no basta, salvo que sea común a todas las rutas críticas, y hay que acortar una actividad de cada ruta (paso(s) {", ".join(str(p + 1) for p in pasos_dobles)}), con el coste sumado.''')
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con las duraciones reducidas"
 #| label: fig-pertReducido
-proyecto.roy(durations=duraciones_reducidas, ranksep=1.2, nodesep=1.2)
+proyecto.display_roy_pasos(duraciones_reducidas)
+
