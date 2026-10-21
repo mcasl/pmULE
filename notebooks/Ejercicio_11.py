@@ -58,7 +58,6 @@ display(Markdown(pregunta_4))
 #| tbl-cap: "Cuadro de datos del enunciado del ejercicio"
 #| label: tbl-datosEnunciado
 import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
 
 import numpy as np
 pd.set_option("display.max_columns", None)

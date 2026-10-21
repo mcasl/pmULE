@@ -57,7 +57,6 @@ from IPython.display import display, HTML
 
 import pandas as pd
 import numpy as np
-pd.set_option('future.no_silent_downcasting', True)
 
 datos_enunciado = pd.DataFrame([
 #  actividad, precedentes, duracion, varianza,  cur,  recursos, duracion_tope
