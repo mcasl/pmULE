@@ -310,3 +310,20 @@ def test_construccion_pert_ejercicio4():
     assert "ultra thick" not in cods[-1]          # fotograma final sin resaltes
     assert "§" not in "".join(cods)
     assert "{10}" in cods[-1] and "{10}" not in cods[3]   # números de nodo solo al final
+
+
+def test_zaderenko_tikz_ejercicio4():
+    import pandas as pd
+    from pmule import PredecessorTable
+    d = pd.DataFrame([('A', '---', 3), ('B', '---', 2), ('C', 'B', 4), ('D', 'A', 4), ('E', 'A', 2),
+                      ('F', 'C,D', 5), ('G', 'C,D', 1), ('H', 'E', 3), ('I', 'F,G', 1),
+                      ('J', 'F,G', 2), ('K', 'F,G,H', 1)],
+                     columns=['activity', 'predecessor', 'duration']).set_index('activity')
+    t = PredecessorTable.from_dataframe_of_strings(d, activity='activity', predecessor='predecessor')
+    p = t.create_project()
+    cods = p.plot_tikz_zaderenko(d['duration'])
+    assert len(cods) == 2 * 10 + 2                # inicio + 10 sucesos hacia delante y atrás + final
+    assert all(r"\begin{scope}[xshift=" in c for c in cods)
+    assert r"\max" in cods[5]                      # cálculo del paso
+    assert "red" not in cods[-1]                   # sin rojo de actividades críticas
+    assert "orange!18" in cods[3] and "orange!18" not in cods[0]

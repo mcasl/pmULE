@@ -188,7 +188,7 @@ proyecto.pert(durations=False, ranksep=1)
 # %%
 #| tbl-cap: "Cálculo de los tiempos tempranos y tardíos con el método de Zaderenko"
 #| label: tbl-MatrizZaderenko
-proyecto.display_zaderenko_pasos(duraciones)
+proyecto.display_zaderenko_tikz(duraciones)
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):

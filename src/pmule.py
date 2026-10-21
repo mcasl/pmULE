@@ -4751,6 +4751,176 @@ class ProjectGraph:
                          for k, c in enumerate(fotos, start=1))
 
     # ------------------------------------------------------------------
+    # Zaderenko con TikZ: PERT con tiempos arriba y matriz debajo, a la vez
+    # ------------------------------------------------------------------
+
+    def _cuerpo_zaderenko_tikz(self, N, celdas, early, late, te, tl, modo=None, nodo=None,
+                               arcos=None, res_color=None, holguras=None):
+        """Matriz de Zaderenko como código TikZ (sin ``tikzpicture``), con la columna
+        ``j`` o la fila ``i`` del paso sombreadas y, con los colores de las flechas del
+        PERT, las duraciones y tiempos que intervienen. Origen en la esquina superior
+        izquierda de la celda de cabecera; unidades ``x`` e ``y`` de la escala vigente."""
+        f = self._num_paso
+        n = len(N)
+        idx = {j: k + 1 for k, j in enumerate(N)}
+        arcos = arcos or {}
+        NARANJA = "orange!80!black"
+        ROJO = "red!75!black"
+        L = []
+        if modo == "del":
+            c = idx[nodo]
+            L.append(rf"\fill[orange!18] ({c - .5},.5) rectangle ({c + .5},{-(n + 1) - .5});")
+        elif modo == "atr":
+            r = idx[nodo]
+            L.append(rf"\fill[orange!18] (-1.5,{-r + .5}) rectangle ({n + .5},{-r - .5});")
+        L.append(rf"\draw[gray!70] (-1.5,{-.5}) -- ({n + .5},{-.5});")
+        L.append(rf"\draw[gray!70] (-1.5,{-n - .5}) -- ({n + .5},{-n - .5});")
+        L.append(rf"\draw[gray!70] (-.5,.5) -- (-.5,{-(n + 1) - .5}) (.5,.5) -- (.5,{-(n + 1) - .5});")
+
+        def txt(x, y, t, col=None, neg=False, caja=False):
+            if col:
+                t = rf"\textcolor{{{col}}}{{{t}}}"
+            if neg or col:
+                t = rf"\textbf{{{t}}}"
+            marco = rf"[draw={col}, rounded corners=1.5pt, inner sep=2pt, line width=.7pt]" if (caja and col) else ""
+            L.append(rf"\node{marco} at ({x},{-y}) {{{t}}};")
+
+        txt(-1, 0, r"$t_i\!\downarrow$")
+        txt(0, 0, r"$i\backslash j$")
+        for j in N:
+            txt(idx[j], 0, j)
+        txt(n + 1.55, n + 1, r"$\leftarrow t_j^*$")
+        for i in N:
+            ri = idx[i]
+            txt(0, ri, i, neg=True)
+            if i in te:
+                col, caja_i = None, False
+                if modo == "del" and i == nodo:
+                    col = res_color or NARANJA
+                elif modo == "del" and (i, nodo) in arcos:
+                    col, caja_i = arcos[(i, nodo)], True
+                txt(-1, ri, f(te[i]), col, caja=caja_i)
+            for j in N:
+                if i == j:
+                    txt(idx[j], ri, r"$\times$")
+                elif (i, j) in celdas:
+                    act, d = celdas[(i, j)]
+                    col = arcos.get((i, j))
+                    txt(idx[j], ri, f(d), col, caja=col is not None)
+        for j in N:
+            if j in tl:
+                col, caja_j = None, False
+                if modo == "atr" and j == nodo:
+                    col = res_color or NARANJA
+                elif modo == "atr" and (nodo, j) in arcos:
+                    col, caja_j = arcos[(nodo, j)], True
+                txt(idx[j], n + 1, f(tl[j]), col, caja=caja_j)
+        return L
+
+    def plot_tikz_zaderenko(self, durations, escala: float = 1.0, textos: dict = None) -> list:
+        """Fotogramas TikZ (uno por ``tikzpicture``) del cálculo de tiempos con el
+        algoritmo de Zaderenko: arriba el grafo PERT, que va rellenando los tiempos
+        tempranos y tardíos como en :meth:`plot_tikz_pasos`, y debajo la matriz de
+        Zaderenko dibujada con TikZ, que lo hace a la vez. Las duraciones y los tiempos
+        que intervienen en cada cálculo llevan en la matriz el color de la flecha
+        correspondiente del grafo; la columna (hacia delante) o la fila (hacia atrás)
+        del suceso se sombrea y el resultado va en el color de la flecha dominante (o
+        naranja). Fotogramas: grafo y matriz con las duraciones; uno por suceso hacia
+        delante; uno por suceso hacia atrás; y el resultado final, sin resaltes (no se
+        marcan en rojo las actividades críticas).
+        ``textos`` admite ``inicio`` y ``final`` (con ``{duracion}``)."""
+        dur = self._normalize_durations(durations, dummies=True).to_dict()
+        res = self.calculate_pert(durations)
+        early = {f"{k}": v for k, v in res["nodes"]["early"].items()}
+        late = {f"{k}": v for k, v in res["nodes"]["late"].items()}
+        H = res["activities"]["H_total"]
+        pasos = self.pert_pasos(durations, formato="latex", colores=PALETA_FLECHAS)
+        trazado = self._trazado_pert(dur, escala)
+        pos = trazado["pos"] if trazado else self._pert_posiciones(escala, None)
+        rotulos = {"inicio": "Grafo del proyecto y matriz de duraciones $t_{ij}$",
+                   "final": "Duración del proyecto = {duracion}"}
+        rotulos.update(textos or {})
+        N = [f"{n}" for n in sorted(self.nodes, key=int)]
+        celdas = {(f"{i}", f"{j}"): (act, dur.get(act, 0))
+                  for act, (i, j) in self.nodes_from_edges.items()}
+        f = self._num_paso
+
+        xs = [x for x, _ in pos.values()]
+        ys = [y for _, y in pos.values()]
+        if trazado:
+            for x, y in trazado["etiquetas"].values():
+                xs.append(x); ys.append(y)
+            for r in trazado["rutas"].values():
+                for x, y in r:
+                    xs.append(x); ys.append(y)
+        xmin, xmax, ymin = min(xs) - 0.7, max(xs) + 0.7, min(ys) - 0.9
+        n = len(N)
+        ux, uy = 0.8, 0.6
+        Wm, Hm = (n + 3.6) * ux, (n + 3) * uy
+        x0 = (xmin + xmax) / 2 - Wm / 2 + 1.5 * ux          # centro de la columna -1 en x0 - ux
+        y0 = ymin - 0.6
+        y_texto = y0 - Hm - 0.3
+
+        def fotograma(te, tl, texto, modo=None, nodo=None, arcos=None, pert_kwargs=None, res_color=None):
+            cuerpo = self._pert_fotograma(pos, dur, H, escala, te, tl, trazado=trazado,
+                                          **(pert_kwargs or {}))
+            M = self._cuerpo_zaderenko_tikz(N, celdas, early, late, te, tl, modo, nodo, arcos,
+                                            res_color, H)
+            L = [r"\begin{tikzpicture}[>=stealth]", cuerpo,
+                 rf"\begin{{scope}}[xshift={x0:.2f}cm,yshift={y0:.2f}cm,x={ux}cm,y={uy}cm,font=\footnotesize]"]
+            L += M
+            L += [r"\end{scope}",
+                  rf"\node[anchor=north, font=\small, align=center] at ({(xmin + xmax) / 2:.2f}cm, {y_texto:.2f}cm) {{{texto}}};",
+                  r"\end{tikzpicture}"]
+            return "\n".join(L)
+
+        fotogramas = [fotograma({}, {}, rotulos["inicio"])]
+        te: dict = {}
+        for _, fila in pasos["tempranos"].iterrows():
+            nodo = fila["suceso"]
+            te[nodo] = fila["valor"]
+            arcos = {a: PALETA_FLECHAS[k % len(PALETA_FLECHAS)] for k, a in enumerate(fila["arcos"])}
+            valores = {(u, "e"): c for (u, _), c in arcos.items()}
+            reg = self._region_dominante(fila, arcos, nodo, "e")
+            fotogramas.append(fotograma(
+                dict(te), {}, f"Columna {nodo}: ${fila['calculo']}$", "del", nodo, arcos,
+                pert_kwargs=dict(actual=nodo, arcos_activos=arcos, texto="", colores_valores=valores,
+                                 negrita=set(valores) | {(nodo, "e")}, colores_region=reg),
+                res_color=(reg or {}).get((nodo, "e"))))
+        tl: dict = {}
+        for _, fila in pasos["tardios"].iterrows():
+            nodo = fila["suceso"]
+            tl[nodo] = fila["valor"]
+            arcos = {a: PALETA_FLECHAS[k % len(PALETA_FLECHAS)] for k, a in enumerate(fila["arcos"])}
+            valores = {(v, "l"): c for (_, v), c in arcos.items()}
+            reg = self._region_dominante(fila, arcos, nodo, "l")
+            fotogramas.append(fotograma(
+                dict(te), dict(tl), f"Fila {nodo}: ${fila['calculo']}$", "atr", nodo, arcos,
+                pert_kwargs=dict(actual=nodo, arcos_activos=arcos, texto="", colores_valores=valores,
+                                 negrita=set(valores) | {(nodo, "l")}, colores_region=reg),
+                res_color=(reg or {}).get((nodo, "l"))))
+        duracion = max(te.values())
+        fotogramas.append(fotograma(dict(te), dict(tl), rotulos["final"].format(duracion=f(duracion)),
+                                    "fin"))
+        return fotogramas
+
+    def zaderenko_tikz_html(self, durations, escala: float = 1.0, textos: dict = None) -> str:
+        """Visor HTML con botones del cálculo de Zaderenko con PERT y matriz en TikZ
+        (véase :meth:`plot_tikz_zaderenko`); el paso 0 es el resultado final."""
+        return _html_fotogramas_tikz(self.plot_tikz_zaderenko(durations, escala, textos),
+                                     resultado_primero=True)
+
+    def display_zaderenko_tikz(self, durations, escala: float = 1.0, textos: dict = None) -> None:
+        """Muestra en un cuaderno el cálculo de Zaderenko con PERT y matriz en TikZ
+        (:meth:`zaderenko_tikz_html`); sin LaTeX, cae en :meth:`display_zaderenko_pasos`."""
+        try:
+            display(HTML(self.zaderenko_tikz_html(durations, escala, textos)))
+        except (FileNotFoundError, RuntimeError) as e:
+            import warnings
+            warnings.warn(f"No se pudo generar el visor TikZ ({e}); se usa el visor HTML.")
+            self.display_zaderenko_pasos(durations)
+
+    # ------------------------------------------------------------------
     # Grafo Roy paso a paso (docencia)
     # ------------------------------------------------------------------
 
