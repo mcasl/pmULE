@@ -31,7 +31,7 @@ if [[ ! -f "$NOTEBOOK" ]]; then
 fi
 
 echo "→ Rendering ${NOTEBOOK}..."
-quarto render "$NOTEBOOK"
+quarto render "$NOTEBOOK" --metadata-file scripts/html_extra.yml
 
 echo "→ Moving HTML..."
 mv "$HTML" "$TARGET"

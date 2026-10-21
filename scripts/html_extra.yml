@@ -1,0 +1,35 @@
+# Opciones HTML comunes a todos los cuadernos. Quarto no las aplica desde
+# notebooks/_quarto.yml al renderizar cuaderno a cuaderno, así que los scripts de
+# render las pasan con --metadata-file scripts/html_extra.yml.
+format:
+  html:
+    include-in-header:
+      text: |
+        <style>
+          #toc-toggle-btn { position: fixed; top: 8px; right: 8px; z-index: 1000; padding: 2px 9px;
+            font-size: 0.8rem; border: 1px solid #adb5bd; border-radius: 4px; background: #fff;
+            color: #495057; cursor: pointer; opacity: .8; }
+          #toc-toggle-btn:hover { opacity: 1; }
+          body.toc-oculto #quarto-margin-sidebar { display: none !important; }
+          body.toc-oculto #quarto-document-content { grid-column: page-start-inset / page-end-inset !important;
+            max-width: none !important; }
+          @media print { #toc-toggle-btn { display: none; } }
+        </style>
+        <script>
+          document.addEventListener("DOMContentLoaded", function () {
+            if (!document.getElementById("quarto-margin-sidebar")) return;
+            var b = document.createElement("button");
+            b.id = "toc-toggle-btn"; b.type = "button";
+            var estado = function () { return document.body.classList.contains("toc-oculto"); };
+            var pinta = function () { b.textContent = estado() ? "☰ índice" : "✕ índice";
+              b.title = estado() ? "Mostrar el índice" : "Ocultar el índice y ampliar el contenido"; };
+            try { if (localStorage.getItem("toc-oculto") === "1") document.body.classList.add("toc-oculto"); } catch (e) {}
+            b.onclick = function () { document.body.classList.toggle("toc-oculto");
+              try { localStorage.setItem("toc-oculto", estado() ? "1" : "0"); } catch (e) {}
+              pinta(); window.dispatchEvent(new Event("resize")); };
+            pinta(); document.body.appendChild(b);
+          });
+        </script>
+    grid:
+      body-width: 1100px
+      margin-width: 250px

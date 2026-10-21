@@ -290,3 +290,23 @@ class TestColoresPorFlecha(unittest.TestCase):
         cods = self.pg.plot_tikz_pasos(DUR)
         h = cods[1 + 2 * self.n]                               # primera holgura
         self.assertIn(rf"\textcolor{{{paleta[0]}}}{{\mathbf{{t_", h)
+
+
+def test_construccion_pert_ejercicio4():
+    import re
+    import pandas as pd
+    from pmule import PredecessorTable
+    d = pd.DataFrame([('A', '---', 3), ('B', '---', 2), ('C', 'B', 4), ('D', 'A', 4), ('E', 'A', 2),
+                      ('F', 'C,D', 5), ('G', 'C,D', 1), ('H', 'E', 3), ('I', 'F,G', 1),
+                      ('J', 'F,G', 2), ('K', 'F,G,H', 1)],
+                     columns=['activity', 'predecessor', 'duration']).set_index('activity')
+    t = PredecessorTable.from_dataframe_of_strings(d, activity='activity', predecessor='predecessor')
+    cods = t.create_project().plot_tikz_construccion(tabla=t)
+    assert len(cods) == 12                       # iniciales + 9 actividades + 1 fusión + final
+    assert "iniciales" in cods[0] and "A y B" in cods[0]
+    assert any("son iguales" in c for c in cods)  # fusión de C y D
+    assert "draw=white, thick" in cods[0]            # lo aún no calculado, en blanco
+    assert "blue!70!black" in cods[2]                # previas de la nueva actividad
+    assert "ultra thick" not in cods[-1]          # fotograma final sin resaltes
+    assert "§" not in "".join(cods)
+    assert "{10}" in cods[-1] and "{10}" not in cods[3]   # números de nodo solo al final

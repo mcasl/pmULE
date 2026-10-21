@@ -34,7 +34,7 @@ for nb in $cuadernos; do
     destino="docs/$(dirname "${nb#notebooks/}")"
     mkdir -p "$destino"
     echo "→ Rendering ${nb}..."
-    quarto render "$nb"
+    quarto render "$nb" --metadata-file scripts/html_extra.yml
     # Según cómo detecte quarto el proyecto, el HTML aparece junto al cuaderno
     # o directamente en docs/colecciones/<coleccion>/ (output-dir del proyecto).
     if [ -f "$(dirname "$nb")/${nombre}.html" ]; then

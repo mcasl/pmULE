@@ -21,6 +21,7 @@ trap 'rm -rf "$WORK"' EXIT
 rsync -a --exclude '_freeze/' --exclude '.quarto/' --exclude '_cache/' \
       "$BASE/repo/notebooks" "$BASE/repo/src" "$WORK/"
 mkdir -p "$WORK/home" "$WORK/docs"
+cp "$BASE/repo/scripts/html_extra.yml" "$WORK/html_extra.yml"
 
 nombre="$(basename "$nb" .ipynb)"
 rel="$(dirname "${nb#notebooks/}")"           # p. ej. colecciones/03_roy  o  .
@@ -32,7 +33,7 @@ echo "[$(hostname)] $nb"
 for intento in 1 2 3; do
     if apptainer exec --cleanenv --containall --net --network none --bind "$WORK:$WORK" --pwd "$WORK" \
         --env HOME="$WORK/home",MPLCONFIGDIR="$WORK/home/.mpl" \
-        "$SIF" quarto render "$nb"; then
+        "$SIF" quarto render "$nb" --metadata-file "$WORK/html_extra.yml"; then
         break
     fi
     [ "$intento" = 3 ] && { echo "FALLO $nb"; exit 1; }
