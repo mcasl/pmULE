@@ -3911,7 +3911,8 @@ class ProjectGraph:
             valores = {(u, "e"): c for (u, _), c in arcos.items()}
             fotogramas.append(fotograma(dict(tempranos), {}, nodo, arcos,
                                         f"${fila['calculo']}$", colores_valores=valores,
-                                        negrita=set(valores) | {(nodo, "e")}))
+                                        negrita=set(valores) | {(nodo, "e")},
+                                        colores_region=self._region_dominante(fila, arcos, nodo, "e")))
         tardios: dict = {}
         for _, fila in pasos["tardios"].iterrows():
             nodo = fila["suceso"]
@@ -3920,7 +3921,8 @@ class ProjectGraph:
             valores = {(v, "l"): c for (_, v), c in arcos.items()}
             fotogramas.append(fotograma(dict(tempranos), dict(tardios), nodo, arcos,
                                         f"${fila['calculo']}$", colores_valores=valores,
-                                        negrita=set(valores) | {(nodo, "l")}))
+                                        negrita=set(valores) | {(nodo, "l")},
+                                        colores_region=self._region_dominante(fila, arcos, nodo, "l")))
         criticas: set = set()
         for _, fila in pasos["holguras"].iterrows():
             act, u, v = fila["actividad"], f"{fila['origen']}", f"{fila['destino']}"
@@ -4059,16 +4061,28 @@ class ProjectGraph:
             return ""
         return "bend right=25" if peor >= 0 else "bend left=25"
 
+    @staticmethod
+    def _region_dominante(fila, arcos, nodo, clave):
+        """Color de los radios (o segmentos) del resultado de un cálculo con varios
+        términos: el de la flecha que da el máximo (o el mínimo). Con empate, o con un
+        solo término, no se fija (queda el color del nodo del resultado)."""
+        if len(arcos) < 2:
+            return None
+        dom = [a for a, (_, t) in zip(list(arcos), fila["terminos"]) if t == fila["valor"]]
+        return {(nodo, clave): arcos[dom[0]]} if len(dom) == 1 else None
+
     def _pert_fotograma(self, pos, dur, holguras, escala, tempranos, tardios,
                         actual=None, arcos_activos=(), texto="", critico=False,
                         trazado=None, con_duracion=True, criticas=None, colores_valores=None,
-                        negrita=None):
+                        negrita=None, colores_region=None):
         """Un fotograma TikZ del grafo PERT (cuerpo, sin ``tikzpicture``).
 
         ``arcos_activos`` puede ser un ``dict`` ``{(i, j): color}`` (un color por arco) y
         ``colores_valores`` un ``dict`` ``{(suceso, "e" | "l"): color}`` que tiñe el tiempo
         temprano o tardío de ese suceso con el color del arco que lo usa en el cálculo;
-        ``negrita`` es un conjunto de esas mismas claves cuyo número va en negrita. En un
+        ``negrita`` es un conjunto de esas mismas claves cuyo número va en negrita;
+        ``colores_region`` da el color de los radios del quesito resaltado (por defecto el
+        de ``colores_valores``). En un
         paso de cálculo los arcos de ``arcos_activos`` se dibujan más gruesos y con la
         etiqueta en negrita, y lo que no participa (ni es crítico) va en gris.
 
@@ -4168,8 +4182,8 @@ class ProjectGraph:
             # «quesito» del valor que interviene: sus dos radios, más gruesos y del color de la flecha
             for clave, (ini, fin) in (("e", (135, 270)), ("l", (270, 45))):
                 if (nodo, clave) in (negrita or ()):
-                    c = (colores_valores or {}).get((nodo, clave),
-                                                    "orange!80!black" if nodo in actuales else "black")
+                    c = (colores_region or {}).get((nodo, clave)) or (colores_valores or {}).get(
+                        (nodo, clave), "orange!80!black" if nodo in actuales else "black")
                     L.append(rf"  \draw[{c}, ultra thick] (n{nodo}.{ini}) -- (n{nodo}.center)"
                              rf" -- (n{nodo}.{fin});")
             L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
@@ -4638,7 +4652,7 @@ class ProjectGraph:
         x_mid = (min(x for x, _ in pos.values()) + max(x for x, _ in pos.values())) / 2
 
         def fotograma(minimos, maximos, actual=None, arcos_activos=(), texto="",
-                      criticos=(), colores_valores=None, negrita=None):
+                      criticos=(), colores_valores=None, negrita=None, colores_region=None):
             """``arcos_activos``: ``{(u, v): color}`` (o un conjunto, en naranja), más
             gruesos; ``colores_valores``: ``{(nodo, "min" | "dur" | "max"): color}``;
             ``negrita``: conjunto de esas claves cuyo número va en negrita. En un paso de
@@ -4703,8 +4717,8 @@ class ProjectGraph:
                           "max": [_b(2 / 3), _m(2 / 3), _m(1)]}
                 for clave, pts in trazos.items():
                     if (nodo, clave) in (negrita or ()):
-                        c = (colores_valores or {}).get((nodo, clave),
-                                                        "orange!80!black" if nodo == actual else "black")
+                        c = (colores_region or {}).get((nodo, clave)) or (colores_valores or {}).get(
+                            (nodo, clave), "orange!80!black" if nodo == actual else "black")
                         L.append(rf"  \draw[{c}, ultra thick] " + " -- ".join(pts) + ";")
                 L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
                          rf" at ($({r}.center)+(0,0.22)$) {{{self._tex_texto(f"{et.get(nodo, nodo)}")}}};")
@@ -4737,7 +4751,8 @@ class ProjectGraph:
             valores = {(p, c): col for (p, _), col in arcos.items() for c in ("min", "dur")}
             fotos.append(fotograma(dict(minimos), {}, n, arcos, f"${fila['calculo']}$",
                                    colores_valores=valores,
-                                   negrita=set(valores) | {(n, "min")}))
+                                   negrita=set(valores) | {(n, "min")},
+                                   colores_region=self._region_dominante(fila, arcos, n, "min")))
         maximos = {}
         for _, fila in pasos["maximos"].iterrows():
             n = f"{fila['nodo']}"
@@ -4747,7 +4762,8 @@ class ProjectGraph:
             valores = {(q, "max"): col for (_, q), col in arcos.items()}
             fotos.append(fotograma(dict(minimos), dict(maximos), n, arcos, f"${fila['calculo']}$",
                                    colores_valores=valores,
-                                   negrita=set(valores) | {(n, "max"), (n, "dur")}))
+                                   negrita=set(valores) | {(n, "max"), (n, "dur")},
+                                   colores_region=self._region_dominante(fila, arcos, n, "max")))
         criticos = {n for n in minimos if minimos[n] == maximos[n]}
         fotos.append(fotograma(dict(minimos), dict(maximos), criticos=criticos,
                                texto=rotulos["final"].format(duracion=f(minimos["finish"]))))
