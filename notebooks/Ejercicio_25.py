@@ -223,6 +223,8 @@ probabilidad_de_terminar_antes_de_a = round(norm.cdf(periodo_a_probabilidad, loc
 
 probabilidad_de_terminar_entre_a_y_b = probabilidad_de_terminar_antes_de_b - probabilidad_de_terminar_antes_de_a
 probabilidad_de_terminar_entre_a_y_b = round(probabilidad_de_terminar_entre_a_y_b, 1)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, entre=(periodo_a_probabilidad, periodo_b_probabilidad))
 
 # %%
 Markdown(f"""Una vez caracterizada la distribución normal con la que aproximamos la duración del proyecto, podemos hacer el cálculo de la probabilidad de terminar entre los periodos {periodo_a_probabilidad} y {periodo_b_probabilidad}.  

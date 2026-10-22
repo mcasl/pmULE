@@ -280,6 +280,8 @@ import scipy
 from scipy.stats import norm
 
 probabilidad_de_terminar_antes_de_b = norm.cdf(periodo_probabilidad_b, loc=duracion_media_proyecto, scale=desviacion_proyecto)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=periodo_probabilidad_b)
 probabilidad_de_terminar_antes_de_b  = round(float(probabilidad_de_terminar_antes_de_b * 100), 2)
 
 # %%

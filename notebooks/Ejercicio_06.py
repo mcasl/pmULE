@@ -234,6 +234,8 @@ import scipy
 from scipy.stats import norm
 
 probabilidad_antes_b = norm.cdf(periodo_probabilidad_b, loc=duracion_media_proyecto, scale=desviacion_proyecto)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=periodo_probabilidad_b)
 
 Markdown(f"Para un proyecto con duración media {duracion_media_proyecto} y desviación típica {round(desviacion_proyecto, 2)} el valor de la probabilidad de terminar antes del periodo {periodo_probabilidad_b} es {round(probabilidad_antes_b * 100, 2)} por ciento.")
 
