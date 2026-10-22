@@ -4326,6 +4326,170 @@ class ProjectGraph:
         return fotograma(hechas, set(), fict_hechas, set(), tex(texto),
                          columnas=grupo, nodo_resaltado=nodo)
 
+    def plot_tikz_construccion_roy_tabla(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
+                                         textos: dict = None, etiquetas: dict = None) -> list:
+        """Fotogramas TikZ (uno por ``tikzpicture``) de la construcción del grafo Roy, sin
+        tiempos, a partir del cuadro de prelaciones: a la izquierda el cuadro y a la derecha
+        el grafo.
+
+        Secuencia: (1) el nodo Inicio y las actividades iniciales (filas sin predecesoras);
+        (2) una actividad por fotograma, en naranja, con sus arcos desde las predecesoras
+        (se señalan su fila y las columnas de sus predecesoras en el cuadro); (3) el nodo Fin
+        tras las actividades que no preceden a ninguna; y el grafo completo. Con
+        ``ordenar=True`` el cuadro va en orden de precedencia. ``textos`` cambia los rótulos
+        (``{"completo", "iniciales", "actividad", "fin"}``) y ``etiquetas`` los nombres de
+        ``start`` y ``finish``."""
+        rot = {"completo": "Cuadro de prelaciones y grafo Roy",
+               "iniciales": "Nodo {inicio} y actividades iniciales (sin predecesoras): {acts}",
+               "actividad": "Actividad {act}: predecesoras {preds}",
+               "fin": "Nodo {fin}: lo siguen las actividades que no preceden a ninguna ({acts})"}
+        rot.update(textos or {})
+        et = {"start": "Inicio", "finish": "Fin"}
+        et.update(etiquetas or {})
+        tex = self._tex_texto
+        G = self._roy_grafo_actual()
+        datos = self._matriz_prelaciones(tabla)
+        orden = list(_ordenar_por_precedencia(datos).index)
+        datos = _ordenar_por_precedencia(datos) if ordenar else datos
+        nombres = [f"{n}" for n in datos.index]
+        preds = {f"{a}": [f"{p}" for p in G.predecessors(a) if f"{p}" != "start"] for a in orden}
+        orden = [f"{a}" for a in orden]
+        iniciales = [a for a in orden if not preds[a]]
+        finales = [a for a in orden if all(a not in preds[b] for b in orden)]
+        paso = {"start": 1}
+        paso.update({a: 1 for a in iniciales})
+        k = 1
+        for a in orden:
+            if a not in iniciales:
+                k += 1
+                paso[a] = k
+        paso["finish"] = k + 1
+        ultimo = paso["finish"]
+
+        trazado = _disposicion_capas({f"{n}": (1.5, 0.9) for n in G.nodes},
+                                     [(f"{u}", f"{v}") for u, v in G.edges()],
+                                     separacion=0.3 * escala, hueco=0.4 * escala)
+        if trazado:
+            pos = trazado["pos"]
+        else:
+            capa = self._roy_capas(G)
+            from collections import defaultdict
+            por_capa = defaultdict(list)
+            for n in sorted(G.nodes, key=lambda n: f"{n}"):
+                por_capa[capa[n]].append(n)
+            pos = {f"{n}": (2.3 * c * escala, ((len(ns) - 1) / 2.0 - i) * 1.5 * escala)
+                   for c, ns in por_capa.items() for i, n in enumerate(ns)}
+        ident = {f"{n}": f"r{i}" for i, n in enumerate(sorted(G.nodes, key=lambda n: f"{n}"))}
+        xs = [x for x, _ in pos.values()]
+        ys = [y for _, y in pos.values()]
+        if trazado:
+            for r in trazado["rutas"].values():
+                for x, y in r:
+                    xs.append(x); ys.append(y)
+        xmin, xmax, ymin, ymax = min(xs) - 1.0, max(xs) + 1.0, min(ys) - 0.7, max(ys) + 0.7
+        _, ancho, margen, alto = _geometria_matriz(datos)
+        n = len(nombres)
+        Wm, Hm = (n + margen) * ancho, (n + alto) * 0.78
+        hueco = 1.0
+        yc_g = (ymin + ymax) / 2
+        yc_m = (alto - n) / 2 * 0.78
+        ancho_total = Wm + hueco + (xmax - xmin)
+        y_texto = min(ymin, yc_g - Hm / 2) - 0.4
+
+        def lista(xs_):
+            xs_ = list(xs_)
+            return xs_[0] if len(xs_) == 1 else ", ".join(xs_[:-1]) + " y " + xs_[-1]
+
+        def grafo(kk, actuales, completo):
+            L, A = [], []
+            for u, v in G.edges():
+                u, v = f"{u}", f"{v}"
+                if paso[v] > kk:
+                    continue
+                actual = (paso[v] == kk) and not completo
+                estilo = ["->", "thick"] + (["orange!80!black", "ultra thick"] if actual else [])
+                if trazado and (u, v) in trazado["rutas"]:
+                    A.append(rf"  \draw[{', '.join(estilo)}] "
+                             + self._ruta_tikz(u, v, pos, trazado["rutas"][(u, v)],
+                                               trazado["curva"][(u, v)], lambda m: ident[m]) + ";")
+                    continue
+                curva = self._curvatura_tikz(pos, u, v, 0.8 * escala)
+                trazo = f"to[{curva}]" if curva else "--"
+                A.append(rf"  \draw[{', '.join(estilo)}] ({ident[u]}) {trazo} ({ident[v]});")
+            for nodo, (x, y) in pos.items():
+                r = ident[nodo]
+                if paso[nodo] > kk:
+                    L.append(rf"  \coordinate ({r}) at ({x:.2f}cm, {y:.2f}cm);")
+                    continue
+                if nodo in actuales and not completo:
+                    estilo = "fill=orange!20, draw=orange!80!black, very thick"
+                else:
+                    estilo = "fill=white, draw, thick"
+                L.append(rf"  \node[rectangle, {estilo}, minimum width=1.5cm, minimum height=0.9cm,"
+                         rf" inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
+                L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
+                         rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
+                         rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
+                L.append(rf"  \node[font=\footnotesize\bfseries] at ($({r}.center)+(0,0.22)$) {{{tex(f'{et.get(nodo, nodo)}')}}};")
+            return "\n".join(L + A)
+
+        def fotograma(kk, actuales, texto, filas=None, columnas=(), completo=False):
+            L = [r"\begin{tikzpicture}[>=stealth]", _COLORES_MATRIZ,
+                 rf"\begin{{scope}}[xshift={margen * ancho:.2f}cm,yshift={yc_g - yc_m:.2f}cm,"
+                 rf"x={ancho:.2f}cm,y=0.78cm,font=\small]"]
+            L += _cuerpo_matriz_tikz(datos, filas, columnas)
+            L += [r"\end{scope}",
+                  rf"\begin{{scope}}[xshift={Wm + hueco - xmin:.2f}cm]", grafo(kk, actuales, completo), r"\end{scope}",
+                  rf"\path (0,{ymin:.2f}) rectangle ({ancho_total:.2f},{ymax:.2f});",
+                  rf"\node[anchor=north, font=\small, align=center, text width={ancho_total:.2f}cm] "
+                  rf"at ({ancho_total / 2:.2f}cm, {y_texto:.2f}cm) {{{texto}}};",
+                  r"\end{tikzpicture}"]
+            return "\n".join(L)
+
+        hechas = set()
+
+        def estado_filas(actuales):
+            return {a: ("actual" if a in actuales else None if a in hechas else "gris") for a in nombres}
+
+        codigos = []
+        codigos.append(fotograma(1, set(iniciales) | {"start"},
+                                 tex(rot["iniciales"].format(inicio=et["start"], acts=lista(iniciales))),
+                                 filas=estado_filas(set(iniciales))))
+        hechas |= set(iniciales)
+        for a in orden:
+            if a in iniciales:
+                continue
+            codigos.append(fotograma(paso[a], {a}, tex(rot["actividad"].format(act=a, preds=lista(preds[a]))),
+                                     filas=estado_filas({a}), columnas=preds[a]))
+            hechas.add(a)
+        codigos.append(fotograma(ultimo, {"finish"},
+                                 tex(rot["fin"].format(fin=et["finish"], acts=lista(finales))),
+                                 filas={a: ("actual" if a in finales else None) for a in nombres}))
+        codigos.append(fotograma(ultimo, set(), tex(rot["completo"]), completo=True))
+        return codigos
+
+    def roy_construccion_html(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
+                              textos: dict = None, etiquetas: dict = None) -> str:
+        """Visor HTML con botones de la construcción del grafo Roy (véase
+        :meth:`plot_tikz_construccion_roy_tabla`). El primer fotograma (paso 0) es el cuadro
+        con el grafo completo; a partir del paso 1 se construye desde el principio."""
+        codigos = self.plot_tikz_construccion_roy_tabla(escala, tabla, ordenar, textos, etiquetas)
+        return _html_fotogramas_tikz(codigos, resultado_primero=True)
+
+    def display_roy_construccion(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
+                                 textos: dict = None, etiquetas: dict = None, visor: bool = True) -> None:
+        """Muestra en un cuaderno la construcción del grafo Roy a partir del cuadro de
+        prelaciones, con botones (``visor=True``). Con ``visor=False``, o si no hay LaTeX,
+        se muestra el grafo final con :meth:`roy`."""
+        if visor:
+            try:
+                display(HTML(self.roy_construccion_html(escala, tabla, ordenar, textos, etiquetas)))
+                return
+            except (FileNotFoundError, RuntimeError) as e:
+                import warnings
+                warnings.warn(f"No se pudo generar el visor TikZ ({e}); se muestra el grafo final.")
+        display(self.roy())
+
     def pert_construccion_html(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
                                textos: dict = None) -> str:
         """Visor HTML con botones de la construcción del grafo PERT (véase
@@ -5479,7 +5643,7 @@ class ProjectGraph:
         filas_html = []
         for a, fila in filas.items():
             tds = "".join(f'<td class="pmule-cal-td" data-a="{_html.escape(a)}" data-c="{c}" '
-                          f'style="{celda}" onclick="pmuleCal(this)">{f(fila[c])}</td>'
+                          f'style="{celda}" title="Clic para ver el c&aacute;lculo" onclick="pmuleCal(this)">{f(fila[c])}</td>'
                           for c, _ in self._CAL_COLUMNAS)
             filas_html.append(f'<tr><td style="padding:.25em .7em;font-weight:bold;text-align:center">{_html.escape(a)}</td>{tds}</tr>')
         ayuda = "Haz clic en un número de la tabla para ver cómo se calcula."
@@ -5488,6 +5652,9 @@ class ProjectGraph:
             f'<div>{imgs}</div>'
             f'<div class="pmule-cal-formula" data-ayuda="{ayuda}" style="text-align:center;min-height:2.4em;'
             f'margin:.6em 0;font-size:1.05em">{ayuda}</div>'
+            f'<div style="text-align:center;margin:.8em 0 .4em;font-size:.95em;color:#8a4b00">'
+            f'&#128070; <b>Interactivo:</b> haz clic en cualquier celda de la tabla para ver c&oacute;mo se calcula '
+            f'(otro clic la deselecciona).</div>'
             f'<table style="border-collapse:collapse;margin:0 auto"><tr>{cab}</tr>{"".join(filas_html)}</table></div>'
             f'<script>window.PMULE_CAL = window.PMULE_CAL || {{}}; PMULE_CAL["{uid}"] = {json.dumps(datos, ensure_ascii=False)};'
             'window.pmuleCal = window.pmuleCal || function(td) {'
@@ -8147,8 +8314,9 @@ def plot_tikz_normal(media, desviacion, hasta=None, desde=None, entre=None, perc
         raise ValueError("Indique al menos una de las opciones: hasta, desde, entre o percentil")
 
     ancho_sigma, alto = 1.45 * escala, 3.3 * escala
-    zmax = 3.6
     z = lambda x: (x - media) / desviacion
+    # el eje siempre abarca todos los límites marcados, con un margen
+    zmax = max([3.6] + [abs(z(v)) + 0.7 for h in huecos for v in h[:2] if np.isfinite(v)])
     X = lambda x: z(min(max(x, media - zmax * desviacion), media + zmax * desviacion)) * ancho_sigma
     Y = lambda zz: np.exp(-zz * zz / 2) * alto
     curva = lambda z0, z1, n=None: " ".join(
@@ -8203,6 +8371,140 @@ def display_normal_tikz(media, desviacion, hasta=None, desde=None, entre=None, p
     b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
     display(HTML(f'<img alt="distribución normal" style="display:block;margin:0 auto;width:100%;max-width:{ancho_max}px;height:auto" '
                  f'src="data:image/svg+xml;base64,{b64}">'))
+
+
+def _marcas_nicas(lo, hi, n=6):
+    """Valores «redondos» para las marcas de un eje entre ``lo`` y ``hi``."""
+    from matplotlib.ticker import MaxNLocator
+    return [v for v in MaxNLocator(n).tick_values(lo, hi) if lo - 1e-9 <= v <= hi + 1e-9]
+
+
+def _svg_a_html(codigo: str, alt: str, ancho_max: int = 640):
+    """``<img>`` con el SVG de un ``tikzpicture`` compilado, o ``None`` si no hay LaTeX."""
+    import base64
+    try:
+        svg = _svgs_de_tikz([codigo])[0]
+    except (FileNotFoundError, RuntimeError) as e:
+        import warnings
+        warnings.warn(f"No se pudo dibujar «{alt}» en TikZ ({e}).")
+        return None
+    b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
+    return HTML(f'<img alt="{alt}" style="display:block;margin:0 auto;width:100%;max-width:{ancho_max}px;height:auto" '
+                f'src="data:image/svg+xml;base64,{b64}">')
+
+
+def plot_tikz_histograma(muestras, media=None, desviacion=None, hasta=None, percentil=None,
+                         variable: str = "T", decimales: int = 3, bins: int = 40,
+                         escala: float = 1.0) -> str:
+    """``tikzpicture`` con el histograma (densidad) de una simulación de Montecarlo y la curva
+    de la distribución normal que la aproxima (``media`` y ``desviacion``; por defecto, las de
+    la muestra). Con ``hasta=x`` se resaltan en naranja las barras hasta ``x`` y se marca ``x``;
+    con ``percentil=p`` se hace lo mismo hasta el percentil ``p`` de la muestra. La leyenda da la
+    probabilidad según Montecarlo (fracción de muestras) y según la normal."""
+    from scipy.stats import norm
+    x = np.asarray(pd.Series(np.asarray(muestras, dtype=float).ravel()).dropna())
+    media = float(x.mean()) if media is None else float(media)
+    desviacion = float(x.std(ddof=1)) if desviacion is None else float(desviacion)
+    if hasta is not None and percentil is not None:
+        raise ValueError("Indique hasta o percentil, no ambos")
+    corte = None
+    if percentil is not None:
+        corte = float(np.quantile(x, percentil, method="higher"))
+    elif hasta is not None:
+        corte = float(hasta)
+    dens, bordes = np.histogram(x, bins=bins, density=True)
+    lo = min(bordes[0], media - 3.2 * desviacion)
+    hi = max(bordes[-1], media + 3.2 * desviacion)
+    if corte is not None:   # el valor marcado debe quedar siempre dentro del eje
+        margen = 0.08 * (hi - lo)
+        lo, hi = min(lo, corte - margen), max(hi, corte + margen)
+    pico = max(dens.max(), norm.pdf(media, media, desviacion))
+    W, H = 11.0 * escala, 3.4 * escala
+    X = lambda v: (v - lo) / (hi - lo) * W
+    Y = lambda d: d / pico * H
+    L = []
+    for d, a, b in zip(dens, bordes[:-1], bordes[1:]):
+        dentro = corte is not None and (a + b) / 2 <= corte
+        L.append(rf"\fill[{'orange!55' if dentro else 'blue!18'}, draw=white, thin] ({X(a):.3f},0) rectangle ({X(b):.3f},{Y(d):.3f});")
+    xs = np.linspace(lo, hi, 160)
+    puntos = " ".join(f"({X(v):.3f},{Y(norm.pdf(v, media, desviacion)):.3f})" for v in xs)
+    L.append(rf"\draw[thick, blue!60!black] plot coordinates {{{puntos}}};")
+    L.append(rf"\draw[->, black!70] (-0.2,0) -- ({W + 0.4:.3f},0);")
+    fmt = lambda v: f"{v:.2f}".rstrip("0").rstrip(".")
+    for v in _marcas_nicas(lo, hi):
+        L.append(rf"\draw[black!70] ({X(v):.3f},0.07) -- ({X(v):.3f},-0.07);")
+        L.append(rf"\node[below, font=\footnotesize, black!70] at ({X(v):.3f},-0.1) {{{fmt(v)}}};")
+    if corte is not None:
+        c = "orange!70!black"
+        L.append(rf"\draw[{c}, thick, dashed] ({X(corte):.3f},-0.58) -- ({X(corte):.3f},{Y(norm.pdf(corte, media, desviacion)) + 0.45:.3f});")
+        L.append(rf"\node[below, font=\small\bfseries, {c}] at ({X(corte):.3f},-0.5) {{{fmt(corte)}}};")
+        p_mc = float((x <= corte).mean())
+        p_n = float(norm.cdf(corte, media, desviacion))
+        yy = H + 1.25
+        L.append(rf"\fill[orange!55] (0,{yy - 0.17:.3f}) rectangle ++(0.34,0.34);")
+        L.append(rf"\node[right] at (0.42,{yy:.3f}) {{Montecarlo: $P({variable}\le {fmt(corte)}) = {p_mc:.{decimales}f}$}};")
+        L.append(rf"\draw[thick, blue!60!black] (0,{yy - 0.62:.3f}) -- ++(0.34,0);")
+        L.append(rf"\node[right] at (0.42,{yy - 0.62:.3f}) {{Normal: $P({variable}\le {fmt(corte)}) = {p_n:.{decimales}f}$}};")
+    else:
+        L.append(rf"\fill[blue!18] (0,{H + 1.08:.3f}) rectangle ++(0.34,0.34);")
+        L.append(rf"\node[right] at (0.42,{H + 1.25:.3f}) {{Montecarlo ({len(x)} iteraciones)}};")
+        L.append(rf"\draw[thick, blue!60!black] (0,{H + 0.63:.3f}) -- ++(0.34,0);")
+        L.append(rf"\node[right] at (0.42,{H + 0.63:.3f}) {{Normal $(\mu={fmt(media)},\ \sigma={fmt(desviacion)})$}};")
+    return "\n".join([r"\begin{tikzpicture}[>=stealth]"] + L + [r"\end{tikzpicture}"])
+
+
+def display_histograma_tikz(muestras, media=None, desviacion=None, hasta=None, percentil=None,
+                            variable: str = "T", decimales: int = 3, bins: int = 40,
+                            escala: float = 1.0, ancho_max: int = 700) -> None:
+    """Muestra en un cuaderno el histograma de Montecarlo con la normal superpuesta
+    (:func:`plot_tikz_histograma`). Sin LaTeX, avisa y no dibuja nada."""
+    h = _svg_a_html(plot_tikz_histograma(muestras, media, desviacion, hasta, percentil, variable,
+                                         decimales, bins, escala), "histograma de Montecarlo", ancho_max)
+    if h is not None:
+        display(h)
+
+
+def plot_tikz_beta_pert(a, m, b, actividad: str = "", escala: float = 1.0) -> str:
+    """``tikzpicture`` con la densidad de la distribución Beta-PERT de parámetros
+    ``(a, m, b)`` (optimista, más probable, pesimista), es decir ``X = a + (b-a)·Y`` con
+    ``Y ~ Beta(1+4(m-a)/(b-a), 1+4(b-m)/(b-a))``, con la moda ``m`` y la media ``(a+4m+b)/6``."""
+    from scipy.stats import beta as beta_dist
+    a, m, b = float(a), float(m), float(b)
+    if not a < b:
+        raise ValueError("Se requiere a < b")
+    al, be = 1 + 4 * (m - a) / (b - a), 1 + 4 * (b - m) / (b - a)
+    dens = lambda v: beta_dist.pdf((v - a) / (b - a), al, be) / (b - a)
+    media = (a + 4 * m + b) / 6
+    W, H = 10.0 * escala, 3.2 * escala
+    pico = max(dens(v) for v in np.linspace(a, b, 400)[1:-1])
+    X = lambda v: (v - a) / (b - a) * W
+    Y = lambda v: min(dens(v) / pico, 1.05) * H
+    xs = np.linspace(a, b, 200)
+    xs = xs[1:-1] if (al < 1 or be < 1) else xs
+    puntos = " ".join(f"({X(v):.3f},{Y(v):.3f})" for v in xs)
+    fmt = lambda v: f"{v:.2f}".rstrip("0").rstrip(".")
+    L = [rf"\fill[blue!18] ({X(a):.3f},0) -- plot coordinates {{{puntos}}} -- ({X(b):.3f},0) -- cycle;",
+         rf"\draw[thick, blue!60!black] plot coordinates {{{puntos}}};",
+         rf"\draw[->, black!70] (-0.3,0) -- ({W + 0.4:.3f},0);"]
+    for v, nom in ((a, "a"), (m, "m"), (b, "b")):
+        L.append(rf"\draw[black!70] ({X(v):.3f},0.07) -- ({X(v):.3f},-0.07);")
+        L.append(rf"\node[below, font=\footnotesize, black!70] at ({X(v):.3f},-0.1) {{{fmt(v)}}};")
+    L.append(rf"\draw[orange!70!black, thick, dashed] ({X(m):.3f},-0.58) -- ({X(m):.3f},{Y(m) + 0.2:.3f});")
+    L.append(rf"\node[below, font=\small\bfseries, orange!70!black] at ({X(m):.3f},-0.5) {{$m$}};")
+    L.append(rf"\draw[green!45!black, thick, dotted] ({X(media):.3f},0) -- ({X(media):.3f},{Y(media) + 0.2:.3f});")
+    L.append(rf"\node[above right, font=\small, green!45!black, inner sep=1pt] at ({X(media):.3f},{Y(media) + 0.1:.3f}) {{media {fmt(media)}}};")
+    L.append(rf"\node[below, font=\small\bfseries, black!70] at ({X(a):.3f},-0.5) {{$a$}};")
+    L.append(rf"\node[below, font=\small\bfseries, black!70] at ({X(b):.3f},-0.5) {{$b$}};")
+    titulo = (f"Actividad {actividad}: " if actividad else "") + rf"Beta-PERT$(a={fmt(a)},\ m={fmt(m)},\ b={fmt(b)})$"
+    L.append(rf"\node[anchor=north west, font=\normalsize] at (0,{H + 0.9:.3f}) {{{titulo}}};")
+    return "\n".join([r"\begin{tikzpicture}[>=stealth]"] + L + [r"\end{tikzpicture}"])
+
+
+def display_beta_pert_tikz(a, m, b, actividad: str = "", escala: float = 1.0, ancho_max: int = 620) -> None:
+    """Muestra en un cuaderno la densidad Beta-PERT de ``(a, m, b)`` (:func:`plot_tikz_beta_pert`)."""
+    h = _svg_a_html(plot_tikz_beta_pert(a, m, b, actividad, escala), "densidad Beta-PERT", ancho_max)
+    if h is not None:
+        display(h)
 
 
 def pinta_tikz(dibujo, filename=None):

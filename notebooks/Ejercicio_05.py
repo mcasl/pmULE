@@ -141,7 +141,7 @@ proyecto.display_pert_construccion(tabla=prelaciones)
 # %%
 #| fig-cap: "Grafo Roy del proyecto"
 #| label: fig-roy
-proyecto.roy(ranksep=1, nodesep=1)
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # ### Matriz de Zaderenko

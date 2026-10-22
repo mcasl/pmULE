@@ -162,7 +162,8 @@ duracion_proyecto.head(10)
 Markdown(pregunta_4)
 
 # %%
-duracion_proyecto.plot(kind='density');
+from pmule import display_histograma_tikz
+display_histograma_tikz(duracion_proyecto['duracion_proyecto'])
 
 # %%
 duracion_proyecto.describe()
@@ -191,6 +192,8 @@ Markdown(f"Podemos ordenar los valores en sentido ascendente y quedarnos con aqu
 
 # %%
 resultado_2 = round(duracion_proyecto.quantile(q=0.98, interpolation='higher'), 1)
+from pmule import display_histograma_tikz
+display_histograma_tikz(duracion_proyecto['duracion_proyecto'], percentil=0.98)
 
 # %%
 Markdown(f"O bien, utilizando la función `quantile`, obteniendo igualmente un valor de {resultado_2} periodos.")

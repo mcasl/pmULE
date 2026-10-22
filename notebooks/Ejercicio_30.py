@@ -201,7 +201,7 @@ proyecto.display_pert_construccion(tabla=prelaciones)
 # %%
 #| fig-cap: "Grafo Roy con indicación de los números de nodos"
 #| label: fig-RoyNumeracionNodos
-proyecto.roy()
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # #### Matriz de Zaderenko
@@ -383,7 +383,8 @@ project_duration_per_iteration.T
 # ### Determina la duración media y la desviación típica de la duración del proyecto.
 
 # %%
-project_duration_per_iteration.plot(kind='density');
+from pmule import display_histograma_tikz
+display_histograma_tikz(project_duration_per_iteration)
 
 # %%
 project_duration_per_iteration.describe()
@@ -413,6 +414,8 @@ Markdown(f"Para un proyecto con duración media {project_mean_duration} y desvia
 
 # %%
 probability_montecarlo = (project_duration_per_iteration <= period).mean()
+from pmule import display_histograma_tikz
+display_histograma_tikz(project_duration_per_iteration, project_mean_duration, project_std_deviation_duration, hasta=period)
 Markdown(f"Considerando la secuencia de valores obtenidos por el método de MonteCarlo, el valor de la probabilidad pedida es {round(probability_montecarlo * 100, 2)} por ciento.")
 
 # %% [markdown]
@@ -434,6 +437,8 @@ norm.ppf(prob, loc=project_mean_duration, scale=project_std_deviation_duration)
 # Podemos ordenar los valores en sentido ascendente y quedarnos con aquél valor superior al 85% de las muestras.
 
 # %%
+from pmule import display_histograma_tikz
+display_histograma_tikz(project_duration_per_iteration, project_mean_duration, project_std_deviation_duration, percentil=prob)
 project_duration_per_iteration.sort_values(ascending=True).iloc[int(prob*num_of_samples)]
 
 # %% [markdown]
