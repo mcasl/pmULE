@@ -978,7 +978,11 @@ class ProjectGraph:
                 return "background-color: white;  border:1px solid black;"
 
         data = self.path_matrix(dummies=dummies)
-        return data.replace(False, "").style.map(highlight_true)
+        try:     # figura TikZ en el estilo del cuadro de prelaciones, con un 1 en cada celda
+            return MatrizEnlace(data.astype(bool), valor="1", valor_cero="0",
+                                rotulo=r"actividad $\to$\\ ruta $\downarrow$")
+        except (FileNotFoundError, RuntimeError):
+            return data.replace(False, "").style.map(highlight_true)
 
     @staticmethod
     def _is_single_source_sink(project) -> bool:
@@ -4334,7 +4338,7 @@ class ProjectGraph:
 
         Secuencia: (1) el nodo Inicio y las actividades iniciales (filas sin predecesoras);
         (2) una actividad por fotograma, en naranja, con sus arcos desde las predecesoras
-        (se señalan su fila y las columnas de sus predecesoras en el cuadro); (3) el nodo Fin
+        (se señala su fila en el cuadro); (3) el nodo Fin
         tras las actividades que no preceden a ninguna; y el grafo completo. Con
         ``ordenar=True`` el cuadro va en orden de precedencia. ``textos`` cambia los rótulos
         (``{"completo", "iniciales", "actividad", "fin"}``) y ``etiquetas`` los nombres de
@@ -4460,7 +4464,7 @@ class ProjectGraph:
             if a in iniciales:
                 continue
             codigos.append(fotograma(paso[a], {a}, tex(rot["actividad"].format(act=a, preds=lista(preds[a]))),
-                                     filas=estado_filas({a}), columnas=preds[a]))
+                                     filas=estado_filas({a})))
             hechas.add(a)
         codigos.append(fotograma(ultimo, {"finish"},
                                  tex(rot["fin"].format(fin=et["finish"], acts=lista(finales))),
@@ -8170,6 +8174,11 @@ def _geometria_matriz(data: pd.DataFrame):
     largo = max([len(f"{n}") for n in list(data.index) + list(data.columns)] + [1])
     if largo <= 3:
         return "letra", max(0.78, 0.2 * largo + 0.3), 3.3, 1.1
+    largo_c = max([len(f"{n}") for n in data.columns] + [1])
+    if largo_c <= 3:             # columnas cortas y nombres de fila largos (p. ej. rutas)
+        largo_f = max([len(f"{n}") for n in data.index] + [1])
+        ancho = max(0.78, 0.2 * largo_c + 0.3)
+        return "letra", ancho, max(3.3, (0.17 * largo_f + 0.9) / ancho), 1.1
     margen = max(3.3, (0.17 * largo + 0.6) / 0.78)
     return "marca", 0.78, margen, (0.16 * largo + 0.6) / 0.78
 
@@ -8178,28 +8187,34 @@ _COLORES_MATRIZ = (r"\definecolor{narosc}{RGB}{204,102,0}\definecolor{narcl}{RGB
                    r"\definecolor{gris}{RGB}{213,219,227}\definecolor{grisosc}{RGB}{91,101,115}")
 
 
-def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=()) -> list:
+def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), valor: str = None,
+                        valor_cero: str = None, rotulo: str = r"precedente $\to$\\ actividad $\downarrow$") -> list:
     """Líneas TikZ de una matriz booleana de enlace (sin ``tikzpicture``; con
     ``x`` = ancho de celda e ``y`` = 0,78 cm). Cuadrícula fina, celdas redondeadas en
     naranja claro (con la letra de la predecesora o una marca) y cabeceras en gris.
     ``filas`` da el estado de cada fila: ``"actual"`` (resaltada) o ``"gris"``
-    (atenuada); ``columnas``, las columnas resaltadas."""
+    (atenuada); ``columnas``, las columnas resaltadas. La matriz puede ser rectangular.
+    ``valor`` escribe ese texto (p. ej. ``"1"``) en las celdas marcadas, en vez de la letra
+    de la columna o la marca ✓; ``valor_cero``, si se da, se escribe en gris claro en las
+    celdas vacías; ``rotulo`` es el texto de la esquina."""
     filas = filas or {}
     columnas = {f"{c}" for c in columnas}
     nombres = [f"{n}" for n in data.index]
-    n = len(nombres)
+    n = nf = len(nombres)
+    nc = len(data.columns)
     tex = ProjectGraph._tex_texto
     modo, ancho, margen, alto = _geometria_matriz(data)
-    L = [rf"\fill[gris!25,rounded corners=3pt] ({-margen:.2f},0) rectangle ({n},{alto:.2f});"]
+    L = [rf"\fill[gris!25,rounded corners=3pt] ({-margen:.2f},0) rectangle ({nc},{alto:.2f});"]
     for i, nom in enumerate(nombres):
         if filas.get(nom) == "actual":
-            L.append(rf"\fill[narcl!60,rounded corners=2pt] ({-margen:.2f},{-i}) rectangle ({n},{-i - 1});")
+            L.append(rf"\fill[narcl!60,rounded corners=2pt] ({-margen:.2f},{-i}) rectangle ({nc},{-i - 1});")
     for j, col in enumerate(data.columns):
         if f"{col}" in columnas:
-            L.append(rf"\fill[narcl!60,rounded corners=2pt] ({j},{alto:.2f}) rectangle ({j + 1},{-n});")
-    for k in range(n + 1):
-        L.append(rf"\draw[gris,line width=0.4pt] (0,{-k}) -- ({n},{-k}); "
-                 rf"\draw[gris,line width=0.4pt] ({k},0) -- ({k},{-n});")
+            L.append(rf"\fill[narcl!60,rounded corners=2pt] ({j},{alto:.2f}) rectangle ({j + 1},{-nf});")
+    for k in range(nf + 1):
+        L.append(rf"\draw[gris,line width=0.4pt] (0,{-k}) -- ({nc},{-k});")
+    for k in range(nc + 1):
+        L.append(rf"\draw[gris,line width=0.4pt] ({k},0) -- ({k},{-nf});")
     for k, nom in enumerate(nombres):
         est = filas.get(nom)
         c = "narosc" if est == "actual" else "grisosc!35" if est == "gris" else "grisosc"
@@ -8212,16 +8227,20 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=()) -> 
             L.append(rf"\node[font=\bfseries,{c},rotate=90,anchor=west,inner sep=0pt] "
                      rf"at ({k + 0.5},0.25) {{{tex(f'{nom}')}}};")
     L.append(rf"\node[font=\footnotesize\itshape,grisosc,anchor=east,align=right] at (-0.25,{alto / 2:.2f}) "
-             r"{precedente $\to$\\ actividad $\downarrow$};")
-    for i in range(n):
+             rf"{{{rotulo}}};")
+    for i in range(nf):
         gris = filas.get(nombres[i]) == "gris"
         for j, col in enumerate(data.columns):
+            if not bool(data.iloc[i, j]) and valor_cero is not None:
+                L.append(rf"\node[grisosc!35,font=\bfseries] at ({j + 0.5},{-i - 0.5}) {{{valor_cero}}};")
             if bool(data.iloc[i, j]):
                 cx, cy = j + 0.5, -i - 0.5
                 relleno = "gris!25" if gris else "narcl"
                 L.append(rf"\fill[{relleno},rounded corners=2pt] ({j + 0.08},{cy - 0.42}) rectangle ({j + 0.92},{cy + 0.42});")
                 tinta = "grisosc!35" if gris else "narosc"
-                if modo == "letra":
+                if valor is not None:
+                    L.append(rf"\node[{tinta},font=\bfseries] at ({cx},{cy}) {{{valor}}};")
+                elif modo == "letra":
                     L.append(rf"\node[{tinta},font=\bfseries] at ({cx},{cy}) {{{tex(f'{col}')}}};")
                 else:
                     L.append(rf"\draw[{tinta},line width=1pt,line cap=round,line join=round] "
@@ -8229,22 +8248,23 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=()) -> 
     return L
 
 
-def _codigo_matriz_tikz(data: pd.DataFrame) -> str:
+def _codigo_matriz_tikz(data: pd.DataFrame, valor: str = None, valor_cero: str = None, **kw) -> str:
     """``tikzpicture`` de una matriz booleana de enlace (véase :func:`_cuerpo_matriz_tikz`)."""
     _, ancho, _, _ = _geometria_matriz(data)
     return "\n".join([rf"\begin{{tikzpicture}}[x={ancho:.2f}cm,y=0.78cm,font=\small]",
-                      _COLORES_MATRIZ] + _cuerpo_matriz_tikz(data) + [r"\end{tikzpicture}"])
+                      _COLORES_MATRIZ] + _cuerpo_matriz_tikz(data, valor=valor, valor_cero=valor_cero, **kw) + [r"\end{tikzpicture}"])
 
 
 class MatrizEnlace:
     """Figura (SVG incrustado, vía ``_repr_html_``) de una matriz booleana de enlace entre
     actividades; el ``DataFrame`` original está en ``.data``."""
 
-    def __init__(self, data: pd.DataFrame, ordenar: bool = False):
+    def __init__(self, data: pd.DataFrame, ordenar: bool = False, valor: str = None,
+                 valor_cero: str = None, **kw):
         if ordenar:
             data = _ordenar_por_precedencia(data)
         self.data = data
-        self._svg = _svgs_de_tikz([_codigo_matriz_tikz(data)], "calc")[0]
+        self._svg = _svgs_de_tikz([_codigo_matriz_tikz(data, valor=valor, valor_cero=valor_cero, **kw)], "calc")[0]
 
     #: píxeles por celda: el ancho ideal es (n + 3,3) celdas; se encoge hasta el mínimo
     #: y por debajo aparece una barra de desplazamiento dentro de la figura
@@ -8253,7 +8273,7 @@ class MatrizEnlace:
     def _repr_html_(self):
         import base64
         _, ancho, margen, _ = _geometria_matriz(self.data)
-        n = (len(self.data) + margen) * ancho / 0.78
+        n = (len(self.data.columns) + margen) * ancho / 0.78
         ideal, minimo = round(n * self.PX_CELDA), round(n * self.PX_CELDA_MIN)
         b64 = base64.b64encode(self._svg.encode("utf8")).decode("ascii")
         return (f'<div style="overflow-x:auto"><img alt="matriz de enlace" style="display:block;'
