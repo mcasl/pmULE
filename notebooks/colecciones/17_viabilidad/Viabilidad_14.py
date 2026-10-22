@@ -300,7 +300,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_normal = int(proyecto.duration(datos_proyecto['duration']))
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # El coste mensual de cada actividad es su BAC entre su duración; la fila *Total* del Gantt es el desembolso de cada mes. En los meses 1…T el flujo es −desembolso y en los T+1…T+N, +F; la tasa mensual equivalente cumple $(1 + k_m)^{12} = 1 + k$.

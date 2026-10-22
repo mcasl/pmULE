@@ -281,7 +281,7 @@ display(Markdown(pregunta_3))
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'], grafo="roy")
 
 # %% [markdown]
 # Cómo sale cada fecha: para cada actividad, la tabla muestra los fines más tempranos de sus predecesoras que se comparan (el máximo es su inicio más temprano) y los inicios más tardíos de sus sucesoras (el mínimo es su fin más tardío).

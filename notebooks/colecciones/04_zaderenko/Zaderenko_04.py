@@ -280,12 +280,12 @@ proyecto.pert(durations=False, ranksep=1)
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# Matriz de Zaderenko paso a paso. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
+# Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
 
 # %%
 #| tbl-cap: "Matriz de Zaderenko calculada"
 #| label: tbl-zaderenko
-proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 
 # %%
 resultados_pert = proyecto.calculate_pert(durations=datos_proyecto['duration'])
@@ -315,7 +315,7 @@ display(Markdown(pregunta_4))
 # %%
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
-proyecto.calendar(datos_proyecto['duration'])[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])

@@ -313,7 +313,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Calendario sin límite de recursos (la regla de prioridad usa la holgura total)"
 #| label: tbl-calendario
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Cargas con los inicios más tempranos frente al límite"

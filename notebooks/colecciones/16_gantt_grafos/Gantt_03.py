@@ -272,7 +272,7 @@ display(Markdown(pregunta_3))
 #| tbl-cap: "Calendario calculado"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Gantt calculado (coincide con el del enunciado; última columna: holgura total)"

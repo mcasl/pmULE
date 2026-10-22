@@ -271,7 +271,7 @@ proyecto.display_pert_pasos(plan)
 #| label: tbl-calendario
 calendario = proyecto.calendar(plan)
 T_plan = proyecto.duration(plan)
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+proyecto.display_calendario(plan)
 
 # %% [markdown]
 # El valor planificado de cada actividad en una fecha es su BAC por la fracción de su duración que, según el calendario, debería haberse ejecutado; el PV del proyecto es la suma.

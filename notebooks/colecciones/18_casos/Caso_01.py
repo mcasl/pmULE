@@ -316,7 +316,7 @@ p0.display_pert_pasos(dur0)
 #| tbl-cap: "Calendario del plan original"
 #| label: tbl-calendario0
 cal0 = p0.calendar(dur0)
-cal0[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'H_libre']]
+p0.display_calendario(dur0)
 
 # %% [markdown]
 # Efecto de cada mensaje por separado y de los dos juntos:

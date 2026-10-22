@@ -288,7 +288,7 @@ display(Markdown(pregunta_1))
 #| tbl-cap: "Media y varianza PERT de cada actividad; calendario"
 #| label: tbl-pert
 display(datos_proyecto[['optimista', 'mas_probable', 'pesimista', 'duration', 'varianza']].round(3))
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):

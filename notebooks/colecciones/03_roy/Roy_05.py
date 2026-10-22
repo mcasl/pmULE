@@ -283,7 +283,7 @@ display(Markdown(pregunta_3))
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'], grafo="roy")
 
 # %%
 #| tbl-cap: "Cálculo paso a paso de las fechas"

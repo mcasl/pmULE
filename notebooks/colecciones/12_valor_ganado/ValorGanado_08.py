@@ -278,7 +278,7 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Calendario de inicios más tempranos"
 #| label: tbl-calendario
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # Con el inicio más temprano de cada actividad se reparte su BAC semana a semana según su perfil; la fila *suma* comprueba que se recupera el BAC.

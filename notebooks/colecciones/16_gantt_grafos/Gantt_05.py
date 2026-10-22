@@ -278,7 +278,7 @@ display(Markdown(pregunta_2))
 #| tbl-cap: "Calendario y holguras"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Cálculo paso a paso de las fechas"

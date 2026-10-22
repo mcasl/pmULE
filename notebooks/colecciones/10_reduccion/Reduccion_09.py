@@ -282,7 +282,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Calendario con las duraciones normales"
 #| label: tbl-calendario
 calendario_normal = proyecto.calendar(datos_proyecto['duration'])
-calendario_normal[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # La duración del proyecto es la de su ruta más larga. Conviene tener a la vista la duración de *todas* las rutas: al acortar la crítica, las que están a una o dos semanas de ella serán las primeras en volverse críticas y obligarán a acortar varias actividades a la vez.
