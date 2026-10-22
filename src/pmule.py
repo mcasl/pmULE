@@ -8760,6 +8760,20 @@ class MatrizEnlace:
         return f"MatrizEnlace({len(self.data)} actividades)"
 
 
+def muestra_test(preguntas_test):
+    """Test de respuesta múltiple legible: pregunta, opciones (la correcta —la primera de cada
+    lista— marcada con ✅) y retroalimentación. ``preguntas_test`` es una lista de
+    ``(pregunta, [correcta, distractores…], retroalimentación)``."""
+    from IPython.display import Markdown
+    partes = []
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        lineas = [f"**{i}. {q}**", ""]
+        lineas += [f"- {'✅' if j == 0 else '◻️'} {o}" for j, o in enumerate(ops)]
+        lineas += ["", f"*{fb}*"]
+        partes.append("\n".join(lineas))
+    return Markdown("\n\n".join(partes))
+
+
 def matriz_caminos_tikz(path_matrix: pd.DataFrame):
     """Matriz de caminos (rutas × actividades) con el estilo TikZ de la matriz de prelaciones
     extendida: un 1 en las casillas marcadas y un 0 gris claro en las vacías. Si no hay LaTeX
