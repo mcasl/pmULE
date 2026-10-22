@@ -176,7 +176,8 @@ def _gift(preguntas_test, titulo):
                 "os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)\n"
                 "with open(os.path.expanduser('~/temp/cuestionario_etica.gift'), 'w', encoding='utf8') as f:\n"
                 "    f.write(gift)\n"
-                "print(gift)")
+                "from pmule import muestra_test\n"
+                "muestra_test(preguntas_test)")
 
 
 def _proy_desde(df):

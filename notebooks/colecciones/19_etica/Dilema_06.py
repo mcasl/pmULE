@@ -330,7 +330,8 @@ gift = a_gift(preguntas_test, 'Ética 19 — inspección suprimida')
 os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
 with open(os.path.expanduser('~/temp/cuestionario_etica.gift'), 'w', encoding='utf8') as f:
     f.write(gift)
-print(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)
 
 # %% [markdown]
 # ## Apartado 4

@@ -473,7 +473,8 @@ def _tipo_test(rng):
                        "os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)\n"
                        "with open(os.path.expanduser('~/temp/cuestionario.gift'), 'w', encoding='utf8') as f:\n"
                        "    f.write(gift)\n"
-                       "print(gift)"))
+                       "from pmule import muestra_test\n"
+                "muestra_test(preguntas_test)"))
     return celdas, f"{n} actividades; 5 preguntas de respuesta múltiple con exportación GIFT"
 
 
