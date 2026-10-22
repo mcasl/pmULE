@@ -106,7 +106,7 @@ prelaciones.display_immediate_linkage_matrix()
 #| fig-cap: "Grafo Roy"
 #| label: fig-RoySinTiempos
 proyecto = prelaciones.create_project()
-proyecto.roy(ranksep=1.0)
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # ### Grafo Pert

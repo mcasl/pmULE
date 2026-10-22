@@ -267,7 +267,7 @@ display(Markdown(pregunta_1))
 # %%
 #| fig-cap: "Grafo Roy"
 #| label: fig-pert
-proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %%
 #| tbl-cap: "Matriz de rutas R"

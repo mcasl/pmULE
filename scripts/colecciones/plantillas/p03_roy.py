@@ -70,7 +70,7 @@ def _base(k, rng):
     celdas.append(code('#| tbl-cap: "Cuadro de prelaciones expandido"\n#| label: tbl-prelacionesExpandido\n'
                        "prelaciones.display_immediate_linkage_matrix()"))
     celdas.append(code('#| fig-cap: "Grafo Roy del proyecto"\n#| label: fig-roy\n'
-                       "proyecto.roy(ranksep=1.2, nodesep=1.2)"))
+                       "proyecto.display_roy_construccion(tabla=prelaciones)"))
     celdas += apartado(ap); ap += 1
     celdas += fig_grafo(durations="False", cap="Grafo PERT equivalente", label="fig-pert", tipo="pert")
     celdas.append(code("n_act = len(proyecto)\n"
@@ -195,7 +195,7 @@ def _predecesora_dominante(rng):
                        "duracion = datos_proyecto['duration']"))
     celdas += apartado(1)
     celdas.append(code('#| fig-cap: "Grafo Roy del proyecto"\n#| label: fig-roy\n'
-                       "proyecto.roy(ranksep=1.2, nodesep=1.2)"))
+                       "proyecto.display_roy_construccion(tabla=prelaciones)"))
     celdas.append(md("Recorriendo las actividades en un orden en que cada una aparece después de sus "
                      "predecesoras (orden topológico):"))
     celdas.append(code("G = nx.DiGraph([(p, a) for a, ps in predecesoras.items() for p in ps])\n"
