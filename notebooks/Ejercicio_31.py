@@ -318,6 +318,8 @@ Markdown(f"La duración del proyecto se modela entonces como $T \\sim N(\\mu={du
 
 # %%
 probabilidad_normal = norm.cdf(semana_nevada, loc=duracion_media_proyecto, scale=desviacion_proyecto)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=semana_nevada)
 Markdown(f"""$P(T \\le {semana_nevada}) = \\Phi\\left(\\frac{{{semana_nevada} - {duracion_media_proyecto}}}{{{desviacion_proyecto:.2f}}}\\right) = $ **{probabilidad_normal*100:.1f}%**.
 
 La duración media del proyecto coincide con la semana de la nevada. Planificar así equivale a lanzar una moneda al aire.""")
@@ -327,6 +329,8 @@ La duración media del proyecto coincide con la semana de la nevada. Planificar 
 
 # %%
 duracion_comprometida_normal = norm.ppf(probabilidad_objetivo, loc=duracion_media_proyecto, scale=desviacion_proyecto)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, percentil=probabilidad_objetivo)
 Markdown(f"""$T_{{{int(probabilidad_objetivo*100)}}} = \\mu + z_{{{probabilidad_objetivo}}}\\,\\sigma = {duracion_media_proyecto} + {norm.ppf(probabilidad_objetivo):.4f} \\times {desviacion_proyecto:.2f} = $ **{duracion_comprometida_normal:.2f} semanas**.
 
 Esa fecha cae más de dos semanas después de la nevada.""")
@@ -646,6 +650,8 @@ plot_cargas(gantt_df, limite_maximo_recursos)
 duracion_tras_asignar = int(gantt_df.data.columns.drop('H_total').max())
 retraso = duracion_tras_asignar - duracion_media_proyecto
 probabilidad_tras_asignar = norm.cdf(semana_nevada, loc=duracion_tras_asignar, scale=desviacion_proyecto)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_tras_asignar, desviacion_proyecto, hasta=semana_nevada)
 if retraso > 0:
     conclusion = f"""Tras la asignación, la duración media del proyecto pasa a ser de **{duracion_tras_asignar} semanas**, {retraso} más que la planificación original. Si se mantiene la desviación típica original como aproximación, la probabilidad de terminar antes de la nevada cae al **{probabilidad_tras_asignar*100:.1f}%**.
 

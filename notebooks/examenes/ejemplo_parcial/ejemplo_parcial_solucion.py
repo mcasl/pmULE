@@ -436,6 +436,8 @@ display(Markdown(pregunta_3))
 plazo = 34
 z = (plazo - duracion_media) / desviacion_proyecto
 probabilidad_plazo = norm.cdf(z)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media, desviacion_proyecto, hasta=plazo)
 Markdown(f'z = ({plazo} − {duracion_media}) / {desviacion_proyecto:.3f} = {z:.3f}, luego P(T ≤ {plazo}) = Φ({z:.3f}) = {probabilidad_plazo:.4f} ({probabilidad_plazo*100:.1f} %).')
 
 # %% [markdown]
@@ -448,6 +450,8 @@ display(Markdown(pregunta_4))
 t_a, t_b = 31, 34
 p_b = norm.cdf((t_b - duracion_media) / desviacion_proyecto)
 p_a = norm.cdf((t_a - duracion_media) / desviacion_proyecto)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media, desviacion_proyecto, entre=(t_a, t_b))
 Markdown(f'P({t_a} < T ≤ {t_b}) = Φ({(t_b - duracion_media) / desviacion_proyecto:.3f}) − Φ({(t_a - duracion_media) / desviacion_proyecto:.3f}) '
          f'= {p_b:.4f} − {p_a:.4f} = {p_b - p_a:.4f} ({(p_b - p_a)*100:.1f} %).')
 
@@ -463,6 +467,8 @@ display(Markdown(pregunta_5))
 # %%
 probabilidad_objetivo = 0.9
 z_p = norm.ppf(probabilidad_objetivo)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media, desviacion_proyecto, percentil=probabilidad_objetivo)
 duracion_comprometida = duracion_media + z_p * desviacion_proyecto
 Markdown(f'z = {z_p:.3f}; t = {duracion_media} + {z_p:.3f} × {desviacion_proyecto:.3f} = {duracion_comprometida:.2f} semanas. '
          f'Como el calendario se mide en semanas enteras, se comprometerían {int(np.ceil(duracion_comprometida))} semanas.')

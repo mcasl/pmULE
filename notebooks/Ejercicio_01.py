@@ -212,6 +212,8 @@ from scipy.stats import norm
 # %%
 percentil = 0.95
 duracion_para_percentil = round(norm.ppf(percentil, loc=media_duracion_proyecto, scale=desviacion_tipica), 2)
+from pmule import display_normal_tikz
+display_normal_tikz(media_duracion_proyecto, desviacion_tipica, percentil=percentil)
 Markdown(f'Si utilizamos la ley normal de distribución, para una duración media {round(media_duracion_proyecto, 2)} y desviación típica {round(desviacion_tipica,2)} la duración para probabilidad igual a {percentil*100} por ciento es {duracion_para_percentil} periodos')
 
 # %% [markdown]

@@ -207,6 +207,8 @@ probabilidad_de_terminar_antes_de_b = round(norm.cdf(periodo_b_probabilidad, loc
 probabilidad_de_terminar_antes_de_a = round(norm.cdf(periodo_a_probabilidad, loc=duracion_media_proyecto, scale=desviacion_proyecto), 2)
 
 probabilidad_de_terminar_entre_a_y_b = probabilidad_de_terminar_antes_de_b - probabilidad_de_terminar_antes_de_a
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, entre=(periodo_a_probabilidad, periodo_b_probabilidad))
 
 # %%
 Markdown(f"""Una vez caracterizada la distribución normal con la que aproximamos la duración del proyecto, podemos hacer el cálculo de la probabilidad de terminar entre los periodos {periodo_a_probabilidad} y {periodo_b_probabilidad}.  
@@ -289,12 +291,11 @@ desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nive
                            )
 
 # %% [markdown]
-# Se procede a valorar los posibles desplazamientos de cada actividad no crítica, considerando estas en el orden correspondiente a su fecha de finalización, de más pronto a más tarde. El siguiente cuadro muestra el valor de la suma de cuadrados de las cargas para cada actividad, en filas según el mencionado orden, y posible desplazamiento, en columnas.
+# Se procede a valorar los posibles desplazamientos de cada actividad no crítica, considerando estas en el orden correspondiente a su fecha de finalización, de más pronto a más tarde (a igualdad, primero la de mayor holgura). El visor anterior muestra el valor de la suma de cuadrados de las cargas para cada actividad, en filas según el mencionado orden, y posible desplazamiento, en columnas; el desplazamiento que minimiza la suma de cuadrados se señala en verde y queda fijado antes de estudiar la siguiente actividad.
 
 # %%
-#| tbl-cap: "Cuadro del suma de cuadrados de las cargas para cada actividad y desplazamiento"
-#| label: tbl-sumaCuadrados
-cuadrados
+#| include: false
+cuadrados   # la tabla de sumas de cuadrados ya se muestra en el visor anterior
 
 # %% [markdown]
 # El resultado de estos desplazamientos se muestra en la siguiente figura.

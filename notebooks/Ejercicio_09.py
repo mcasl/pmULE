@@ -241,6 +241,8 @@ from scipy.stats import norm
 probabilidad_de_terminar_antes_de_b = round(norm.cdf(12, loc=duracion_media_proyecto, scale=desviacion_proyecto), 2)
 probabilidad_de_terminar_antes_de_a = round(norm.cdf(10, loc=duracion_media_proyecto, scale=desviacion_proyecto), 2)
 probabilidad_de_terminar_entre_a_y_b = round(probabilidad_de_terminar_antes_de_b - probabilidad_de_terminar_antes_de_a, 2)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, entre=(10, 12))
 
 # %%
 Markdown(f"""Una vez caracterizada la distribución normal con la que aproximamos la duración del proyecto, podemos hacer el cálculo de la probabilidad de terminar entre los periodos {periodo_probabilidad_a} y {periodo_probabilidad_b}.  

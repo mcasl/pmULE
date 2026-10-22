@@ -322,6 +322,8 @@ Markdown(f"La desviación típica de la duración del proyecto es la máxima des
 
 # %%
 probability_TLC = norm.cdf(periodo_a_probabilidad_normal, loc=duracion_media_proyecto, scale=desviacion_proyecto)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=periodo_a_probabilidad_normal)
 Markdown(f"""Utilizando, por ejemplo, una calculadora, para un proyecto con:  
                 - duración media {duracion_media_proyecto} y  
                 - desviación típica {round(desviacion_proyecto, 2)}  
@@ -332,6 +334,8 @@ Markdown(f"""Utilizando, por ejemplo, una calculadora, para un proyecto con:
 
 # %%
 fecha_exito_normal = round(norm.ppf(probabilidad_exito_normal, loc=duracion_media_proyecto, scale=desviacion_proyecto), 1)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, percentil=probabilidad_exito_normal)
 Markdown(f"Con una calculadora, por ejemplo, obtenemos que el número de periodos necesarios para alcanzar una tasa de éxito del {probabilidad_exito_normal*100} por ciento es {fecha_exito_normal} periodos.  ")
 
 # %% [markdown]
@@ -400,6 +404,8 @@ f"La duración media del proyecto es: {project_mean_duration}, la desviación t�
 # %%
 period = 13
 probability = norm.cdf(period, loc=project_mean_duration, scale=project_std_deviation_duration)
+from pmule import display_normal_tikz
+display_normal_tikz(project_mean_duration, project_std_deviation_duration, hasta=period)
 Markdown(f"Para un proyecto con duración media {project_mean_duration} y desviación típica {round(project_std_deviation_duration, 2)} el valor de la probabilidad pedida es {round(probability * 100, 2)} por ciento.")
 
 # %% [markdown]
@@ -417,6 +423,8 @@ Markdown(f"Considerando la secuencia de valores obtenidos por el método de Mont
 
 # %%
 prob=0.85
+from pmule import display_normal_tikz
+display_normal_tikz(project_mean_duration, project_std_deviation_duration, percentil=prob)
 norm.ppf(prob, loc=project_mean_duration, scale=project_std_deviation_duration)
 
 # %% [markdown]
@@ -468,7 +476,8 @@ desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nive
 proyecto.copy().display_nivelar_pasos_tikz(datos_proyecto, duration_label='duration', resource_label='resources')
 
 # %%
-cuadrados
+#| include: false
+cuadrados   # la tabla de sumas de cuadrados ya se muestra en el visor anterior
 
 # %%
 pinta_tikz(dibujo)
@@ -866,6 +875,8 @@ Markdown(f"La duración media del proyecto es: {project_mean_duration}, la desvi
 # %%
 period = 10
 probability = norm.cdf(period, loc=project_mean_duration, scale=project_std_deviation_duration)
+from pmule import display_normal_tikz
+display_normal_tikz(project_mean_duration, project_std_deviation_duration, hasta=period)
 Markdown(f"Para un proyecto con duración media {project_mean_duration} y desviación típica {round(project_std_deviation_duration, 2)} el valor de la probabilidad pedida es {round(probability * 100, 2)} por ciento.")
 
 # %% [markdown]
@@ -882,6 +893,8 @@ Markdown(f"La probabilidad pedida es {resultado} por ciento")
 
 # %%
 resultado = norm.ppf(0.85, loc=project_mean_duration, scale=project_std_deviation_duration)
+from pmule import display_normal_tikz
+display_normal_tikz(project_mean_duration, project_std_deviation_duration, percentil=0.85)
 Markdown(f"{resultado}")
 
 # %% [markdown]

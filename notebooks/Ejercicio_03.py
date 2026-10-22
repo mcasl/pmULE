@@ -225,6 +225,8 @@ probabilidad_de_terminar_antes_de_a = norm.cdf(periodo_probabilidad_a, loc=durac
 
 
 probabilidad_de_terminar_entre_a_y_b = round(float(probabilidad_de_terminar_antes_de_b - probabilidad_de_terminar_antes_de_a), 2)
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, entre=(periodo_probabilidad_a, periodo_probabilidad_b))
 
 Markdown(f"Para un proyecto con duración media {duracion_media_proyecto} y desviación típica {round(desviacion_proyecto, 2)} el valor de la probabilidad de terminar en el periodo comprendido entre {periodo_probabilidad_a} y {periodo_probabilidad_b} periodos es {round(probabilidad_de_terminar_entre_a_y_b * 100, 2)} por ciento.")
 
@@ -311,6 +313,8 @@ probabilidad_de_terminar_antes_de_b = norm.cdf(periodo_probabilidad_b, loc=durac
 probabilidad_de_terminar_antes_de_a = norm.cdf(periodo_probabilidad_a, loc=duracion_media_proyecto, scale=desviacion_proyecto)
 
 probabilidad_de_terminar_entre_a_y_b = probabilidad_de_terminar_antes_de_b - probabilidad_de_terminar_antes_de_a
+from pmule import display_normal_tikz
+display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, entre=(periodo_probabilidad_a, periodo_probabilidad_b))
 
 Markdown(f"Para un proyecto con duración media {duracion_media_proyecto} y desviación típica {round(desviacion_proyecto, 2)} el valor de la probabilidad de terminar en el periodo comprendido entre {periodo_probabilidad_a} y {periodo_probabilidad_b} periodos es {round(probabilidad_de_terminar_entre_a_y_b * 100, 2)} por ciento.")
 
@@ -361,9 +365,8 @@ desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nive
                            )
 
 # %%
-#| tbl-cap: "Suma de los cuadrados de las cargas para cada uno de los desplazamientos posibles con indicación del mínimo en cada actividad"
-#| label: tbl-CuadradosNivelacion
-cuadrados
+#| include: false
+cuadrados   # la tabla de sumas de cuadrados ya se muestra en el visor anterior
 
 # %% [markdown]
 # Atendiendo a los valores de las sumas de cuadrados, los desplazamientos indicados para la nivelación son:

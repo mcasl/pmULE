@@ -2196,7 +2196,10 @@ class ProjectGraph:
         codigos, pies = [fotograma(gantt_final)], []
         pies.append("Nivelación por mínimos cuadrados: solución. Cuadro de la suma de cuadrados de las cargas de cada "
                     "actividad (entre paréntesis, su holgura total) para cada desplazamiento, con el mínimo resaltado, "
-                    "y diagrama de Gantt con cargas resultante. Pulse «siguiente» para ver cómo se obtiene.")
+                    "y diagrama de Gantt con cargas resultante. Orden seguido: actividades no críticas por fin más temprano "
+                    "creciente (a igualdad, la de mayor holgura primero), " + ", ".join(str(f["act"]) for f in filas) +
+                    "; cada desplazamiento elegido queda fijado antes de estudiar la siguiente. "
+                    "Pulse «siguiente» para ver cómo se obtiene.")
         for i, f in enumerate(filas):
             for desp in range(f["H"] + 1):
                 codigos.append(fotograma(f["gantts"][desp], i=i, desp=desp))
@@ -8111,6 +8114,95 @@ def _html_fotogramas_tikz(codigos: list, librerias: str = "calc,arrows.meta",
         fotos.append('<img alt="paso" style="display:block;margin:0 auto;width:100%;max-width:1100px;height:auto" '
                      f'src="data:image/svg+xml;base64,{b64}">')
     return _html_pasos(fotos, inicio=0 if resultado_primero else 1)
+
+
+def plot_tikz_normal(media, desviacion, hasta=None, desde=None, entre=None, percentil=None,
+                     variable: str = "T", decimales: int = 4, escala: float = 1.0) -> str:
+    """``tikzpicture`` con la curva de la distribución normal de media ``media`` y desviación
+    típica ``desviacion`` y, sombreada, el área bajo la curva de las probabilidades pedidas:
+
+    * ``hasta=x`` (o lista): ``P(V ≤ x)``;
+    * ``desde=x`` (o lista): ``P(V ≥ x)``;
+    * ``entre=(a, b)`` (o lista de pares): ``P(a ≤ V ≤ b)``;
+    * ``percentil=p`` (o lista, con ``0 < p < 1``): área ``p`` a la izquierda del percentil
+      correspondiente, cuyo valor se marca en el eje.
+
+    El eje muestra ``media ± k·desviación``; cada valor límite se marca en el eje y las
+    probabilidades se escriben (``variable`` es el nombre de la variable aleatoria)."""
+    from scipy.stats import norm
+    lista = lambda v: [] if v is None else (list(v) if isinstance(v, (list, tuple)) and not (
+        len(v) == 2 and isinstance(v[0], (int, float)) and False) else [v])
+    huecos = []                                   # (a, b, texto): a y b pueden ser ±inf
+    for x in lista(hasta):
+        huecos.append((-np.inf, x, rf"P({variable}\le {x:g})"))
+    for x in lista(desde):
+        huecos.append((x, np.inf, rf"P({variable}\ge {x:g})"))
+    pares = [entre] if (entre is not None and np.ndim(entre) == 1) else (list(entre) if entre is not None else [])
+    for a, b in pares:
+        huecos.append((a, b, rf"P({a:g}\le {variable}\le {b:g})"))
+    for q in lista(percentil):
+        x = norm.ppf(q, loc=media, scale=desviacion)
+        huecos.append((-np.inf, x, rf"P({variable}\le {x:.2f})"))
+    if not huecos:
+        raise ValueError("Indique al menos una de las opciones: hasta, desde, entre o percentil")
+
+    ancho_sigma, alto = 1.45 * escala, 3.3 * escala
+    zmax = 3.6
+    z = lambda x: (x - media) / desviacion
+    X = lambda x: z(min(max(x, media - zmax * desviacion), media + zmax * desviacion)) * ancho_sigma
+    Y = lambda zz: np.exp(-zz * zz / 2) * alto
+    curva = lambda z0, z1, n=None: " ".join(
+        f"({zz * ancho_sigma:.3f},{Y(zz):.3f})" for zz in np.linspace(z0, z1, n or max(4, int(abs(z1 - z0) * 24)) + 1))
+    colores = ["orange!50", "blue!28", "green!32", "magenta!28", "cyan!35"]
+    # primero los intervalos más anchos, para que los menores queden encima
+    orden = sorted(range(len(huecos)), key=lambda i: -(min(huecos[i][1], media + zmax * desviacion) -
+                                                       max(huecos[i][0], media - zmax * desviacion)))
+    L = []
+    for rango, i in enumerate(orden):
+        a, b, _ = huecos[i]
+        za, zb = max(z(a), -zmax), min(z(b), zmax)
+        L.append(rf"\fill[{colores[i % len(colores)]}] ({za * ancho_sigma:.3f},0) -- plot coordinates {{{curva(za, zb)}}} "
+                 rf"-- ({zb * ancho_sigma:.3f},0) -- cycle;")
+    L.append(rf"\draw[thick, blue!60!black] plot coordinates {{{curva(-zmax, zmax, 144)}}};")
+    L.append(rf"\draw[->, black!70] ({-zmax * ancho_sigma - 0.4:.3f},0) -- ({zmax * ancho_sigma + 0.5:.3f},0);")
+    L.append(rf"\draw[dashed, black!55] (0,0) -- (0,{alto + 0.15:.3f}) node[above, black!70] {{$\mu$}};")
+    fmt = lambda v: f"{v:.2f}".rstrip("0").rstrip(".")
+    for k in range(-3, 4):
+        L.append(rf"\draw[black!70] ({k * ancho_sigma:.3f},0.07) -- ({k * ancho_sigma:.3f},-0.07);")
+        L.append(rf"\node[below, font=\footnotesize, black!70] at ({k * ancho_sigma:.3f},-0.1) {{{fmt(media + k * desviacion)}}};")
+    for i, (a, b, _) in enumerate(huecos):
+        for lim in (a, b):
+            if np.isfinite(lim):
+                c = colores[i % len(colores)].split("!")[0] + "!70!black"
+                x = X(lim)
+                L.append(rf"\draw[{c}, thick, dashed] ({x:.3f},-0.58) -- ({x:.3f},{Y(z(lim)) + 0.15:.3f});")
+                L.append(rf"\node[below, font=\small\bfseries, {c}] at ({x:.3f},-0.62) {{{fmt(lim)}}};")
+    # leyenda con las probabilidades (arriba a la izquierda), cada una con su color
+    for i, (a, b, txt) in enumerate(huecos):
+        p = norm.cdf(b, loc=media, scale=desviacion) - norm.cdf(a, loc=media, scale=desviacion)
+        c = colores[i % len(colores)]
+        y = alto * 0.98 - i * 0.62 * escala
+        L.append(rf"\fill[{c}] ({-zmax * ancho_sigma:.3f},{y - 0.17:.3f}) rectangle ++(0.34,0.34);")
+        L.append(rf"\node[right, font=\normalsize] at ({-zmax * ancho_sigma + 0.42:.3f},{y:.3f}) {{${txt} = {p:.{decimales}f}$}};")
+    return "\n".join([r"\begin{tikzpicture}[>=stealth]"] + L + [r"\end{tikzpicture}"])
+
+
+def display_normal_tikz(media, desviacion, hasta=None, desde=None, entre=None, percentil=None,
+                        variable: str = "T", decimales: int = 4, escala: float = 1.0,
+                        ancho_max: int = 640) -> None:
+    """Muestra en un cuaderno la gráfica de :func:`plot_tikz_normal` (TikZ compilado a SVG).
+    Si no hay LaTeX, avisa y no dibuja nada."""
+    import base64
+    codigo = plot_tikz_normal(media, desviacion, hasta, desde, entre, percentil, variable, decimales, escala)
+    try:
+        svg = _svgs_de_tikz([codigo])[0]
+    except (FileNotFoundError, RuntimeError) as e:
+        import warnings
+        warnings.warn(f"No se pudo dibujar la distribución normal en TikZ ({e}).")
+        return
+    b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
+    display(HTML(f'<img alt="distribución normal" style="display:block;margin:0 auto;width:100%;max-width:{ancho_max}px;height:auto" '
+                 f'src="data:image/svg+xml;base64,{b64}">'))
 
 
 def pinta_tikz(dibujo, filename=None):

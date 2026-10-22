@@ -358,3 +358,21 @@ def test_calendario_interactivo_ejercicio4():
     import pytest
     with pytest.raises(ValueError):
         p.plot_tikz_calendario(d['duration'], grafo='otro')
+
+
+def test_plot_tikz_normal():
+    import pytest
+    from pmule import plot_tikz_normal
+    from scipy.stats import norm
+    c = plot_tikz_normal(14, 2.8, hasta=9)
+    assert c.startswith(r"\begin{tikzpicture}") and c.rstrip().endswith(r"\end{tikzpicture}")
+    assert r"P(T\le 9)" in c and f"{norm.cdf(9, 14, 2.8):.4f}" in c and "orange!50" in c
+    c = plot_tikz_normal(14, 2.8, entre=(10, 12))
+    assert f"{norm.cdf(12, 14, 2.8) - norm.cdf(10, 14, 2.8):.4f}" in c
+    c = plot_tikz_normal(14, 2.8, hasta=[9, 12])         # áreas anidadas, una leyenda por cada una
+    assert c.count(r"P(T\le") == 2
+    c = plot_tikz_normal(14, 2.8, percentil=0.9)
+    assert f"{norm.ppf(0.9, 14, 2.8):.2f}" in c and "0.9000" in c
+    assert r"P(T\ge 15)" in plot_tikz_normal(14, 2.8, desde=15)
+    with pytest.raises(ValueError):
+        plot_tikz_normal(14, 2.8)
