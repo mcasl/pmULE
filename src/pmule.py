@@ -1766,7 +1766,9 @@ class ProjectGraph:
     ):
         """Dibuja el grafo Roy. Por defecto (``motor="tikz"``) con TikZ y la disposición
         propia de pmule (:meth:`roy_tikz`, sin graphviz y con el camino crítico en rojo);
-        con ``motor="graphviz"``, el dibujo de graphviz de siempre (pygraphviz)."""
+        con ``motor="graphviz"``, el dibujo de graphviz (pygraphviz). En ambos, los nodos
+        al estilo del PMBOK: ``ES | d | EF`` arriba, el nombre en la banda central y
+        ``LS | H | LF`` abajo (origen de tiempos en 0)."""
         if motor == "tikz":
             return self.roy_tikz(filename, durations)
         if motor != "graphviz":
@@ -1819,24 +1821,33 @@ class ProjectGraph:
             **kwargs,
         )
 
-        dot_graph.node_attr["shape"] = "record"
+        dot_graph.node_attr["shape"] = "plain"
         dot_graph.add_edges_from(self.roy_graph.edges)
+
+        def etiqueta(nombre, valores=None, critico=False):
+            """Nodo al estilo del PMBOK (tabla HTML de graphviz): ``ES | d | EF`` arriba, el
+            nombre en la banda central y ``LS | H | LF`` abajo."""
+            color = "red" if critico else "#A04A85"
+            relleno = "#FDE8E8" if critico else "#F1E6F1"
+            v = valores or {}
+            celda = lambda k: (f'<TD WIDTH="34" BGCOLOR="{relleno}">'
+                               f'{"<B>" + v[k] + "</B>" if (k in v and critico) else v.get(k, "&nbsp;")}</TD>')
+            return (f'<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5" COLOR="{color}">'
+                    f'<TR>{celda("ES")}{celda("d")}{celda("EF")}</TR>'
+                    f'<TR><TD COLSPAN="3" BGCOLOR="{color}"><FONT COLOR="white"><B>{nombre}</B></FONT></TD></TR>'
+                    f'<TR>{celda("LS")}{celda("H")}{celda("LF")}</TR></TABLE>>')
 
         for nodo in dot_graph.nodes():
             current_node = dot_graph.get_node(nodo)
             if durations is not False:
-                current_node.attr["label"] = (
-                    f"{nodo} | {{ "
-                    f"<min> {inicio_mas_temprano[str(nodo)]} |"
-                    f"<dur> {durations[str(nodo)]}          | "
-                    f"<max> {inicio_mas_tardio[str(nodo)]}   }}"
-                )
-                if str(nodo) in critical_nodes:
-                    current_node.attr["color"] = "red:red"
-                    current_node.attr["fontcolor"] = "red"
-                    current_node.attr["style"] = "bold"
+                es, d, ls = (inicio_mas_temprano[str(nodo)], durations[str(nodo)],
+                             inicio_mas_tardio[str(nodo)])
+                f = self._num_paso
+                current_node.attr["label"] = etiqueta(
+                    nodo, dict(ES=f(es), d=f(d), EF=f(es + d), LS=f(ls), H=f(ls - es), LF=f(ls + d)),
+                    critico=str(nodo) in critical_nodes)
             else:
-                current_node.attr["label"] = f"{nodo} | {{ <min>  | <dur>  | <max>   }}"
+                current_node.attr["label"] = etiqueta(nodo)
 
         # --- 2. Style Edges in NetworkX ---
         if durations is not False:
@@ -4591,7 +4602,7 @@ class ProjectGraph:
         paso["finish"] = k + 1
         ultimo = paso["finish"]
 
-        trazado = _disposicion_capas({f"{n}": (1.5, 0.9) for n in G.nodes},
+        trazado = _disposicion_capas({f"{n}": (self._ROY_ANCHO, self._ROY_ALTO) for n in G.nodes},
                                      [(f"{u}", f"{v}") for u, v in G.edges()],
                                      separacion=0.3 * escala, hueco=0.4 * escala)
         if trazado:
@@ -4602,7 +4613,7 @@ class ProjectGraph:
             por_capa = defaultdict(list)
             for n in sorted(G.nodes, key=lambda n: f"{n}"):
                 por_capa[capa[n]].append(n)
-            pos = {f"{n}": (2.3 * c * escala, ((len(ns) - 1) / 2.0 - i) * 1.5 * escala)
+            pos = {f"{n}": ((self._ROY_ANCHO + 1.1) * c * escala, ((len(ns) - 1) / 2.0 - i) * (self._ROY_ALTO + 0.6) * escala)
                    for c, ns in por_capa.items() for i, n in enumerate(ns)}
         ident = {f"{n}": f"r{i}" for i, n in enumerate(sorted(G.nodes, key=lambda n: f"{n}"))}
         xs = [x for x, _ in pos.values()]
@@ -4611,7 +4622,7 @@ class ProjectGraph:
             for r in trazado["rutas"].values():
                 for x, y in r:
                     xs.append(x); ys.append(y)
-        xmin, xmax, ymin, ymax = min(xs) - 1.0, max(xs) + 1.0, min(ys) - 0.7, max(ys) + 0.7
+        xmin, xmax, ymin, ymax = min(xs) - 1.5, max(xs) + 1.5, min(ys) - 1.2, max(ys) + 1.2
         _, ancho, margen, alto = _geometria_matriz(datos)
         n = len(nombres)
         Wm, Hm = (n + margen) * ancho, (n + alto) * 0.78
@@ -4646,16 +4657,9 @@ class ProjectGraph:
                 if paso[nodo] > kk:
                     L.append(rf"  \coordinate ({r}) at ({x:.2f}cm, {y:.2f}cm);")
                     continue
-                if nodo in actuales and not completo:
-                    estilo = "fill=orange!20, draw=orange!80!black, very thick"
-                else:
-                    estilo = "fill=white, draw, thick"
-                L.append(rf"  \node[rectangle, {estilo}, minimum width=1.5cm, minimum height=0.9cm,"
-                         rf" inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
-                L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
-                         rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
-                         rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
-                L.append(rf"  \node[font=\footnotesize\bfseries] at ($({r}.center)+(0,0.22)$) {{{tex(f'{et.get(nodo, nodo)}')}}};")
+                estilo = (dict(borde="orange!80!black", grosor="very thick", relleno="orange!20",
+                               barra="orange!80!black") if (nodo in actuales and not completo) else {})
+                L += self._roy_caja_tikz(r, x, y, tex(f"{et.get(nodo, nodo)}"), None, **estilo)
             return "\n".join(L + A)
 
         def fotograma(kk, actuales, texto, filas=None, columnas=(), completo=False):
@@ -4758,7 +4762,7 @@ class ProjectGraph:
             et = {"start": "Inicio", "finish": "Fin"}
             et.update(etiquetas or {})
             G = self._roy_grafo_actual()
-            trazado = _disposicion_capas({f"{n}": (1.5, 0.9) for n in G.nodes},
+            trazado = _disposicion_capas({f"{n}": (self._ROY_ANCHO, self._ROY_ALTO) for n in G.nodes},
                                          [(f"{u}", f"{v}") for u, v in G.edges()],
                                          separacion=0.3 * escala, hueco=0.4 * escala)
             if trazado:
@@ -4769,7 +4773,7 @@ class ProjectGraph:
                 por_capa = defaultdict(list)
                 for n in sorted(G.nodes, key=lambda n: f"{n}"):
                     por_capa[capa[n]].append(n)
-                pos = {f"{n}": (2.3 * c * escala, ((len(ns) - 1) / 2.0 - i) * 1.5 * escala)
+                pos = {f"{n}": ((self._ROY_ANCHO + 1.1) * c * escala, ((len(ns) - 1) / 2.0 - i) * (self._ROY_ALTO + 0.6) * escala)
                        for c, ns in por_capa.items() for i, n in enumerate(ns)}
             ident = {f"{n}": f"r{k}" for k, n in enumerate(sorted(G.nodes, key=lambda n: f"{n}"))}
             capas = self._roy_capas(G)
@@ -4778,7 +4782,7 @@ class ProjectGraph:
                 for r in trazado["rutas"].values():
                     for x, y in r:
                         xs.append(x); ys.append(y)
-            gx0, gx1, gy0, gy1 = min(xs) - 1.0, max(xs) + 1.0, min(ys) - 0.7, max(ys) + 0.7
+            gx0, gx1, gy0, gy1 = min(xs) - 1.5, max(xs) + 1.5, min(ys) - 1.2, max(ys) + 1.2
 
             def grafo_cuerpo(i):
                 if i is None:
@@ -4804,19 +4808,16 @@ class ProjectGraph:
                     A.append(rf"  \draw[{', '.join(est)}] ({ident[u]}) {'to[' + curva + ']' if curva else '--'} ({ident[v]});")
                 for nodo, (x, y) in pos.items():
                     r = ident[nodo]
-                    if i is None or nodo in nodos:
-                        est = ("fill=blue!15, draw=blue!80!black, very thick" if i is not None
-                               else "fill=white, draw, thick")
-                        txt, lin = "", "black"
+                    if i is None:
+                        estilo, gris = {}, ""
+                    elif nodo in nodos:
+                        estilo, gris = dict(borde="blue!80!black", grosor="very thick", relleno="blue!15",
+                                            barra="blue!70!black"), ""
                     else:
-                        est, txt, lin = "fill=white, draw=gray!45, thick", ", text=gray!55", "gray!45"
-                    L.append(rf"  \node[rectangle, {est}, minimum width=1.5cm, minimum height=0.9cm,"
-                             rf" inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
-                    L.append(rf"  \draw[{lin}] ({r}.west) -- ({r}.east)"
-                             rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
-                             rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
-                    L.append(rf"  \node[font=\footnotesize\bfseries{txt}] at ($({r}.center)+(0,0.22)$) "
-                             rf"{{{self._tex_texto(f'{et.get(nodo, nodo)}')}}};")
+                        estilo, gris = dict(borde="gray!45", grosor="thick", relleno="white",
+                                            barra="gray!45"), "text=gray!55"
+                    L += self._roy_caja_tikz(r, x, y, self._tex_texto(f"{et.get(nodo, nodo)}"), None,
+                                             color_texto=gris, **estilo)
                 return "\n".join(L + A)
         # ensamblaje: grafo arriba, matriz debajo, todo centrado en una caja común
         nf, nc = R.shape
@@ -5115,9 +5116,10 @@ class ProjectGraph:
 
     def plot_tikz_roy(self, durations=False, escala: float = 1.0, posiciones: dict = None,
                       etiquetas: dict = None, layout: str = "auto") -> str:
-        """Grafo Roy como un ``tikzpicture`` (sin graphviz): cajas con el nombre y, abajo,
-        mínimo | duración | máximo; con ``durations`` el camino crítico en rojo. Sin
-        ellas, las cajas vacías. Véase :meth:`plot_tikz_roy_pasos`."""
+        """Grafo Roy como un ``tikzpicture`` (sin graphviz): nodos al estilo del PMBOK,
+        ``ES | d | EF`` arriba, el nombre en la banda central y ``LS | H | LF`` abajo; con
+        ``durations`` el camino crítico en rojo. Sin ellas, los nodos vacíos. Véase
+        :meth:`plot_tikz_roy_pasos`."""
         con = durations is not False and durations is not None
         fotos = self.plot_tikz_roy_pasos(durations if con else {}, beamer=False, escala=escala,
                                          posiciones=posiciones, etiquetas=etiquetas,
@@ -5860,7 +5862,7 @@ class ProjectGraph:
         Devuelve ``dict(sim, num, res, graf, celdas, arco)``: la expresión simbólica y la
         numérica (HTML con cada término de su color), el resultado, los valores del
         grafo a resaltar ``[(nodo, clave, k)]`` (``k`` es el índice de color; claves
-        ``"e"``/``"l"`` en el PERT y ``"min"``/``"max"``/``"dur"`` en el Roy), las celdas
+        ``"e"``/``"l"`` en el PERT y ``"ES"``/``"EF"``/``"LS"``/``"LF"``/``"dur"`` en el Roy), las celdas
         de la misma fila de la tabla implicadas ``[(columna, k)]`` y el índice de color
         del arco de la actividad (PERT) o ``None``. Con ``grafo="roy"`` hace falta
         ``roy = (mn, mx, G, etiquetas, dur)``."""
@@ -5906,41 +5908,41 @@ class ProjectGraph:
                         num="máx(0, " + mn_(S(0, ms_num)) + " − " + mx_(S(1, mp_num)) + " − " + S(2, f(d)) + ")",
                         res=fila[c], graf=[(n, "e", 0) for n in ns] + [(n, "l", 1) for n in np_],
                         celdas=[("dur", 2)], arco=2)
-        # grafo Roy: en cada actividad, T = tiempo mínimo, T* = tiempo máximo (inicio más tardío)
+        # grafo Roy: en cada nodo, ES | d | EF arriba y LS | H | LF abajo (mn = ES, mx = LS)
         mn, mx, G, et, dr = roy
-        T = lambda n: f"T<sub>{_html_escape(f'{et.get(n, n)}')}</sub>"
-        Ts = lambda n: f"T*<sub>{_html_escape(f'{et.get(n, n)}')}</sub>"
+        lab = lambda n: _html_escape(f"{et.get(n, n)}")
+        ES_, EF_, LS_, LF_ = (lambda n, k=k: f"{k}<sub>{lab(n)}</sub>" for k in ("ES", "EF", "LS", "LF"))
         suc = sorted(f"{x}" for x in G.successors(a))
         pre = sorted(f"{x}" for x in G.predecessors(a))
         if c == "dur":
             return dict(sim="d", num=None, res=d, graf=[(a, "dur", 0)], celdas=[], arco=None)
         if c == "ES":
-            return dict(sim=S(0, T(a)), num=None, res=fila[c], graf=[(a, "min", 0)], celdas=[], arco=None)
+            return dict(sim=S(0, ES_(a)), num=None, res=fila[c], graf=[(a, "ES", 0)], celdas=[], arco=None)
         if c == "EF":
-            return dict(sim=S(0, T(a)) + " + " + S(1, "d"), num=S(0, f(mn[a])) + " + " + S(1, f(d)),
-                        res=fila[c], graf=[(a, "min", 0), (a, "dur", 1)], celdas=[("ES", 0), ("dur", 1)], arco=None)
+            return dict(sim=S(0, ES_(a)) + " + " + S(1, "d"), num=S(0, f(mn[a])) + " + " + S(1, f(d)),
+                        res=fila[c], graf=[(a, "ES", 0), (a, "dur", 1)], celdas=[("ES", 0), ("dur", 1)], arco=None)
         if c == "LS":
-            return dict(sim=S(0, Ts(a)), num=None, res=fila[c], graf=[(a, "max", 0)], celdas=[], arco=None)
+            return dict(sim=S(0, LS_(a)), num=None, res=fila[c], graf=[(a, "LS", 0)], celdas=[], arco=None)
         if c == "LF":
-            return dict(sim=S(0, Ts(a)) + " + " + S(1, "d"), num=S(0, f(mx[a])) + " + " + S(1, f(d)),
-                        res=fila[c], graf=[(a, "max", 0), (a, "dur", 1)], celdas=[("LS", 0), ("dur", 1)], arco=None)
+            return dict(sim=S(0, LS_(a)) + " + " + S(1, "d"), num=S(0, f(mx[a])) + " + " + S(1, f(d)),
+                        res=fila[c], graf=[(a, "LS", 0), (a, "dur", 1)], celdas=[("LS", 0), ("dur", 1)], arco=None)
         if c == "HT":
-            return dict(sim=S(0, Ts(a)) + " − " + S(1, T(a)), num=S(0, f(mx[a])) + " − " + S(1, f(mn[a])),
-                        res=fila[c], graf=[(a, "max", 0), (a, "min", 1)], celdas=[("LS", 0), ("ES", 1)], arco=None)
-        ms = ", ".join(T(s) for s in suc)
-        mv = ", ".join(f(mn[s]) for s in suc)
-        graf_s = [(s, "min", 0) for s in suc]
-        val_s = min(mn[s] for s in suc)
+            return dict(sim=S(0, LS_(a)) + " − " + S(1, ES_(a)), num=S(0, f(mx[a])) + " − " + S(1, f(mn[a])),
+                        res=fila[c], graf=[(a, "LS", 0), (a, "ES", 1)], celdas=[("LS", 0), ("ES", 1)], arco=None)
+        ms = ", ".join(ES_(s_) for s_ in suc)
+        mv = ", ".join(f(mn[s_]) for s_ in suc)
+        graf_s = [(s_, "ES", 0) for s_ in suc]
+        val_s = min(mn[s_] for s_ in suc)
         if c == "HL":
             val = val_s - mn[a] - d
-            return dict(sim="mín(" + S(0, ms) + ") − " + S(1, T(a)) + " − " + S(2, "d"),
-                        num="mín(" + S(0, mv) + ") − " + S(1, f(mn[a])) + " − " + S(2, f(d)),
-                        res=val, graf=graf_s + [(a, "min", 1), (a, "dur", 2)],
-                        celdas=[("ES", 1), ("dur", 2)], arco=None)
-        ps = ", ".join(f"{Ts(p)} + d<sub>{_html_escape(f'{et.get(p, p)}')}</sub>" for p in pre)
-        pv = ", ".join(f"{f(mx[p])} + {f(dr[p])}" for p in pre)
-        graf_p = [(p, cl, 1) for p in pre for cl in ("max", "dur")]
-        val = max(0, val_s - max(mx[p] + dr[p] for p in pre) - d)
+            return dict(sim="mín(" + S(0, ms) + ") − " + S(1, EF_(a)),
+                        num="mín(" + S(0, mv) + ") − " + S(1, f(mn[a] + d)),
+                        res=val, graf=graf_s + [(a, "EF", 1)],
+                        celdas=[("EF", 1)], arco=None)
+        ps = ", ".join(LF_(p_) for p_ in pre)
+        pv = ", ".join(f(mx[p_] + dr[p_]) for p_ in pre)
+        graf_p = [(p_, "LF", 1) for p_ in pre]
+        val = max(0, val_s - max(mx[p_] + dr[p_] for p_ in pre) - d)
         return dict(res=val, sim="máx(0, mín(" + S(0, ms) + ") − máx(" + S(1, ps) + ") − " + S(2, "d") + ")",
                     num="máx(0, mín(" + S(0, mv) + ") − máx(" + S(1, pv) + ") − " + S(2, f(d)) + ")",
                     graf=graf_s + graf_p + [(a, "dur", 2)], celdas=[("dur", 2)], arco=None)
@@ -5963,12 +5965,12 @@ class ProjectGraph:
             return dibuja, filas, (te, tl)
         if grafo != "roy":
             raise ValueError("grafo debe ser 'pert' o 'roy'")
-        fotograma, mn, mx, G, et = self.plot_tikz_roy_pasos(durations, escala=escala, _fotograma=True)
+        fotograma, mn, mx, G, et, completo = self.plot_tikz_roy_pasos(durations, escala=escala, _fotograma=True)
         dr = self._normalize_durations(durations, dummies=False).to_dict()
         dr["start"] = dr["finish"] = 0
 
         def dibuja(valores=None, arcos=None, actual=None):
-            cuerpo = fotograma(dict(mn), dict(mx), actual, arcos or (), "",
+            cuerpo = fotograma(completo, actual, arcos or (), "",
                                colores_valores=valores, negrita=set(valores or {}))
             return "\n".join([r"\begin{tikzpicture}[>=stealth]", cuerpo, r"\end{tikzpicture}"])
         return dibuja, filas, (mn, mx, G, et, dr)
@@ -5997,7 +5999,7 @@ class ProjectGraph:
                     G = extra[2]
                     arcos = {}
                     for n, cl, k in info["graf"]:
-                        if n != a and cl == "min" and (a, n) in G.edges:
+                        if n != a and cl == "ES" and (a, n) in G.edges:
                             arcos[(a, n)] = paleta(k)
                         elif n != a and (n, a) in G.edges:
                             arcos[(n, a)] = paleta(k)
@@ -6100,22 +6102,27 @@ class ProjectGraph:
 
     def roy_pasos(self, durations, formato: str = "texto",
                   etiquetas: dict = None, colores=None) -> dict:
-        """Cálculo paso a paso de los tiempos mínimos y máximos del grafo Roy.
+        """Cálculo paso a paso de los tiempos del grafo Roy, con los nodos al estilo del PMBOK.
 
-        Relaciones fin-comienzo: el arco I→J tiene atributo ``δ_IJ = D_I``.
-        Hacia delante, ``T_J = máx{T_I + D_I}`` sobre las precedentes de J;
-        hacia atrás, ``T*_I = mín{T*_J - D_I}`` sobre sus sucesoras. Los nodos
-        ficticios ``start`` y ``finish`` se rotulan con ``etiquetas``
-        (por defecto «Inicio» y «Fin»).
+        Cada nodo tiene seis casillas: inicio más temprano ``ES``, duración ``d``, fin más
+        temprano ``EF``, inicio más tardío ``LS``, holgura total ``H`` y fin más tardío
+        ``LF`` (origen de tiempos en 0). Relaciones fin-comienzo: hacia delante,
+        ``ES_J = máx{EF_I}`` sobre las precedentes de J y ``EF_J = ES_J + d_J``; hacia atrás,
+        ``LF_I = mín{LS_J}`` sobre sus sucesoras y ``LS_I = LF_I - d_I``; la holgura es
+        ``H = LS - ES``. Los nodos ficticios ``start`` y ``finish`` se rotulan con
+        ``etiquetas`` (por defecto «Inicio» y «Fin»).
 
         Returns
         -------
         dict
-            ``{"minimos": DataFrame, "maximos": DataFrame}`` con una fila por
-            paso y las columnas ``nodo``, ``rotulo``, ``actividades``,
-            ``terminos``, ``vecinos`` (nodos de los términos, en orden),
-            ``calculo`` y ``valor``. Con ``formato="latex"`` y ``colores`` (lista de
-            colores TikZ), cada término del cálculo lleva el color de su arco.
+            ``{"minimos": DataFrame, "maximos": DataFrame}`` con una fila por paso y las
+            columnas ``nodo``, ``rotulo``, ``actividades``, ``terminos`` (rótulo y valor de
+            cada vecino que interviene: su ``EF`` hacia delante, su ``LS`` hacia atrás),
+            ``vecinos`` (nodos de los términos, en orden), ``calculo`` y ``valor``. En
+            ``minimos`` el ``valor`` es ``ES`` y se añaden ``calculo_fin`` y ``fin`` (``EF``);
+            en ``maximos`` el ``valor`` es ``LF`` y se añaden ``calculo_inicio`` e
+            ``inicio`` (``LS``). Con ``formato="latex"`` y ``colores`` (lista de colores
+            TikZ), cada término del cálculo lleva el color de su arco.
         """
         if formato not in ("texto", "latex"):
             raise ValueError("formato debe ser 'texto' o 'latex'")
@@ -6132,25 +6139,16 @@ class ProjectGraph:
         def rot(n):
             return et.get(n, f"{n}")
 
-        def T(n, maximo=False):
+        def V(clave, n):
+            """Símbolo de una casilla del nodo ``n``: ``ES_A``, ``EF_A``, ``LS_A``, ``LF_A``, ``d_A``."""
             r = rot(n)
             if latex:
                 r = rf"\mathrm{{{r}}}" if len(r) > 1 else r
-                return f"T_{{{r}}}" + ("^{*}" if maximo else "")
-            return f"T{r}" + ("*" if maximo else "")
+                return f"{clave}_{{{r}}}"
+            return f"{clave}_{r}"
 
-        def expresion(nodo, ops, valor, maximo, base=None):
-            izq = T(nodo, maximo)
-            res = rf"\mathbf{{{f(valor)}}}" if (latex and colores) else f(valor)
-            if base is not None:
-                return f"{izq} = {base}" if base == f(valor) else f"{izq} = {base} = {res}"
-            if len(ops) == 1:
-                return f"{izq} = {ops[0]} = {res}"
-            if latex:
-                op = r"\min" if maximo else r"\max"
-                return rf"{izq} = {op}\{{{r',\ '.join(ops)}\}} = {res}"
-            op = "mín" if maximo else "máx"
-            return f"{izq} = {op}{{{', '.join(ops)}}} = {f(valor)}"
+        def res(valor):
+            return rf"\mathbf{{{f(valor)}}}" if (latex and colores) else f(valor)
 
         sep, sem = ("+", "-") if latex else (" + ", " - ")
 
@@ -6160,44 +6158,111 @@ class ProjectGraph:
                 return ops
             return [rf"\textcolor{{{colores[k % len(colores)]}}}{{\mathbf{{{o}}}}}" for k, o in enumerate(ops)]
 
-        minimo, filas = {}, []
+        def extremo(izq, simbolos, numeros, valor, maximo):
+            """``izq = máx{símbolos} = máx{números} = valor`` (sin ``máx`` con un solo término)."""
+            if len(simbolos) == 1:
+                return f"{izq} = {simbolos[0]} = {res(valor)}"
+            if latex:
+                op = r"\min" if maximo else r"\max"
+                return (rf"{izq} = {op}\{{{r',\ '.join(simbolos)}\}}"
+                        rf" = {op}\{{{r',\ '.join(numeros)}\}} = {res(valor)}")
+            op = "mín" if maximo else "máx"
+            return f"{izq} = {op}{{{', '.join(simbolos)}}} = {op}{{{', '.join(numeros)}}} = {f(valor)}"
+
+        ES, EF, filas = {}, {}, []
         for nodo in orden:
             prev = sorted(G.predecessors(nodo), key=lambda n: (capa[n], f"{n}"))
-            if not prev:
-                minimo[nodo] = 0
-                filas.append(dict(nodo=nodo, rotulo=rot(nodo), actividades="", terminos=[], vecinos=[],
-                                  calculo=expresion(nodo, [], 0, False, base="0"), valor=0))
-                continue
-            terminos = [(rot(p), minimo[p] + dur[p]) for p in prev]
-            ops = [f"{f(minimo[p])}{sep}{f(dur[p])}" for p in prev]
-            minimo[nodo] = max(t for _, t in terminos)
+            if prev:
+                terminos = [(rot(p), EF[p]) for p in prev]
+                ES[nodo] = max(t for _, t in terminos)
+                calculo = extremo(V("ES", nodo), tinta([V("EF", p) for p in prev]),
+                                  tinta([f(EF[p]) for p in prev]), ES[nodo], False)
+            else:
+                terminos, ES[nodo] = [], 0
+                calculo = f"{V('ES', nodo)} = 0"
+            EF[nodo] = ES[nodo] + dur[nodo]
+            fin = (f"{V('EF', nodo)} = {V('ES', nodo)} + {V('d', nodo)} = "
+                   f"{f(ES[nodo])}{sep}{f(dur[nodo])} = {res(EF[nodo])}")
             filas.append(dict(nodo=nodo, rotulo=rot(nodo),
                               actividades=", ".join(a for a, _ in terminos),
-                              terminos=terminos, vecinos=list(prev),
-                              calculo=expresion(nodo, tinta(ops), minimo[nodo], False),
-                              valor=minimo[nodo]))
+                              terminos=terminos, vecinos=list(prev), calculo=calculo,
+                              valor=ES[nodo], calculo_fin=fin, fin=EF[nodo]))
         minimos = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
 
-        maximo, filas = {}, []
+        LF, LS, filas = {}, {}, []
         for nodo in orden[::-1]:
             sig = sorted(G.successors(nodo), key=lambda n: (capa[n], f"{n}"))
-            if not sig:
-                maximo[nodo] = minimo[nodo]
-                filas.append(dict(nodo=nodo, rotulo=rot(nodo), actividades="", terminos=[], vecinos=[],
-                                  calculo=expresion(nodo, [], maximo[nodo], True,
-                                                    base=T(nodo)),
-                                  valor=maximo[nodo]))
-                continue
-            terminos = [(rot(s), maximo[s] - dur[nodo]) for s in sig]
-            ops = [f"{f(maximo[s])}{sem}{f(dur[nodo])}" for s in sig]
-            maximo[nodo] = min(t for _, t in terminos)
+            if sig:
+                terminos = [(rot(s), LS[s]) for s in sig]
+                LF[nodo] = min(t for _, t in terminos)
+                calculo = extremo(V("LF", nodo), tinta([V("LS", s) for s in sig]),
+                                  tinta([f(LS[s]) for s in sig]), LF[nodo], True)
+            else:
+                terminos, LF[nodo] = [], EF[nodo]
+                calculo = f"{V('LF', nodo)} = {V('EF', nodo)} = {f(LF[nodo])}"
+            LS[nodo] = LF[nodo] - dur[nodo]
+            inicio = (f"{V('LS', nodo)} = {V('LF', nodo)} - {V('d', nodo)} = "
+                      f"{f(LF[nodo])}{sem}{f(dur[nodo])} = {res(LS[nodo])}")
             filas.append(dict(nodo=nodo, rotulo=rot(nodo),
                               actividades=", ".join(a for a, _ in terminos),
-                              terminos=terminos, vecinos=list(sig),
-                              calculo=expresion(nodo, tinta(ops), maximo[nodo], True),
-                              valor=maximo[nodo]))
+                              terminos=terminos, vecinos=list(sig), calculo=calculo,
+                              valor=LF[nodo], calculo_inicio=inicio, inicio=LS[nodo]))
         maximos = pd.DataFrame(filas, index=pd.RangeIndex(1, len(filas) + 1, name="paso"))
         return dict(minimos=minimos, maximos=maximos)
+
+    # Nodo del Roy al estilo del PMBOK: tres filas por tres columnas,
+    #     ES | d | EF
+    #      nombre
+    #     LS | H | LF
+    # (inicio más temprano, duración, fin más temprano; inicio más tardío, holgura total,
+    # fin más tardío), con la fila del nombre rellena y esquinas rectas.
+    _ROY_ANCHO, _ROY_ALTO = 2.25, 1.3                  # cm
+    _ROY_ALTO_FILA, _ROY_ALTO_NOMBRE = 0.42, 0.46      # cm: filas de tiempos y del nombre
+    _ROY_MORADO = "{rgb,255:red,160;green,74;blue,133}"
+    _ROY_LILA = "{rgb,255:red,241;green,230;blue,241}"
+    _ROY_CELDAS = {"ES": (0, 0), "dur": (1, 0), "EF": (2, 0),
+                   "LS": (0, 2), "H": (1, 2), "LF": (2, 2)}      # (columna, fila)
+
+    @classmethod
+    def _roy_caja_tikz(cls, r, x, y, nombre, celdas=None, borde=None, grosor="thick",
+                       relleno=None, barra=None, color_texto="", negrita=False,
+                       resaltadas=None) -> list:
+        """Líneas TikZ de un nodo del Roy (véase ``_ROY_CELDAS``) centrado en ``(x, y)`` cm.
+
+        ``celdas``: ``{casilla: código TikZ del contenido}`` con las casillas ``ES``,
+        ``dur``, ``EF``, ``LS``, ``H`` y ``LF`` (las que falten quedan vacías);
+        ``resaltadas``: ``{casilla: (color, grosor)}`` redibuja el borde de esas casillas;
+        ``color_texto``: opción ``text=...`` de los números; ``negrita``: números en negrita.
+        El nodo TikZ ``r`` es el rectángulo exterior (las flechas se recortan en su borde)."""
+        W, H = cls._ROY_ANCHO, cls._ROY_ALTO
+        h, hb = cls._ROY_ALTO_FILA, cls._ROY_ALTO_NOMBRE
+        borde = borde or cls._ROY_MORADO
+        relleno = relleno or cls._ROY_LILA
+        barra = barra or cls._ROY_MORADO
+        x0, x1, c = x - W / 2, x + W / 2, W / 3
+        yb0, yb1, y0, y1 = y - hb / 2, y + hb / 2, y - H / 2, y + H / 2
+        P = lambda px, py: f"({px:.3f}cm,{py:.3f}cm)"
+        L = [rf"  \node[rectangle, fill={relleno}, draw={borde}, {grosor}, minimum width={W}cm,"
+             rf" minimum height={H}cm, inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};",
+             rf"  \path[fill={barra}] {P(x0, yb0)} rectangle {P(x1, yb1)};",
+             rf"  \draw[draw={borde}] {P(x0, yb0)} -- {P(x1, yb0)} {P(x0, yb1)} -- {P(x1, yb1)}"
+             rf" {P(x0 + c, yb1)} -- {P(x0 + c, y1)} {P(x0 + 2 * c, yb1)} -- {P(x0 + 2 * c, y1)}"
+             rf" {P(x0 + c, yb0)} -- {P(x0 + c, y0)} {P(x0 + 2 * c, yb0)} -- {P(x0 + 2 * c, y0)};"]
+
+        def limites(clave):
+            col, fila = cls._ROY_CELDAS[clave]
+            ya, yb = (yb1, y1) if fila == 0 else (y0, yb0)
+            return x0 + col * c, ya, x0 + (col + 1) * c, yb
+        for clave, (color, gr) in (resaltadas or {}).items():
+            xa, ya, xb, yb = limites(clave)
+            L.append(rf"  \draw[draw={color}, {gr}] {P(xa, ya)} rectangle {P(xb, yb)};")
+        fuente = r"\scriptsize" + (r"\bfseries" if negrita else "")
+        for clave, contenido in (celdas or {}).items():
+            xa, ya, xb, yb = limites(clave)
+            L.append(rf"  \node[font={fuente}{', ' + color_texto if color_texto else ''}]"
+                     rf" at {P((xa + xb) / 2, (ya + yb) / 2)} {{{contenido}}};")
+        L.append(rf"  \node[font=\footnotesize\bfseries, text=white] at ({x:.2f}cm, {y:.2f}cm) {{{nombre}}};")
+        return L
 
     def plot_tikz_roy_pasos(self, durations, beamer: bool = False,
                             escala: float = 1.0, posiciones: dict = None,
@@ -6206,13 +6271,14 @@ class ProjectGraph:
                             con_duracion: bool = True, _fotograma: bool = False):
         """Dibujo del grafo Roy paso a paso (código TikZ).
 
-        Como :meth:`plot_tikz_pasos`, pero con las actividades en los nodos:
-        cada nodo es una caja con el nombre arriba y, abajo, tiempo mínimo |
-        duración | tiempo máximo. Fotogramas: grafo con las duraciones; uno
-        por nodo hacia delante (se rellena el mínimo y se resaltan los arcos
-        que llegan); uno por nodo hacia atrás (máximo y arcos que salen); y
-        el camino crítico en rojo. Bajo el grafo, el cálculo del paso (véase
-        :meth:`roy_pasos`).
+        Como :meth:`plot_tikz_pasos`, pero con las actividades en los nodos, al estilo del
+        PMBOK: tres filas por tres columnas, ``ES | d | EF`` arriba, el nombre en la banda
+        central y ``LS | H | LF`` abajo (origen de tiempos en 0). Fotogramas: grafo con las
+        duraciones; uno por nodo hacia delante (se rellenan ``ES`` y ``EF``; se resaltan las
+        casillas ``EF`` de las precedentes que intervienen y la ``ES`` calculada, con el
+        color de sus flechas); uno por nodo hacia atrás (``LF`` y ``LS``, con las casillas
+        ``LS`` de las sucesoras); y el camino crítico en rojo con las holguras ``H``. Bajo
+        el grafo, el cálculo del paso (véase :meth:`roy_pasos`).
 
         ``posiciones`` es ``{nodo: (x, y)}`` en cm con los nombres internos
         de pmule (``start``, ``finish`` y las actividades). Necesita las
@@ -6225,9 +6291,10 @@ class ProjectGraph:
         pasos = self.roy_pasos(durations, formato="latex", etiquetas=et, colores=PALETA_FLECHAS)
         G = self._roy_grafo_actual()
         capa = self._roy_capas(G)
+        ancho, alto = self._ROY_ANCHO, self._ROY_ALTO
         trazado = None
         if posiciones is None and layout == "auto":
-            trazado = _disposicion_capas({f"{n}": (1.5, 0.9) for n in G.nodes},
+            trazado = _disposicion_capas({f"{n}": (ancho, alto) for n in G.nodes},
                                          [(f"{u}", f"{v}") for u, v in G.edges()],
                                          separacion=0.3 * escala, hueco=0.4 * escala)
         if trazado:
@@ -6240,7 +6307,8 @@ class ProjectGraph:
             pos = {}
             for c, nodos in por_capa.items():
                 for i, n in enumerate(nodos):
-                    pos[f"{n}"] = (2.3 * c * escala, ((len(nodos) - 1) / 2.0 - i) * 1.5 * escala)
+                    pos[f"{n}"] = ((ancho + 1.1) * c * escala,
+                                   ((len(nodos) - 1) / 2.0 - i) * (alto + 0.6) * escala)
         else:
             pos = {f"{k}": (float(x) * escala, float(y) * escala)
                    for k, (x, y) in posiciones.items()}
@@ -6252,15 +6320,26 @@ class ProjectGraph:
                    "final": "Camino crítico: duración = {duracion}"}
         rotulos.update(textos or {})
         f = self._num_paso
-        y_min = min(y for _, y in pos.values())
+        y_min = min(y for _, y in pos.values()) - alto / 2
         x_mid = (min(x for x, _ in pos.values()) + max(x for x, _ in pos.values())) / 2
 
-        def fotograma(minimos, maximos, actual=None, arcos_activos=(), texto="",
-                      criticos=(), colores_valores=None, negrita=None, colores_region=None):
-            """``arcos_activos``: ``{(u, v): color}`` (o un conjunto, en naranja), más
-            gruesos; ``colores_valores``: ``{(nodo, "min" | "dur" | "max"): color}``;
-            ``negrita``: conjunto de esas claves cuyo número va en negrita. En un paso de
-            cálculo lo que no participa (ni es crítico) va en gris."""
+        # todos los tiempos (el visor los va mostrando) y la holgura total H = LS - ES
+        ES = {f"{r['nodo']}": r["valor"] for _, r in pasos["minimos"].iterrows()}
+        EF = {f"{r['nodo']}": r["fin"] for _, r in pasos["minimos"].iterrows()}
+        LF = {f"{r['nodo']}": r["valor"] for _, r in pasos["maximos"].iterrows()}
+        LS = {f"{r['nodo']}": r["inicio"] for _, r in pasos["maximos"].iterrows()}
+        completo = {n: dict(ES=ES[n], EF=EF[n], LS=LS[n], LF=LF[n], H=LS[n] - ES[n]) for n in ES}
+
+        def fotograma(visibles, actual=None, arcos_activos=(), texto="", criticos=(),
+                      colores_valores=None, negrita=None, colores_region=None, derivadas=()):
+            """``visibles``: ``{nodo: {casilla: valor}}`` con lo ya calculado (casillas ``ES``,
+            ``EF``, ``LS``, ``LF``, ``H``; la duración ``dur`` sale siempre);
+            ``arcos_activos``: ``{(u, v): color}`` (o un conjunto, en naranja), más gruesos;
+            ``colores_valores``: ``{(nodo, casilla): color}``; ``negrita``: conjunto de esas
+            claves cuya casilla se resalta (borde grueso y número en negrita), con el color de
+            ``colores_region`` si lo hay; ``derivadas``: las que se obtienen del resultado
+            del paso (borde menos grueso). En un paso de cálculo lo que no participa (ni es
+            crítico) va en gris."""
             def tinta(nodo, clave, texto):
                 if (nodo, clave) in (negrita or ()):
                     texto = rf"\textbf{{{texto}}}"
@@ -6294,87 +6373,78 @@ class ProjectGraph:
                 trazo = f"to[{curva}]" if curva else "--"
                 A.append(rf"  \draw[{', '.join(estilo)}] ({ident[u]}) {trazo} ({ident[v]});")
             for nodo, (x, y) in pos.items():
-                r = ident[nodo]
                 if nodo == actual:
-                    estilo = "fill=orange!20, draw=orange!80!black, very thick"
+                    estilo = dict(borde="orange!80!black", grosor="very thick",
+                                  relleno="orange!20", barra="orange!80!black")
                 elif nodo in criticos:
-                    estilo = "fill=white!90!red, draw=red, very thick"
+                    estilo = dict(borde="red", grosor="very thick", relleno="white!90!red", barra="red")
                 elif nodo in col_nodo:
-                    estilo = f"fill=white, draw={col_nodo[nodo]}, ultra thick"
+                    estilo = dict(borde=col_nodo[nodo], grosor="ultra thick")
                 elif atenuar and nodo not in implicados:
-                    estilo = f"fill=white, draw={GRIS}, thick"
+                    estilo = dict(borde=GRIS, grosor="thick", relleno="white", barra="gray!45")
                 else:
-                    estilo = "fill=white, draw, thick"
-                gris = (f", text={GRIS}" if (atenuar and nodo not in implicados
-                                          and nodo not in criticos and nodo != actual) else "")
-                L.append(rf"  \node[rectangle, {estilo}, minimum width=1.5cm, minimum height=0.9cm,"
-                         rf" inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
-                L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
-                         rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
-                         rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
-                # casilla del valor que interviene: sus segmentos interiores (no el borde
-                # exterior), más gruesos y del color de la flecha
-                def _m(t): return f"($({r}.west)!{t:.4f}!({r}.east)$)"
-                def _b(t): return f"($({r}.south west)!{t:.4f}!({r}.south east)$)"
-                trazos = {"min": [_m(0), _m(1 / 3), _b(1 / 3)],
-                          "dur": [_b(1 / 3), _m(1 / 3), _m(2 / 3), _b(2 / 3)],
-                          "max": [_b(2 / 3), _m(2 / 3), _m(1)]}
-                for clave, pts in trazos.items():
-                    if (nodo, clave) in (negrita or ()):
-                        c = (colores_region or {}).get((nodo, clave)) or (colores_valores or {}).get(
-                            (nodo, clave), "orange!80!black" if nodo == actual else "black")
-                        L.append(rf"  \draw[{c}, ultra thick] " + " -- ".join(pts) + ";")
-                L.append(rf"  \node[font=\footnotesize\bfseries{gris}]"
-                         rf" at ($({r}.center)+(0,0.22)$) {{{self._tex_texto(f"{et.get(nodo, nodo)}")}}};")
+                    estilo = {}
+                gris = atenuar and nodo not in implicados and nodo not in criticos and nodo != actual
+                celdas = {}
                 if con_duracion:
-                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}{'' if (nodo, 'dur') in (negrita or ()) else ', gray'}] at ($({r}.center)+(0,-0.22)$) {{{tinta(nodo, 'dur', f(dur[nodo]))}}};")
-                if nodo in minimos:
-                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}{gris}] at ($({r}.center)+(-0.5,-0.22)$) {{{tinta(nodo, 'min', f(minimos[nodo]))}}};")
-                if nodo in maximos:
-                    L.append(rf"  \node[font=\scriptsize{r'\bfseries' if nodo in criticos else ''}{gris}] at ($({r}.center)+(0.5,-0.22)$) {{{tinta(nodo, 'max', f(maximos[nodo]))}}};")
+                    celdas["dur"] = tinta(nodo, "dur", f(dur[nodo]))
+                for clave, valor in visibles.get(nodo, {}).items():
+                    celdas[clave] = tinta(nodo, clave, f(valor))
+                resaltadas = {}
+                for n_, clave in (negrita or ()):
+                    if n_ == nodo:
+                        color = (colores_region or {}).get((nodo, clave)) or (colores_valores or {}).get(
+                            (nodo, clave), "orange!80!black" if nodo == actual else "black")
+                        resaltadas[clave] = (color, "ultra thick" if (nodo == actual and
+                                                                       (nodo, clave) not in derivadas)
+                                             else "very thick")
+                L += self._roy_caja_tikz(ident[nodo], x, y, self._tex_texto(f"{et.get(nodo, nodo)}"),
+                                         celdas, negrita=nodo in criticos,
+                                         color_texto=f"text={GRIS}" if gris else "",
+                                         resaltadas=resaltadas, **estilo)
             L += A
             if texto:
-                L.append(rf"  \node[anchor=north, font=\small] at ({x_mid:.2f}cm, {y_min - 1.0:.2f}cm) {{{texto}}};")
+                L.append(rf"  \node[anchor=north, font=\small, align=center] at ({x_mid:.2f}cm, {y_min - 0.6:.2f}cm) {{{texto}}};")
             return "\n".join(L)
 
         if _fotograma:                     # uso interno: la función que dibuja un fotograma
-            mn = {f"{r['nodo']}": r["valor"] for _, r in pasos["minimos"].iterrows()}
-            mx = {f"{r['nodo']}": r["valor"] for _, r in pasos["maximos"].iterrows()}
-            return fotograma, mn, mx, G, et
+            return fotograma, ES, LS, G, et, completo
         if estatico:                       # un solo dibujo, sin texto (grafo Roy del resultado)
             if con_duracion:
-                mn = {f"{r['nodo']}": r["valor"] for _, r in pasos["minimos"].iterrows()}
-                mx = {f"{r['nodo']}": r["valor"] for _, r in pasos["maximos"].iterrows()}
-                fotos = [fotograma(mn, mx, criticos={n for n in mn if mn[n] == mx[n]})]
+                fotos = [fotograma(completo, criticos={n for n in ES if ES[n] == LS[n]})]
             else:
-                fotos = [fotograma({}, {})]
+                fotos = [fotograma({})]
             return self._beamer_o_lista(fotos, beamer=False)
-        fotos = [fotograma({}, {}, texto=rotulos["inicio"])]
-        minimos = {}
+        copia = lambda v: {n: dict(c) for n, c in v.items()}
+        fotos = [fotograma({}, texto=rotulos["inicio"])]
+        visibles = {}
         for _, fila in pasos["minimos"].iterrows():
             n = f"{fila['nodo']}"
-            minimos[n] = fila["valor"]
+            visibles[n] = {"ES": fila["valor"], "EF": fila["fin"]}
             arcos = {(f"{p}", n): PALETA_FLECHAS[k % len(PALETA_FLECHAS)]
                      for k, p in enumerate(fila["vecinos"])}
-            valores = {(p, c): col for (p, _), col in arcos.items() for c in ("min", "dur")}
-            fotos.append(fotograma(dict(minimos), {}, n, arcos, f"${fila['calculo']}$",
+            valores = {(p, "EF"): col for (p, _), col in arcos.items()}
+            fotos.append(fotograma(copia(visibles), n, arcos,
+                                   rf"${fila['calculo']}$" + r"\\" + rf"${fila['calculo_fin']}$",
                                    colores_valores=valores,
-                                   negrita=set(valores) | {(n, "min")},
-                                   colores_region=self._region_dominante(fila, arcos, n, "min")))
-        maximos = {}
+                                   negrita=set(valores) | {(n, "ES"), (n, "EF")},
+                                   colores_region=self._region_dominante(fila, arcos, n, "ES"),
+                                   derivadas={(n, "EF")}))
         for _, fila in pasos["maximos"].iterrows():
             n = f"{fila['nodo']}"
-            maximos[n] = fila["valor"]
+            visibles[n] = dict(visibles[n], LF=fila["valor"], LS=fila["inicio"])
             arcos = {(n, f"{q}"): PALETA_FLECHAS[k % len(PALETA_FLECHAS)]
                      for k, q in enumerate(fila["vecinos"])}
-            valores = {(q, "max"): col for (_, q), col in arcos.items()}
-            fotos.append(fotograma(dict(minimos), dict(maximos), n, arcos, f"${fila['calculo']}$",
+            valores = {(q, "LS"): col for (_, q), col in arcos.items()}
+            fotos.append(fotograma(copia(visibles), n, arcos,
+                                   rf"${fila['calculo']}$" + r"\\" + rf"${fila['calculo_inicio']}$",
                                    colores_valores=valores,
-                                   negrita=set(valores) | {(n, "max"), (n, "dur")},
-                                   colores_region=self._region_dominante(fila, arcos, n, "max")))
-        criticos = {n for n in minimos if minimos[n] == maximos[n]}
-        fotos.append(fotograma(dict(minimos), dict(maximos), criticos=criticos,
-                               texto=rotulos["final"].format(duracion=f(minimos["finish"]))))
+                                   negrita=set(valores) | {(n, "LF"), (n, "LS")},
+                                   colores_region=self._region_dominante(fila, arcos, n, "LF"),
+                                   derivadas={(n, "LS")}))
+        criticos = {n for n in ES if ES[n] == LS[n]}
+        fotos.append(fotograma(completo, criticos=criticos,
+                               texto=rotulos["final"].format(duracion=f(ES["finish"]))))
         return self._beamer_o_lista(fotos, beamer=beamer)
 
 
@@ -6404,12 +6474,12 @@ class ProjectGraph:
                 import warnings
                 warnings.warn(f"No se pudo generar el visor TikZ ({e}); se muestra la lista de cálculos.")
         pasos = self.roy_pasos(durations, formato="latex", etiquetas=etiquetas)
-        for titulo, clave in (("Tiempos mínimos (hacia delante)", "minimos"),
-                              ("Tiempos máximos (hacia atrás)", "maximos")):
+        for titulo, clave, segundo in (("Hacia delante: inicios y fines más tempranos", "minimos", "calculo_fin"),
+                                       ("Hacia atrás: fines e inicios más tardíos", "maximos", "calculo_inicio")):
             lineas = [f"**{titulo}**", ""]
             for _, fila in pasos[clave].iterrows():
                 act = f" &nbsp; ({fila['actividades']})" if fila["actividades"] else ""
-                lineas.append(f"- ${fila['calculo']}${act}")
+                lineas.append(f"- ${fila['calculo']}${act}; ${fila[segundo]}$")
             display(Markdown("\n".join(lineas)))
 
     # ------------------------------------------------------------------
@@ -6576,12 +6646,12 @@ class ProjectGraph:
             por_capa = defaultdict(list)
             for n in sorted(G.nodes, key=lambda n: f"{n}"):
                 por_capa[capa[n]].append(n)
-            pos = {f"{n}": (2.3 * c * escala, ((len(ns) - 1) / 2.0 - i) * 1.5 * escala)
+            pos = {f"{n}": ((self._ROY_ANCHO + 1.1) * c * escala, ((len(ns) - 1) / 2.0 - i) * (self._ROY_ALTO + 0.6) * escala)
                    for c, ns in por_capa.items() for i, n in enumerate(ns)}
         else:
             pos = {f"{k}": (float(x) * escala, float(y) * escala) for k, (x, y) in posiciones.items()}
         ident = {f"{n}": f"r{k}" for k, n in enumerate(sorted(G.nodes, key=lambda n: f"{n}"))}
-        y_min = min(y for _, y in pos.values())
+        y_min = min(y for _, y in pos.values()) - self._ROY_ALTO / 2
         x_mid = (min(x for x, _ in pos.values()) + max(x for x, _ in pos.values())) / 2
 
         def fotograma(k, texto):
@@ -6599,17 +6669,12 @@ class ProjectGraph:
                 if paso[nodo] > k:
                     L.append(rf"  \coordinate ({r}) at ({x:.2f}cm, {y:.2f}cm);")
                     continue
-                estilo = ("fill=orange!20, draw=orange!80!black, very thick" if paso[nodo] == k
-                          else "fill=white, draw, thick")
-                L.append(rf"  \node[rectangle, {estilo}, minimum width=1.5cm, minimum height=0.9cm,"
-                         rf" inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
-                L.append(rf"  \draw[gray] ({r}.west) -- ({r}.east)"
-                         rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
-                         rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
-                L.append(rf"  \node[font=\footnotesize\bfseries] at ($({r}.center)+(0,0.22)$) {{{et.get(nodo, nodo)}}};")
+                estilo = (dict(borde="orange!80!black", grosor="very thick", relleno="orange!20",
+                               barra="orange!80!black") if paso[nodo] == k else {})
+                L += self._roy_caja_tikz(r, x, y, self._tex_texto(f"{et.get(nodo, nodo)}"), None, **estilo)
             L += A
             xs = [x for x, _ in pos.values()]; ys = [y for _, y in pos.values()]
-            L.append(rf"  \path ({min(xs) - 0.9:.2f}cm, {max(ys) + 0.6:.2f}cm) rectangle ({max(xs) + 0.9:.2f}cm, {y_min - 0.6:.2f}cm);")
+            L.append(rf"  \path ({min(xs) - 1.5:.2f}cm, {max(ys) + 1.2:.2f}cm) rectangle ({max(xs) + 1.5:.2f}cm, {y_min - 0.6:.2f}cm);")
             L.append(rf"  \node[anchor=north, font=\Large] at ({x_mid:.2f}cm, {y_min - 1.0:.2f}cm) {{{texto}}};")
             return "\n".join(L)
 
