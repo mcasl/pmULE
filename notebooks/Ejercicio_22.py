@@ -119,7 +119,7 @@ proyecto.pert()
 proyecto = prelaciones.create_project()
 
 # %%
-proyecto.roy()
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # ### Cálculo de variables de interés

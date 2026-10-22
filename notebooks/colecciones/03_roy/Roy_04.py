@@ -257,7 +257,7 @@ display(Markdown(pregunta_1))
 # %%
 #| fig-cap: "Grafo Roy del proyecto"
 #| label: fig-roy
-proyecto.roy(ranksep=1.2, nodesep=1.2)
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # Recorriendo las actividades en un orden en que cada una aparece después de sus predecesoras (orden topológico):

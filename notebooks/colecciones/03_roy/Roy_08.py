@@ -244,7 +244,7 @@ prelaciones.display_immediate_linkage_matrix()
 # %%
 #| fig-cap: "Grafo Roy del proyecto"
 #| label: fig-roy
-proyecto.roy(ranksep=1.2, nodesep=1.2)
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # ## Apartado 2
