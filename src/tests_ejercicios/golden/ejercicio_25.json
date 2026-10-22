@@ -1200,12 +1200,14 @@
      "__type__": "Styler",
      "columns": [
       "Activities",
-      "Variance"
+      "Variance",
+      "Formula"
      ],
      "data": [
       [
        "D, H, I, J",
-       0.67
+       0.67,
+       "σ²(D) + σ²(H) + σ²(I) + σ²(J) = 0.25 + 0.25 + 0.01 + 0.16 = 0.67"
       ]
      ],
      "index": [
