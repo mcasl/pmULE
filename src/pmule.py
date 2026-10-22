@@ -3102,9 +3102,16 @@ class ProjectGraph:
             print("Project duration variance:", varianza_proyecto)
             print("Project duration standard deviation:", std_deviation)
 
+        fmt = lambda x: f"{x:.2f}".rstrip("0").rstrip(".")
+        formulas = {
+            key: " + ".join(f"σ²({a})" for a in path) + " = "
+                 + " + ".join(fmt(varianza[a]) for a in path) + f" = {fmt(varianza_caminos[key])}"
+            for key, path in caminos.items()
+        }
         varianza_caminos = pd.Series(varianza_caminos).to_frame(name='Variance').round(2)
         varianza_caminos = (pd.concat([pd.Series(caminos).to_frame(name='Activities').map(lambda x: ", ".join(x)),
-                                      varianza_caminos], axis=1)
+                                      varianza_caminos,
+                                      pd.Series(formulas).to_frame(name='Formula')], axis=1)
                             .style.apply(highlight_maximum, axis=0, subset=['Variance'])
                             .format('{:.2f}', na_rep='', subset=['Variance'])
                             )

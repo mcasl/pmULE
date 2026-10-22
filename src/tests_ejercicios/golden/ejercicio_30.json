@@ -1021,12 +1021,14 @@
      "__type__": "Styler",
      "columns": [
       "Activities",
-      "Variance"
+      "Variance",
+      "Formula"
      ],
      "data": [
       [
        "B, D, E, H",
-       1.11
+       1.11,
+       "σ²(B) + σ²(D) + σ²(E) + σ²(H) = 0.11 + 0.11 + 0.44 + 0.44 = 1.11"
       ]
      ],
      "index": [

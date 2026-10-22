@@ -867,16 +867,19 @@
      "__type__": "Styler",
      "columns": [
       "Activities",
-      "Variance"
+      "Variance",
+      "Formula"
      ],
      "data": [
       [
        "A, E, H, J",
-       7
+       7,
+       "σ²(A) + σ²(E) + σ²(H) + σ²(J) = 1 + 4 + 1 + 1 = 7"
       ],
       [
        "C, F, J",
-       3
+       3,
+       "σ²(C) + σ²(F) + σ²(J) = 1 + 1 + 1 = 3"
       ]
      ],
      "index": [
