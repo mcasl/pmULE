@@ -8693,6 +8693,17 @@ class MatrizEnlace:
         return f"MatrizEnlace({len(self.data)} actividades)"
 
 
+def matriz_caminos_tikz(path_matrix: pd.DataFrame):
+    """Matriz de caminos (rutas × actividades) con el estilo TikZ de la matriz de prelaciones
+    extendida: un 1 en las casillas marcadas y un 0 gris claro en las vacías. Si no hay LaTeX
+    devuelve el ``DataFrame``."""
+    try:
+        return MatrizEnlace(path_matrix.astype(bool), valor="1", valor_cero="0",
+                            rotulo=r"actividad $\to$\\ ruta $\downarrow$")
+    except (FileNotFoundError, RuntimeError):
+        return path_matrix
+
+
 def _html_fotogramas_tikz(codigos: list, librerias: str = "calc,arrows.meta",
                           resultado_primero: bool = False) -> str:
     """Visor HTML con botones (:func:`_html_pasos`) de fotogramas TikZ compilados a
