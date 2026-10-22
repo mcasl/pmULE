@@ -176,7 +176,7 @@ for key, value in camino_critico.items():
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # ### Grafo PERT con indicación de tiempos y rutas críticas

@@ -162,7 +162,7 @@ proyecto.display_critical_path(durations=datos_proyecto['duration'])
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # ### Caracterización de la duración del proyecto mediante una distribución Normal

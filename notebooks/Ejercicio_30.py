@@ -276,7 +276,7 @@ calendario = proyecto.calendar(datos_proyecto[duration_label]).drop(columns='dur
                                                                     'fin_mas_tardio':'Fin más tardio',
                                                                     'H_total': 'Holgura total'
                                                                    })
-calendario
+proyecto.display_calendario(datos_proyecto[duration_label])
 
 # %% [markdown]
 # {{< pagebreak >}}

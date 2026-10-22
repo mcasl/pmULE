@@ -282,7 +282,7 @@ calendario = proyecto.calendar(duraciones_medias).drop(columns='duracion').renam
     'fin_mas_temprano':    'Fin más temprano',
     'fin_mas_tardio':      'Fin más tardío',
     'H_total':             'Holgura total'})
-calendario
+proyecto.display_calendario(duraciones_medias)
 
 # %%
 #| fig-cap: "Diagrama de Gantt del proyecto"

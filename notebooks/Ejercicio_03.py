@@ -153,7 +153,7 @@ Markdown(f"De acuerdo a la duración obtenida para el nodo final del proyecto, l
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # ### Varianza de la duración del proyecto
