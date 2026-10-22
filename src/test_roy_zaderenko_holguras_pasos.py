@@ -22,20 +22,37 @@ class TestRoyPasos(unittest.TestCase):
         self.pasos = self.pg.roy_pasos(DUR)
         self.cal = self.pg.calendar(DUR)
 
-    def test_minimos_y_maximos_coinciden_con_el_calendario(self):
-        mn = dict(zip(self.pasos["minimos"]["nodo"], self.pasos["minimos"]["valor"]))
-        mx = dict(zip(self.pasos["maximos"]["nodo"], self.pasos["maximos"]["valor"]))
+    def test_tiempos_coinciden_con_el_calendario(self):
+        mn, mx = self.pasos["minimos"], self.pasos["maximos"]
+        ES = dict(zip(mn["nodo"], mn["valor"]))
+        EF = dict(zip(mn["nodo"], mn["fin"]))
+        LF = dict(zip(mx["nodo"], mx["valor"]))
+        LS = dict(zip(mx["nodo"], mx["inicio"]))
         for act in DUR:
-            self.assertEqual(mn[act], self.cal.loc[act, "inicio_mas_temprano"])
-            self.assertEqual(mx[act], self.cal.loc[act, "inicio_mas_tardio"])
-        self.assertEqual(mn["finish"], 31)
-        self.assertEqual(mx["start"], 0)
+            self.assertEqual(ES[act], self.cal.loc[act, "inicio_mas_temprano"])
+            self.assertEqual(EF[act], self.cal.loc[act, "fin_mas_temprano"])
+            self.assertEqual(LS[act], self.cal.loc[act, "inicio_mas_tardio"])
+            self.assertEqual(LF[act], self.cal.loc[act, "fin_mas_tardio"])
+            self.assertEqual(LS[act] - ES[act], self.cal.loc[act, "H_total"])
+        self.assertEqual((ES["start"], EF["start"]), (0, 0))      # origen de tiempos en 0
+        self.assertEqual((ES["finish"], LF["finish"]), (31, 31))
+        self.assertEqual(LS["start"], 0)
 
     def test_calculo_escrito(self):
-        calc = dict(zip(self.pasos["maximos"]["nodo"], self.pasos["maximos"]["calculo"]))
-        self.assertEqual(calc["C"], "TC* = mín{26 - 7, 10 - 7} = 3")
+        mx = self.pasos["maximos"].set_index("nodo")
+        self.assertEqual(mx.loc["C", "calculo"], "LF_C = mín{LS_E, LS_F} = mín{26, 10} = 10")
+        self.assertEqual(mx.loc["C", "calculo_inicio"], "LS_C = LF_C - d_C = 10 - 7 = 3")
+        self.assertEqual(mx.loc["I", "calculo"], "LF_I = LS_Fin = 31")       # una sola sucesora
+        self.assertEqual(mx.loc["finish", "calculo"], "LF_Fin = EF_Fin = 31")
+        mn = self.pasos["minimos"].set_index("nodo")
+        self.assertEqual(mn.loc["F", "calculo"], "ES_F = máx{EF_B, EF_C, EF_D} = máx{3, 9, 10} = 10")
+        self.assertEqual(mn.loc["F", "calculo_fin"], "EF_F = ES_F + d_F = 10 + 9 = 19")
+        self.assertEqual(self.pasos["minimos"]["terminos"].loc[self.pasos["minimos"]["nodo"] == "F"].iloc[0],
+                         [("B", 3), ("C", 9), ("D", 10)])
         lat = self.pg.roy_pasos(DUR, formato="latex")["minimos"]
-        self.assertIn(r"T_{\mathrm{Inicio}} = 0", lat["calculo"].iloc[0])
+        self.assertEqual(lat["calculo"].iloc[0], r"ES_{\mathrm{Inicio}} = 0")
+        self.assertIn(r"EF_{\mathrm{Inicio}} = ES_{\mathrm{Inicio}} + d_{\mathrm{Inicio}} = 0+0 = 0",
+                      lat["calculo_fin"].iloc[0])
 
     def test_fotogramas(self):
         n = len(self.pasos["minimos"])
@@ -299,3 +316,93 @@ class TestSvgAnchoColumna(unittest.TestCase):
         self.assertNotIn("height=", raiz)
         self.assertIn('viewBox="0 0 300 100"', raiz)
         self.assertIn('<rect width="3" height="4"/>', out)
+
+
+class TestRoyNodoPmbok(unittest.TestCase):
+    """El nodo del Roy es el del PMBOK (ES | d | EF / nombre / LS | H | LF), con esquinas
+    rectas, y los visores resaltan las casillas que intervienen en cada cálculo."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pg = project()
+        cls.fotos = cls.pg.plot_tikz_roy_pasos(DUR)
+        cls.paleta = __import__("pmule").PALETA_FLECHAS
+        cls.nodos = len(DUR) + 2                                  # actividades + Inicio + Fin
+
+    @staticmethod
+    def _casillas(codigo):
+        return len(re.findall(r"\\node\[font=\\scriptsize", codigo))
+
+    def test_la_caja_tiene_seis_casillas_banda_morada_y_esquinas_rectas(self):
+        from pmule import ProjectGraph
+        celdas = {k: "1" for k in ("ES", "dur", "EF", "LS", "H", "LF")}
+        cod = "\n".join(ProjectGraph._roy_caja_tikz("r0", 0, 0, "A", celdas))
+        self.assertEqual(self._casillas(cod), 6)
+        self.assertIn(rf"fill={ProjectGraph._ROY_MORADO}", cod)
+        self.assertIn("{A}", cod)
+        self.assertNotIn("rounded", cod)
+        vacia = "\n".join(ProjectGraph._roy_caja_tikz("r0", 0, 0, "A"))
+        self.assertEqual(self._casillas(vacia), 0)
+
+    def test_dibujo_estatico_con_las_seis_casillas_de_cada_nodo(self):
+        cod = self.pg.plot_tikz_roy(DUR)
+        self.assertEqual(self._casillas(cod), 6 * self.nodos)
+        self.assertEqual(cod.count(r"\footnotesize\bfseries, text=white"), self.nodos)
+        self.assertEqual(cod.count("fill=white!90!red"), 7)       # A-D-F-J-I, Inicio y Fin
+        self.assertNotIn("minimum width=1.5cm", cod)               # el nodo anterior ya no existe
+
+    def test_sin_duraciones_las_cajas_van_vacias(self):
+        cod = self.pg.plot_tikz_roy(False)
+        self.assertEqual(self._casillas(cod), 0)
+        self.assertEqual(cod.count(r"\footnotesize\bfseries, text=white"), self.nodos)
+        self.assertNotIn("draw=red", cod)                          # sin duraciones no hay camino crítico
+        self.assertNotIn("fill=white!90!red", cod)
+
+    def test_primer_fotograma_solo_con_las_duraciones(self):
+        self.assertEqual(self._casillas(self.fotos[0]), self.nodos)
+
+    def test_hacia_delante_resalta_ef_de_las_precedentes_y_es_del_nodo(self):
+        f, = [c for c in self.fotos if "ES_{F} =" in c]
+        self.assertIn(r"ES_{F} = \max", f)
+        for k in range(3):                       # precedentes B, C y D: casilla EF con el color de su flecha
+            self.assertIn(f"draw={self.paleta[k]}, very thick", f)
+            self.assertIn(rf"\textcolor{{{self.paleta[k]}}}", f)
+        self.assertIn(f"draw={self.paleta[2]}, ultra thick", f)    # ES de F con el color del máximo (D)
+        self.assertIn("draw=orange!80!black, very thick", f)       # EF de F, derivada
+        self.assertEqual(f.count("ultra thick]"), 3 + 1)           # tres flechas y una sola casilla (la ES)
+        self.assertEqual(len(re.findall(r"\\draw\[draw=[^\]]*ultra thick\]", f)), 1)
+
+    def test_hacia_atras_resalta_ls_de_las_sucesoras_y_lf_del_nodo(self):
+        f, = [c for c in self.fotos if "LF_{F} =" in c]
+        self.assertIn(r"LF_{F} = \min", f)
+        self.assertIn(rf"\textcolor{{{self.paleta[1]}}}", f)       # J
+        self.assertIn(f"draw={self.paleta[1]}, ultra thick", f)    # LF de F con el color del mínimo (J)
+        self.assertIn("LS_{F} = LF_{F} - d_{F}", f)
+        self.assertEqual(len(re.findall(r"\\draw\[draw=[^\]]*ultra thick\]", f)), 1)
+
+    def test_ultimo_fotograma_con_holguras_y_camino_critico(self):
+        f = self.fotos[-1]
+        self.assertEqual(self._casillas(f), 6 * self.nodos)
+        self.assertEqual(f.count("fill=white!90!red"), 7)
+        self.assertIn("duración = 31", f)
+
+    def test_el_calendario_del_roy_resalta_las_casillas_del_nodo(self):
+        _, _, (filas, extra, celdas) = self.pg.plot_tikz_calendario(DUR, grafo="roy")
+        claves = {cl for info in celdas.values() for _, cl, _ in info["graf"]}
+        self.assertEqual(claves, {"ES", "EF", "LS", "LF", "dur"})
+
+    def test_construccion_con_el_mismo_nodo(self):
+        for cod in self.pg.plot_tikz_construccion_roy():
+            self.assertNotIn("minimum width=1.5cm", cod)
+        self.assertIn("{rgb,255:red,160;green,74;blue,133}", self.pg.plot_tikz_construccion_roy()[-1])
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("pygraphviz"), "hace falta pygraphviz")
+    def test_graphviz_dibuja_la_tabla_del_nodo(self):
+        import shutil, tempfile
+        if shutil.which("dot") is None:
+            self.skipTest("hace falta graphviz (dot)")
+        d = tempfile.mkdtemp()
+        out = os.path.join(d, "roy.png")
+        self.pg.roy(filename=out, durations=dict(DUR), motor="graphviz")
+        self.assertGreater(os.path.getsize(out), 1000)
+        self.pg.roy(filename=out, durations=False, motor="graphviz")
