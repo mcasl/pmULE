@@ -281,7 +281,8 @@ actividades = sorted(set(a for acts in rutas_enunciado.values() for a in acts))
 path_matrix = pd.DataFrame(0, index=list(rutas_enunciado), columns=actividades)
 for ruta, acts in rutas_enunciado.items():
     path_matrix.loc[ruta, acts] = 1
-path_matrix
+from pmule import matriz_caminos_tikz
+matriz_caminos_tikz(path_matrix)
 
 # %% [markdown]
 # ## Apartado 2
