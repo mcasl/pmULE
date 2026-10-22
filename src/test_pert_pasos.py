@@ -327,3 +327,34 @@ def test_zaderenko_tikz_ejercicio4():
     assert r"\max" in cods[5]                      # cálculo del paso
     assert "red" not in cods[-1]                   # sin rojo de actividades críticas
     assert "orange!18" in cods[3] and "orange!18" not in cods[0]
+
+
+def test_calendario_interactivo_ejercicio4():
+    import pandas as pd
+    from pmule import PredecessorTable
+    d = pd.DataFrame([('A', '---', 3), ('B', '---', 2), ('C', 'B', 4), ('D', 'A', 4), ('E', 'A', 2),
+                      ('F', 'C,D', 5), ('G', 'C,D', 1), ('H', 'E', 3), ('I', 'F,G', 1),
+                      ('J', 'F,G', 2), ('K', 'F,G,H', 1)],
+                     columns=['activity', 'predecessor', 'duration']).set_index('activity')
+    t = PredecessorTable.from_dataframe_of_strings(d, activity='activity', predecessor='predecessor')
+    p = t.create_project()
+    dur, te, tl, filas = p._calendario_datos(d['duration'])
+    cal = p.calendar(d['duration'])
+    columnas = {'ES': 'inicio_mas_temprano', 'EF': 'fin_mas_temprano', 'LS': 'inicio_mas_tardio',
+                'LF': 'fin_mas_tardio', 'HT': 'H_total', 'HL': 'H_libre', 'HI': 'H_independiente',
+                'dur': 'duracion'}
+    for a, fila in filas.items():                 # las fórmulas dan lo mismo que calendar()
+        for c, k in columnas.items():
+            assert float(fila[c]) == float(cal.loc[a, k]), (a, c)
+    codigos, indice, _ = p.plot_tikz_calendario(d['duration'])
+    assert len(indice) == 11 * 8 and 1 < len(codigos) <= 1 + 11 * 8
+    assert codigos[indice[('F', 'HT')]] != codigos[0]
+    # variante Roy: mismas celdas y mismos valores que calendar() (holguras por actividades)
+    codigos_r, indice_r, (filas_r, extra_r, celdas_r) = p.plot_tikz_calendario(d['duration'], grafo='roy')
+    assert len(indice_r) == 11 * 8
+    for (a, c), info in celdas_r.items():
+        assert float(info['res']) == float(filas_r[a][c]) == float(cal.loc[a, columnas[c]]), (a, c)
+    assert cal.loc['G', 'H_libre'] == 4 and cal.loc['I', 'H_libre'] == 1
+    import pytest
+    with pytest.raises(ValueError):
+        p.plot_tikz_calendario(d['duration'], grafo='otro')
