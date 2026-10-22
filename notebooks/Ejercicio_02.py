@@ -182,7 +182,7 @@ pinta_tikz(dibujo)
 # %%
 #| fig-cap: "Grafo Roy del proyecto"
 #| label: fig-Roy
-proyecto.roy(ranksep=1.25, nodesep=1.25)
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # ### Holgura total de las actividaes

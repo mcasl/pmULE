@@ -376,3 +376,26 @@ def test_plot_tikz_normal():
     assert r"P(T\ge 15)" in plot_tikz_normal(14, 2.8, desde=15)
     with pytest.raises(ValueError):
         plot_tikz_normal(14, 2.8)
+
+
+def test_plot_tikz_histograma_y_beta_pert():
+    from pmule import plot_tikz_histograma, plot_tikz_beta_pert
+    import numpy as np
+    x = np.random.default_rng(0).normal(10, 2, 2000)
+    c = plot_tikz_histograma(x, hasta=11)
+    assert "orange" in c and "Montecarlo" in c and "Normal" in c
+    assert "tikzpicture" in plot_tikz_histograma(x, percentil=0.9)
+    b = plot_tikz_beta_pert(4, 6, 12, "B")
+    assert "Beta-PERT" in b and "media 6.67" in b
+
+
+def test_construccion_roy_con_tabla():
+    from pmule import PredecessorTable
+    d = pd.DataFrame([('A', '---', 3), ('B', '---', 2), ('C', 'A,B', 4), ('D', 'C', 1)],
+                     columns=['activity', 'predecessor', 'duration']).set_index('activity')
+    pr = PredecessorTable.from_dataframe_of_strings(d, activity='activity', predecessor='predecessor')
+    cs = pr.create_project().plot_tikz_construccion_roy_tabla(tabla=pr)
+    # iniciales + C + D + Fin + completo
+    assert len(cs) == 5
+    assert all(c.startswith(r"\begin{tikzpicture}") for c in cs)
+    assert "Actividad C: predecesoras A y B" in cs[1]

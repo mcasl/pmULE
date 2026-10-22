@@ -191,7 +191,8 @@ t_early.loc[0:10, : ]
 display(Markdown(pregunta_4))
 
 # %%
-t_early['t_7'].plot(kind='density');
+from pmule import display_histograma_tikz
+display_histograma_tikz(t_early['t_7'])
 
 # %%
 t_early['t_7'].describe().round(2)
@@ -214,6 +215,8 @@ Markdown(f"Podemos ordenar los valores en sentido ascendente y quedarnos con aqu
 
 # %%
 resultado_2 = round(t_early['t_7'].quantile(q=0.98, interpolation='higher'), 1)
+from pmule import display_histograma_tikz
+display_histograma_tikz(t_early['t_7'], percentil=0.98)
 
 # %%
 Markdown(f"O bien, utilizando la función `quantile`, obteniendo igualmente un valor de {resultado_2} periodos.")

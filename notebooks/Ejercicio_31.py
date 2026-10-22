@@ -206,7 +206,7 @@ proyecto.display_pert_construccion(tabla=prelaciones)
 # %%
 #| fig-cap: "Grafo Roy del proyecto"
 #| label: fig-roy
-proyecto.roy(ranksep=1.2, nodesep=1)
+proyecto.display_roy_construccion(tabla=prelaciones)
 
 # %% [markdown]
 # {{< pagebreak >}}
@@ -365,6 +365,12 @@ rng = np.random.default_rng(2026)
 duraciones_montecarlo = pd.DataFrame({actividad: muestras_beta_pert(fila.a, fila.m, fila.b, numero_de_iteraciones, rng)
                                       for actividad, fila in datos_proyecto.iterrows()})
 
+# Densidad Beta-PERT de la actividad más asimétrica (la moda más alejada del punto medio)
+from pmule import display_beta_pert_tikz
+_asimetria = ((datos_proyecto.m - (datos_proyecto.a + datos_proyecto.b) / 2) / (datos_proyecto.b - datos_proyecto.a).replace(0, np.nan)).abs()
+_act = _asimetria.idxmax()
+display_beta_pert_tikz(datos_proyecto.loc[_act, 'a'], datos_proyecto.loc[_act, 'm'], datos_proyecto.loc[_act, 'b'], actividad=str(_act))
+
 # %%
 #| tbl-cap: "Primeras iteraciones de las duraciones generadas"
 #| label: tbl-duracionesMontecarlo
@@ -406,17 +412,8 @@ duracion_proyecto_mc = duraciones_rutas.max(axis='columns')
 pd.concat([duraciones_rutas, duracion_proyecto_mc.rename('Proyecto')], axis=1).head().round(2)
 
 # %%
-#| fig-cap: "Distribución de la duración del proyecto: MonteCarlo frente a la aproximación normal"
-#| label: fig-histogramaMC
-from matplotlib import pyplot as plt
-fig, ax = plt.subplots(figsize=(8, 4))
-ax.hist(duracion_proyecto_mc, bins=80, density=True, alpha=0.5, color='skyblue', label='MonteCarlo (Beta-PERT)')
-x = np.linspace(duracion_proyecto_mc.min(), duracion_proyecto_mc.max(), 300)
-ax.plot(x, norm.pdf(x, duracion_media_proyecto, desviacion_proyecto), color='navy', label='Aproximación normal (TLC)')
-ax.axvline(semana_nevada, color='red', linestyle='--', label=f'Nevada (semana {semana_nevada})')
-ax.set_xlabel('Duración del proyecto (semanas)')
-ax.legend()
-plt.show()
+from pmule import display_histograma_tikz
+display_histograma_tikz(duracion_proyecto_mc, duracion_media_proyecto, desviacion_proyecto, hasta=semana_nevada, variable='T', bins=60)
 
 # %%
 media_mc = duracion_proyecto_mc.mean()
@@ -569,6 +566,7 @@ coste_esperado.style.highlight_min(subset=['Coste total esperado (k€)'], color
 ax = coste_esperado[['Sobrecoste (k€)', 'Penalización esperada (k€)', 'Coste total esperado (k€)']].astype(float).plot(marker='o', figsize=(7, 4))
 ax.set_xlabel('Semanas reducidas')
 ax.set_ylabel('k€')
+from matplotlib import pyplot as plt
 plt.show()
 
 # %%
