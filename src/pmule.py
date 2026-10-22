@@ -1307,16 +1307,47 @@ class ProjectGraph:
             calendario.loc[activity_name, "fin_mas_tardio"] = tardios[nodo_final]
             # Holgura libre: margen sin retrasar el inicio más temprano de
             # las sucesoras.  Holgura independiente: margen garantizado aunque
-            # las predecesoras acaben lo más tarde posible.
+            # las predecesoras acaben lo más tarde posible.  Se definen por
+            # actividades (no por los sucesos del dibujo): las ficticias a la salida
+            # del suceso final no deben "absorber" la holgura.
             d = duraciones.get(activity_name)
+            sucesoras, predecesoras = self._vecinas_de_actividad(activity_name)
+            fin_proyecto = tempranos.max()
+            nat = {f"{n}": n for n in tempranos.index}
+            primero_sucesoras = min(
+                (tempranos[nat[self.nodes_from_edges[b][0]]] for b in sucesoras), default=fin_proyecto
+            )
+            ultimo_predecesoras = max(
+                (tardios[nat[self.nodes_from_edges[b][1]]] for b in predecesoras), default=0
+            )
             calendario.loc[activity_name, "H_libre"] = (
-                tempranos[nodo_final] - tempranos[nodo_inicial] - d
+                primero_sucesoras - tempranos[nodo_inicial] - d
             )
             calendario.loc[activity_name, "H_independiente"] = max(
-                0, tempranos[nodo_final] - tardios[nodo_inicial] - d
+                0, primero_sucesoras - ultimo_predecesoras - d
             )
 
         return calendario
+
+    def _vecinas_de_actividad(self, actividad):
+        """Actividades reales sucesoras y predecesoras inmediatas de ``actividad``,
+        deducidas del PERT: las que arrancan en el suceso final de ``actividad`` o en uno
+        al que se llega desde él solo por ficticias (y, al revés, las que terminan en el
+        suceso inicial o en uno desde el que se llega a él solo por ficticias)."""
+        if not hasattr(self, "_cache_vecinas"):
+            G = self.pert_graph
+            ficticias = nx.DiGraph([(u, v) for u, v, d in G.edges(data=True)
+                                    if d.get("activity", "").startswith("@")])
+            ficticias.add_nodes_from(G.nodes)
+            alcance = {n: {n} | nx.descendants(ficticias, n) for n in G.nodes}
+            reales = {a: uv for a, uv in self.nodes_from_edges.items() if not a.startswith("@")}
+            vecinas = {}
+            for a, (u, v) in reales.items():
+                sucesoras = [b for b, (x, _) in reales.items() if x in alcance[v]]
+                predecesoras = [b for b, (_, y) in reales.items() if u in alcance[y]]
+                vecinas[a] = (sucesoras, predecesoras)
+            self._cache_vecinas = vecinas
+        return self._cache_vecinas[actividad]
 
     def duration(self, durations):
         resultados_pert = self.calculate_pert(durations)
@@ -4921,6 +4952,271 @@ class ProjectGraph:
             self.display_zaderenko_pasos(durations)
 
     # ------------------------------------------------------------------
+    # Calendario del proyecto interactivo: clic en cada número
+    # ------------------------------------------------------------------
+
+    _CAL_COLUMNAS = [("dur", "Duración"), ("ES", "Inicio más temprano"), ("EF", "Fin más temprano"),
+                     ("LS", "Inicio más tardío"), ("LF", "Fin más tardío"),
+                     ("HT", "H total"), ("HL", "H libre"), ("HI", "H independiente")]
+    # Paleta propia del calendario: tonos bien separados (azul, verde oscuro, rojo oscuro,
+    # magenta, marrón, cian); el naranja queda reservado para la celda elegida.
+    _CAL_PALETA = ["blue!80!black", "green!50!black", "red!75!black",
+                   "magenta!85!black", "brown!80!black", "cyan!60!black"]
+    _CAL_HEX = {"blue!80!black": "#0000cc", "green!50!black": "#008000", "red!75!black": "#bf0000",
+                "magenta!85!black": "#d900d9", "brown!80!black": "#996633", "cyan!60!black": "#00a3a3"}
+
+    def _calendario_datos(self, durations):
+        """Por actividad real: extremos ``(u, v)``, duración y tiempos de sus sucesos."""
+        dur = self._normalize_durations(durations, dummies=True).to_dict()
+        res = self.calculate_pert(durations)
+        te = {f"{k}": v for k, v in res["nodes"]["early"].items()}
+        tl = {f"{k}": v for k, v in res["nodes"]["late"].items()}
+        orden = (list(durations.index) if isinstance(durations, pd.Series)
+                 else list(self.calendar(durations).index))
+        filas = {}
+        for act, (u, v) in self.nodes_from_edges.items():
+            if act.startswith("@"):
+                continue
+            u, v, d = f"{u}", f"{v}", dur.get(act, 0)
+            suc, pre = self._vecinas_de_actividad(act)
+            ns = sorted({self.nodes_from_edges[b][0] for b in suc}, key=str)
+            np_ = sorted({self.nodes_from_edges[b][1] for b in pre}, key=str)
+            fin = max(te.values())
+            ms = min((te[n] for n in ns), default=fin)
+            mp = max((tl[n] for n in np_), default=0)
+            filas[act] = dict(u=u, v=v, d=d, eu=te[u], ev=te[v], lu=tl[u], lv=tl[v],
+                              ES=te[u], EF=te[u] + d, LF=tl[v], LS=tl[v] - d,
+                              HT=tl[v] - te[u] - d, HL=ms - te[u] - d,
+                              HI=max(0, ms - mp - d), dur=d,
+                              ns=ns, np=np_, ms=ms, mp=mp)
+        orden = [a for a in orden if a in filas] + [a for a in filas if a not in orden]
+        return dur, te, tl, {a: filas[a] for a in orden}
+
+    def _calendario_celda(self, a, c, fila, grafo="pert", roy=None):
+        """Qué interviene en el cálculo de la celda ``(a, c)`` del calendario.
+
+        Devuelve ``dict(sim, num, res, graf, celdas, arco)``: la expresión simbólica y la
+        numérica (HTML con cada término de su color), el resultado, los valores del
+        grafo a resaltar ``[(nodo, clave, k)]`` (``k`` es el índice de color; claves
+        ``"e"``/``"l"`` en el PERT y ``"min"``/``"max"``/``"dur"`` en el Roy), las celdas
+        de la misma fila de la tabla implicadas ``[(columna, k)]`` y el índice de color
+        del arco de la actividad (PERT) o ``None``. Con ``grafo="roy"`` hace falta
+        ``roy = (mn, mx, G, etiquetas, dur)``."""
+        from html import escape as _html_escape
+        f = self._num_paso
+        S = lambda k, t: f'<span class="pmule-t" data-k="{k}"><b>{t}</b></span>'
+        nombre = dict(self._CAL_COLUMNAS)[c]
+        d = fila["d"]
+        if grafo == "pert":
+            u, v = fila["u"], fila["v"]
+            eu, ev, lu, lv = (f"t<sub>{u}</sub>", f"t<sub>{v}</sub>", f"t*<sub>{u}</sub>", f"t*<sub>{v}</sub>")
+            if c == "dur":
+                return dict(sim="d", num=None, res=d, graf=[], celdas=[], arco=0)
+            if c == "ES":
+                return dict(sim=S(0, eu), num=None, res=fila[c], graf=[(u, "e", 0)], celdas=[], arco=None)
+            if c == "EF":
+                return dict(sim=S(0, eu) + " + " + S(1, "d"), num=S(0, f(fila["eu"])) + " + " + S(1, f(d)),
+                            res=fila[c], graf=[(u, "e", 0)], celdas=[("ES", 0), ("dur", 1)], arco=1)
+            if c == "LF":
+                return dict(sim=S(0, lv), num=None, res=fila[c], graf=[(v, "l", 0)], celdas=[], arco=None)
+            if c == "LS":
+                return dict(sim=S(0, lv) + " − " + S(1, "d"), num=S(0, f(fila["lv"])) + " − " + S(1, f(d)),
+                            res=fila[c], graf=[(v, "l", 0)], celdas=[("LF", 0), ("dur", 1)], arco=1)
+            if c == "HT":
+                return dict(sim=S(0, lv) + " − " + S(1, eu) + " − " + S(2, "d"),
+                            num=S(0, f(fila["lv"])) + " − " + S(1, f(fila["eu"])) + " − " + S(2, f(d)),
+                            res=fila[c], graf=[(v, "l", 0), (u, "e", 1)],
+                            celdas=[("LF", 0), ("ES", 1), ("dur", 2)], arco=2)
+            ns, np_ = fila["ns"], fila["np"]
+            lista = lambda nodos, pre_: ", ".join(f"{pre_}<sub>{n}</sub>" for n in nodos)
+            ms_txt = (lista(ns, "t") if ns else "T")
+            mn_ = lambda txt: f"mín({txt})" if len(ns) > 1 else txt
+            ms_num = ", ".join(f(roy[0][n]) for n in ns) if ns else f(fila["ms"])
+            if c == "HL":
+                return dict(sim=mn_(S(0, ms_txt)) + " − " + S(1, eu) + " − " + S(2, "d"),
+                            num=mn_(S(0, ms_num)) + " − " + S(1, f(fila["eu"])) + " − " + S(2, f(d)),
+                            res=fila[c], graf=[(n, "e", 0) for n in ns] + [(u, "e", 1)],
+                            celdas=[("ES", 1), ("dur", 2)], arco=2)
+            mx_ = lambda txt: f"máx({txt})" if len(np_) > 1 else txt
+            mp_txt = lista(np_, "t*") if np_ else "0"
+            mp_num = ", ".join(f(roy[1][n]) for n in np_) if np_ else "0"
+            return dict(sim="máx(0, " + mn_(S(0, ms_txt)) + " − " + mx_(S(1, mp_txt)) + " − " + S(2, "d") + ")",
+                        num="máx(0, " + mn_(S(0, ms_num)) + " − " + mx_(S(1, mp_num)) + " − " + S(2, f(d)) + ")",
+                        res=fila[c], graf=[(n, "e", 0) for n in ns] + [(n, "l", 1) for n in np_],
+                        celdas=[("dur", 2)], arco=2)
+        # grafo Roy: en cada actividad, T = tiempo mínimo, T* = tiempo máximo (inicio más tardío)
+        mn, mx, G, et, dr = roy
+        T = lambda n: f"T<sub>{_html_escape(f'{et.get(n, n)}')}</sub>"
+        Ts = lambda n: f"T*<sub>{_html_escape(f'{et.get(n, n)}')}</sub>"
+        suc = sorted(f"{x}" for x in G.successors(a))
+        pre = sorted(f"{x}" for x in G.predecessors(a))
+        if c == "dur":
+            return dict(sim="d", num=None, res=d, graf=[(a, "dur", 0)], celdas=[], arco=None)
+        if c == "ES":
+            return dict(sim=S(0, T(a)), num=None, res=fila[c], graf=[(a, "min", 0)], celdas=[], arco=None)
+        if c == "EF":
+            return dict(sim=S(0, T(a)) + " + " + S(1, "d"), num=S(0, f(mn[a])) + " + " + S(1, f(d)),
+                        res=fila[c], graf=[(a, "min", 0), (a, "dur", 1)], celdas=[("ES", 0), ("dur", 1)], arco=None)
+        if c == "LS":
+            return dict(sim=S(0, Ts(a)), num=None, res=fila[c], graf=[(a, "max", 0)], celdas=[], arco=None)
+        if c == "LF":
+            return dict(sim=S(0, Ts(a)) + " + " + S(1, "d"), num=S(0, f(mx[a])) + " + " + S(1, f(d)),
+                        res=fila[c], graf=[(a, "max", 0), (a, "dur", 1)], celdas=[("LS", 0), ("dur", 1)], arco=None)
+        if c == "HT":
+            return dict(sim=S(0, Ts(a)) + " − " + S(1, T(a)), num=S(0, f(mx[a])) + " − " + S(1, f(mn[a])),
+                        res=fila[c], graf=[(a, "max", 0), (a, "min", 1)], celdas=[("LS", 0), ("ES", 1)], arco=None)
+        ms = ", ".join(T(s) for s in suc)
+        mv = ", ".join(f(mn[s]) for s in suc)
+        graf_s = [(s, "min", 0) for s in suc]
+        val_s = min(mn[s] for s in suc)
+        if c == "HL":
+            val = val_s - mn[a] - d
+            return dict(sim="mín(" + S(0, ms) + ") − " + S(1, T(a)) + " − " + S(2, "d"),
+                        num="mín(" + S(0, mv) + ") − " + S(1, f(mn[a])) + " − " + S(2, f(d)),
+                        res=val, graf=graf_s + [(a, "min", 1), (a, "dur", 2)],
+                        celdas=[("ES", 1), ("dur", 2)], arco=None)
+        ps = ", ".join(f"{Ts(p)} + d<sub>{_html_escape(f'{et.get(p, p)}')}</sub>" for p in pre)
+        pv = ", ".join(f"{f(mx[p])} + {f(dr[p])}" for p in pre)
+        graf_p = [(p, cl, 1) for p in pre for cl in ("max", "dur")]
+        val = max(0, val_s - max(mx[p] + dr[p] for p in pre) - d)
+        return dict(res=val, sim="máx(0, mín(" + S(0, ms) + ") − máx(" + S(1, ps) + ") − " + S(2, "d") + ")",
+                    num="máx(0, mín(" + S(0, mv) + ") − máx(" + S(1, pv) + ") − " + S(2, f(d)) + ")",
+                    graf=graf_s + graf_p + [(a, "dur", 2)], celdas=[("dur", 2)], arco=None)
+
+    def _calendario_graficos(self, durations, escala, grafo):
+        """Devuelve ``(dibuja, filas, extra)``: ``dibuja(valores, arcos, actual)`` da el
+        ``tikzpicture`` del grafo con lo indicado resaltado, ``filas`` el calendario de
+        :meth:`_calendario_datos` y ``extra`` los datos que necesita :meth:`_calendario_celda`."""
+        dur, te, tl, filas = self._calendario_datos(durations)
+        if grafo == "pert":
+            H = self.calculate_pert(durations)["activities"]["H_total"]
+            trazado = self._trazado_pert(dur, escala)
+            pos = trazado["pos"] if trazado else self._pert_posiciones(escala, None)
+
+            def dibuja(valores=None, arcos=None, actual=None):
+                cuerpo = self._pert_fotograma(
+                    pos, dur, H, escala, dict(te), dict(tl), arcos_activos=arcos or (), texto="",
+                    trazado=trazado, colores_valores=valores, negrita=set(valores or {}))
+                return "\n".join([r"\begin{tikzpicture}[>=stealth]", cuerpo, r"\end{tikzpicture}"])
+            return dibuja, filas, (te, tl)
+        if grafo != "roy":
+            raise ValueError("grafo debe ser 'pert' o 'roy'")
+        fotograma, mn, mx, G, et = self.plot_tikz_roy_pasos(durations, escala=escala, _fotograma=True)
+        dr = self._normalize_durations(durations, dummies=False).to_dict()
+        dr["start"] = dr["finish"] = 0
+
+        def dibuja(valores=None, arcos=None, actual=None):
+            cuerpo = fotograma(dict(mn), dict(mx), actual, arcos or (), "",
+                               colores_valores=valores, negrita=set(valores or {}))
+            return "\n".join([r"\begin{tikzpicture}[>=stealth]", cuerpo, r"\end{tikzpicture}"])
+        return dibuja, filas, (mn, mx, G, et, dr)
+
+    def plot_tikz_calendario(self, durations, escala: float = 1.0, grafo: str = "pert"):
+        """Imágenes TikZ (una neutra y una por celda del calendario) del grafo PERT o Roy
+        con los datos que intervienen en el cálculo de cada número resaltados con los
+        colores de :attr:`_CAL_PALETA`. Devuelve ``(codigos, indice, datos)``: la lista
+        de ``tikzpicture``, ``{(actividad, columna): posición en la lista}`` y
+        ``(filas, extra, celdas)`` con el calendario, los datos del Roy y el detalle de
+        cada celda (véase :meth:`_calendario_celda`)."""
+        dibuja, filas, extra = self._calendario_graficos(durations, escala, grafo)
+        paleta = lambda k: self._CAL_PALETA[k % len(self._CAL_PALETA)]
+        codigos, vistos, indice, celdas = [dibuja()], {}, {}, {}
+        vistos[codigos[0]] = 0
+        for a, fila in filas.items():
+            for c, _ in self._CAL_COLUMNAS:
+                info = self._calendario_celda(a, c, fila, grafo, extra)
+                celdas[(a, c)] = info
+                valores = {(n, cl): paleta(k) for n, cl, k in info["graf"]}
+                if grafo == "pert":
+                    col_arco = paleta(info["arco"]) if info["arco"] is not None else "orange!80!black"
+                    arcos = {(fila["u"], fila["v"]): col_arco}
+                    cod = dibuja(valores, arcos)
+                else:
+                    G = extra[2]
+                    arcos = {}
+                    for n, cl, k in info["graf"]:
+                        if n != a and cl == "min" and (a, n) in G.edges:
+                            arcos[(a, n)] = paleta(k)
+                        elif n != a and (n, a) in G.edges:
+                            arcos[(n, a)] = paleta(k)
+                    cod = dibuja(valores, arcos, a)
+                if cod not in vistos:
+                    vistos[cod] = len(codigos)
+                    codigos.append(cod)
+                indice[(a, c)] = vistos[cod]
+        return codigos, indice, (filas, extra, celdas)
+
+    def calendario_html(self, durations, escala: float = 1.0, grafo: str = "pert") -> str:
+        """Calendario del proyecto como tabla HTML interactiva junto al grafo: al hacer clic
+        en un número se iluminan en el grafo y en la tabla los datos que intervienen en su
+        cálculo (con los colores de las flechas) y debajo aparece la fórmula con los
+        valores; otro clic en la misma celda lo quita. ``grafo``: ``"pert"`` (por defecto)
+        o ``"roy"``."""
+        import base64, hashlib, html as _html, json
+        codigos, indice, (filas, extra, celdas) = self.plot_tikz_calendario(durations, escala, grafo)
+        svgs = _svgs_de_tikz(codigos)
+        f = self._num_paso
+        uid = "pmc" + hashlib.md5((grafo + "".join(codigos)).encode("utf-8")).hexdigest()[:10]
+        imgs = "".join(
+            f'<img alt="grafo" class="pmule-cal-img" style="display:{"block" if k == 0 else "none"};'
+            f'margin:0 auto;width:100%;max-width:1100px;height:auto" '
+            f'src="data:image/svg+xml;base64,{base64.b64encode(s.encode("utf8")).decode("ascii")}">'
+            for k, s in enumerate(svgs))
+        hexcol = lambda k: self._CAL_HEX.get(self._CAL_PALETA[k % len(self._CAL_PALETA)], "#000")
+        import re
+        pinta = lambda t: re.sub(r'<span class="pmule-t" data-k="(\d+)">',
+                                 lambda m: f'<span style="color:{hexcol(int(m.group(1)))}">', t)
+        nombres = dict(self._CAL_COLUMNAS)
+        datos = {}
+        for (a, c), info in celdas.items():
+            cab = f"{nombres[c]}({_html.escape(a)}) = "
+            if info["num"] is None:
+                texto = cab + pinta(info["sim"]) + (f" = <b>{f(info['res'])}</b>" if c != "dur" else "")
+                if c == "dur":
+                    texto = cab + f"<b>{f(info['res'])}</b>"
+            else:
+                texto = cab + pinta(info["sim"]) + " = " + pinta(info["num"]) + f" = <b>{f(info['res'])}</b>"
+            datos[f"{a}|{c}"] = {"i": indice[(a, c)], "f": texto,
+                                 "t": [[a, col, hexcol(k)] for col, k in info["celdas"]]}
+        celda = "padding:.25em .7em;text-align:center;cursor:pointer;border:1px solid #ddd"
+        cab = "".join(f'<th style="padding:.3em .6em;border-bottom:2px solid #444">{n}</th>'
+                      for n in ["Actividad"] + [n for _, n in self._CAL_COLUMNAS])
+        filas_html = []
+        for a, fila in filas.items():
+            tds = "".join(f'<td class="pmule-cal-td" data-a="{_html.escape(a)}" data-c="{c}" '
+                          f'style="{celda}" onclick="pmuleCal(this)">{f(fila[c])}</td>'
+                          for c, _ in self._CAL_COLUMNAS)
+            filas_html.append(f'<tr><td style="padding:.25em .7em;font-weight:bold;text-align:center">{_html.escape(a)}</td>{tds}</tr>')
+        ayuda = "Haz clic en un número de la tabla para ver cómo se calcula."
+        return (
+            f'<div id="{uid}" class="pmule-cal" style="margin:1em 0">'
+            f'<div>{imgs}</div>'
+            f'<div class="pmule-cal-formula" data-ayuda="{ayuda}" style="text-align:center;min-height:2.4em;'
+            f'margin:.6em 0;font-size:1.05em">{ayuda}</div>'
+            f'<table style="border-collapse:collapse;margin:0 auto"><tr>{cab}</tr>{"".join(filas_html)}</table></div>'
+            f'<script>window.PMULE_CAL = window.PMULE_CAL || {{}}; PMULE_CAL["{uid}"] = {json.dumps(datos, ensure_ascii=False)};'
+            'window.pmuleCal = window.pmuleCal || function(td) {'
+            'var box = td.closest(".pmule-cal"), D = window.PMULE_CAL[box.id], clave = td.getAttribute("data-a") + "|" + td.getAttribute("data-c");'
+            'var imgs = box.querySelectorAll(".pmule-cal-img"), F = box.querySelector(".pmule-cal-formula"), cs = box.querySelectorAll(".pmule-cal-td");'
+            'for (var i = 0; i < cs.length; i++) { cs[i].style.background = ""; cs[i].style.outline = ""; cs[i].style.color = ""; cs[i].style.fontWeight = ""; }'
+            'var mostrar = function(k) { for (var i = 0; i < imgs.length; i++) imgs[i].style.display = (i === k ? "block" : "none"); };'
+            'if (box.getAttribute("data-sel") === clave) { box.removeAttribute("data-sel"); mostrar(0); F.innerHTML = F.getAttribute("data-ayuda"); return; }'
+            'box.setAttribute("data-sel", clave); var e = D[clave]; mostrar(e.i); F.innerHTML = e.f;'
+            'td.style.background = "#fde3cc"; td.style.outline = "2px solid #cc6600";'
+            'for (var j = 0; j < e.t.length; j++) { var o = box.querySelector(\'.pmule-cal-td[data-a="\' + e.t[j][0] + \'"][data-c="\' + e.t[j][1] + \'"]\');'
+            'if (o) { o.style.outline = "2px solid " + e.t[j][2]; o.style.color = e.t[j][2]; o.style.fontWeight = "bold"; } } };</script>')
+
+    def display_calendario(self, durations, escala: float = 1.0, grafo: str = "pert") -> None:
+        """Muestra en un cuaderno el calendario interactivo (:meth:`calendario_html`) con
+        el grafo ``"pert"`` o ``"roy"``; sin LaTeX, cae en el DataFrame de :meth:`calendar`."""
+        try:
+            display(HTML(self.calendario_html(durations, escala, grafo)))
+        except (FileNotFoundError, RuntimeError) as e:
+            import warnings
+            warnings.warn(f"No se pudo generar el calendario interactivo ({e}); se muestra la tabla.")
+            display(self.calendar(durations))
+
+    # ------------------------------------------------------------------
     # Grafo Roy paso a paso (docencia)
     # ------------------------------------------------------------------
 
@@ -5042,7 +5338,7 @@ class ProjectGraph:
                             escala: float = 1.0, posiciones: dict = None,
                             textos: dict = None, etiquetas: dict = None,
                             layout: str = "auto", estatico: bool = False,
-                            con_duracion: bool = True):
+                            con_duracion: bool = True, _fotograma: bool = False):
         """Dibujo del grafo Roy paso a paso (código TikZ).
 
         Como :meth:`plot_tikz_pasos`, pero con las actividades en los nodos:
@@ -5176,6 +5472,10 @@ class ProjectGraph:
                 L.append(rf"  \node[anchor=north, font=\small] at ({x_mid:.2f}cm, {y_min - 1.0:.2f}cm) {{{texto}}};")
             return "\n".join(L)
 
+        if _fotograma:                     # uso interno: la función que dibuja un fotograma
+            mn = {f"{r['nodo']}": r["valor"] for _, r in pasos["minimos"].iterrows()}
+            mx = {f"{r['nodo']}": r["valor"] for _, r in pasos["maximos"].iterrows()}
+            return fotograma, mn, mx, G, et
         if estatico:                       # un solo dibujo, sin texto (grafo Roy del resultado)
             if con_duracion:
                 mn = {f"{r['nodo']}": r["valor"] for _, r in pasos["minimos"].iterrows()}
