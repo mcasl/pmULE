@@ -338,7 +338,7 @@ display(Markdown(pregunta_2))
 #| label: tbl-ackoff
 tabla_ack, pasos_ack, dur_ack, margen = proyecto.ackoff(durations=datos_proyecto['duration'],
     min_durations=datos_proyecto['cap_duration'], costs=datos_proyecto['ucr'], reduction=2, report=False)
-proyecto.display_ackoff_pasos(
+proyecto.display_ackoff_pasos_tikz(
     durations=datos_proyecto['duration'],
     min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'],

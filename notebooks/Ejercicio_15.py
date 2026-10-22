@@ -375,7 +375,7 @@ ackoff, best_option, duration, available = proyecto_simplificado.ackoff(duration
                             costs         = datos_proyecto_simplificado['cur'],
                             reduction=5
                             )
-proyecto_simplificado.display_ackoff_pasos(
+proyecto_simplificado.display_ackoff_pasos_tikz(
     durations     = datos_proyecto_simplificado['duracion'],
     min_durations = datos_proyecto_simplificado['duracion_tope'],
     costs         = datos_proyecto_simplificado['cur'],

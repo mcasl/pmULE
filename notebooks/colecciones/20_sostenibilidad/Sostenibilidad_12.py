@@ -278,7 +278,7 @@ display(Markdown(pregunta_1))
 tabla_1, pasos_1, duraciones_1, margen_1 = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'], reduction=semanas_pedidas, report=False)
-proyecto.display_ackoff_pasos(
+proyecto.display_ackoff_pasos_tikz(
     durations=datos_proyecto['duration'],
     min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'],
@@ -306,7 +306,7 @@ display(Markdown(pregunta_2))
 tabla_2, pasos_2, duraciones_2, margen_2 = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr_total'], reduction=semanas_pedidas, report=False)
-proyecto.display_ackoff_pasos(
+proyecto.display_ackoff_pasos_tikz(
     durations=datos_proyecto['duration'],
     min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr_total'],

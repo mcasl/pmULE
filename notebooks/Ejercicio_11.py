@@ -241,7 +241,7 @@ ackoff, best_option, duration, available =proyecto.ackoff(durations=datos_proyec
 # %%
 #| tbl-cap: "Cuadro del algoritmo de Ackoff Sasieni"
 #| label: tbl-ackoffƒ
-proyecto.display_ackoff_pasos(
+proyecto.display_ackoff_pasos_tikz(
     durations=datos_proyecto['duracion'],
     min_durations=datos_proyecto['duracion_tope'],
     costs=datos_proyecto['cur'],
