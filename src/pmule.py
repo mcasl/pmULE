@@ -3364,6 +3364,151 @@ class ProjectGraph:
         botones, :meth:`ackoff_pasos_html`)."""
         display(HTML(self.ackoff_pasos_html(durations, min_durations, costs, reduction)))
 
+    def ackoff_pasos_tikz_html(self, durations, min_durations, costs, reduction=100,
+                               escala: float = 1.0) -> str:
+        """Igual que :meth:`ackoff_pasos_html` pero con la tabla dibujada en TikZ (celdas
+        coloreadas, rejilla fina y números nítidos); mismos fotogramas y mismas reglas:
+        verde = máximo de cada columna de duraciones, amarillo = actividad acortada,
+        melocotón = celda de decisión (ruta crítica × actividad acortada), gris claro =
+        pasos anteriores y actividades que ya no pueden reducirse."""
+        import base64
+        tabla, mejores, _, _ = self.ackoff(durations, min_durations, costs, reduction=reduction)
+        df = tabla.data
+        costes = pd.Series(costs, dtype=float) if not isinstance(costs, pd.Series) else costs.astype(float)
+        actividades = list(self.actual_activities)
+        rutas = [i for i in df.index if isinstance(i, str)]
+        pasos = [c for c in df.columns if not isinstance(c, str)]
+        k = len(pasos) - 1
+        na, nr = len(actividades), len(rutas)
+
+        def num(v):
+            if pd.isna(v):
+                return ""
+            if np.isinf(v):
+                return r"$\infty$" if v > 0 else r"$-\infty$"
+            return f"{int(v)}" if float(v) == int(v) else f"{v:g}"
+
+        def tex(t):
+            for a, b in (("\\", r"\textbackslash{}"), ("_", r"\_"), ("&", r"\&"), ("%", r"\%"), ("#", r"\#")):
+                t = t.replace(a, b)
+            return t
+
+        def criticas(r):
+            col = df.loc[rutas, r]
+            return [x for x in rutas if col[x] == col.max()]
+
+        W, H, X0, GAP = 0.95, 0.62, 2.3, 0.45
+        cx_act = lambda i: X0 + (i + 0.5) * W
+        cx_paso = lambda j: X0 + na * W + GAP + (j + 0.5) * W
+        cy = lambda r: -(r + 0.5) * H
+        ancho = X0 + na * W + GAP + (k + 1) * W
+        alto = (1 + nr + k + 1) * H
+        VERDE, VERDE_V = "green!45!lime!60", "green!15"
+        AMARILLO, AMARILLO_V = "yellow!90", "yellow!25"
+        DECISION = "orange!28"
+        GRIS = "black!28"
+
+        def fotograma(vis, actuan_rutas=(), actuan_acts=(), amarillo_hasta=0, verde=None, apagar=True):
+            viejo = lambda j: apagar and j < vis - 2
+            fila_decision = pasos[max(vis - 2, 0)]
+            agotada = {a: apagar and df.loc[fila_decision, a] == 0 for a in actividades}
+            fondo, texto, rayas = [], [], []
+
+            def celda(x, y, txt, color=None, fondo_c=None, bold=False):
+                if fondo_c:
+                    fondo.append(rf"\fill[{fondo_c}, rounded corners=1.5pt] ({x - W / 2 + .04:.3f},{y - H / 2 + .04:.3f}) "
+                                 rf"rectangle ({x + W / 2 - .04:.3f},{y + H / 2 - .04:.3f});")
+                if txt != "":
+                    estilo = ("text=" + color + "," if color else "") + ("font=\\bfseries," if bold else "")
+                    texto.append(rf"\node[{estilo}] at ({x:.3f},{y:.3f}) {{{txt}}};")
+
+            celda(1.0, cy(0), r"\textit{ruta} \textbackslash{} \textit{act.}", bold=False)
+            for i, a in enumerate(actividades):
+                celda(cx_act(i), cy(0), tex(str(a)), GRIS if agotada[a] else None, bold=True)
+            for j in range(k + 1):
+                if j < vis:
+                    celda(cx_paso(j), cy(0), f"{pasos[j]}", GRIS if viejo(j) else None, bold=True)
+            for n, ruta in enumerate(rutas):
+                y = cy(1 + n)
+                celda(1.0, y, tex(str(ruta)), bold=True)
+                for i, a in enumerate(actividades):
+                    v = df.loc[ruta, a]
+                    cruce = ruta in actuan_rutas and a in actuan_acts and pd.notna(v)
+                    celda(cx_act(i), y, num(v), GRIS if agotada[a] else None, DECISION if cruce else None)
+                for j in range(min(vis, k + 1)):
+                    v = df.loc[ruta, pasos[j]]
+                    es_max = j < (vis if verde is None else verde) and v == df.loc[rutas, pasos[j]].max()
+                    celda(cx_paso(j), y, num(v), GRIS if viejo(j) else None,
+                          (VERDE_V if viejo(j) else VERDE) if es_max else None)
+            for j in range(min(vis, k + 1)):
+                y = cy(1 + nr + j)
+                celda(1.0, y, f"{pasos[j]}", GRIS if viejo(j) else None, bold=True)
+                for i, a in enumerate(actividades):
+                    amar = j < amarillo_hasta and a in mejores.get(pasos[j], [])
+                    celda(cx_act(i), y, num(df.loc[pasos[j], a]), GRIS if (viejo(j) or agotada[a]) else None,
+                          (AMARILLO_V if (viejo(j) or agotada[a]) else AMARILLO) if amar else None)
+            # rejilla: caja de costes, separadores finos por fila y línea bajo la cabecera
+            y_nr = -(1 + nr) * H
+            # (``grid`` se ancla a múltiplos del paso desde el origen: las líneas van explícitas)
+            for i in range(1, na):
+                rayas.append(rf"\draw[black!25, very thin] ({X0 + i * W:.3f},{-H}) -- ({X0 + i * W:.3f},{y_nr});")
+            for n in range(1, nr):
+                rayas.append(rf"\draw[black!25, very thin] ({X0},{-(1 + n) * H:.3f}) -- ({X0 + na * W},{-(1 + n) * H:.3f});")
+            rayas.append(rf"\draw[black!70, thin] ({X0},{-H}) rectangle ({X0 + na * W},{y_nr});")
+            rayas.append(rf"\draw[black!70] (0,{-H}) -- ({ancho},{-H});")
+            filas_vis = 1 + nr + min(vis, k + 1)          # las filas aún vacías no se dibujan
+            rayas.append(rf"\draw[black!70] ({X0 - 0.04},0) -- ({X0 - 0.04},{-filas_vis * H});")
+            for r in range(2 + nr, filas_vis):
+                rayas.append(rf"\draw[black!12] (0,{-r * H}) -- ({ancho},{-r * H});")
+            cuerpo = "\n".join(fondo + rayas + texto)
+            return (rf"\begin{{tikzpicture}}[x={escala}cm,y={escala}cm,font=\small]" + "\n"
+                    rf"\useasboundingbox (-0.1,0.1) rectangle ({ancho + 0.1:.3f},{-alto - 0.1:.3f});" + "\n"
+                    + cuerpo + "\n\\end{tikzpicture}")
+
+        pies, codigos = [], []
+        codigos.append(fotograma(k + 1, amarillo_hasta=k, apagar=False))
+        pies.append("Algoritmo de Ackoff-Sasieni: tabla completa. Pulse «siguiente» para ver cómo se construye.")
+        codigos.append(fotograma(1, verde=0))
+        pies.append("Datos: coste unitario de reducción de cada actividad en las rutas que la contienen, "
+                    "duración inicial de cada ruta (columna 0) y periodos que puede reducirse cada actividad (fila 0).")
+        for r in range(k):
+            crit = criticas(pasos[r])
+            dur = df.loc[crit[0], pasos[r]]
+            cortadas = mejores.get(pasos[r], [])
+            coste = float(sum(costes[a] for a in cortadas))
+            nueva = df.loc[rutas, pasos[r + 1]].max()
+            t = (f"Iteración {pasos[r]}: rutas críticas {', '.join(map(str, crit))} (duración {num(dur)}); "
+                 f"se acorta un periodo la combinación de menor coste: {', '.join(cortadas)} (coste {num(coste)}). "
+                 f"Resultado: periodos disponibles (fila {pasos[r + 1]}) y duración de las rutas "
+                 f"(columna {pasos[r + 1]}); el proyecto dura {num(nueva)}.").replace("$\\infty$", "∞")
+            if r + 1 == k:
+                crit_f = criticas(pasos[k])
+                libres = df.loc[pasos[k], actividades]
+                reducible = all(any(pd.notna(df.loc[x, a]) and libres[a] > 0 for a in actividades) for x in crit_f)
+                t += (" Se alcanzó el número de reducciones pedido." if reducible
+                      else " Alguna ruta crítica ya no puede acortarse más: fin del algoritmo.")
+            codigos.append(fotograma(r + 2, actuan_rutas=crit, actuan_acts=cortadas, amarillo_hasta=r + 1, verde=r + 1))
+            pies.append(t)
+        import html as _h
+        fotos = []
+        for svg, pie in zip(_svgs_de_tikz(codigos), pies):
+            b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
+            fotos.append('<img alt="paso" style="display:block;margin:0 auto;width:100%;max-width:1000px;height:auto" '
+                         f'src="data:image/svg+xml;base64,{b64}">'
+                         f'<p style="text-align:center;margin-top:.5em">{_h.escape(pie)}</p>')
+        return _html_pasos(fotos, inicio=-1)
+
+    def display_ackoff_pasos_tikz(self, durations, min_durations, costs, reduction=100,
+                                  escala: float = 1.0) -> None:
+        """Muestra el algoritmo de Ackoff-Sasieni paso a paso con la tabla dibujada en TikZ
+        (:meth:`ackoff_pasos_tikz_html`); sin LaTeX, cae en :meth:`display_ackoff_pasos`."""
+        try:
+            display(HTML(self.ackoff_pasos_tikz_html(durations, min_durations, costs, reduction, escala)))
+        except (FileNotFoundError, RuntimeError) as e:
+            import warnings
+            warnings.warn(f"No se pudo generar el visor TikZ ({e}); se usa el visor HTML.")
+            self.display_ackoff_pasos(durations, min_durations, costs, reduction)
+
     def incidence_matrix(self):
         nodos_ordenados = self.nodes  # orden topológico (no lexicográfico)
         aristas_sin_ordenar = self.pert_graph.edges

@@ -524,7 +524,7 @@ ackoff, best_option, duracion_ackoff, disponibles = proyecto.ackoff(durations=du
                                                                     min_durations=datos_proyecto['cap_duration'],
                                                                     costs=datos_proyecto['ucr'],
                                                                     reduction=semanas_necesarias)
-proyecto.display_ackoff_pasos(
+proyecto.display_ackoff_pasos_tikz(
     durations=duraciones_medias,
     min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'],

@@ -249,7 +249,7 @@ ackoff, best_option, duration, available = proyecto.ackoff(durations=datos_proye
 # %%
 #| tbl-cap: "Cálculo de la reducción de la duración del proyecto mediante el algoritmo de Ackoff Sasieni"
 #| label: tbl-ackoff
-proyecto.display_ackoff_pasos(
+proyecto.display_ackoff_pasos_tikz(
     durations=datos_proyecto['duration'],
     min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'],
