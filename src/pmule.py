@@ -3270,19 +3270,24 @@ class ProjectGraph:
             return [x for x in rutas if col[x] == col.max()]
 
         SOMBRA = "background:#fde3cc;"          # celdas ruta crítica × actividad acortada
+        APAGADO = "color:#c4c4c4;"              # lo que ya no interviene en la decisión
         linea = "border-bottom:1px solid #ccc;"
         rejilla = "border:1px solid #000;"
 
-        def fotograma(vis, texto, actuan_rutas=(), actuan_acts=(), amarillo_hasta=0, verde=None):
+        def fotograma(vis, texto, actuan_rutas=(), actuan_acts=(), amarillo_hasta=0, verde=None, apagar=True):
             """``vis``: pasos visibles (columnas y filas 0..vis-1); se sombrean las rutas
             críticas y las actividades que se acortan (``actuan_*``; solo sus celdas de cruce); en verde el máximo de
             cada una de las ``verde`` primeras columnas (por defecto, todas las visibles); en amarillo, las actividades acortadas de las filas
             anteriores a ``amarillo_hasta``."""
             borde = "border-bottom:1px solid #444"
             sep = ";border-right:1px solid #444"
+            # pasos anteriores al de la decisión (fila y columna P_j con j < vis-2) y
+            # actividades que ya no pueden reducirse (sin periodos en la última fila visible)
+            viejo = lambda j: APAGADO if apagar and j < vis - 2 else ""
+            agotada = {a: (APAGADO if apagar and df.loc[pasos[vis - 1], a] == 0 else "") for a in actividades}
             cab = ['<th style="' + borde + sep + '">ruta \\ act.</th>']
-            cab += [f'<th style="{borde}">{_h.escape(str(a))}</th>' for a in actividades]
-            cab += [f'<th style="{borde}">' + (f"{pasos[j]}" if j < vis else "&nbsp;") + "</th>"
+            cab += [f'<th style="{borde};{agotada[a]}">{_h.escape(str(a))}</th>' for a in actividades]
+            cab += [f'<th style="{borde};{viejo(j)}">' + (f"{pasos[j]}" if j < vis else "&nbsp;") + "</th>"
                     for j in range(k + 1)]
             filas = ["<tr>" + "".join(cab) + "</tr>"]
             for ruta in rutas:
@@ -3291,36 +3296,41 @@ class ProjectGraph:
                           f'{_h.escape(str(ruta))}</td>']
                 for a in actividades:
                     sombra = SOMBRA if (fila_actua and a in actuan_acts and pd.notna(df.loc[ruta, a])) else ""
-                    celdas.append(f'<td style="{rejilla}{sombra}">{num(df.loc[ruta, a])}</td>')
+                    celdas.append(f'<td style="{rejilla}{sombra}{agotada[a]}">{num(df.loc[ruta, a])}</td>')
                 for j in range(k + 1):
                     if j < vis:
                         v = df.loc[ruta, pasos[j]]
                         estilo = ("background:#adff2f;" if j < (vis if verde is None else verde)
-                                  and v == df.loc[rutas, pasos[j]].max() else "")
+                                  and v == df.loc[rutas, pasos[j]].max() else "") + viejo(j)
                         celdas.append(f'<td style="{linea}{estilo}">{num(v)}</td>')
                     else:
                         celdas.append(f'<td style="{linea}"></td>')
                 filas.append("<tr>" + "".join(celdas) + "</tr>")
             for j in range(k + 1):
-                celdas = [f'<td style="font-weight:bold{sep};{linea}">'
+                celdas = [f'<td style="font-weight:bold{sep};{linea}{viejo(j)}">'
                           + (f"{pasos[j]}" if j < vis else "&nbsp;") + "</td>"]
                 for a in actividades:
                     if j < vis:
                         v = df.loc[pasos[j], a]
                         estilo = ("background:#ffff00;" if (j < amarillo_hasta and a in mejores.get(pasos[j], []))
-                                  else "")
+                                  else "") + viejo(j) + agotada[a]
                     else:
                         v, estilo = float("nan"), ""
                     celdas.append(f'<td style="{linea}{estilo}">{num(v)}</td>')
                 celdas += [f'<td style="{linea}"></td>'] * (k + 1)
                 filas.append("<tr>" + "".join(celdas) + "</tr>")
-            return ('<style>.pmule-ackoff td,.pmule-ackoff th{padding:.12em .55em;min-width:1.6em}</style>'
+            return ('<style>.pmule-ackoff td,.pmule-ackoff th{padding:.12em .55em;min-width:1.6em}'
+                    # sin el fondo gris alterno del tema (rayado de filas)
+                    'table.pmule-ackoff.pmule-ackoff>tbody>tr:nth-of-type(n)>td,'
+                    'table.pmule-ackoff.pmule-ackoff>thead>tr>th,'
+                    'table.pmule-ackoff.pmule-ackoff>tbody>tr:nth-of-type(n)>th'
+                    '{background-color:transparent;box-shadow:none;--bs-table-accent-bg:transparent}</style>'
                     '<table class="pmule-ackoff" style="border-collapse:collapse;text-align:center;margin:0 auto">'
                     + "".join(filas) + "</table>"
                     f'<p style="text-align:center;margin-top:.5em">{texto}</p>')
 
         fotos = [fotograma(k + 1, "Algoritmo de Ackoff-Sasieni: tabla completa. Pulse «siguiente» para ver cómo se construye.",
-                           amarillo_hasta=k)]
+                           amarillo_hasta=k, apagar=False)]
         fotos.append(fotograma(1, "Datos: coste unitario de reducción de cada actividad en las rutas que la contienen, "
                                   "duración inicial de cada ruta (columna 0) y periodos que puede reducirse cada actividad (fila 0).",
                                verde=0))
