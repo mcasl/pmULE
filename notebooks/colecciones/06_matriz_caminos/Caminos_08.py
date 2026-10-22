@@ -267,7 +267,7 @@ proyecto.display_roy_construccion(tabla=prelaciones)
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
 R = proyecto.path_matrix(dummies=False)
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("roy")
 
 # %% [markdown]
 # ## Apartado 2

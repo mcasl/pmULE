@@ -269,7 +269,7 @@ display(Markdown(pregunta_1))
 # %%
 #| tbl-cap: "Matriz de rutas R"
 #| label: tbl-R
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %%
 U, S, Vt = np.linalg.svd(R.values.astype(float), full_matrices=False)

@@ -145,7 +145,7 @@ display(Markdown(pregunta_1))
 # %%
 #| tbl-cap: "Cuadro de prelaciones expandido"
 #| label: tbl-MatrizPrelaciones
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %% [markdown]
 # ## Apartado 2

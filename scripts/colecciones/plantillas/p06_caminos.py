@@ -114,7 +114,7 @@ def _base(k, rng):
         celdas += apartado(ap); ap += 1
         celdas.append(code('#| tbl-cap: "Matriz de caminos"\n#| label: tbl-matrizCaminos\n'
                            "path_matrix = proyecto.path_matrix(dummies=False)\n"
-                           "proyecto.display_path_matrix(dummies=False)"))
+                           "proyecto.display_rutas('pert')"))
         celdas += apartado(ap); ap += 1
         celdas.append(code("duraciones = datos_proyecto['duration'][path_matrix.columns]\n"
                            "duraciones_rutas = path_matrix @ duraciones\n"
@@ -204,7 +204,7 @@ def _escenarios(rng):
     celdas += fig_grafo(durations="False", cap="Grafo PERT", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de caminos"\n#| label: tbl-matrizCaminos\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
-                       "proyecto.display_path_matrix(dummies=False)"))
+                       "proyecto.display_rutas('pert')"))
     celdas += apartado(2)
     celdas.append(code("T = escenarios.loc[R.columns]\n"
                        "duraciones_rutas = R @ T\n"

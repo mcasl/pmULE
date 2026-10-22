@@ -153,7 +153,7 @@ display(pregunta_2)
 # %%
 #| tbl-cap: "Matriz de rutas"
 #| label: tbl-MatrixRutas
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %% [markdown]
 # ## Apartado 3

@@ -296,6 +296,7 @@ plot_cargas(gantt, limite_maximo_recursos)
 
 # %%
 duration_resources = datos_proyecto[['duration','resources']].copy()
+proyecto_asignacion.display_asignar_pasos_tikz(data=duration_resources, duration_label='duration', resource_label='resources', maximo=limite_maximo_recursos)
 duration_resources, df, dibujo = proyecto_asignacion.asignar(data=duration_resources,
                                                             duration_label='duration',
                                                             resource_label='resources',
