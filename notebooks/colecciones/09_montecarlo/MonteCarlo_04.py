@@ -287,7 +287,7 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 #| label: tbl-matrizRutas
 R = proyecto.path_matrix(dummies=False)
 rutas = proyecto.paths(dummies=False)
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %% [markdown]
 # ## Apartado 2

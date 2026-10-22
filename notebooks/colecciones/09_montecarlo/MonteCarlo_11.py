@@ -274,7 +274,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
 path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("roy")
 
 # %%
 duraciones = datos_proyecto['duration'][path_matrix.columns]

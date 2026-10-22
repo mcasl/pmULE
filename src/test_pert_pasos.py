@@ -399,3 +399,39 @@ def test_construccion_roy_con_tabla():
     assert len(cs) == 5
     assert all(c.startswith(r"\begin{tikzpicture}") for c in cs)
     assert "Actividad C: predecesoras A y B" in cs[1]
+
+
+def test_visor_de_rutas_tikz():
+    from pmule import PredecessorTable
+    d = pd.DataFrame([('A', '---', 3), ('B', '---', 2), ('C', 'A,B', 4), ('D', 'C', 1)],
+                     columns=['activity', 'predecessor', 'duration']).set_index('activity')
+    pr = PredecessorTable.from_dataframe_of_strings(d, activity='activity', predecessor='predecessor')
+    p = pr.create_project()
+    for g in ("pert", "roy"):
+        codigos, R, filas = p.plot_tikz_rutas(g)
+        assert len(codigos) == len(R) + 1 == len(filas) + 1
+        assert all(0 <= x <= 1 and 0 <= y <= 1 and w > 0 and h > 0 for x, y, w, h in filas)
+        assert "blue!80!black" in codigos[1] and "blue!80!black" not in codigos[0].split(r"\begin{scope}", 2)[1]
+
+
+def test_asignar_pasos_coincide_con_asignar():
+    from pmule import PredecessorTable
+    d = pd.DataFrame([('A', '---', 2, 2), ('B', '---', 4, 2), ('C', 'B', 1, 2), ('D', 'A', 3, 2),
+                      ('E', 'B,D', 5, 2), ('F', 'C,D', 3, 1), ('G', '---', 1, 4), ('H', 'G', 6, 2)],
+                     columns=['activity', 'predecessor', 'duration', 'resources']).set_index('activity')
+    pr = PredecessorTable.from_dataframe_of_strings(d, activity='activity', predecessor='predecessor')
+    p = pr.create_project()
+    datos = d[['duration', 'resources']]
+    pasos, finales, maximo, _ = p.asignar_pasos(datos, 'duration', 'resources', [4, 4, 4, 8])
+    q = p.copy()
+    esperado, _, _ = q.asignar(data=datos, duration_label='duration', resource_label='resources',
+                               maximo=[4, 4, 4, 8], report=False)
+    assert list(finales.index) == list(esperado.index)
+    assert (finales[['duration', 'resources']].values == esperado[['duration', 'resources']].values).all()
+    assert [ps['periodo'] for ps in pasos] == list(range(1, len(pasos) + 1))
+    assert any(ps['total'] > ps['limite'] for ps in pasos)
+    for ps in pasos:
+        assert ps['se_programan'] | ps['se_retrasan'] == set(ps['candidatas'].index)
+        assert not (ps['se_programan'] & ps['se_retrasan'])
+    # el proyecto original no se modifica
+    assert not any(str(n).startswith("💤") for n in p.copy().pert_graph.nodes)

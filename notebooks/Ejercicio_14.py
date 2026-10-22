@@ -203,7 +203,7 @@ duraciones_montecarlo
 # La matrix de rutas es
 
 # %%
-proyecto_restante.display_path_matrix(dummies=False)
+proyecto_restante.display_rutas("pert")
 
 # %% [markdown]
 # Multiplicando la matriz de rutas por las duraciones de las actividades, obtenemos las duraciones de las rutas en cada iteración.

@@ -274,7 +274,7 @@ proyecto.display_roy_construccion(tabla=prelaciones)
 #| label: tbl-R
 rutas = proyecto.paths(dummies=False)
 display(pd.Series({r: ' - '.join(a) for r, a in rutas.items()}).to_frame('actividades'))
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("roy")
 
 # %%
 Markdown(f'R tiene {R.shape[0]} filas (rutas) y {R.shape[1]} columnas (actividades).')

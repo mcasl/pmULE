@@ -109,7 +109,7 @@ Markdown(pregunta_2)
 
 # %%
 path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %% [markdown]
 # ### Apartado 3

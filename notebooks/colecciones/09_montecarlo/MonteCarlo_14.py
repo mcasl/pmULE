@@ -252,7 +252,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Matriz de rutas"
 #| label: tbl-matrizRutas
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("roy")
 
 # %%
 #| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"

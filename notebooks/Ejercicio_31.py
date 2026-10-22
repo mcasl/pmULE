@@ -395,7 +395,7 @@ pd.DataFrame({'Media teórica': datos_proyecto['duration'],
 #| tbl-cap: "Matriz de caminos del proyecto"
 #| label: tbl-matrizCaminos
 path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %% [markdown]
 # ### Duración del proyecto en cada iteración
@@ -632,6 +632,7 @@ plot_cargas(gantt_df, limite_maximo_recursos)
 # %%
 #| fig-cap: "Diagrama de Gantt del proyecto tras aplicar el algoritmo de asignación"
 #| label: fig-ganttPostAsignacion
+proyecto_asignacion.display_asignar_pasos_tikz(data=datos_proyecto[['duration', 'resources']].copy(), duration_label='duration', resource_label='resources', maximo=limite_maximo_recursos)
 datos_tras_asignar, gantt_df, dibujo = proyecto_asignacion.asignar(data=datos_proyecto[['duration', 'resources']].copy(),
                                                                    duration_label='duration',
                                                                    resource_label='resources',

@@ -366,7 +366,7 @@ durations_montecarlo
 
 # %%
 path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %% [markdown]
 # ### Cálculo de la duración del proyecto
@@ -498,6 +498,7 @@ pinta_tikz(dibujo)
 
 # %%
 proyecto_asignacion = proyecto.copy()
+proyecto_asignacion.display_asignar_pasos_tikz(data=datos_proyecto, duration_label='duration', resource_label='resources', maximo=[10])
 my_data, gantt_df, dibujo = proyecto_asignacion.asignar(data=datos_proyecto,
                                               duration_label='duration',
                                               resource_label='resources',
@@ -834,7 +835,7 @@ durations_montecarlo
 # %%
 proyecto = proyecto_simplificado.copy()
 path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %% [markdown]
 # #### Cálculo de la duración del proyecto

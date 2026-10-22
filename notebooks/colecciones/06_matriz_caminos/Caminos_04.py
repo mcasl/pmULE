@@ -285,7 +285,7 @@ proyecto.pert(durations=False, ranksep=1)
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
 R = proyecto.path_matrix(dummies=False)
-proyecto.display_path_matrix(dummies=False)
+proyecto.display_rutas("pert")
 
 # %% [markdown]
 # ## Apartado 2

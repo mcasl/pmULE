@@ -88,7 +88,7 @@ def _base(k, rng):
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de caminos"\n#| label: tbl-matrizCaminos\n'
                        "path_matrix = proyecto.path_matrix(dummies=False)\n"
-                       "proyecto.display_path_matrix(dummies=False)"))
+                       "proyecto.display_rutas('pert')"))
     celdas.append(code("duraciones = datos_proyecto['duration'][path_matrix.columns]\n"
                        "duraciones_rutas_medias = path_matrix @ duraciones\n"
                        "duracion_media = int(duraciones_rutas_medias.max())\n"
@@ -239,7 +239,7 @@ def _a_mano(rng):
     celdas.append(code('#| tbl-cap: "Matriz de rutas R"\n#| label: tbl-matrizRutas\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
                        "rutas = proyecto.paths(dummies=False)\n"
-                       "proyecto.display_path_matrix(dummies=False)"))
+                       "proyecto.display_rutas('pert')"))
     celdas += apartado(2)
     celdas.append(code("T = replicas.loc[R.columns]\n"
                        "RT = R @ T\n"
@@ -421,7 +421,7 @@ def _convergencia(rng):
     celdas += apartado(1)
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias y el camino crítico", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de rutas"\n#| label: tbl-matrizRutas\n'
-                       "proyecto.display_path_matrix(dummies=False)"))
+                       "proyecto.display_rutas('pert')"))
     celdas.append(code('#| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"\n#| label: tbl-rutas\n'
                        "datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2\n"
                        "medias_rutas = detalle_rutas(R, datos_proyecto['duration'][R.columns], nombre='duración media')\n"

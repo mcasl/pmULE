@@ -301,6 +301,7 @@ plot_cargas(gantt_recursos, limite_maximo_recursos=1000)
 # %%
 proyecto_asignacion = proyecto.copy()
 duracion_y_recursos = datos_proyecto[['duracion', 'litros_por_mes']]
+proyecto_asignacion.display_asignar_pasos_tikz(data=duracion_y_recursos, duration_label='duracion', resource_label='litros_por_mes', maximo=[1000])
 datos_proyecto_tras_asignar, gantt_df, dibujo  = proyecto_asignacion.asignar(
                                     data=duracion_y_recursos,
                                     duration_label='duracion',

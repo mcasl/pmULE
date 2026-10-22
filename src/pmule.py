@@ -2340,6 +2340,227 @@ class ProjectGraph:
                                     extra_rows=maximo.T)
         return my_data, gantt_df, dibujo
 
+    def asignar_pasos(self, data, duration_label='duration', resource_label='resources', maximo=None):
+        """Registro, periodo a periodo, del algoritmo de :meth:`asignar` (no modifica el
+        proyecto). Devuelve ``(pasos, datos_finales)`` con una entrada por periodo evaluado:
+        ``periodo``, ``total`` (demanda), ``limite``, ``candidatas`` (``DataFrame`` ordenado por
+        prioridad con la carga del periodo, ``Empezadas``, ``H_total`` y la duración),
+        ``se_programan``, ``se_retrasan``, ``antes`` y ``despues`` (los datos con las duraciones
+        antes y después de postergar), ``proy_antes`` y ``proy_despues`` (el proyecto en esos
+        momentos, con las actividades de retraso añadidas) e ``infactible``. Sigue exactamente el criterio de
+        :meth:`asignar`: primero las actividades ya empezadas, luego menor holgura total y, a
+        igualdad, menor duración; se admiten mientras la carga acumulada no supere el límite."""
+        if maximo is None:
+            raise ValueError("Error: Debe introducir un valor para Máximo.")
+        p = self.copy()
+        my_data = data.copy()
+        empezadas = pd.Series({a: False for a in my_data.index}).to_frame(name='Empezadas')
+        gantt_df, _ = p.gantt(data=my_data, duration_label=duration_label, resource_label=resource_label,
+                              holguras=True, total='fila', tikz=False)
+        duracion_proyecto = gantt_df.data.columns.drop('H_total').max()
+        if isinstance(maximo, (int, float)):
+            maximo = pd.Series([maximo] * duracion_proyecto, index=range(1, duracion_proyecto + 1))
+        if isinstance(maximo, list):
+            maximo = pd.Series(maximo, index=range(1, len(maximo) + 1))
+        maximo = maximo.copy()
+        pasos, periodo = [], 1
+        while periodo <= duracion_proyecto:
+            if periodo <= len(maximo):
+                limite = maximo[periodo]
+            else:
+                limite = maximo.iloc[-1]
+                maximo[periodo] = limite
+            df = pd.concat([gantt_df.data, my_data[duration_label], empezadas], axis=1)
+            total = df.loc['Total', periodo]
+            df = (df.loc[:, [periodo, 'H_total', duration_label, 'Empezadas']]
+                    .replace('', None).dropna(subset=periodo)
+                    .sort_values(by=['Empezadas', 'H_total', duration_label], ascending=[False, True, True])
+                    .drop(labels='Total', axis=0))
+            elegibles = df.index.to_list()
+            paso = dict(periodo=periodo, total=total, limite=limite, candidatas=df.copy(),
+                        antes=my_data.copy(), proy_antes=p.copy(), infactible=False)
+            if total > limite:
+                acumulada, se_programan, se_retrasan, acum_en = 0, set(), set(), {}
+                for a in elegibles:
+                    if acumulada + df.loc[a, periodo] <= limite:
+                        acumulada += df.loc[a, periodo]
+                        se_programan.add(a)
+                        empezadas.loc[a, 'Empezadas'] = True
+                    acum_en[a] = acumulada
+                    if a not in se_programan:
+                        se_retrasan.add(a)
+                paso.update(se_programan=se_programan, se_retrasan=se_retrasan, acumulada=acum_en)
+                if not se_programan:
+                    paso.update(infactible=True, despues=my_data.copy(), proy_despues=p.copy())
+                    pasos.append(paso)
+                    break
+                my_data, gantt_df, _ = p.desplazar(data=my_data, duration_label=duration_label,
+                                                   resource_label=resource_label, tikz=False, report=False,
+                                                   **{a: 1 for a in sorted(se_retrasan)})
+            else:
+                acumulada = df[periodo].cumsum()
+                se_programan = set(df.loc[acumulada <= limite, :].index)
+                empezadas.loc[list(se_programan), 'Empezadas'] = True
+                paso.update(se_programan=se_programan, se_retrasan=set(),
+                            acumulada=acumulada.to_dict())
+            paso['despues'] = my_data.copy()
+            paso['proy_despues'] = p.copy()
+            pasos.append(paso)
+            periodo += 1
+            gantt_df, _ = p.gantt(data=my_data, duration_label=duration_label, resource_label=resource_label,
+                                  holguras=True, total='fila', tikz=False)
+            duracion_proyecto = gantt_df.data.columns.drop('H_total').max()
+        return pasos, my_data, maximo, p
+
+    def asignar_pasos_tikz_html(self, data, duration_label='duration', resource_label='resources',
+                                maximo=None, escala: float = 1.0) -> str:
+        """Visor paso a paso del algoritmo de asignación (:meth:`asignar`) en TikZ. El paso 0
+        es el resultado final. Después, para cada periodo evaluado: si la demanda cabe en el
+        límite, un fotograma; si no, tres: (1) las actividades candidatas numeradas por orden
+        de prioridad y el criterio que se aplica, (2) cuáles se ejecutan (verde) y cuáles se
+        posponen (rojo) al ir acumulando la carga hasta el límite, y (3) el diagrama tras
+        desplazar un periodo las pospuestas. No modifica el proyecto."""
+        import base64, html as _h, re as _re
+        p = self.copy()
+        pasos, finales, maximo, p_fin = p.asignar_pasos(data, duration_label, resource_label, maximo)
+
+        def gantt_tikz(proy, datos, periodos):
+            m = maximo.loc[1:periodos].to_frame(name='Máximo').T
+            g, dib = proy.gantt(data=datos, duration_label=duration_label, resource_label=resource_label,
+                             holguras=True, total='fila', tikz=True, params=dict(period_width=1), extra_rows=m)
+            return g, dib.replace("💤", "zz")
+
+        def filas_y_periodos(proy, datos):
+            g, _ = proy.gantt(data=datos, duration_label=duration_label, resource_label=resource_label,
+                           holguras=True, total='fila', tikz=False)
+            return ([f for f in g.data.index if f not in ('Total', 'Máximo') and not str(f).startswith("💤")],
+                    int(g.data.columns.drop('H_total').max()))
+
+        filas_fin, P_fin = filas_y_periodos(p_fin, finales)
+        n_fin = len(filas_fin)
+        BX0, BX1 = -2.2, P_fin + 2 + 5.6
+        BY0, BY1 = 1.1, -(n_fin + 2) * 0.8 - 0.3
+
+        def fotograma(proy, datos, periodo, marcas=None, notas=None, pasado=True, hasta=None):
+            filas, P = filas_y_periodos(proy, datos)
+            P = max(P, periodo)
+            _, dib = gantt_tikz(proy, datos, P)
+            n = len(filas)
+            ov = []
+            if pasado and periodo > 1:
+                ov.append(rf"\fill[black!12,opacity=0.35] (0,0.8) rectangle ({periodo - 1},{-(n + 2) * 0.8});")
+            if periodo is not None:
+                fin_ = periodo if hasta is None else hasta
+                ov.append(rf"\fill[orange!35,opacity=0.35] ({periodo - 1},0.8) rectangle ({fin_},{-(n + 2) * 0.8});")
+                ov.append(rf"\draw[orange!80!black,very thick] ({periodo - 1},0.8) rectangle ({fin_},{-(n + 2) * 0.8});")
+            col = {"cand": "orange!80!black", "ok": "green!50!black", "no": "red!75!black"}
+            for a, (rank, est) in (marcas or {}).items():
+                if a in filas:
+                    r = filas.index(a)
+                    ov.append(rf"\node[circle,fill={col[est]},text=white,font=\scriptsize\bfseries,inner sep=1pt,"
+                              rf"minimum size=0.36cm] at ({periodo - 0.8},{-0.8 * r - 0.2}) {{{rank}}};")
+            for a, txt in (notas or {}).items():
+                if a in filas:
+                    r = filas.index(a)
+                    ov.append(rf"\node[anchor=west,font=\scriptsize,{'green!40!black' if txt.startswith('ejec') else 'red!70!black'}]"
+                              rf" at ({P + 2.15},{-0.8 * r - 0.4}) {{{txt}}};")
+            lineas = dib.strip().split("\n")
+            assert lineas[0].lstrip().startswith(r"\begin{tikzpicture}")
+            cuerpo = "\n".join(lineas[1:-1])
+            return (lineas[0].replace("scale=1", f"scale={escala}") + "\n"
+                    rf"\useasboundingbox ({BX0},{BY0}) rectangle ({BX1:.2f},{BY1:.2f});" + "\n"
+                    + cuerpo + "\n" + "\n".join(ov) + "\n" + r"\end{tikzpicture}")
+
+        f = lambda v: f"{v:g}"
+        codigos, pies = [], []
+        # paso 0: resultado final
+        P0 = P_fin
+        _, dib0 = gantt_tikz(p_fin, finales, P0)
+        lineas = dib0.strip().split("\n")
+        codigos.append(lineas[0].replace("scale=1", f"scale={escala}") + "\n"
+                       rf"\useasboundingbox ({BX0},{BY0}) rectangle ({BX1:.2f},{BY1:.2f});" + "\n"
+                       + "\n".join(lineas[1:-1]) + "\n\\end{tikzpicture}")
+        pies.append("Resultado del algoritmo de asignación con los límites de recursos de la fila «Máximo». "
+                    "En cada periodo, si la demanda supera el límite, se ejecutan primero las actividades ya empezadas, "
+                    "después las de menor holgura total y, a igualdad, las más cortas, mientras la carga acumulada "
+                    "no supere el límite; las demás se posponen un periodo (💤 en el diagrama). "
+                    "Pulse «siguiente» para ver cómo se decide periodo a periodo.".replace("💤", "zz"))
+        grupos, run = [], []
+        for ps in pasos:
+            if ps["total"] <= ps["limite"]:
+                # periodos consecutivos sin conflicto y con las mismas candidatas: un solo fotograma
+                if run and tuple(run[-1]["candidatas"].index) != tuple(ps["candidatas"].index):
+                    grupos.append(run); run = []
+                run.append(ps)
+                continue
+            if run:
+                grupos.append(run); run = []
+            grupos.append(ps)
+        if run:
+            grupos.append(run)
+        for ps in grupos:
+            if isinstance(ps, list):
+                ps0, ps1 = ps[0], ps[-1]
+                if len(ps) == 1:
+                    ps = ps0
+                else:
+                    demandas = ", ".join(f(q["total"]) for q in ps)
+                    codigos.append(fotograma(ps0["proy_antes"], ps0["antes"], ps0["periodo"], hasta=ps1["periodo"]))
+                    pies.append(f"Periodos {ps0['periodo']} a {ps1['periodo']}: la demanda ({demandas}) no supera el "
+                                f"máximo en ninguno ({', '.join(f(q['limite']) for q in ps)}), con las mismas actividades "
+                                f"({', '.join(str(a) for a in ps0['candidatas'].index)}); se ejecutan todas y no hay nada "
+                                "que decidir.")
+                    continue
+            per, tot, lim, cand = ps["periodo"], ps["total"], ps["limite"], ps["candidatas"]
+            etiqueta = {a: ("ya empezada" if bool(cand.loc[a, "Empezadas"]) else "no empezada") for a in cand.index}
+            orden_txt = "; ".join(
+                f"{i + 1}.º {a} (carga {f(cand.loc[a, per])}, {etiqueta[a]}, H={f(cand.loc[a, 'H_total'])}, d={f(cand.loc[a, duration_label])})"
+                for i, a in enumerate(cand.index))
+            rank = {a: i + 1 for i, a in enumerate(cand.index)}
+            if tot <= lim:
+                codigos.append(fotograma(ps["proy_antes"], ps["antes"], per, {a: (rank[a], "ok") for a in cand.index},
+                                         {a: "ejecuta" for a in cand.index}))
+                pies.append(f"Periodo {per}: la demanda total ({f(tot)}) no supera el máximo ({f(lim)}). "
+                            f"Se ejecutan todas las actividades previstas: {', '.join(str(a) for a in cand.index)}.")
+                continue
+            codigos.append(fotograma(ps["proy_antes"], ps["antes"], per, {a: (rank[a], "cand") for a in cand.index}))
+            pies.append(f"Periodo {per}: la demanda total ({f(tot)}) supera el máximo ({f(lim)}); hay que decidir qué "
+                        "actividades se ejecutan. Criterio de prioridad: (1) las ya empezadas, que no se interrumpen; "
+                        "(2) menor holgura total H, las más críticas; (3) menor duración d. Orden resultante: "
+                        + orden_txt + ".")
+            marcas = {a: (rank[a], "ok" if a in ps["se_programan"] else "no") for a in cand.index}
+            notas = {}
+            for a in cand.index:
+                if a in ps["se_programan"]:
+                    notas[a] = rf"ejecuta (acum. {f(ps['acumulada'][a])} $\le$ {f(lim)})"
+                else:
+                    notas[a] = rf"pospone ({f(prev_acum(ps, a, cand))}+{f(cand.loc[a, per])} $>$ {f(lim)})"
+            codigos.append(fotograma(ps["proy_antes"], ps["antes"], per, marcas, notas))
+            ejec = [str(a) for a in cand.index if a in ps["se_programan"]]
+            pos_ = [str(a) for a in cand.index if a in ps["se_retrasan"]]
+            if ps.get("infactible"):
+                pies.append(f"Periodo {per}: no cabe ninguna actividad con el máximo disponible ({f(lim)}): "
+                            "el proyecto no es factible con estos recursos.")
+                continue
+            pies.append(f"Periodo {per}: se recorren las actividades por orden de prioridad acumulando carga. "
+                        f"Se ejecutan {', '.join(ejec)}; se posponen {', '.join(pos_)} porque, al añadirlas, la carga "
+                        f"acumulada superaría el máximo ({f(lim)}).")
+            codigos.append(fotograma(ps["proy_despues"], ps["despues"], per))
+            pies.append(f"Periodo {per}: las actividades pospuestas ({', '.join(pos_)}) se desplazan un periodo, "
+                        "con las que dependen de ellas; este es el diagrama de partida del siguiente periodo.")
+        fotos = []
+        for svg, pie in zip(_svgs_de_tikz(codigos, "calc,arrows.meta,patterns"), pies):
+            b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
+            fotos.append('<img alt="paso" style="display:block;margin:0 auto;width:100%;max-width:1100px;height:auto" '
+                         f'src="data:image/svg+xml;base64,{b64}">'
+                         f'<p style="text-align:center;margin-top:.5em">{_h.escape(pie)}</p>')
+        return _html_pasos(fotos, inicio=0)
+
+    def display_asignar_pasos_tikz(self, data, duration_label='duration', resource_label='resources',
+                                   maximo=None, escala: float = 1.0) -> None:
+        """Muestra en un cuaderno la asignación paso a paso (:meth:`asignar_pasos_tikz_html`)."""
+        display(HTML(self.asignar_pasos_tikz_html(data, duration_label, resource_label, maximo, escala)))
+
     # ------------------------------------------------------------------
     # Asignación con varios recursos limitados
     # ------------------------------------------------------------------
@@ -4494,6 +4715,184 @@ class ProjectGraph:
                 warnings.warn(f"No se pudo generar el visor TikZ ({e}); se muestra el grafo final.")
         display(self.roy())
 
+    def plot_tikz_rutas(self, grafo: str = "pert", escala: float = 1.0, etiquetas: dict = None):
+        """Imágenes TikZ de la matriz de rutas con el grafo PERT o Roy (sin tiempos) encima:
+        la primera con todo el grafo y una más por cada ruta, con sus actividades y nodos
+        en naranja (el resto en gris claro) y su fila resaltada en la matriz. Todas tienen la
+        misma caja, para poder superponer zonas de clic. Devuelve ``(codigos, matriz, filas)``:
+        ``matriz`` = ``path_matrix(dummies=False)`` y ``filas`` = ``[(x, y, ancho, alto)]``
+        con la posición de cada fila como fracción de la imagen (origen arriba a la izquierda)."""
+        if grafo not in ("pert", "roy"):
+            raise ValueError("grafo debe ser 'pert' o 'roy'")
+        R = self.path_matrix(dummies=False).astype(bool)
+        if grafo == "pert":
+            Rd = self.path_matrix(dummies=True).astype(bool)
+            G = self.pert_graph
+            trazado = self._trazado_pert({}, escala, False)
+            pos = trazado["pos"] if trazado else self._pert_posiciones(escala, None)
+            xs = [x for x, _ in pos.values()]; ys = [y for _, y in pos.values()]
+            if trazado:
+                for x, y in trazado["etiquetas"].values():
+                    xs.append(x); ys.append(y)
+                for r in trazado["rutas"].values():
+                    for x, y in r:
+                        xs.append(x); ys.append(y)
+            gx0, gx1, gy0, gy1 = min(xs) - 0.7, max(xs) + 0.7, min(ys) - 0.7, max(ys) + 0.7
+            arco_de = {d.get("activity", ""): (f"{u}", f"{v}") for u, v, d in G.edges(data=True)}
+            todos = [(f"{u}", f"{v}") for u, v in G.edges()]
+
+            def grafo_cuerpo(i):
+                if i is None:
+                    ea = {e: "hecho" for e in todos}
+                    en = {n: "hecho" for n in pos}
+                else:
+                    usados = [c for c in Rd.columns if bool(Rd.iloc[i][c])]
+                    act = {arco_de[c] for c in usados if c in arco_de}
+                    ea = {e: ("actual" if e in act else "gris") for e in todos}
+                    nodos = {x for e in act for x in e}
+                    en = {n: ("actual" if n in nodos else "gris") for n in pos}
+                return self._pert_fotograma(pos, {}, {}, escala, {}, {}, trazado=trazado,
+                                            con_duracion=False, estilo_arcos=ea, estilo_nodos=en,
+                                            numeros=True, color_actual="blue")
+        else:
+            et = {"start": "Inicio", "finish": "Fin"}
+            et.update(etiquetas or {})
+            G = self._roy_grafo_actual()
+            trazado = _disposicion_capas({f"{n}": (1.5, 0.9) for n in G.nodes},
+                                         [(f"{u}", f"{v}") for u, v in G.edges()],
+                                         separacion=0.3 * escala, hueco=0.4 * escala)
+            if trazado:
+                pos = trazado["pos"]
+            else:
+                capa = self._roy_capas(G)
+                from collections import defaultdict
+                por_capa = defaultdict(list)
+                for n in sorted(G.nodes, key=lambda n: f"{n}"):
+                    por_capa[capa[n]].append(n)
+                pos = {f"{n}": (2.3 * c * escala, ((len(ns) - 1) / 2.0 - i) * 1.5 * escala)
+                       for c, ns in por_capa.items() for i, n in enumerate(ns)}
+            ident = {f"{n}": f"r{k}" for k, n in enumerate(sorted(G.nodes, key=lambda n: f"{n}"))}
+            capas = self._roy_capas(G)
+            xs = [x for x, _ in pos.values()]; ys = [y for _, y in pos.values()]
+            if trazado:
+                for r in trazado["rutas"].values():
+                    for x, y in r:
+                        xs.append(x); ys.append(y)
+            gx0, gx1, gy0, gy1 = min(xs) - 1.0, max(xs) + 1.0, min(ys) - 0.7, max(ys) + 0.7
+
+            def grafo_cuerpo(i):
+                if i is None:
+                    nodos = set(pos)
+                    arcos = {(f"{u}", f"{v}") for u, v in G.edges()}
+                else:
+                    ruta = sorted((c for c in R.columns if bool(R.iloc[i][c])), key=lambda c: capas[c])
+                    cadena = ["start"] + [f"{c}" for c in ruta] + ["finish"]
+                    nodos = set(cadena)
+                    arcos = set(zip(cadena[:-1], cadena[1:]))
+                L, A = [], []
+                for u, v in G.edges():
+                    u, v = f"{u}", f"{v}"
+                    est = ["->", "thick"]
+                    if i is not None:
+                        est += (["blue!80!black", "ultra thick"] if (u, v) in arcos else ["gray!45"])
+                    if trazado and (u, v) in trazado["rutas"]:
+                        A.append(rf"  \draw[{', '.join(est)}] "
+                                 + self._ruta_tikz(u, v, pos, trazado["rutas"][(u, v)],
+                                                   trazado["curva"][(u, v)], lambda m: ident[m]) + ";")
+                        continue
+                    curva = self._curvatura_tikz(pos, u, v, 0.8 * escala)
+                    A.append(rf"  \draw[{', '.join(est)}] ({ident[u]}) {'to[' + curva + ']' if curva else '--'} ({ident[v]});")
+                for nodo, (x, y) in pos.items():
+                    r = ident[nodo]
+                    if i is None or nodo in nodos:
+                        est = ("fill=blue!15, draw=blue!80!black, very thick" if i is not None
+                               else "fill=white, draw, thick")
+                        txt, lin = "", "black"
+                    else:
+                        est, txt, lin = "fill=white, draw=gray!45, thick", ", text=gray!55", "gray!45"
+                    L.append(rf"  \node[rectangle, {est}, minimum width=1.5cm, minimum height=0.9cm,"
+                             rf" inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};")
+                    L.append(rf"  \draw[{lin}] ({r}.west) -- ({r}.east)"
+                             rf" ($({r}.south west)!0.3333!({r}.south east)$) -- ($({r}.west)!0.3333!({r}.east)$)"
+                             rf" ($({r}.south west)!0.6667!({r}.south east)$) -- ($({r}.west)!0.6667!({r}.east)$);")
+                    L.append(rf"  \node[font=\footnotesize\bfseries{txt}] at ($({r}.center)+(0,0.22)$) "
+                             rf"{{{self._tex_texto(f'{et.get(nodo, nodo)}')}}};")
+                return "\n".join(L + A)
+        # ensamblaje: grafo arriba, matriz debajo, todo centrado en una caja común
+        nf, nc = R.shape
+        _, ancho, margen, alto = _geometria_matriz(R)
+        Wm, Hm = (nc + margen) * ancho, (nf + alto) * 0.78
+        gw, gh = gx1 - gx0, gy1 - gy0
+        BW = max(gw, Wm) + 0.4
+        hueco = 0.9
+        BH = gh + hueco + Hm + 0.1
+        gx_off = (BW - gw) / 2
+        mx_off = (BW - Wm) / 2                       # borde izquierdo de las etiquetas
+        y_cab = -(gh + hueco)                        # arriba de la cabecera de la matriz
+        y_cel = y_cab - alto * 0.78                  # arriba de la primera fila
+        nombres = [f"{n}" for n in R.index]
+
+        def ensambla(i):
+            filas = {nombres[i]: "actual"} if i is not None else None
+            L = [r"\begin{tikzpicture}[>=stealth]", _COLORES_MATRIZ,
+                 rf"\path (0,0) rectangle ({BW:.2f},{-BH:.2f});",
+                 rf"\begin{{scope}}[xshift={gx_off - gx0:.2f}cm,yshift={-gy1:.2f}cm]", grafo_cuerpo(i), r"\end{scope}",
+                 rf"\begin{{scope}}[xshift={mx_off + margen * ancho:.2f}cm,yshift={y_cel:.2f}cm,"
+                 rf"x={ancho:.2f}cm,y=0.78cm,font=\small]"]
+            L += _cuerpo_matriz_tikz(R, filas, valor="1", valor_cero="0", resalte="blue",
+                                     rotulo=r"actividad $\to$\\ ruta $\downarrow$")
+            L += [r"\end{scope}", r"\end{tikzpicture}"]
+            return "\n".join(L)
+
+        codigos = [ensambla(None)] + [ensambla(i) for i in range(nf)]
+        filas_pos = [((mx_off) / BW, -(y_cel - i * 0.78) / BH, Wm / BW, 0.78 / BH) for i in range(nf)]
+        return codigos, R, filas_pos
+
+    def rutas_html(self, grafo: str = "pert", escala: float = 1.0, etiquetas: dict = None) -> str:
+        """Visor HTML de la matriz de rutas, todo en TikZ: el grafo PERT o Roy encima de la
+        matriz y, al hacer clic en una fila de la matriz, se resaltan en el grafo las
+        actividades y los nodos de esa ruta (otro clic la deselecciona). Hace falta LaTeX."""
+        import base64, hashlib
+        codigos, R, filas = self.plot_tikz_rutas(grafo, escala, etiquetas)
+        svgs = _svgs_de_tikz(codigos)
+        uid = "pmr" + hashlib.md5((grafo + "".join(codigos)).encode("utf-8")).hexdigest()[:10]
+        imgs = "".join(
+            f'<img alt="grafo y matriz de rutas" class="pmule-rut-img" style="display:{"block" if k == 0 else "none"};'
+            f'width:100%;height:auto" '
+            f'src="data:image/svg+xml;base64,{base64.b64encode(sv.encode("utf8")).decode("ascii")}">'
+            for k, sv in enumerate(svgs))
+        zonas = "".join(
+            f'<div class="pmule-rut-zona" data-k="{k + 1}" title="Clic para resaltar la ruta" onclick="pmuleRut(this)" '
+            f'style="position:absolute;left:{x * 100:.3f}%;top:{y * 100:.3f}%;width:{w * 100:.3f}%;height:{h * 100:.3f}%;'
+            f'cursor:pointer"></div>' for k, (x, y, w, h) in enumerate(filas))
+        ayuda = ("&#128070; <b>Interactivo:</b> haz clic en una fila de la matriz para resaltar en el grafo "
+                 "las actividades y los nodos de esa ruta (otro clic la deselecciona).")
+        return (f'<div id="{uid}" class="pmule-rut" style="margin:1em 0">'
+                '<style>.pmule-rut-zona:hover{background:rgba(204,102,0,.12)}</style>'
+                f'<div style="position:relative;max-width:760px;margin:0 auto">{imgs}{zonas}</div>'
+                f'<div style="text-align:center;margin:.6em 0;font-size:.95em;color:#8a4b00">{ayuda}</div></div>'
+                '<script>window.pmuleRut = window.pmuleRut || function(z) {'
+                'var box = z.closest(".pmule-rut"), imgs = box.querySelectorAll(".pmule-rut-img");'
+                'var k = parseInt(z.getAttribute("data-k")), sel = box.getAttribute("data-sel") === String(k);'
+                'for (var i = 0; i < imgs.length; i++) imgs[i].style.display = "none";'
+                'if (sel) { box.removeAttribute("data-sel"); imgs[0].style.display = "block"; return; }'
+                'box.setAttribute("data-sel", String(k)); imgs[k].style.display = "block"; };</script>')
+
+    def display_rutas(self, grafo: str = "pert", escala: float = 1.0, etiquetas: dict = None,
+                      max_rutas: int = 40) -> None:
+        """Muestra en un cuaderno el visor de la matriz de rutas (:meth:`rutas_html`); sin
+        LaTeX, o con más de ``max_rutas`` rutas (una imagen por ruta), se muestra la matriz de rutas
+        con :meth:`display_path_matrix`."""
+        if len(self.path_matrix(dummies=False)) > max_rutas:       # demasiadas imágenes: matriz estática
+            display(self.display_path_matrix(dummies=False))
+            return
+        try:
+            display(HTML(self.rutas_html(grafo, escala, etiquetas)))
+        except (FileNotFoundError, RuntimeError) as e:
+            import warnings
+            warnings.warn(f"No se pudo generar el visor de rutas ({e}); se muestra la matriz.")
+            display(self.display_path_matrix(dummies=False))
+
     def pert_construccion_html(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
                                textos: dict = None) -> str:
         """Visor HTML con botones de la construcción del grafo PERT (véase
@@ -4811,7 +5210,7 @@ class ProjectGraph:
                         actual=None, arcos_activos=(), texto="", critico=False,
                         trazado=None, con_duracion=True, criticas=None, colores_valores=None,
                         negrita=None, colores_region=None,
-                        estilo_arcos=None, estilo_nodos=None, numeros=True):
+                        estilo_arcos=None, estilo_nodos=None, numeros=True, color_actual="orange"):
         """Un fotograma TikZ del grafo PERT (cuerpo, sin ``tikzpicture``).
 
         ``arcos_activos`` puede ser un ``dict`` ``{(i, j): color}`` (un color por arco) y
@@ -4867,7 +5266,7 @@ class ProjectGraph:
                 estilo.append("dashed")
             color = ""
             col_act = (arcos_activos.get((f"{u}", f"{v}")) if isinstance(arcos_activos, dict)
-                       else ("orange!80!black" if (f"{u}", f"{v}") in arcos_activos else None))
+                       else (f"{color_actual}!80!black" if (f"{u}", f"{v}") in arcos_activos else None))
             st = (estilo_arcos or {}).get((f"{u}", f"{v}"))
             if st == "oculto":
                 estilo.append("white")
@@ -4881,8 +5280,8 @@ class ProjectGraph:
                 estilo += [COLOR_PREVIA, "ultra thick"]
                 color = col_act = COLOR_PREVIA
             elif st == "actual":
-                estilo += ["orange!80!black", "ultra thick"]
-                color = col_act = "orange!80!black"
+                estilo += [f"{color_actual}!80!black", "ultra thick"]
+                color = col_act = f"{color_actual}!80!black"
             elif col_act:
                 estilo += [col_act, "ultra thick"]
                 color = col_act
@@ -4928,7 +5327,7 @@ class ProjectGraph:
             elif est == "hecho":
                 relleno = "fill=white, draw, thick"
             elif est == "actual" or nodo in actuales:
-                relleno = "fill=orange!20, draw=orange!80!black, very thick"
+                relleno = f"fill={color_actual}!20, draw={color_actual}!80!black, very thick"
             elif es_critico:
                 relleno = "fill=white!90!red, draw=red, very thick"
             elif nodo in col_nodo:
@@ -4949,7 +5348,7 @@ class ProjectGraph:
             for clave, (ini, fin) in (("e", (135, 270)), ("l", (270, 45))):
                 if (nodo, clave) in (negrita or ()):
                     c = (colores_region or {}).get((nodo, clave)) or (colores_valores or {}).get(
-                        (nodo, clave), "orange!80!black" if nodo in actuales else "black")
+                        (nodo, clave), f"{color_actual}!80!black" if nodo in actuales else "black")
                     L.append(rf"  \draw[{c}, ultra thick] (n{nodo}.{ini}) -- (n{nodo}.center)"
                              rf" -- (n{nodo}.{fin});")
             if numeros:
@@ -8143,6 +8542,13 @@ def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: s
     return svgs
 
 
+def prev_acum(paso, actividad, cand):
+    """Carga acumulada justo antes de considerar ``actividad`` en un paso de :meth:`asignar_pasos`."""
+    acum = paso["acumulada"]
+    idx = list(cand.index).index(actividad)
+    return acum[cand.index[idx - 1]] if idx > 0 else 0
+
+
 def _ordenar_por_precedencia(data: pd.DataFrame) -> pd.DataFrame:
     """Filas y columnas de una matriz de enlace en orden de precedencia: primero las
     actividades sin predecesoras, luego las que solo dependen de ellas, etc. (dentro de
@@ -8188,7 +8594,7 @@ _COLORES_MATRIZ = (r"\definecolor{narosc}{RGB}{204,102,0}\definecolor{narcl}{RGB
 
 
 def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), valor: str = None,
-                        valor_cero: str = None, rotulo: str = r"precedente $\to$\\ actividad $\downarrow$") -> list:
+                        valor_cero: str = None, resalte: str = None, rotulo: str = r"precedente $\to$\\ actividad $\downarrow$") -> list:
     """Líneas TikZ de una matriz booleana de enlace (sin ``tikzpicture``; con
     ``x`` = ancho de celda e ``y`` = 0,78 cm). Cuadrícula fina, celdas redondeadas en
     naranja claro (con la letra de la predecesora o una marca) y cabeceras en gris.
@@ -8196,7 +8602,8 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), val
     (atenuada); ``columnas``, las columnas resaltadas. La matriz puede ser rectangular.
     ``valor`` escribe ese texto (p. ej. ``"1"``) en las celdas marcadas, en vez de la letra
     de la columna o la marca ✓; ``valor_cero``, si se da, se escribe en gris claro en las
-    celdas vacías; ``rotulo`` es el texto de la esquina."""
+    celdas vacías; ``resalte`` es el color (p. ej. ``"blue"``) con que se resalta la fila
+    ``"actual"`` en vez del naranja; ``rotulo`` es el texto de la esquina."""
     filas = filas or {}
     columnas = {f"{c}" for c in columnas}
     nombres = [f"{n}" for n in data.index]
@@ -8207,7 +8614,8 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), val
     L = [rf"\fill[gris!25,rounded corners=3pt] ({-margen:.2f},0) rectangle ({nc},{alto:.2f});"]
     for i, nom in enumerate(nombres):
         if filas.get(nom) == "actual":
-            L.append(rf"\fill[narcl!60,rounded corners=2pt] ({-margen:.2f},{-i}) rectangle ({nc},{-i - 1});")
+            L.append(rf"\fill[{(resalte + '!14') if resalte else 'narcl!60'},rounded corners=2pt] "
+                     rf"({-margen:.2f},{-i}) rectangle ({nc},{-i - 1});")
     for j, col in enumerate(data.columns):
         if f"{col}" in columnas:
             L.append(rf"\fill[narcl!60,rounded corners=2pt] ({j},{alto:.2f}) rectangle ({j + 1},{-nf});")
@@ -8217,7 +8625,7 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), val
         L.append(rf"\draw[gris,line width=0.4pt] ({k},0) -- ({k},{-nf});")
     for k, nom in enumerate(nombres):
         est = filas.get(nom)
-        c = "narosc" if est == "actual" else "grisosc!35" if est == "gris" else "grisosc"
+        c = (f"{resalte}!70!black" if resalte else "narosc") if est == "actual" else "grisosc!35" if est == "gris" else "grisosc"
         L.append(rf"\node[font=\bfseries,{c},anchor=east] at (-0.35,{-k - 0.5}) {{{tex(nom)}}};")
     for k, nom in enumerate(data.columns):
         c = "narosc" if f"{nom}" in columnas else "grisosc"
@@ -8235,9 +8643,10 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), val
                 L.append(rf"\node[grisosc!35,font=\bfseries] at ({j + 0.5},{-i - 0.5}) {{{valor_cero}}};")
             if bool(data.iloc[i, j]):
                 cx, cy = j + 0.5, -i - 0.5
-                relleno = "gris!25" if gris else "narcl"
+                fila_res = bool(resalte) and filas.get(nombres[i]) == "actual"
+                relleno = "gris!25" if gris else (f"{resalte}!28" if fila_res else "narcl")
                 L.append(rf"\fill[{relleno},rounded corners=2pt] ({j + 0.08},{cy - 0.42}) rectangle ({j + 0.92},{cy + 0.42});")
-                tinta = "grisosc!35" if gris else "narosc"
+                tinta = "grisosc!35" if gris else (f"{resalte}!65!black" if fila_res else "narosc")
                 if valor is not None:
                     L.append(rf"\node[{tinta},font=\bfseries] at ({cx},{cy}) {{{valor}}};")
                 elif modo == "letra":

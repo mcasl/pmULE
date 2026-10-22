@@ -332,6 +332,7 @@ plot_cargas(gantt_df, limite_maximo_recursos)
 #| fig-cap: "Planificación del proyecto tras aplicar el algoritmo de asignación"
 #| label: fig-asignacion46
 proyecto_asignacion = proyecto.copy()
+proyecto_asignacion.display_asignar_pasos_tikz(data=datos_proyecto, duration_label='duration', resource_label='resources', maximo=[4,4,4,6])
 datos_proyecto_tras_asignacion, gantt_df, dibujo = proyecto_asignacion.asignar(data=datos_proyecto,
                                               duration_label='duration',
                                               resource_label='resources',

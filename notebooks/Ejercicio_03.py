@@ -424,6 +424,7 @@ plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=limite_maximo_recursos)
 # %%
 #| fig-cap: "Diagrama de Gantt del proyecto tras la asignación"
 #| label: fig-ganttPreAsignación
+proyecto_asignacion.display_asignar_pasos_tikz(data=datos_proyecto, duration_label='duration', resource_label='resources', maximo=limite_maximo_recursos)
 datos_proyecto_tras_asignar, gantt_df, dibujo = proyecto_asignacion.asignar(data=datos_proyecto,
                                               duration_label='duration',
                                               resource_label='resources',
