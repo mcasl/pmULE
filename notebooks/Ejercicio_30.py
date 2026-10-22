@@ -465,6 +465,7 @@ desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nive
                            resource_label='resources',
                            #report=False,
                            )
+proyecto.copy().display_nivelar_pasos_tikz(datos_proyecto, duration_label='duration', resource_label='resources')
 
 # %%
 cuadrados

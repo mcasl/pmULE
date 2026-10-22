@@ -317,6 +317,7 @@ plot_cargas(gantt_df=gantt_recursos, limite_maximo_recursos=None);
 #    - En caso de persistir el empate, resulta indiferente una u otra.  
 
 # %%
+proyecto_nivelacion.display_nivelar_pasos_tikz(datos_proyecto, duration_label='duration', resource_label='resources')
 desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nivelar(
                             data=datos_proyecto,
                             duration_label='duration',
