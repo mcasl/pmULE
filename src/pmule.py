@@ -3282,9 +3282,12 @@ class ProjectGraph:
             borde = "border-bottom:1px solid #444"
             sep = ";border-right:1px solid #444"
             # pasos anteriores al de la decisión (fila y columna P_j con j < vis-2) y
-            # actividades que ya no pueden reducirse (sin periodos en la última fila visible)
+            # actividades que ya no pueden reducirse (sin periodos en la fila de decisión)
             viejo = lambda j: APAGADO if apagar and j < vis - 2 else ""
-            agotada = {a: (APAGADO if apagar and df.loc[pasos[vis - 1], a] == 0 else "") for a in actividades}
+            # la fila de decisión es la anterior a la de resultados: una actividad que
+            # se agota en el resultado aún no se atenúa, hasta que sea la fila de decisión
+            fila_decision = pasos[max(vis - 2, 0)]
+            agotada = {a: (APAGADO if apagar and df.loc[fila_decision, a] == 0 else "") for a in actividades}
             cab = ['<th style="' + borde + sep + '">ruta \\ act.</th>']
             cab += [f'<th style="{borde};{agotada[a]}">{_h.escape(str(a))}</th>' for a in actividades]
             cab += [f'<th style="{borde};{viejo(j)}">' + (f"{pasos[j]}" if j < vis else "&nbsp;") + "</th>"
