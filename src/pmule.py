@@ -1827,14 +1827,14 @@ class ProjectGraph:
         def etiqueta(nombre, valores=None, critico=False):
             """Nodo al estilo del PMBOK (tabla HTML de graphviz): ``ES | d | EF`` arriba, el
             nombre en la banda central y ``LS | H | LF`` abajo."""
-            color = "red" if critico else "#A04A85"
-            relleno = "#FDE8E8" if critico else "#F1E6F1"
+            color = "red" if critico else "black"
+            relleno = "#FDE8E8" if critico else "white"
             v = valores or {}
             celda = lambda k: (f'<TD WIDTH="34" BGCOLOR="{relleno}">'
                                f'{"<B>" + v[k] + "</B>" if (k in v and critico) else v.get(k, "&nbsp;")}</TD>')
             return (f'<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5" COLOR="{color}">'
                     f'<TR>{celda("ES")}{celda("d")}{celda("EF")}</TR>'
-                    f'<TR><TD COLSPAN="3" BGCOLOR="{color}"><FONT COLOR="white"><B>{nombre}</B></FONT></TD></TR>'
+                    f'<TR><TD COLSPAN="3" BGCOLOR="{color if critico else relleno}"><FONT COLOR="{"white" if critico else "black"}"><B>{nombre}</B></FONT></TD></TR>'
                     f'<TR>{celda("LS")}{celda("H")}{celda("LF")}</TR></TABLE>>')
 
         for nodo in dot_graph.nodes():
@@ -4814,8 +4814,7 @@ class ProjectGraph:
                         estilo, gris = dict(borde="blue!80!black", grosor="very thick", relleno="blue!15",
                                             barra="blue!70!black"), ""
                     else:
-                        estilo, gris = dict(borde="gray!45", grosor="thick", relleno="white",
-                                            barra="gray!45"), "text=gray!55"
+                        estilo, gris = dict(borde="gray!45", grosor="thick", relleno="white"), "text=gray!55"
                     L += self._roy_caja_tikz(r, x, y, self._tex_texto(f"{et.get(nodo, nodo)}"), None,
                                              color_texto=gris, **estilo)
                 return "\n".join(L + A)
@@ -6215,11 +6214,11 @@ class ProjectGraph:
     #      nombre
     #     LS | H | LF
     # (inicio más temprano, duración, fin más temprano; inicio más tardío, holgura total,
-    # fin más tardío), con la fila del nombre rellena y esquinas rectas.
+    # fin más tardío), con esquinas rectas. En estado neutro es solo blanco y negro (sin
+    # fondo); los colores (rojo, naranja, azul, el de cada flecha) aparecen únicamente
+    # cuando el nodo o una casilla se resaltan por algún motivo.
     _ROY_ANCHO, _ROY_ALTO = 2.25, 1.3                  # cm
     _ROY_ALTO_FILA, _ROY_ALTO_NOMBRE = 0.42, 0.46      # cm: filas de tiempos y del nombre
-    _ROY_MORADO = "{rgb,255:red,160;green,74;blue,133}"
-    _ROY_LILA = "{rgb,255:red,241;green,230;blue,241}"
     _ROY_CELDAS = {"ES": (0, 0), "dur": (1, 0), "EF": (2, 0),
                    "LS": (0, 2), "H": (1, 2), "LF": (2, 2)}      # (columna, fila)
 
@@ -6232,19 +6231,19 @@ class ProjectGraph:
         ``celdas``: ``{casilla: código TikZ del contenido}`` con las casillas ``ES``,
         ``dur``, ``EF``, ``LS``, ``H`` y ``LF`` (las que falten quedan vacías);
         ``resaltadas``: ``{casilla: (color, grosor)}`` redibuja el borde de esas casillas;
-        ``color_texto``: opción ``text=...`` de los números; ``negrita``: números en negrita.
+        ``color_texto``: opción ``text=...`` de los números; ``negrita``: números en negrita;
+        ``barra``: color de la banda del nombre (por defecto sin relleno y nombre en negro; con
+        color, nombre en blanco).
         El nodo TikZ ``r`` es el rectángulo exterior (las flechas se recortan en su borde)."""
         W, H = cls._ROY_ANCHO, cls._ROY_ALTO
         h, hb = cls._ROY_ALTO_FILA, cls._ROY_ALTO_NOMBRE
-        borde = borde or cls._ROY_MORADO
-        relleno = relleno or cls._ROY_LILA
-        barra = barra or cls._ROY_MORADO
+        borde = borde or "black"
+        relleno = relleno or "white"
         x0, x1, c = x - W / 2, x + W / 2, W / 3
         yb0, yb1, y0, y1 = y - hb / 2, y + hb / 2, y - H / 2, y + H / 2
         P = lambda px, py: f"({px:.3f}cm,{py:.3f}cm)"
         L = [rf"  \node[rectangle, fill={relleno}, draw={borde}, {grosor}, minimum width={W}cm,"
              rf" minimum height={H}cm, inner sep=0pt] ({r}) at ({x:.2f}cm, {y:.2f}cm) {{}};",
-             rf"  \path[fill={barra}] {P(x0, yb0)} rectangle {P(x1, yb1)};",
              rf"  \draw[draw={borde}] {P(x0, yb0)} -- {P(x1, yb0)} {P(x0, yb1)} -- {P(x1, yb1)}"
              rf" {P(x0 + c, yb1)} -- {P(x0 + c, y1)} {P(x0 + 2 * c, yb1)} -- {P(x0 + 2 * c, y1)}"
              rf" {P(x0 + c, yb0)} -- {P(x0 + c, y0)} {P(x0 + 2 * c, yb0)} -- {P(x0 + 2 * c, y0)};"]
@@ -6261,7 +6260,10 @@ class ProjectGraph:
             xa, ya, xb, yb = limites(clave)
             L.append(rf"  \node[font={fuente}{', ' + color_texto if color_texto else ''}]"
                      rf" at {P((xa + xb) / 2, (ya + yb) / 2)} {{{contenido}}};")
-        L.append(rf"  \node[font=\footnotesize\bfseries, text=white] at ({x:.2f}cm, {y:.2f}cm) {{{nombre}}};")
+        if barra:
+            L.insert(1, rf"  \path[fill={barra}] {P(x0, yb0)} rectangle {P(x1, yb1)};")
+        L.append(rf"  \node[font=\footnotesize\bfseries, {'text=white' if barra else (color_texto or 'text=black')}]"
+                 rf" at ({x:.2f}cm, {y:.2f}cm) {{{nombre}}};")
         return L
 
     def plot_tikz_roy_pasos(self, durations, beamer: bool = False,
@@ -6381,7 +6383,7 @@ class ProjectGraph:
                 elif nodo in col_nodo:
                     estilo = dict(borde=col_nodo[nodo], grosor="ultra thick")
                 elif atenuar and nodo not in implicados:
-                    estilo = dict(borde=GRIS, grosor="thick", relleno="white", barra="gray!45")
+                    estilo = dict(borde=GRIS, grosor="thick", relleno="white")
                 else:
                     estilo = {}
                 gris = atenuar and nodo not in implicados and nodo not in criticos and nodo != actual

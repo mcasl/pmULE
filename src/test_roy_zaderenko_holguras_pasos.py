@@ -338,23 +338,32 @@ class TestRoyNodoPmbok(unittest.TestCase):
         celdas = {k: "1" for k in ("ES", "dur", "EF", "LS", "H", "LF")}
         cod = "\n".join(ProjectGraph._roy_caja_tikz("r0", 0, 0, "A", celdas))
         self.assertEqual(self._casillas(cod), 6)
-        self.assertIn(rf"fill={ProjectGraph._ROY_MORADO}", cod)
+        self.assertNotIn("rgb,", cod)                             # neutro: solo blanco y negro
+        self.assertNotIn(r"\path[fill", cod)                      # sin banda rellena
+        self.assertIn(r"text=black", cod)
         self.assertIn("{A}", cod)
         self.assertNotIn("rounded", cod)
+        coloreada = "\n".join(ProjectGraph._roy_caja_tikz("r0", 0, 0, "A", celdas, borde="red",
+                                                          barra="red"))
+        self.assertIn(r"\path[fill=red]", coloreada)               # los estados resaltados sí se colorean
+        self.assertIn("text=white", coloreada)
         vacia = "\n".join(ProjectGraph._roy_caja_tikz("r0", 0, 0, "A"))
         self.assertEqual(self._casillas(vacia), 0)
 
     def test_dibujo_estatico_con_las_seis_casillas_de_cada_nodo(self):
         cod = self.pg.plot_tikz_roy(DUR)
         self.assertEqual(self._casillas(cod), 6 * self.nodos)
-        self.assertEqual(cod.count(r"\footnotesize\bfseries, text=white"), self.nodos)
+        self.assertEqual(cod.count(r"\footnotesize\bfseries"), self.nodos)
+        self.assertEqual(cod.count("text=white"), 7)              # nombre en blanco solo en los 7 críticos
         self.assertEqual(cod.count("fill=white!90!red"), 7)       # A-D-F-J-I, Inicio y Fin
         self.assertNotIn("minimum width=1.5cm", cod)               # el nodo anterior ya no existe
 
     def test_sin_duraciones_las_cajas_van_vacias(self):
         cod = self.pg.plot_tikz_roy(False)
         self.assertEqual(self._casillas(cod), 0)
-        self.assertEqual(cod.count(r"\footnotesize\bfseries, text=white"), self.nodos)
+        self.assertEqual(cod.count(r"\footnotesize\bfseries, text=black"), self.nodos)
+        self.assertNotIn("rgb,", cod)                              # sin fondo ni color
+        self.assertNotIn("text=white", cod)
         self.assertNotIn("draw=red", cod)                          # sin duraciones no hay camino crítico
         self.assertNotIn("fill=white!90!red", cod)
 
@@ -394,7 +403,7 @@ class TestRoyNodoPmbok(unittest.TestCase):
     def test_construccion_con_el_mismo_nodo(self):
         for cod in self.pg.plot_tikz_construccion_roy():
             self.assertNotIn("minimum width=1.5cm", cod)
-        self.assertIn("{rgb,255:red,160;green,74;blue,133}", self.pg.plot_tikz_construccion_roy()[-1])
+        self.assertNotIn("rgb,", self.pg.plot_tikz_construccion_roy()[-1])   # neutro: blanco y negro
 
     @unittest.skipUnless(__import__("importlib").util.find_spec("pygraphviz"), "hace falta pygraphviz")
     def test_graphviz_dibuja_la_tabla_del_nodo(self):
