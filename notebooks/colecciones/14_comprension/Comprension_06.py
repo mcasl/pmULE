@@ -268,7 +268,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 # %%
 for nombre, acts in rutas_criticas.items():
     print(f'{nombre}: {" - ".join(acts)}')
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 3

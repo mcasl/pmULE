@@ -286,7 +286,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Calendario planificado (inicios más tempranos): de él sale la fracción planificada de cada actividad en la semana de control"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # En el Gantt del valor planificado cada casilla lleva el coste planificado de la semana (BAC / duración); en el del valor ganado, el BAC por el porcentaje realizado repartido entre las semanas trabajadas.

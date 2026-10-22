@@ -245,7 +245,7 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Calendario: fechas y holgura total de cada actividad"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # En el Gantt cada actividad empieza en su inicio más temprano y la casilla lleva los operarios que ocupa; la fila *Total* suma la columna (carga de la semana) y la fila *Cuadrados* eleva cada carga al cuadrado (su suma, en la última columna, es la medida de desnivel que usa la nivelación).

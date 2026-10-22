@@ -270,7 +270,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_libre = proyecto.duration(datos_proyecto['duration'])
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Carga de operarios con los inicios más tempranos frente al límite"

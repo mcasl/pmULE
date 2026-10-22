@@ -269,7 +269,7 @@ display(Markdown(pregunta_1))
 # %%
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Cómo se obtiene cada fecha y cada holgura"
@@ -333,7 +333,8 @@ gift = a_gift(preguntas_test, 'Ética 19 — holgura oculta')
 os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
 with open(os.path.expanduser('~/temp/cuestionario_etica.gift'), 'w', encoding='utf8') as f:
     f.write(gift)
-print(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)
 
 # %% [markdown]
 # ## Apartado 4

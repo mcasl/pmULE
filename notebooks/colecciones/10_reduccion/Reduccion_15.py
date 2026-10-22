@@ -269,7 +269,7 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_libre = proyecto.duration(datos_proyecto['duration'])
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Gantt de inicios más tempranos con los operarios de cada actividad (fila Total: carga semanal)"

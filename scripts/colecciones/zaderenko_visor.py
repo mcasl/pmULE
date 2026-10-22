@@ -1,7 +1,7 @@
 """Deja solo el visor paso a paso de Zaderenko en los cuadernos.
 
 Sustituye la celda que muestra ``obj.zaderenko(...)`` (la matriz ya resuelta) por
-``obj.display_zaderenko_pasos(...)`` —el visor cuyo primer paso es el resultado final—,
+``obj.display_zaderenko_tikz(...)`` —el visor cuyo primer paso es el resultado final—,
 conservando las opciones ``#|`` de la celda (pie y etiqueta de la tabla), y elimina
 la celda del visor que añadió ``pasos.py`` con su introducción. Idempotente.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 from .pasos import _celdas, _es_codigo, INTRO
 
 LLAMADA = re.compile(r"^(\w+)\.zaderenko\((.*)\)\s*$", re.S | re.M)
-INTRO_NUEVA = ("Matriz de Zaderenko paso a paso. El primer paso muestra el resultado final; "
+INTRO_NUEVA = ("Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; "
                "a partir del siguiente se construye desde el principio (avance con los botones):")
 
 
@@ -43,7 +43,7 @@ def convierte(texto: str):
         opciones = [l for l in cuerpo[1:] if l.startswith("#|")]
         # visor de pasos.py (y su introducción) que va detrás
         v = next((j for j in range(i + 1, len(celdas))
-                  if _es_codigo(celdas[j]) and f"{obj}.display_zaderenko_pasos(" in celdas[j]), None)
+                  if _es_codigo(celdas[j]) and f"{obj}.display_zaderenko_tikz(" in celdas[j]), None)
         if v is not None:
             visor = "\n".join(l for l in celdas[v].rstrip("\n").split("\n")[1:] if not l.startswith("#|"))
             quitar = {v}
@@ -51,7 +51,7 @@ def convierte(texto: str):
                 quitar.add(v - 1)
             celdas = [x for k, x in enumerate(celdas) if k not in quitar]
         else:
-            visor = f"{obj}.display_zaderenko_pasos({args})"
+            visor = f"{obj}.display_zaderenko_tikz({args})"
         celdas[i] = _nueva("\n".join([cuerpo[0]] + opciones + ([previo] if previo else []) + [visor]))
         celdas.insert(i, _nueva(f"# %% [markdown]\n# {INTRO_NUEVA}"))
         i += 2

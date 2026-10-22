@@ -232,7 +232,7 @@ calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = proyecto.duration(datos_proyecto['duration'])
 rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])
 R = proyecto.path_matrix(dummies=False)
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 1

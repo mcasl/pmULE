@@ -248,7 +248,7 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Calendario sin límite de recursos"
 #| label: tbl-calendario
 calendario_libre = proyecto.calendar(datos_proyecto['duration'])
-calendario_libre[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Cargas de operarios con los inicios más tempranos"

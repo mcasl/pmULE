@@ -297,7 +297,7 @@ display(Markdown(pregunta_3))
 #| tbl-cap: "Calendario correcto"
 #| label: tbl-calendarioCorrecto
 calendario = proyecto.calendar(d)
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'H_libre']]
+proyecto.display_calendario(d)
 
 # %%
 difieren = (calendario[c.columns] != c).any(axis=1)

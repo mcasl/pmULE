@@ -274,12 +274,12 @@ tau = float(Rt.max())
 Math(bmatrix(R) + r' \times ' + bmatrix(t) + ' = ' + bmatrix(Rt) + r' \quad\Rightarrow\quad \tau = ' + f'{tau:.0f}')
 
 # %% [markdown]
-# Matriz de Zaderenko paso a paso. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
+# Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
 
 # %%
 #| tbl-cap: "Matriz de Zaderenko"
 #| label: tbl-zaderenko
-proyecto.display_zaderenko_pasos(datos_proyecto['duration'])
+proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 
 # %%
 Markdown(f'‖R·t‖∞ = {tau:.0f}; tiempo más temprano del último nodo = {proyecto.duration(datos_proyecto["duration"])}; '

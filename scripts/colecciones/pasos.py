@@ -10,7 +10,7 @@ cálculo paso a paso (como con la matriz de Zaderenko):
 - tras el primer grafo Roy con tiempos (``obj.roy(..., durations=X)``):
   ``obj.display_roy_pasos(X)`` (mínimos y máximos);
 - tras la primera matriz de Zaderenko (``obj.zaderenko(X)``):
-  ``obj.display_zaderenko_pasos(X)``.
+  ``obj.display_zaderenko_tikz(X)``.
 
 Es idempotente: si el cuaderno ya llama a alguna de esas funciones, no la
 repite; y si la llamada del PERT o del Roy está *antes* del grafo (versión
@@ -87,7 +87,7 @@ INTRO = {
     "zaderenko": "Algoritmo de Zaderenko paso a paso (avance con los botones):",
 }
 FUNCION = {"pert": "display_pert_pasos", "roy": "display_roy_pasos",
-           "zaderenko": "display_zaderenko_pasos"}
+           "zaderenko": "display_zaderenko_tikz"}
 LLAMADA = re.compile(r"^# %%[^\n]*\n(\w+)\.display_(pert|roy)_pasos\(.*\)\s*$", re.S)
 
 

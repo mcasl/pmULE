@@ -248,7 +248,7 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_minima = proyecto.duration(datos_proyecto['duration'])
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Cargas con los inicios más tempranos"

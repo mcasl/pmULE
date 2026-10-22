@@ -294,7 +294,7 @@ detalle[['H_total = LS − ES', 'H_libre = mín ES suc. − EF', 'H_indep. = má
 # %%
 #| tbl-cap: "Calendario y holguras según la librería"
 #| label: tbl-calendario
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 4

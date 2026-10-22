@@ -283,7 +283,7 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Calendario planificado (inicios más tempranos y holguras)"
 #| label: tbl-calendario
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # PV de cada actividad = BAC por la fracción planificada transcurrida en la semana de control; EV = BAC por el porcentaje realizado; AC = coste real anotado:
