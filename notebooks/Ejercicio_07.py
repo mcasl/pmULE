@@ -190,7 +190,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 2

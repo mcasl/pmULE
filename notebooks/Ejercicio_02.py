@@ -159,7 +159,7 @@ Markdown(f"La informaci√≥n del nodo final del proyecto nos informa de la duraci√
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
 # ### Otras representaciones alternativas
