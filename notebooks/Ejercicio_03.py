@@ -352,6 +352,7 @@ plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=None)
 proyecto_nivelacion = proyecto.copy()
 datos_proyecto = datos_enunciado.copy()
 
+proyecto_nivelacion.display_nivelar_pasos_tikz(datos_proyecto, duration_label='duration', resource_label='resources')
 desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nivelar(
                             data=datos_proyecto,
                             duration_label='duration',

@@ -2092,6 +2092,131 @@ class ProjectGraph:
         return desplazamientos, cuadrados, my_data, gantt_df, dibujo
 
 
+    def nivelar_pasos_tikz_html(self, data, duration_label, resource_label, escala: float = 1.0) -> str:
+        """Visor paso a paso de la nivelación por mínimos cuadrados (:meth:`nivelar`) en TikZ:
+        arriba, el cuadro de la suma de cuadrados de cada actividad en cada desplazamiento
+        posible; abajo, el Gantt con las cargas correspondiente. El paso 0 es la solución;
+        después, para cada actividad no crítica (por fin más temprano), un subpaso por cada
+        desplazamiento probado y un paso final con el desplazamiento elegido (el de menor
+        suma de cuadrados, que ya queda aplicado para las siguientes actividades).
+        No modifica el proyecto."""
+        import base64, html as _h, re as _re
+        p = self.copy()
+        cal = p.calendar(data[duration_label])
+        cal = cal.loc[cal["H_total"] > 0, :]
+        orden = list(cal.sort_values(by=["fin_mas_temprano", "H_total"], ascending=[True, False]).index)
+        mis_datos = data[[duration_label, resource_label]]
+        filas = []                                   # una por actividad: H, sumas, gantts, elegido
+        for act in orden:
+            H = int(p.calculate_pert(mis_datos[duration_label])["activities"].loc[act, "H_total"])
+            g, dib = p.gantt_cargas(mis_datos, duration_label, resource_label, report=False, tikz=True)
+            sumas, gantts = {0: g.data.loc["Cuadrados", "H_total"]}, {0: dib}
+            for desp in range(1, H + 1):
+                q, dib = p.evaluar_desplazamiento(mis_datos, duration_label, resource_label,
+                                                  report=False, tikz=True, **{act: desp})
+                sumas[desp], gantts[desp] = q, dib
+            elegido = int(pd.Series(sumas).idxmin())
+            if elegido > 0:
+                mis_datos, _, _ = p.desplazar(data=mis_datos, duration_label=duration_label,
+                                              resource_label=resource_label, tikz=False,
+                                              cuadrados=True, report=False, **{act: elegido})
+            filas.append(dict(act=act, H=H, sumas=sumas, gantts=gantts, elegido=elegido))
+        _, gantt_final = p.gantt_cargas(mis_datos, duration_label, resource_label, report=False, tikz=True)
+
+        n = len(filas)
+        Hmax = max((f["H"] for f in filas), default=0)
+        CW, RH, X0, GAP = 1.25, 0.62, 2.6, 0.9
+        ancho_tabla = X0 + (Hmax + 1) * CW
+
+        def num(v):
+            return f"{int(v)}" if float(v) == int(v) else f"{v:.1f}"
+
+        def tex(t):
+            for a, b in (("_", r"\_"), ("&", r"\&"), ("%", r"\%"), ("#", r"\#"), ("💤", "zz ")):
+                t = t.replace(a, b)
+            return t
+
+        def tabla(i=None, desp=None, final=False):
+            """``i``: fila en curso; ``desp``: último desplazamiento probado; ``final``: fila i completa."""
+            fondo, texto, rayas = [], [], []
+            cy = lambda r: -(r + 0.5) * RH
+            cx = lambda c: X0 + (c + 0.5) * CW
+            GRIS = "black!30"
+
+            def celda(x, y, txt, color=None, fondo_c=None, bold=False):
+                if fondo_c:
+                    fondo.append(rf"\fill[{fondo_c}, rounded corners=1.5pt] ({x - CW / 2 + .04:.3f},{y - RH / 2 + .04:.3f}) "
+                                 rf"rectangle ({x + CW / 2 - .04:.3f},{y + RH / 2 - .04:.3f});")
+                if txt != "":
+                    est = ("text=" + color + "," if color else "") + ("font=\\bfseries," if bold else "")
+                    texto.append(rf"\node[{est}] at ({x:.3f},{y:.3f}) {{{txt}}};")
+
+            celda(X0 / 2, cy(0), r"\textit{actividad}")
+            for c in range(Hmax + 1):
+                celda(cx(c), cy(0), str(c), bold=True)
+            texto.append(rf"\node[anchor=west,font=\scriptsize] at ({X0},{RH * 0.35:.3f}) {{desplazamiento}};")
+            for j, f in enumerate(filas):
+                y = cy(1 + j)
+                hecha = i is None or j < i or (j == i and final)
+                en_curso = i is not None and j == i and not final
+                visible_hasta = f["H"] if hecha else (desp if en_curso else -1)
+                viejo = i is not None and j < i
+                celda(X0 / 2, y, tex(str(f["act"])) + rf"\,\scriptsize({f['H']})",
+                      GRIS if viejo else None, bold=not viejo)
+                minimo = min(f["sumas"].values())
+                for c in range(0, min(visible_hasta, f["H"]) + 1):
+                    v = f["sumas"][c]
+                    if hecha and c == f["elegido"]:
+                        fc = "green!15" if viejo else "green!45!lime!60"
+                    elif en_curso and c == desp:
+                        fc = "orange!30"
+                    else:
+                        fc = None
+                    celda(cx(c), y, num(v), GRIS if viejo else None, fc)
+            alto = (1 + n) * RH
+            rayas.append(rf"\draw[black!70] (0,{-RH}) -- ({ancho_tabla},{-RH});")
+            rayas.append(rf"\draw[black!70] ({X0 - 0.04},0) -- ({X0 - 0.04},{-alto});")
+            for r in range(2, n + 1):
+                rayas.append(rf"\draw[black!12] (0,{-r * RH}) -- ({ancho_tabla},{-r * RH});")
+            return "\n".join(fondo + rayas + texto), alto
+
+        def fotograma(dibujo_gantt, **kw):
+            cuerpo, alto = tabla(**kw)
+            dibujo_gantt = dibujo_gantt.replace("💤", "zz")      # pdflatex no admite el emoji
+            interior = _re.sub(r"^\s*\\begin\{tikzpicture\}[^\n]*\n", "", dibujo_gantt.strip())
+            interior = _re.sub(r"\\end\{tikzpicture\}\s*$", "", interior)
+            xs = [float(v) for v in _re.findall(r"at \(\s*([\d.]+),", dibujo_gantt)]
+            ancho = max([ancho_tabla] + [x + 1 for x in xs])
+            desplazar_y = alto + 1.4
+            return (rf"\begin{{tikzpicture}}[x={escala}cm,y={escala}cm,>=latex,font=\small]" + "\n"
+                    rf"\useasboundingbox (-4.6,0.8) rectangle ({ancho + 2.6:.3f},{-(desplazar_y + 8.6):.3f});" + "\n"
+                    + cuerpo + "\n"
+                    rf"\begin{{scope}}[shift={{(0,{-desplazar_y:.3f})}}]" + "\n" + interior + "\n\\end{scope}\n\\end{tikzpicture}")
+
+        codigos, pies = [fotograma(gantt_final)], []
+        pies.append("Nivelación por mínimos cuadrados: solución. Cuadro de la suma de cuadrados de las cargas de cada "
+                    "actividad (entre paréntesis, su holgura total) para cada desplazamiento, con el mínimo resaltado, "
+                    "y diagrama de Gantt con cargas resultante. Pulse «siguiente» para ver cómo se obtiene.")
+        for i, f in enumerate(filas):
+            for desp in range(f["H"] + 1):
+                codigos.append(fotograma(f["gantts"][desp], i=i, desp=desp))
+                pies.append(f"Actividad {f['act']} (holgura {f['H']}): desplazada {desp} "
+                            f"{'periodo' if desp == 1 else 'periodos'}, la suma de cuadrados de las cargas es {num(f['sumas'][desp])}.")
+            codigos.append(fotograma(f["gantts"][f["elegido"]], i=i, desp=f["elegido"], final=True))
+            pies.append(f"Actividad {f['act']}: se elige el desplazamiento {f['elegido']} "
+                        f"(suma de cuadrados mínima, {num(f['sumas'][f['elegido']])}); queda aplicado para las siguientes actividades.")
+        fotos = []
+        for svg, pie in zip(_svgs_de_tikz(codigos, "calc,arrows.meta,patterns"), pies):
+            b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
+            fotos.append('<img alt="paso" style="display:block;margin:0 auto;width:100%;max-width:1000px;height:auto" '
+                         f'src="data:image/svg+xml;base64,{b64}">'
+                         f'<p style="text-align:center;margin-top:.5em">{_h.escape(pie)}</p>')
+        return _html_pasos(fotos, inicio=0)
+
+    def display_nivelar_pasos_tikz(self, data, duration_label, resource_label, escala: float = 1.0) -> None:
+        """Muestra en un cuaderno la nivelación paso a paso (:meth:`nivelar_pasos_tikz_html`)."""
+        display(HTML(self.nivelar_pasos_tikz_html(data, duration_label, resource_label, escala)))
+
     def asignar(self, data, duration_label='duration', resource_label='resources', maximo=None, report=True, params=None):
         # maximo is indexed starting at 1
         if maximo is None:
