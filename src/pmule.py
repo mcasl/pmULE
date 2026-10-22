@@ -3300,8 +3300,9 @@ class ProjectGraph:
                 for j in range(k + 1):
                     if j < vis:
                         v = df.loc[ruta, pasos[j]]
-                        estilo = ("background:#adff2f;" if j < (vis if verde is None else verde)
-                                  and v == df.loc[rutas, pasos[j]].max() else "") + viejo(j)
+                        verde_ok = j < (vis if verde is None else verde) and v == df.loc[rutas, pasos[j]].max()
+                        estilo = (("background:#e2f5b5;" if viejo(j) else "background:#adff2f;")
+                                  if verde_ok else "") + viejo(j)
                         celdas.append(f'<td style="{linea}{estilo}">{num(v)}</td>')
                     else:
                         celdas.append(f'<td style="{linea}"></td>')
@@ -3312,8 +3313,9 @@ class ProjectGraph:
                 for a in actividades:
                     if j < vis:
                         v = df.loc[pasos[j], a]
-                        estilo = ("background:#ffff00;" if (j < amarillo_hasta and a in mejores.get(pasos[j], []))
-                                  else "") + viejo(j) + agotada[a]
+                        amarillo = j < amarillo_hasta and a in mejores.get(pasos[j], [])
+                        estilo = (("background:#ffffb3;" if (viejo(j) or agotada[a]) else "background:#ffff00;")
+                                  if amarillo else "") + viejo(j) + agotada[a]
                     else:
                         v, estilo = float("nan"), ""
                     celdas.append(f'<td style="{linea}{estilo}">{num(v)}</td>')

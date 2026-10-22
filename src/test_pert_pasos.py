@@ -227,7 +227,7 @@ class TestAckoffPasos(unittest.TestCase):
     def test_la_columna_nueva_no_va_en_verde(self):
         html = self.pg.ackoff_pasos_html(self.d, self.mn, self.c, reduction=3)
         fotos = html.split('class="pmule-paso"')[1:]
-        verdes = [f.count("background:#adff2f") for f in fotos]
+        verdes = [f.count("background:#adff2f") + f.count("background:#e2f5b5") for f in fotos]
         self.assertEqual(verdes[1], 0)                       # solo datos
         # iteración r: se resaltan las críticas de las columnas 0..r, no las de la nueva
         self.assertEqual(verdes[2], 1)                       # columna 0: Route_5
