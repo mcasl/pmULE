@@ -100,7 +100,9 @@ def _tau(rng):
     celdas += apartado(2)
     celdas.append(code("Rt = R @ t\n"
                        "tau = float(Rt.max())\n"
-                       "Math(bmatrix(R) + r' \\times ' + bmatrix(t) + ' = ' + bmatrix(Rt) + r' \\quad\\Rightarrow\\quad \\tau = ' + f'{tau:.0f}')"))
+                       "from pmule import display_producto_rutas\n"
+                       "display_producto_rutas(R, t, Rt)\n"
+                       "Markdown(f'τ = {tau:.0f}')"))
     celdas.append(code('#| tbl-cap: "Matriz de Zaderenko"\n#| label: tbl-zaderenko\n'
                        "proyecto.zaderenko(durations=datos_proyecto['duration'])"))
     celdas.append(code("Markdown(f'‖R·t‖∞ = {tau:.0f}; tiempo más temprano del último nodo = {proyecto.duration(datos_proyecto[\"duration\"])}; '\n"

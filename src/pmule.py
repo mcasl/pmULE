@@ -8526,7 +8526,7 @@ def _html_pasos(fotos: list, inicio: int = 1) -> str:
         f'<div style="text-align:center;margin-bottom:.5em">'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',-{n})">«</button>'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',-1)">‹ anterior</button>'
-        f'<span class="pmule-contador" data-inicio="{inicio}" style="margin:0 .8em">paso {inicio} de {n + inicio - 1}</span>'
+        f'<span class="pmule-contador" data-inicio="{inicio}" title="También con las flechas ← → del teclado" style="margin:0 .8em">paso {inicio} de {n + inicio - 1}</span>'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',1)">siguiente ›</button>'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',{n})">»</button>'
         f'<button {boton} title="Ampliar a pantalla completa (Esc para cerrar)" '
@@ -8549,11 +8549,21 @@ def _html_pasos(fotos: list, inicio: int = 1) -> str:
         'document.body.style.overflow = "hidden";'
         'for (var i = 0; i < imgs.length; i++) { imgs[i].setAttribute("data-estilo", imgs[i].style.cssText);'
         'imgs[i].style.cssText = "display:block;margin:0 auto;width:100%;height:calc(100vh - 5em);object-fit:contain"; } };'
-        'if (!window.pmuleTeclas) { window.pmuleTeclas = true; document.addEventListener("keydown", function(e) {'
-        'var c = document.querySelector(".pmule-pasos[data-pantalla=\'1\']"); if (!c) return;'
-        'if (e.key === "Escape") window.pmulePantalla(c.id);'
-        'else if (e.key === "ArrowRight") window.pmulePaso(c.id, 1);'
-        'else if (e.key === "ArrowLeft") window.pmulePaso(c.id, -1); }); }</script>')
+        'if (!window.pmuleTeclas) { window.pmuleTeclas = true; window.pmuleActivo = null;'
+        'var marca = function(e) { var c = e.target.closest ? e.target.closest(".pmule-pasos") : null; if (c) window.pmuleActivo = c.id; };'
+        'document.addEventListener("mouseover", marca); document.addEventListener("click", marca); document.addEventListener("focusin", marca);'
+        'var visible = function(c) { var r = c.getBoundingClientRect(), h = window.innerHeight || document.documentElement.clientHeight;'
+        'return Math.max(0, Math.min(r.bottom, h) - Math.max(r.top, 0)); };'
+        'document.addEventListener("keydown", function(e) {'
+        'if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;'
+        'var t = e.target; if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;'
+        'var c = document.querySelector(".pmule-pasos[data-pantalla=\'1\']");'
+        'if (c && e.key === "Escape") { window.pmulePantalla(c.id); return; }'
+        'if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;'
+        'if (!c) { c = window.pmuleActivo ? document.getElementById(window.pmuleActivo) : null;'
+        'if (!c || visible(c) <= 0) { c = null; var mejor = 0, todos = document.querySelectorAll(".pmule-pasos");'
+        'for (var i = 0; i < todos.length; i++) { var v = visible(todos[i]); if (v > mejor) { mejor = v; c = todos[i]; } } } }'
+        'if (!c) return; e.preventDefault(); window.pmulePaso(c.id, e.key === "ArrowRight" ? 1 : -1); }); }</script>')
 
 def _svg_ancho_columna(svg):
     """Quita ``width``/``height`` fijos de la raíz del SVG (conserva ``viewBox``)
@@ -8758,6 +8768,83 @@ class MatrizEnlace:
 
     def __repr__(self):
         return f"MatrizEnlace({len(self.data)} actividades)"
+
+
+def producto_rutas_html(path_matrix, tiempos, resultado=None) -> str:
+    """Producto ``R × T = R·T`` (matriz de rutas por tiempos de las actividades) como visor HTML.
+
+    Al pasar el ratón por una fila de ``R`` (o al tocarla; un segundo toque la suelta) se resalta
+    esa fila y se recuadran, en cada columna de ``T``, los valores que se suman (los que
+    corresponden a un 1 de la ruta) y los resultados de esa ruta: así se ve que el producto es la
+    suma de los tiempos de las actividades de la ruta.
+
+    ``path_matrix``: ``DataFrame`` rutas × actividades de 0 y 1. ``tiempos``: ``Series`` o
+    ``DataFrame`` con una fila por actividad (columnas de ``R``) y una o más columnas.
+    ``resultado``: ``R @ T`` (se calcula si no se da).
+    """
+    import html as _h, uuid
+    R = pd.DataFrame(path_matrix).astype(int)
+    T = tiempos.to_frame() if isinstance(tiempos, pd.Series) else pd.DataFrame(tiempos)
+    T = T.loc[R.columns]
+    RT = (R @ T) if resultado is None else pd.DataFrame(resultado).reindex(index=R.index)
+    RT.columns = T.columns
+
+    def fmt(v):
+        v = float(v)
+        return f"{int(round(v))}" if abs(v - round(v)) < 1e-9 else f"{v:.2f}".rstrip("0").rstrip(".")
+
+    uid = "pmpr" + uuid.uuid4().hex[:8]
+    esc = lambda x: _h.escape(str(x))
+    nr, na, nc = len(R), len(R.columns), len(T.columns)
+
+    def tabla(cabecera, filas, clase):
+        return (f'<table class="{uid}-m {clase}"><thead><tr>{"".join(f"<th>{esc(c)}</th>" for c in cabecera)}'
+                f'</tr></thead><tbody>{"".join(filas)}</tbody></table>')
+
+    filas_r = [f'<tr data-i="{i}"><th class="{uid}-rot">{esc(R.index[i])}</th>' + "".join(
+        f'<td class="{"u" if R.iat[i, a] else "z"}" data-a="{a}">{R.iat[i, a]}</td>' for a in range(na)) + "</tr>"
+        for i in range(nr)]
+    filas_t = [f'<tr><th class="{uid}-rot">{esc(R.columns[a])}</th>' + "".join(
+        f'<td data-a="{a}" data-j="{j}">{fmt(T.iat[a, j])}</td>' for j in range(nc)) + "</tr>" for a in range(na)]
+    filas_x = [f'<tr data-i="{i}">' + "".join(
+        f'<td data-i="{i}" data-j="{j}">{fmt(RT.iat[i, j])}</td>' for j in range(nc)) + "</tr>" for i in range(nr)]
+    css = (f'<style>#{uid}{{margin:1em 0;overflow-x:auto}}'
+           f'#{uid} .box{{display:flex;align-items:flex-start;gap:.7em;justify-content:center;width:max-content;margin:0 auto}}'
+           f'#{uid} .op{{align-self:center;font-size:1.3em;padding-top:1.6em}}'
+           f'#{uid} table{{border-collapse:separate;border-spacing:2px;font-variant-numeric:tabular-nums}}'
+           f'#{uid} .{uid}-m tbody{{border-left:2px solid #444;border-right:2px solid #444}}'
+           f'#{uid} th{{font-weight:normal;color:#555;font-size:.85em;padding:0 .3em;text-align:center}}'
+           f'#{uid} th.{uid}-rot{{text-align:right;white-space:nowrap}}'
+           f'#{uid} td{{text-align:center;min-width:1.7em;padding:.15em .35em;border:2px solid transparent;border-radius:3px}}'
+           f'#{uid} td.z{{color:#c4c4c4}}'
+           f'#{uid} .rr tbody tr{{cursor:pointer}}'
+           f'#{uid} tr.sel td{{background:#dbeafe}}'
+           f'#{uid} td.cj{{border-color:#1d4ed8;background:#dbeafe;font-weight:bold;color:#0b2a7a}}'
+           f'#{uid} .nota{{font-size:.85em;color:#555;margin:.3em 0 0;text-align:center}}</style>')
+    js = ("<script>(function(){var r=document.getElementById('%s'),fijo=null;"
+          "function mostrar(i){r.querySelectorAll('.sel').forEach(function(e){e.classList.remove('sel')});"
+          "r.querySelectorAll('.cj').forEach(function(e){e.classList.remove('cj')});if(i===null)return;"
+          "var fr=r.querySelector('.rr tr[data-i=\"'+i+'\"]');if(!fr)return;fr.classList.add('sel');"
+          "fr.querySelectorAll('td.u').forEach(function(c){c.classList.add('cj');var a=c.dataset.a;"
+          "r.querySelectorAll('.tt td[data-a=\"'+a+'\"]').forEach(function(t){t.classList.add('cj')})});"
+          "r.querySelectorAll('.xx tr[data-i=\"'+i+'\"]').forEach(function(x){x.classList.add('sel');"
+          "x.querySelectorAll('td').forEach(function(c){c.classList.add('cj')})})}"
+          "r.querySelectorAll('.rr tbody tr').forEach(function(f){var i=f.dataset.i;"
+          "f.addEventListener('mouseenter',function(){mostrar(i)});"
+          "f.addEventListener('click',function(){fijo=(fijo===i)?null:i;mostrar(fijo)})});"
+          "r.querySelector('.rr').addEventListener('mouseleave',function(){mostrar(fijo)})})();</script>") % uid
+    return (f'{css}<div id="{uid}"><div class="box">'
+            + tabla([""] + list(R.columns), filas_r, "rr") + '<div class="op">×</div>'
+            + tabla([""] + [str(c) for c in T.columns], filas_t, "tt")
+            + '<div class="op">=</div>' + tabla([str(c) for c in RT.columns], filas_x, "xx")
+            + '</div><p class="nota">👆 Interactivo: pasa el ratón (o toca) una fila de la matriz de rutas: '
+              'se recuadran los valores que se suman y el resultado.</p></div>' + js)
+
+
+def display_producto_rutas(path_matrix, tiempos, resultado=None) -> None:
+    """Muestra :func:`producto_rutas_html` en el cuaderno."""
+    from IPython.display import display, HTML
+    display(HTML(producto_rutas_html(path_matrix, tiempos, resultado)))
 
 
 def muestra_test(preguntas_test):

@@ -288,7 +288,9 @@ display(Markdown(pregunta_2))
 # %%
 Rt = R @ t
 tau = float(Rt.max())
-Math(bmatrix(R) + r' \times ' + bmatrix(t) + ' = ' + bmatrix(Rt) + r' \quad\Rightarrow\quad \tau = ' + f'{tau:.0f}')
+from pmule import display_producto_rutas
+display_producto_rutas(R, t, Rt)
+Markdown(f'τ = {tau:.0f}')
 
 # %% [markdown]
 # Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):

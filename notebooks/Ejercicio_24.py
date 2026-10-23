@@ -163,7 +163,8 @@ duraciones_caminos = path_matrix @ D
 
 # %%
 # LaTex for pretty print, the calculations are already done
-Math(  bmatrix(path_matrix) + " \\times " + bmatrix(D)   + " = " + bmatrix(duraciones_caminos))
+from pmule import display_producto_rutas
+display_producto_rutas(path_matrix, D, duraciones_caminos)
 
 # %%
 Markdown(f"La mayor duración de los caminos es {duraciones_caminos.values.max()}")

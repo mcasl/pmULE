@@ -73,7 +73,8 @@ def _base(k, rng):
         celdas += apartado(ap); ap += 1
         celdas.append(code("duraciones = datos_enunciado['duration'].reindex(actividades)\n"
                            "duraciones_rutas = path_matrix @ duraciones\n"
-                           "Math(bmatrix(path_matrix) + r' \\times ' + bmatrix(duraciones) + ' = ' + bmatrix(duraciones_rutas))"))
+                           "from pmule import display_producto_rutas\n"
+                           "display_producto_rutas(path_matrix, duraciones, duraciones_rutas)"))
         celdas.append(code('#| tbl-cap: "Duración de cada ruta, sumando sus actividades"\n#| label: tbl-rutasPaso-a\n'
                            "detalle_rutas(path_matrix, duraciones)"))
         celdas.append(code("duracion_proyecto = int(duraciones_rutas.max())\n"
@@ -119,7 +120,8 @@ def _base(k, rng):
         celdas += apartado(ap); ap += 1
         celdas.append(code("duraciones = datos_proyecto['duration'][path_matrix.columns]\n"
                            "duraciones_rutas = path_matrix @ duraciones\n"
-                           "Math(bmatrix(path_matrix) + r' \\times ' + bmatrix(duraciones) + ' = ' + bmatrix(duraciones_rutas))"))
+                           "from pmule import display_producto_rutas\n"
+                           "display_producto_rutas(path_matrix, duraciones, duraciones_rutas)"))
         celdas.append(code('#| tbl-cap: "Duración de cada ruta, sumando sus actividades"\n#| label: tbl-rutasPaso-b\n'
                            "detalle_rutas(path_matrix, duraciones)"))
         celdas.append(code("duracion_proyecto = int(duraciones_rutas.max())\n"
@@ -209,7 +211,8 @@ def _escenarios(rng):
     celdas += apartado(2)
     celdas.append(code("T = escenarios.loc[R.columns]\n"
                        "duraciones_rutas = R @ T\n"
-                       "Math(bmatrix(R) + r' \\times ' + bmatrix(T) + ' = ' + bmatrix(duraciones_rutas))"))
+                       "from pmule import display_producto_rutas\n"
+                       "display_producto_rutas(R, T, duraciones_rutas)"))
     celdas.append(code('#| tbl-cap: "Duración de cada ruta en cada escenario"\n#| label: tbl-duracionesRutas\n'
                        "duraciones_rutas"))
     celdas.append(md("Cada columna de R·T es el vector de duraciones de las rutas para un escenario: la fila r, "

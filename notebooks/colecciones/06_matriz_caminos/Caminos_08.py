@@ -278,7 +278,8 @@ display(Markdown(pregunta_2))
 # %%
 T = escenarios.loc[R.columns]
 duraciones_rutas = R @ T
-Math(bmatrix(R) + r' \times ' + bmatrix(T) + ' = ' + bmatrix(duraciones_rutas))
+from pmule import display_producto_rutas
+display_producto_rutas(R, T, duraciones_rutas)
 
 # %%
 #| tbl-cap: "Duración de cada ruta en cada escenario"

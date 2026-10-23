@@ -171,7 +171,8 @@ duraciones_de_caminos = (path_matrix @ D)
 
 # %%
 # LaTex for pretty print, the calculations are already done
-Math(  bmatrix(path_matrix) + " \\times " + bmatrix(D) + " = " + bmatrix(duraciones_de_caminos) )
+from pmule import display_producto_rutas
+display_producto_rutas(path_matrix, D, duraciones_de_caminos)
 
 # %% [markdown]
 # Las duraciones de las rutas son entonces:

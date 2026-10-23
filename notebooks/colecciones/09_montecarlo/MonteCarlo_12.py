@@ -298,7 +298,8 @@ display(Markdown(pregunta_2))
 # %%
 T = replicas.loc[R.columns]
 RT = R @ T
-Math(bmatrix(R) + r' \times ' + bmatrix(T) + ' = ' + bmatrix(RT))
+from pmule import display_producto_rutas
+display_producto_rutas(R, T, RT)
 
 # %%
 #| tbl-cap: "R·T: duración de cada ruta (filas) en cada réplica (columnas)"

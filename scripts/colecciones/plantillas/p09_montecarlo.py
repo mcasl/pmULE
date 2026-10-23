@@ -243,7 +243,8 @@ def _a_mano(rng):
     celdas += apartado(2)
     celdas.append(code("T = replicas.loc[R.columns]\n"
                        "RT = R @ T\n"
-                       "Math(bmatrix(R) + r' \\times ' + bmatrix(T) + ' = ' + bmatrix(RT))"))
+                       "from pmule import display_producto_rutas\n"
+                       "display_producto_rutas(R, T, RT)"))
     celdas.append(code('#| tbl-cap: "R·T: duración de cada ruta (filas) en cada réplica (columnas)"\n#| label: tbl-RT\n'
                        "RT"))
     celdas.append(md("El elemento (r, j) de R·T es la duración de la ruta r en la réplica j: la suma de las "
