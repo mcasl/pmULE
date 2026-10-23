@@ -277,7 +277,8 @@ display(Markdown(pregunta_3))
 # %%
 duraciones = datos_proyecto['duration'][path_matrix.columns]
 duraciones_rutas = path_matrix @ duraciones
-Math(bmatrix(path_matrix) + r' \times ' + bmatrix(duraciones) + ' = ' + bmatrix(duraciones_rutas))
+from pmule import display_producto_rutas
+display_producto_rutas(path_matrix, duraciones, duraciones_rutas)
 
 # %%
 #| tbl-cap: "Duración de cada ruta, sumando sus actividades"

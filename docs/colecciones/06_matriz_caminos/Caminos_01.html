@@ -2666,31 +2666,163 @@ Tabla 4: Matriz de caminos
 </div>
 </div>
 <div id="ffa54ea2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:44:07.103037Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:44:07.102453Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:44:07.114391Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:44:07.113090Z&quot;}}" data-execution_count="15">
-<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="15">
-<p><span class="math inline">\(\displaystyle \begin{bmatrix}
-1 &amp; 0 &amp; 0 &amp; 1 &amp; 1 &amp; 0 &amp; 1 &amp; 1\\
-1 &amp; 0 &amp; 0 &amp; 1 &amp; 0 &amp; 1 &amp; 0 &amp; 1\\
-0 &amp; 1 &amp; 0 &amp; 1 &amp; 1 &amp; 0 &amp; 1 &amp; 1\\
-0 &amp; 1 &amp; 0 &amp; 1 &amp; 0 &amp; 1 &amp; 0 &amp; 1\\
-0 &amp; 0 &amp; 1 &amp; 1 &amp; 1 &amp; 0 &amp; 1 &amp; 1\\
-0 &amp; 0 &amp; 1 &amp; 1 &amp; 0 &amp; 1 &amp; 0 &amp; 1\\
-\end{bmatrix} \times \begin{bmatrix}
-8\\
-2\\
-5\\
-6\\
-8\\
-5\\
-7\\
-6\\
-\end{bmatrix} = \begin{bmatrix}
-35\\
-25\\
-29\\
-19\\
-32\\
-22\\
-\end{bmatrix}\)</span></p>
+<div class="cell-output cell-output-display">
+<style>#pmpr2b75d146{margin:1em 0;overflow-x:auto}#pmpr2b75d146 .box{display:flex;align-items:flex-start;gap:.7em;justify-content:center;width:max-content;margin:0 auto}#pmpr2b75d146 .op{align-self:center;font-size:1.3em;padding-top:1.6em}#pmpr2b75d146 table{border-collapse:separate;border-spacing:2px;font-variant-numeric:tabular-nums}#pmpr2b75d146 .pmpr2b75d146-m tbody{border-left:2px solid #444;border-right:2px solid #444}#pmpr2b75d146 th{font-weight:normal;color:#555;font-size:.85em;padding:0 .3em;text-align:center}#pmpr2b75d146 th.pmpr2b75d146-rot{text-align:right;white-space:nowrap}#pmpr2b75d146 td{text-align:center;min-width:1.7em;padding:.15em .35em;border:2px solid transparent;border-radius:3px}#pmpr2b75d146 td.z{color:#c4c4c4}#pmpr2b75d146 .rr tbody tr{cursor:pointer}#pmpr2b75d146 tr.sel td{background:#dbeafe}#pmpr2b75d146 td.cj{border-color:#1d4ed8;background:#dbeafe;font-weight:bold;color:#0b2a7a}#pmpr2b75d146 .nota{font-size:.85em;color:#555;margin:.3em 0 0;text-align:center}</style><div id="pmpr2b75d146"><div class="box">
+<table class="pmpr2b75d146-m rr caption-top table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">A</th>
+<th data-quarto-table-cell-role="th">B</th>
+<th data-quarto-table-cell-role="th">C</th>
+<th data-quarto-table-cell-role="th">D</th>
+<th data-quarto-table-cell-role="th">E</th>
+<th data-quarto-table-cell-role="th">F</th>
+<th data-quarto-table-cell-role="th">G</th>
+<th data-quarto-table-cell-role="th">H</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd" data-i="0">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">Route_1</th>
+<td class="u" data-a="0">1</td>
+<td class="z" data-a="1">0</td>
+<td class="z" data-a="2">0</td>
+<td class="u" data-a="3">1</td>
+<td class="u" data-a="4">1</td>
+<td class="z" data-a="5">0</td>
+<td class="u" data-a="6">1</td>
+<td class="u" data-a="7">1</td>
+</tr>
+<tr class="even" data-i="1">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">Route_2</th>
+<td class="u" data-a="0">1</td>
+<td class="z" data-a="1">0</td>
+<td class="z" data-a="2">0</td>
+<td class="u" data-a="3">1</td>
+<td class="z" data-a="4">0</td>
+<td class="u" data-a="5">1</td>
+<td class="z" data-a="6">0</td>
+<td class="u" data-a="7">1</td>
+</tr>
+<tr class="odd" data-i="2">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">Route_3</th>
+<td class="z" data-a="0">0</td>
+<td class="u" data-a="1">1</td>
+<td class="z" data-a="2">0</td>
+<td class="u" data-a="3">1</td>
+<td class="u" data-a="4">1</td>
+<td class="z" data-a="5">0</td>
+<td class="u" data-a="6">1</td>
+<td class="u" data-a="7">1</td>
+</tr>
+<tr class="even" data-i="3">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">Route_4</th>
+<td class="z" data-a="0">0</td>
+<td class="u" data-a="1">1</td>
+<td class="z" data-a="2">0</td>
+<td class="u" data-a="3">1</td>
+<td class="z" data-a="4">0</td>
+<td class="u" data-a="5">1</td>
+<td class="z" data-a="6">0</td>
+<td class="u" data-a="7">1</td>
+</tr>
+<tr class="odd" data-i="4">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">Route_5</th>
+<td class="z" data-a="0">0</td>
+<td class="z" data-a="1">0</td>
+<td class="u" data-a="2">1</td>
+<td class="u" data-a="3">1</td>
+<td class="u" data-a="4">1</td>
+<td class="z" data-a="5">0</td>
+<td class="u" data-a="6">1</td>
+<td class="u" data-a="7">1</td>
+</tr>
+<tr class="even" data-i="5">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">Route_6</th>
+<td class="z" data-a="0">0</td>
+<td class="z" data-a="1">0</td>
+<td class="u" data-a="2">1</td>
+<td class="u" data-a="3">1</td>
+<td class="z" data-a="4">0</td>
+<td class="u" data-a="5">1</td>
+<td class="z" data-a="6">0</td>
+<td class="u" data-a="7">1</td>
+</tr>
+</tbody>
+</table>
+<div class="op">×</div>
+<table class="pmpr2b75d146-m tt caption-top table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">duration</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">A</th>
+<td data-a="0" data-j="0">8</td>
+</tr>
+<tr class="even">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">B</th>
+<td data-a="1" data-j="0">2</td>
+</tr>
+<tr class="odd">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">C</th>
+<td data-a="2" data-j="0">5</td>
+</tr>
+<tr class="even">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">D</th>
+<td data-a="3" data-j="0">6</td>
+</tr>
+<tr class="odd">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">E</th>
+<td data-a="4" data-j="0">8</td>
+</tr>
+<tr class="even">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">F</th>
+<td data-a="5" data-j="0">5</td>
+</tr>
+<tr class="odd">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">G</th>
+<td data-a="6" data-j="0">7</td>
+</tr>
+<tr class="even">
+<th class="pmpr2b75d146-rot" data-quarto-table-cell-role="th">H</th>
+<td data-a="7" data-j="0">6</td>
+</tr>
+</tbody>
+</table>
+<div class="op">=</div>
+<table class="pmpr2b75d146-m xx caption-top table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th">duration</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd" data-i="0">
+<td data-i="0" data-j="0">35</td>
+</tr>
+<tr class="even" data-i="1">
+<td data-i="1" data-j="0">25</td>
+</tr>
+<tr class="odd" data-i="2">
+<td data-i="2" data-j="0">29</td>
+</tr>
+<tr class="even" data-i="3">
+<td data-i="3" data-j="0">19</td>
+</tr>
+<tr class="odd" data-i="4">
+<td data-i="4" data-j="0">32</td>
+</tr>
+<tr class="even" data-i="5">
+<td data-i="5" data-j="0">22</td>
+</tr>
+</tbody>
+</table>
+</div><p class="nota">👆 Interactivo: pasa el ratón (o toca) una fila de la matriz de rutas: se recuadran los valores que se suman y el resultado.</p></div><script>(function(){var r=document.getElementById('pmpr2b75d146'),fijo=null;function mostrar(i){r.querySelectorAll('.sel').forEach(function(e){e.classList.remove('sel')});r.querySelectorAll('.cj').forEach(function(e){e.classList.remove('cj')});if(i===null)return;var fr=r.querySelector('.rr tr[data-i="'+i+'"]');if(!fr)return;fr.classList.add('sel');fr.querySelectorAll('td.u').forEach(function(c){c.classList.add('cj');var a=c.dataset.a;r.querySelectorAll('.tt td[data-a="'+a+'"]').forEach(function(t){t.classList.add('cj')})});r.querySelectorAll('.xx tr[data-i="'+i+'"]').forEach(function(x){x.classList.add('sel');x.querySelectorAll('td').forEach(function(c){c.classList.add('cj')})})}r.querySelectorAll('.rr tbody tr').forEach(function(f){var i=f.dataset.i;f.addEventListener('mouseenter',function(){mostrar(i)});f.addEventListener('click',function(){fijo=(fijo===i)?null:i;mostrar(fijo)})});r.querySelector('.rr').addEventListener('mouseleave',function(){mostrar(fijo)})})();</script>
 </div>
 </div>
 <div class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-13T20:44:07.118077Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-13T20:44:07.117810Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-13T20:44:07.132520Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-13T20:44:07.130681Z&quot;}}" data-execution_count="16">

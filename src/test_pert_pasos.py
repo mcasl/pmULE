@@ -435,3 +435,24 @@ def test_asignar_pasos_coincide_con_asignar():
         assert not (ps['se_programan'] & ps['se_retrasan'])
     # el proyecto original no se modifica
     assert not any(str(n).startswith("💤") for n in p.copy().pert_graph.nodes)
+
+
+def test_producto_rutas_html():
+    """El visor del producto R·T recuadra los valores de T donde R vale 1 y el resultado."""
+    import pandas as pd
+    from pmule import producto_rutas_html
+    R = pd.DataFrame([[1, 0, 1], [0, 1, 1]], index=["Route_1", "Route_2"], columns=list("ABC"))
+    T = pd.Series([3, 5, 4.5], index=list("ABC"), name="media")
+    h = producto_rutas_html(R, T)
+    assert "7.5" in h and "9.5" in h            # R @ T
+    assert h.count('data-i="0"') >= 2 and "mouseenter" in h and "cj" in h
+    h2 = producto_rutas_html(R, T.to_frame().assign(var=[1, 2, 3]), resultado=R @ T.to_frame().assign(var=[1, 2, 3]))
+    assert "var" in h2
+
+
+def test_visor_de_pasos_con_teclas_de_flecha():
+    """El visor avanza con ← → sin necesidad de pantalla completa (visor activo o más visible)."""
+    from pmule import _html_pasos
+    h = _html_pasos(["<p>a</p>", "<p>b</p>"])
+    assert "ArrowRight" in h and "ArrowLeft" in h and "pmuleActivo" in h
+    assert "ctrlKey" in h and "isContentEditable" in h        # no se roban atajos ni la escritura
