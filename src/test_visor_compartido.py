@@ -189,5 +189,35 @@ class TestOtrosVisoresCompartidos(unittest.TestCase):
         self.comprueba(html, "pmule-cal-img", viejo)
 
 
+class TestRutaResaltadaCoincideConLaFila(unittest.TestCase):
+    """El grafo de cada fotograma del visor de la matriz de rutas resalta las actividades de la fila
+    que se muestra (``path_matrix(dummies=True)`` ordena las rutas de otro modo que ``dummies=False``)."""
+
+    def reales_resaltadas(self, pg):
+        capturas = []
+        original = type(pg)._pert_fotograma
+
+        def espia(self_, *a, **kw):
+            capturas.append(kw.get("estilo_arcos"))
+            return original(self_, *a, **kw)
+        with mock.patch.object(type(pg), "_pert_fotograma", espia):
+            pg.plot_tikz_rutas("pert")
+        arco_de = {(f"{u}", f"{v}"): d.get("activity", "") for u, v, d in pg.pert_graph.edges(data=True)}
+        return [frozenset(arco_de[e] for e, s in ea.items() if s == "actual") for ea in capturas[1:]]
+
+    def test_pert_resalta_las_actividades_de_la_fila(self):
+        from test_pert_pasos import project
+        pg = project()
+        R = pg.path_matrix(dummies=False).astype(bool)
+        Rd = pg.path_matrix(dummies=True).astype(bool)
+        filas = [frozenset(c for c in R.columns if R.iloc[i][c]) for i in range(len(R))]
+        filas_d = [frozenset(c for c in R.columns if c in Rd.columns and Rd.iloc[i][c]) for i in range(len(Rd))]
+        self.assertNotEqual(filas, filas_d)                    # el desorden que causaba el fallo
+        resaltadas = self.reales_resaltadas(pg)
+        self.assertEqual(len(resaltadas), len(R))
+        for i, (esperadas, vistas) in enumerate(zip(filas, resaltadas)):
+            self.assertEqual({a for a in vistas if a in R.columns}, set(esperadas), f"fila {i}")
+
+
 if __name__ == "__main__":
     unittest.main()

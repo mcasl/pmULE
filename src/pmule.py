@@ -5067,13 +5067,32 @@ class ProjectGraph:
             gx0, gx1, gy0, gy1 = min(xs) - 0.7, max(xs) + 0.7, min(ys) - 0.7, max(ys) + 0.7
             arco_de = {d.get("activity", ""): (f"{u}", f"{v}") for u, v, d in G.edges(data=True)}
             todos = [(f"{u}", f"{v}") for u, v in G.edges()]
+            # Las filas de ``path_matrix(dummies=True)`` no están en el mismo orden que las de
+            # ``path_matrix(dummies=False)``: se empareja cada ruta de la matriz mostrada con la
+            # ruta del grafo con ficticias que tiene las mismas actividades reales (la k-ésima
+            # repetida con la k-ésima repetida).
+            reales = list(R.columns)
+
+            def _reales(M, k):
+                return frozenset(c for c in reales if c in M.columns and bool(M.iloc[k][c]))
+            candidatas = {}
+            for k in range(len(Rd)):
+                candidatas.setdefault(_reales(Rd, k), []).append(k)
+            fila_d, vistas = {}, {}
+            for i in range(len(R)):
+                s = _reales(R, i)
+                n = vistas.get(s, 0)
+                vistas[s] = n + 1
+                if s in candidatas:
+                    fila_d[i] = candidatas[s][min(n, len(candidatas[s]) - 1)]
 
             def grafo_cuerpo(i):
                 if i is None:
                     ea = {e: "hecho" for e in todos}
                     en = {n: "hecho" for n in pos}
                 else:
-                    usados = [c for c in Rd.columns if bool(Rd.iloc[i][c])]
+                    usados = ([c for c in Rd.columns if bool(Rd.iloc[fila_d[i]][c])] if i in fila_d
+                              else [c for c in R.columns if bool(R.iloc[i][c])])
                     act = {arco_de[c] for c in usados if c in arco_de}
                     ea = {e: ("actual" if e in act else "gris") for e in todos}
                     nodos = {x for e in act for x in e}
