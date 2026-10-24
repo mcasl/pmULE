@@ -582,10 +582,9 @@ class PredecessorTable:
         self.immediate_predecessor = dict(sorted(data.items()))
         self._check_acyclic()
         # distant_predecessor MUST be calculated before immediate_predecessor. It is used by calculate_immediate_predecessor_of
-        self.distant_predecessor = {
-            key: self.calculate_distant_predecessor_of(key)
-            for key in self.immediate_predecessor.keys()
-        }
+        self.distant_predecessor = self._distant_closure(
+            self.immediate_predecessor.keys()
+        )
         self.distant_predecessor = dict(sorted(self.distant_predecessor.items()))
         if simplify:
             self.immediate_predecessor = {
@@ -623,12 +622,46 @@ class PredecessorTable:
             )
         )
 
+    def _distant_closure(self, names) -> Dict[str, Set[str]]:
+        """Conjunto de todos los ancestros de cada actividad de ``names``.
+
+        Recorrido iterativo con memoria local: cada actividad se resuelve una sola vez
+        (una unión de conjuntos por arista), de modo que el coste es O(n·aristas)
+        y no crece con el número de rutas. No usa recursión, así que tampoco hay
+        límite por la longitud de la cadena más larga. Los conjuntos devueltos son
+        independientes entre sí (se pueden modificar sin afectar a los demás).
+        """
+        memo: Dict[str, Set[str]] = {}
+        visiting: Set[str] = set()
+        for root in names:
+            if root in memo:
+                continue
+            stack = [root]
+            while stack:
+                node = stack[-1]
+                if node in memo:
+                    stack.pop()
+                    continue
+                predecessors = self.immediate_predecessor[node]
+                pending = [p for p in predecessors if p not in memo]
+                if pending:
+                    if node in visiting or any(p in visiting for p in pending):
+                        raise ValueError(
+                            f"La tabla de precedencias contiene un ciclo que pasa por '{node}'."
+                        )
+                    visiting.add(node)
+                    stack.extend(pending)
+                    continue
+                result = set(predecessors)
+                for ancestor in predecessors:
+                    result |= memo[ancestor]
+                memo[node] = result
+                visiting.discard(node)
+                stack.pop()
+        return memo
+
     def calculate_distant_predecessor_of(self, name: str) -> Set[str]:
-        predecessors = self.immediate_predecessor[name].copy()
-        result = predecessors.copy()
-        for ancestor in predecessors:
-            result.update(self.calculate_distant_predecessor_of(ancestor))
-        return result
+        return set(self._distant_closure([name])[name])
 
     def calculate_immediate_predecessor_of(self, name: str) -> Dict[str, str]:
         predecessors = self.distant_predecessor[name].copy()
@@ -1051,21 +1084,20 @@ class ProjectGraph:
     def nodes_from_edges(
         self,
     ) -> Dict[str, Tuple[str, str]]:  # activity_name: (source, target)
-        list_of_dicts = list(
-            {attributes["activity"]: (f"{source}", f"{target}")}
+        # Un solo recorrido, O(aristas). (Antes se fusionaban diccionarios de uno en uno
+        # con reduce, O(aristas^2) en cada consulta.) Misma semantica: si una clave
+        # se repite, gana la ultima arista.
+        return {
+            attributes["activity"]: (f"{source}", f"{target}")
             for (source, target, attributes) in self.pert_graph.edges(data=True)
-        )
-        combined_dict = reduce(lambda x, y: {**x, **y}, list_of_dicts, {})
-        return combined_dict
+        }
 
     @property
     def edges_from_nodes(self):
-        list_of_dicts = list(
-            {(f"{source}", f"{target}"): attributes["activity"]}
+        return {
+            (f"{source}", f"{target}"): attributes["activity"]
             for (source, target, attributes) in self.pert_graph.edges(data=True)
-        )
-        combined_dict = reduce(lambda x, y: {**x, **y}, list_of_dicts, {})
-        return combined_dict
+        }
 
     def contract_activities(self, names):
         def contract_activity(name: str, project: ProjectGraph):
@@ -1098,9 +1130,17 @@ class ProjectGraph:
         )
         return ProjectGraph(new_graph)
 
-    def calculate_distant_predecessor_of(self, activity, dummies=False):
-        source, target = self.nodes_from_edges[activity]
-        edges_from_nodes_dict = self.edges_from_nodes
+    def calculate_distant_predecessor_of(self, activity, dummies=False,
+                                         _nodes_from_edges=None, _edges_from_nodes=None):
+        # Los dos diccionarios privados permiten reutilizarlos al calcular todas las
+        # actividades (distant_predecessor) sin reconstruirlos en cada una.
+        nodes_from_edges_dict = (
+            self.nodes_from_edges if _nodes_from_edges is None else _nodes_from_edges
+        )
+        source, target = nodes_from_edges_dict[activity]
+        edges_from_nodes_dict = (
+            self.edges_from_nodes if _edges_from_nodes is None else _edges_from_nodes
+        )
         predecessors = [
             edges_from_nodes_dict[(s, t)]
             for s, t, reverse in nx.edge_dfs(
@@ -1142,10 +1182,35 @@ class ProjectGraph:
 
     def distant_predecessor(self, dummies=False, format=None):
         activities = self.activities if dummies else self.actual_activities
-        resultado = {
-            key: self.calculate_distant_predecessor_of(key, dummies=dummies)
-            for key in activities
-        }
+        # Una sola pasada en orden topologico: arcos (nombres) que llegan a cada nodo.
+        # Equivale a un edge_dfs inverso por actividad, pero cuesta O(aristas * ancestros)
+        # en total en lugar de O(actividades * aristas) recorridos de networkx.
+        G = self.pert_graph
+        if nx.is_directed_acyclic_graph(G):
+            llegan = {}
+            for node in nx.topological_sort(G):
+                acumulado = set()
+                for s in G.predecessors(node):
+                    acumulado.add(G.edges[s, node]["activity"])
+                    acumulado |= llegan[s]
+                llegan[node] = acumulado
+            origen = {a["activity"]: u for u, _v, a in G.edges(data=True)}
+            resultado = {}
+            for key in activities:
+                ancestros = llegan[origen[key]]
+                resultado[key] = (
+                    set(ancestros) if dummies else {x for x in ancestros if x[0] != "@"}
+                )
+        else:
+            # Grafo con ciclos (p. ej. contracciones de prueba en assess_dummy): se
+            # conserva el recorrido por actividad, que tolera ciclos.
+            nfe, efn = self.nodes_from_edges, self.edges_from_nodes
+            resultado = {
+                key: self.calculate_distant_predecessor_of(
+                    key, dummies=dummies, _nodes_from_edges=nfe, _edges_from_nodes=efn
+                )
+                for key in activities
+            }
         if format == "DataFrame":
             resultado = pd.Series(
                 {key: ", ".join(sorted(value)) for key, value in resultado.items()},
