@@ -220,8 +220,7 @@ def _con_contexto(celdas, rng):
     lineas = ["descripciones = pd.Series({"] + [f"    {a!r}: {d!r}," for a, d in zip(nombres, ctx["actividades"])]
     lineas += ["}, name='Descripción')", "descripciones.to_frame()"]
     return (celdas[:i + 1]
-            + [md(f"El proyecto corresponde {('al ' + ctx['tema'][3:]) if ctx['tema'].startswith('el ') else ('a ' + ctx['tema'])}; "
-                  "las actividades son las siguientes "
+            + [md(f"El proyecto corresponde {contextos.con_a(ctx['tema'])}; las actividades son las siguientes "
                   "(las duraciones del cuadro están en días)."),
                code('#| tbl-cap: "Descripción de las actividades"\n#| label: tbl-descripciones\n' + "\n".join(lineas))]
             + celdas[i + 1:])

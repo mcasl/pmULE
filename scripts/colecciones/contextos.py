@@ -56,6 +56,16 @@ CONTEXTOS = [
 ]
 
 
+def con_a(tema: str) -> str:
+    """«a» + tema con la contracción «al» cuando el tema empieza por «el »."""
+    return "al " + tema[3:] if tema.startswith("el ") else "a " + tema
+
+
+def con_de(tema: str) -> str:
+    """«de» + tema con la contracción «del» cuando el tema empieza por «el »."""
+    return "del " + tema[3:] if tema.startswith("el ") else "de " + tema
+
+
 def elegir(rng, n: int) -> dict:
     """Un contexto al azar con al menos n actividades; devuelve una copia con las n primeras."""
     candidatos = [c for c in CONTEXTOS if len(c["actividades"]) >= n]
@@ -84,7 +94,7 @@ def inyectar(celdas: list, rng) -> list:
         lineas.append(f"    {a!r}: {desc!r},")
     lineas.append("}, name='Descripción')")
     lineas.append("descripciones.to_frame()")
-    md = ("md", f"El proyecto corresponde a {ctx['tema']}; las actividades son las siguientes "
+    md = ("md", f"El proyecto corresponde {con_a(ctx['tema'])}; las actividades son las siguientes "
                 f"(las duraciones del cuadro están en {ctx['unidad']}).")
     code = ("code", '#| tbl-cap: "Descripción de las actividades"\n#| label: tbl-descripciones\n' + "\n".join(lineas))
     return celdas[:i + 1] + [md, code] + celdas[i + 1:]

@@ -161,7 +161,7 @@ def _texto(rng):
         frases.append(f.format(a=desc[a], A=a, ps=nombres_ps, n="n" if len(ps) > 1 else "", s="s" if len(ps) > 1 else ""))
     texto = " ".join(frases)
     celdas = [md("# Enunciado"),
-              md(f"El responsable de {ctx['tema']} ha descrito así las actividades y sus dependencias:\n\n> {texto}")]
+              md(f"El responsable {C.con_de(ctx['tema'])} ha descrito así las actividades y sus dependencias:\n\n> {texto}")]
     celdas.append(preguntas([
         "Construya el cuadro de prelaciones inmediatas a partir del texto (una fila por actividad con sus predecesoras inmediatas).",
         "Construya el cuadro de prelaciones expandido e indique las actividades iniciales y finales.",
