@@ -10,7 +10,9 @@ import time
 import tracemalloc
 import unittest
 
-from pmule import PredecessorTable, ProjectGraph
+import networkx as nx
+
+from pmule import PredecessorTable, ProjectGraph, _reduccion_transitiva_desde_ancestros
 
 
 def escalera_de_rombos(k):
@@ -142,6 +144,37 @@ class TestProjectGraphDistantPredecessor(unittest.TestCase):
         resultado = ciclico.distant_predecessor(dummies=True)
         for a in ciclico.activities:
             self.assertEqual(resultado[a], ciclico.calculate_distant_predecessor_of(a, dummies=True))
+
+
+class TestReduccionTransitiva(unittest.TestCase):
+    def test_coincide_con_networkx_en_grafos_aleatorios(self):
+        rng = random.Random(11)
+        for _ in range(80):
+            n = rng.randint(1, 18)
+            nombres = [f"N{i:02d}" for i in range(n)]
+            pred = {x: {y for y in nombres[:i] if rng.random() < 0.4} for i, x in enumerate(nombres)}
+            cierre = lejanos_de_referencia(pred)
+            G = nx.DiGraph(); G.add_nodes_from(nombres)
+            G.add_edges_from((p, a) for a, ps in cierre.items() for p in ps)
+            esperado = set(nx.transitive_reduction(G).edges())
+            self.assertEqual(set(_reduccion_transitiva_desde_ancestros(nombres, cierre)), esperado)
+
+    def test_roy_dag_conserva_las_precedencias_inmediatas(self):
+        for semilla in range(5):
+            pg = ProjectGraph.from_dict_of_sets(por_capas(30, 5, 0.35, semilla), simplify=True)
+            dag = pg.roy_dag()
+            obtenidas = {a: set() for a in dag.acts}
+            for u, v in zip(*dag.A.nonzero()):
+                obtenidas[dag.acts[v]].add(dag.acts[u])
+            tabla = PredecessorTable(pg.distant_predecessor(dummies=False), simplify=True)
+            self.assertEqual(obtenidas, tabla.immediate_predecessor)
+
+    def test_roy_dag_de_600_actividades_es_rapido(self):
+        pg = ProjectGraph.from_dict_of_sets(por_capas(600, 12, 0.15), simplify=True)
+        t0 = time.perf_counter()
+        pg.roy_dag()
+        dt = time.perf_counter() - t0
+        self.assertLess(dt, 5.0, f"roy_dag tardo {dt:.1f} s")
 
 
 if __name__ == "__main__":
