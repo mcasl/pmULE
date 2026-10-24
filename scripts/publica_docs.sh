@@ -25,7 +25,7 @@ g init -q
 g symbolic-ref HEAD refs/heads/gh-pages
 mkdir -p "$GD/info"
 printf '%s\n' '.DS_Store' '.ipynb_checkpoints/' '/index.html' > "$GD/info/exclude"
-touch docs/.nojekyll                         # servir los ficheros tal cual, sin Jekyll
+rm -f docs/.nojekyll                         # Pages (Jekyll) convierte docs/index.md en la página principal
 g config user.name  "$NOMBRE"
 g config user.email "$CORREO"
 g add -A
