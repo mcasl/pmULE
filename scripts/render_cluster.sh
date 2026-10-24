@@ -14,7 +14,8 @@
 #
 # Pasos: comprobar conexión (si falla: VPN) → jupytext --sync local → rsync de
 # ida → sbatch --wait (array, una tarea por cuaderno) → rsync de vuelta →
-# git add de HTML, .ipynb y .py (como los scripts locales).
+# git add de .ipynb y .py. Los HTML de docs/ no se versionan en master: se publican
+# con scripts/publica_docs.sh (rama gh-pages, un solo commit).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -105,10 +106,10 @@ if [ ${#htmls[@]} -gt 0 ]; then
     "$PY" scripts/cluster/incrusta_cdn.py "${htmls[@]}"
     "$PY" scripts/normaliza_ids.py "${htmls[@]}"      # ids de tablas deterministas (git no acumula ruido)
     for i in "${!hechos[@]}"; do
-        git add "${hechos[$i]}" "${hechos[$i]%.ipynb}.py" "${htmls[$i]}" 2>/dev/null || true
+        git add "${hechos[$i]}" "${hechos[$i]%.ipynb}.py" 2>/dev/null || true
     done
 fi
-echo "Hecho: $ok de $n cuaderno(s) renderizados y añadidos a git."
+echo "Hecho: $ok de $n cuaderno(s) renderizados (publica con scripts/publica_docs.sh)."
 if [ ${#fallos[@]} -gt 0 ]; then
     echo "Fallaron (ver ~/$REMOTO/logs en $HOST):"; printf '  %s\n' "${fallos[@]}"
     exit 1

@@ -41,3 +41,6 @@ CLAUDE.md
 # Exámenes generados con scripts/colecciones/examen.py (el patrón "Examenes" de arriba los excluía en APFS, insensible a mayúsculas)
 !/notebooks/examenes/
 !/docs/examenes/
+
+# HTML renderizados: no se versionan en master; scripts/publica_docs.sh los sube a gh-pages
+docs/

@@ -45,7 +45,7 @@ else
 fi
 
 echo "→ Git add..."
-git add "$NOTEBOOK" "$TARGET"
+git add "$NOTEBOOK"        # el HTML (docs/) se publica con scripts/publica_docs.sh
 [[ -f "$JUPYTEXT_PY" ]] && git add "$JUPYTEXT_PY"
 
 echo ""

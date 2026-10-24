@@ -46,7 +46,7 @@ for nb in $cuadernos; do
     if command -v jupytext >/dev/null 2>&1; then
         jupytext --sync --quiet "$nb"
     fi
-    git add "$nb" "${nb%.ipynb}.py" "${destino}/${nombre}.html" 2>/dev/null || true
+    git add "$nb" "${nb%.ipynb}.py" 2>/dev/null || true
     n=$((n + 1))
 done
 echo "Hecho: ${n} cuaderno(s) renderizado(s) en docs/colecciones/"
