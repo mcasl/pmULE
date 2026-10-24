@@ -92,7 +92,7 @@ for nb in "${cuadernos[@]}"; do
     rel="$(dirname "${nb#notebooks/}")"
     if [ "$rel" = "." ]; then relhtml="${nombre}.html"; else relhtml="${rel}/${nombre}.html"; fi
     html="docs/$relhtml"
-    if printf '%s\n' "$generados" | grep -qxF "$relhtml"; then
+    if grep -qxF -- "$relhtml" <<<"$generados"; then
         hechos+=("$nb"); htmls+=("$html")
         ok=$((ok + 1))
     else
@@ -103,6 +103,7 @@ if [ ${#htmls[@]} -gt 0 ]; then
     # Los nodos no tienen Internet: incrustar los scripts que quedaron en el CDN
     PY="$( [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3 )"
     "$PY" scripts/cluster/incrusta_cdn.py "${htmls[@]}"
+    "$PY" scripts/normaliza_ids.py "${htmls[@]}"      # ids de tablas deterministas (git no acumula ruido)
     for i in "${!hechos[@]}"; do
         git add "${hechos[$i]}" "${hechos[$i]%.ipynb}.py" "${htmls[$i]}" 2>/dev/null || true
     done

@@ -35,6 +35,7 @@ quarto render "$NOTEBOOK" --metadata-file scripts/html_extra.yml
 
 echo "→ Moving HTML..."
 mv "$HTML" "$TARGET"
+"${PYTHON:-python3}" scripts/normaliza_ids.py "$TARGET"   # ids de tablas deterministas
 
 echo "→ Sincronizando par jupytext..."
 if command -v jupytext >/dev/null 2>&1; then

@@ -42,6 +42,7 @@ for nb in $cuadernos; do
     elif [ ! -f "${destino}/${nombre}.html" ]; then
         echo "No encuentro el HTML generado para ${nb}" >&2; exit 1
     fi
+    "${PYTHON:-python3}" scripts/normaliza_ids.py "${destino}/${nombre}.html"   # ids de tablas deterministas
     if command -v jupytext >/dev/null 2>&1; then
         jupytext --sync --quiet "$nb"
     fi

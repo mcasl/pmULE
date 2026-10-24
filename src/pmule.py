@@ -9199,6 +9199,23 @@ def _disposicion_capas(nodos: dict, aristas: list, anchos_etiqueta: dict = None,
 PALETA_FLECHAS = ["blue!80!black", "violet", "teal", "magenta!85!black", "brown", "cyan!70!black"]
 
 
+_IDS_VISTOS: dict = {}
+
+
+def _id_determinista(prefijo: str, *partes) -> str:
+    """Identificador HTML que depende solo del contenido (md5 de ``partes``), no del azar: así regenerar un
+    cuaderno sin cambios da el mismo HTML y git no acumula blobs nuevos. Si el mismo contenido sale dos veces
+    en una sesión, las siguientes apariciones llevan ``-2``, ``-3``... para que no choquen en la página."""
+    import hashlib
+    h = hashlib.md5()
+    for p in partes:
+        h.update(p if isinstance(p, bytes) else str(p).encode("utf-8"))
+        h.update(b"\x00")
+    base = prefijo + h.hexdigest()[:8]
+    n = _IDS_VISTOS[base] = _IDS_VISTOS.get(base, 0) + 1
+    return base if n == 1 else f"{base}-{n}"
+
+
 def _html_pasos(fotos: list, inicio: int = 1) -> str:
     """Une fotogramas HTML en un visor autocontenido con botones
     (anterior / siguiente) para mostrar un cálculo paso a paso en un cuaderno
@@ -9578,7 +9595,7 @@ def producto_rutas_html(path_matrix, tiempos, resultado=None) -> str:
     ``DataFrame`` con una fila por actividad (columnas de ``R``) y una o más columnas.
     ``resultado``: ``R @ T`` (se calcula si no se da).
     """
-    import html as _h, uuid
+    import html as _h
     R = pd.DataFrame(path_matrix).astype(int)
     T = tiempos.to_frame() if isinstance(tiempos, pd.Series) else pd.DataFrame(tiempos)
     T = T.loc[R.columns]
@@ -9589,7 +9606,8 @@ def producto_rutas_html(path_matrix, tiempos, resultado=None) -> str:
         v = float(v)
         return f"{int(round(v))}" if abs(v - round(v)) < 1e-9 else f"{v:.2f}".rstrip("0").rstrip(".")
 
-    uid = "pmpr" + uuid.uuid4().hex[:8]
+    uid = _id_determinista("pmpr", R.to_numpy().tobytes(), T.to_numpy().tobytes(), repr(list(R.index)), repr(list(R.columns)),
+                           repr(list(T.columns)), RT.to_numpy().tobytes())
     esc = lambda x: _h.escape(str(x))
     nr, na, nc = len(R), len(R.columns), len(T.columns)
 

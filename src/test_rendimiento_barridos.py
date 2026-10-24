@@ -14,6 +14,7 @@ import unittest
 from unittest import mock
 
 import numpy as np
+import pandas as pd
 
 from pmule import PredecessorTable, ProjectGraph, RoyDAG, implicit_svd_roy, tau_rank_k_roy
 import pmule
@@ -336,6 +337,61 @@ class TestTikzRealIgualAlSecuencial(unittest.TestCase):
             with mock.patch.object(pmule, "display") as disp, mock.patch("sys.stderr"):
                 pmule.pinta_tikz(r"\begin{tikzpicture}\badcommand\end{tikzpicture}")
             disp.assert_not_called()
+
+
+class TestIdsDeterministasDelHtml(unittest.TestCase):
+    """Regenerar un cuaderno sin cambios debe dar el mismo HTML (git no acumula ruido)."""
+
+    def test_id_determinista_depende_solo_del_contenido(self):
+        pmule._IDS_VISTOS.clear()
+        a = pmule._id_determinista("x", b"abc", "d")
+        pmule._IDS_VISTOS.clear()
+        self.assertEqual(pmule._id_determinista("x", b"abc", "d"), a)
+        self.assertNotEqual(pmule._id_determinista("x", b"abc", "e"), a)
+
+    def test_mismo_contenido_dos_veces_no_choca(self):
+        pmule._IDS_VISTOS.clear()
+        a, b, c = (pmule._id_determinista("x", "mismo") for _ in range(3))
+        self.assertEqual(len({a, b, c}), 3)
+        self.assertTrue(b.endswith("-2") and c.endswith("-3"))
+
+    def test_producto_rutas_html_es_reproducible(self):
+        R = pd.DataFrame([[1, 0, 1], [0, 1, 1]], columns=list("ABC"), index=["r1", "r2"])
+        T = pd.Series([3, 4, 5], index=list("ABC"))
+        pmule._IDS_VISTOS.clear()
+        h1 = pmule.producto_rutas_html(R, T)
+        pmule._IDS_VISTOS.clear()
+        h2 = pmule.producto_rutas_html(R, T)
+        self.assertEqual(h1, h2)
+        self.assertNotIn("uuid", h1)
+
+    def test_normaliza_ids_de_tablas_pandas(self):
+        import importlib.util, pathlib
+        ruta = pathlib.Path(pmule.__file__).resolve().parent.parent / "scripts" / "normaliza_ids.py"
+        spec = importlib.util.spec_from_file_location("normaliza_ids", ruta)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        ids = lambda: [df.style.to_html(), df.style.to_html()]
+        h1 = "".join(ids()); h2 = "".join(ids())
+        self.assertNotEqual(h1, h2)                         # pandas pone un uuid distinto cada vez
+        n1, n2 = mod.normaliza(h1), mod.normaliza(h2)
+        self.assertEqual(n1, n2)                            # normalizado, igual
+        self.assertEqual(mod.normaliza(n1), n1)             # idempotente
+        self.assertIn("T_00000", n1)
+        self.assertIn("T_00001", n1)                        # dos tablas, dos ids distintos
+
+    def test_normaliza_orden_de_atributos_de_celda_de_quarto(self):
+        import importlib.util, pathlib
+        ruta = pathlib.Path(pmule.__file__).resolve().parent.parent / "scripts" / "normaliza_ids.py"
+        spec = importlib.util.spec_from_file_location("normaliza_ids", ruta)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        a = '<div class="cell" data-execution_count="5" data-quarto-private-1="{&quot;k&quot;:1}" id="x">'
+        b = '<div class="cell" data-quarto-private-1="{&quot;k&quot;:1}" data-execution_count="5" id="x">'
+        self.assertEqual(mod.normaliza(a), mod.normaliza(b))
+        self.assertIn('class="cell" data-execution_count="5" data-quarto-private-1=', mod.normaliza(b))
+        self.assertIn('id="x"', mod.normaliza(b))
 
 
 if __name__ == "__main__":
