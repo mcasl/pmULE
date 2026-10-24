@@ -3,7 +3,7 @@ from numpyarray_to_latex.jupyter import to_jup
 from numpyarray_to_latex import to_ltx
 from IPython.display import display, Image, SVG, Latex, Markdown, Math, HTML
 from functools import reduce
-from itertools import chain, product
+from itertools import chain, product, islice
 import math
 from math import ceil
 from typing import Dict, Set, Tuple
@@ -2854,6 +2854,203 @@ class ProjectGraph:
         return dict(duracion=T, duracion_sin_recursos=_cpm_puro(preds, dur, orden)[2],
                     actividades=sorted(criticas),
                     arcos=pd.DataFrame(filas, columns=["de", "a", "motivo"]))
+
+    def plan_cadena_critica(self, data, agresiva="agresiva", segura="segura", recurso=None,
+                            metodo="cortar_pegar", metodo_alimentacion=None,
+                            secuencia_recursos=None):
+        """Plan de cadena crítica (CCPM, Goldratt) con estimaciones agresivas y seguras.
+
+        Sigue los pasos de la lección 12 del curso:
+
+        1. **Conflictos de recursos.** Cada recurso de la columna ``recurso`` es *una unidad*
+           (una cuadrilla, una persona): dos actividades que lo usan no pueden solaparse. Se
+           programan con el planificador en paralelo de ``asignar_multi`` (prioridad: menor
+           inicio más tardío del CPM sin recursos, menor duración, nombre) con las duraciones
+           agresivas, y el orden en que cada recurso atiende a sus actividades se añade a la red
+           como **enlaces de recurso** (``secuencia_recursos`` = ``{recurso: [actividades en
+           orden]}`` lo impone a mano). La red queda *nivelada*: cualquier programación que
+           respete sus prelaciones respeta los recursos.
+        2. **Cadena crítica**: la ruta más larga de la red nivelada con las duraciones
+           agresivas. Si empatan varias se toma la de mayor suma de márgenes y, después, la
+           primera por orden alfabético (``cadenas_empatadas`` dice cuántas había).
+        3. **Colchón del proyecto** (CP), al final de la cadena, con los márgenes
+           ``segura − agresiva`` de sus actividades: ``"cortar_pegar"`` (la mitad de la suma) o
+           ``"raiz"`` (raíz de la suma de los cuadrados), redondeado al entero superior.
+        4. **Colchones de alimentación** (CA) en cada arco de la red nivelada que entra en la
+           cadena desde una actividad que no es de ella (o al final de la cadena, si esa
+           actividad no tiene sucesoras). Se dimensionan con los márgenes de la cadena de
+           alimentación más larga que llega a ese arco (método ``metodo_alimentacion``, por
+           defecto el mismo) y se adopta el menor entre el colchón requerido y la holgura
+           disponible: la cadena crítica no se retrasa; si el colchón no cabe, la cadena de
+           alimentación empieza en su inicio más temprano y el colchón se reduce. Las
+           actividades de alimentación se programan **lo más tarde posible**, con su colchón
+           por delante de la cadena.
+        5. **Colchones de recursos**: avisos (no tiempo) antes de cada actividad de la cadena que
+           usa un recurso que no usaba su predecesora en la cadena.
+
+        ``data``: DataFrame indexado por actividad con las columnas ``agresiva`` y ``segura``
+        (enteras) y, opcionalmente, ``recurso`` (nombre del recurso; varios separados por comas;
+        vacío o ``'---'`` si no usa ninguno). No modifica ``self``. Devuelve un
+        :class:`PlanCadenaCritica`.
+        """
+        if metodo not in ("cortar_pegar", "raiz"):
+            raise ValueError("Error: metodo debe ser 'cortar_pegar' o 'raiz'")
+        metodo_alimentacion = metodo_alimentacion or metodo
+        if metodo_alimentacion not in ("cortar_pegar", "raiz"):
+            raise ValueError("Error: metodo_alimentacion debe ser 'cortar_pegar' o 'raiz'")
+        for col in (agresiva, segura) + ((recurso,) if recurso else ()):
+            if col not in data.columns:
+                raise ValueError(f"Error: la columna '{col}' no está en data")
+        preds = self._real_predecessors()
+        orden = _orden_topologico(preds)
+        faltan = [a for a in orden if a not in data.index]
+        if faltan:
+            raise ValueError(f"Error: faltan filas en data para {faltan}")
+        d = {a: int(data.loc[a, agresiva]) for a in orden}
+        s = {a: int(data.loc[a, segura]) for a in orden}
+        negativos = [a for a in orden if s[a] < d[a]]
+        if negativos:
+            raise ValueError(f"Error: la estimación segura es menor que la agresiva en {negativos}")
+        usa = {a: (_recursos_unitarios(data.loc[a, recurso]) if recurso else ()) for a in orden}
+        nombres = sorted(set().union(*(set(u) for u in usa.values()))) if orden else []
+
+        # 1. Conflictos de recursos -> enlaces de recurso (red nivelada)
+        traza, secuencias = [], {}
+        if nombres:
+            dem = {a: np.array([1.0 if r in usa[a] else 0.0 for r in nombres]) for a in orden}
+            horizonte = sum(d.values()) + 1
+            limite = np.ones((len(nombres), horizonte + max(d.values(), default=0) + 1))
+            ini, _, traza, _ = _planificar_paralelo(preds, orden, d, dem, limite, horizonte, nombres)
+            secuencias = {r: sorted((a for a in orden if r in usa[a] and d[a] > 0), key=lambda a: (ini[a], a))
+                          for r in nombres}
+            for r, seq in (secuencia_recursos or {}).items():
+                if r not in secuencias or set(seq) != set(secuencias[r]):
+                    raise ValueError(f"Error: la secuencia del recurso {r} debe contener exactamente "
+                                     f"{sorted(secuencias.get(r, []))}")
+                secuencias[r] = list(seq)
+        G = nx.DiGraph()
+        G.add_nodes_from(orden)
+        G.add_edges_from((p, a) for a in orden for p in preds[a])
+        enlaces = []
+        for r in nombres:
+            seq = secuencias[r]
+            for x, y in zip(seq, seq[1:]):
+                if nx.has_path(G, y, x):
+                    raise ValueError(f"Error: la secuencia del recurso {r} contradice las prelaciones ({x} → {y})")
+                if not nx.has_path(G, x, y):
+                    enlaces.append((x, y, r))
+                    G.add_edge(x, y)
+        preds_niv = {a: set(preds[a]) for a in orden}
+        for x, y, _ in enlaces:
+            preds_niv[y].add(x)
+        orden_niv = _orden_topologico(preds_niv)
+        succ_niv = {a: set() for a in orden_niv}
+        for a in orden_niv:
+            for p in preds_niv[a]:
+                succ_niv[p].add(a)
+        ES, LS, T = _cpm_puro(preds_niv, d, orden_niv)
+        margen = {a: s[a] - d[a] for a in orden}
+
+        # 2. Cadena crítica
+        criticas = [a for a in orden_niv if ES[a] == LS[a] and d[a] > 0]
+        Gc = nx.DiGraph()
+        Gc.add_nodes_from(criticas)
+        Gc.add_edges_from((p, a) for a in criticas for p in preds_niv[a]
+                          if p in Gc and ES[p] + d[p] == ES[a])
+        fuentes = [a for a in criticas if ES[a] == 0]
+        sumideros = [a for a in criticas if ES[a] + d[a] == T]
+        caminos = []
+        for f in fuentes:
+            for t in sumideros:
+                if f == t:
+                    caminos.append([f])
+                else:
+                    caminos.extend(islice(nx.all_simple_paths(Gc, f, t), 2000))
+        caminos.sort(key=lambda c: (-sum(margen[a] for a in c), c))
+        cadena = caminos[0] if caminos else []
+        C = set(cadena)
+
+        def tam(ms, met):
+            bruto = 0.5 * sum(ms) if met == "cortar_pegar" else math.sqrt(sum(m * m for m in ms))
+            return bruto, int(math.ceil(bruto - 1e-9))
+
+        # 3. Colchón del proyecto
+        ms_cadena = [margen[a] for a in cadena]
+        calculo_cp = {"cortar_pegar": tam(ms_cadena, "cortar_pegar")[0], "raiz": tam(ms_cadena, "raiz")[0]}
+        cp = tam(ms_cadena, metodo)[1]
+
+        # 4. Colchones de alimentación: cadena de alimentación más larga que termina en cada actividad
+        mejor = {}
+        for a in orden_niv:
+            if a in C:
+                continue
+            cands = [mejor[q] for q in preds_niv[a] if q not in C]
+            if cands:
+                b = sorted(cands, key=lambda c: (-c[0], -c[1], c[2]))[0]
+                mejor[a] = (b[0] + d[a], b[1] + margen[a], b[2] + [a])
+            else:
+                mejor[a] = (d[a], margen[a], [a])
+        posicion = {a: k for k, a in enumerate(cadena)}
+        fusiones = [(p, c) for c in cadena for p in sorted(preds_niv[c] - C)]
+        fusiones += [(p, None) for p in orden_niv if p not in C and not succ_niv[p]]
+        fusiones.sort(key=lambda pc: ((ES[pc[1]], posicion[pc[1]]) if pc[1] is not None else (T, len(cadena)), pc[0]))
+        filas, fb = [], {}
+        for k, (p, c) in enumerate(fusiones, 1):
+            cad = mejor[p][2]
+            ms = [margen[x] for x in cad]
+            bruto, requerido = tam(ms, metodo_alimentacion)
+            entrada = ES[c] if c is not None else T
+            disponible = entrada - (ES[p] + d[p])
+            adoptado = max(0, min(requerido, disponible))
+            fb[(p, c)] = adoptado
+            filas.append(dict(nombre=f"CA{k}", desde=p, antes_de=c if c is not None else "fin",
+                              cadena_alimentacion=" - ".join(cad), margenes=" + ".join(str(m) for m in ms),
+                              bruto=round(bruto, 2), requerido=requerido, disponible=disponible,
+                              adoptado=adoptado, inicio=entrada - adoptado, fin=entrada))
+        alimentacion = pd.DataFrame(filas, columns=["nombre", "desde", "antes_de", "cadena_alimentacion",
+                                                    "margenes", "bruto", "requerido", "disponible",
+                                                    "adoptado", "inicio", "fin"])
+        alimentacion = alimentacion.set_index("nombre") if len(alimentacion) else alimentacion
+
+        # Programación: cadena lo antes posible, alimentación lo más tarde posible
+        inicio = {a: ES[a] for a in cadena}
+        for a in reversed(orden_niv):
+            if a in C:
+                continue
+            lims = [(ES[y] - fb[(a, y)]) if y in C else inicio[y] for y in succ_niv[a]]
+            if not succ_niv[a]:
+                lims.append(T - fb[(a, None)])
+            inicio[a] = min(lims) - d[a]
+
+        # 5. Colchones de recursos
+        avisos = []
+        for x, y in zip(cadena, cadena[1:]):
+            nuevos = [r for r in usa[y] if r not in usa[x]]
+            if nuevos:
+                avisos.append(dict(antes_de=y, recursos=", ".join(nuevos), despues_de=x, inicio_previsto=ES[y]))
+
+        enlaces_cadena = pd.DataFrame(
+            [dict(de=x, a=y, motivo="precedencia" if x in preds[y] else "recurso",
+                  recurso=", ".join(r for r in usa[y] if r in usa[x])) for x, y in zip(cadena, cadena[1:])],
+            columns=["de", "a", "motivo", "recurso"])
+        ES_s, _, T_s = _cpm_puro(preds_niv, s, orden_niv)
+        return PlanCadenaCritica(
+            cadena=cadena, enlaces_cadena=enlaces_cadena,
+            enlaces_recurso=pd.DataFrame(enlaces, columns=["de", "a", "recurso"]),
+            predecesoras=preds_niv, predecesoras_originales=preds, orden=orden_niv,
+            agresiva=pd.Series(d, name=agresiva).reindex(sorted(d)),
+            segura=pd.Series(s, name=segura).reindex(sorted(s)),
+            recursos={a: tuple(usa[a]) for a in orden},
+            duracion_cadena=T, margen=pd.Series(margen, name="margen").reindex(sorted(margen)),
+            colchon_proyecto=cp, calculo_colchon_proyecto=calculo_cp, metodo=metodo,
+            metodo_alimentacion=metodo_alimentacion, alimentacion=alimentacion,
+            colchones_recursos=pd.DataFrame(avisos, columns=["antes_de", "recursos", "despues_de", "inicio_previsto"]),
+            inicios=pd.Series(inicio, name="inicio").reindex(sorted(inicio)).astype(int),
+            inicio_temprano=pd.Series(ES, name="inicio_temprano").reindex(sorted(ES)).astype(int),
+            duracion_tradicional=T_s,
+            inicio_tradicional=pd.Series(ES_s).reindex(sorted(ES_s)).astype(int),
+            cadenas_empatadas=len(caminos), traza=traza, secuencias=secuencias,
+            colchones_alimentacion_arco=fb)
 
     def crashing_recursos(self, data, duration_label, resource_labels, maximos,
                           min_durations, costs, objetivo=None, reduccion=None,
@@ -7062,6 +7259,275 @@ class AsignacionMulti:
                 f"recursos={list(self.cargas.columns)}, esperas={self.esperas.to_dict()})")
 
 
+# ---------------------------------------------------------------------------
+# Cadena crítica (CCPM)
+# ---------------------------------------------------------------------------
+
+def _recursos_unitarios(valor):
+    """Recursos que usa una actividad a partir de una celda («X», «X, Y», '', '---', NaN)."""
+    if valor is None or (isinstance(valor, float) and math.isnan(valor)):
+        return ()
+    texto = str(valor).strip()
+    if texto in ("", "---", "-", "—", "nan", "None"):
+        return ()
+    return tuple(sorted({t.strip() for t in texto.split(",") if t.strip()}))
+
+
+Z90 = 1.2815515655446004      # percentil 90 de la normal tipificada
+
+
+class PlanCadenaCritica:
+    """Resultado de ``ProjectGraph.plan_cadena_critica`` (método de la cadena crítica, CCPM).
+
+    Atributos: ``cadena`` (lista ordenada), ``enlaces_cadena`` (de, a, motivo
+    'precedencia' | 'recurso', recurso), ``enlaces_recurso`` (enlaces que la nivelación añade
+    a la red), ``predecesoras`` (red nivelada), ``duracion_cadena`` (con las estimaciones
+    agresivas), ``margen`` (segura − agresiva), ``colchon_proyecto`` (CP adoptado) y
+    ``calculo_colchon_proyecto`` (valor sin redondear con los dos métodos),
+    ``alimentacion`` (un colchón de alimentación por fila: desde, antes_de, cadena de
+    alimentación, márgenes, colchón bruto, requerido, holgura disponible, adoptado, inicio y
+    fin), ``colchones_recursos`` (avisos), ``inicios`` / ``fines`` (plan: cadena en su
+    inicio más temprano, alimentación lo más tarde posible), ``compromiso`` (cadena + CP),
+    ``duracion_tradicional`` (red nivelada con las estimaciones seguras), ``cadenas_empatadas``
+    (rutas críticas de la red nivelada) y ``traza`` (planificador de recursos).
+
+    Métodos: ``tabla()``, ``red_nivelada()``, ``gantt_tikz()``, ``seguimiento()`` y ``simular()``.
+    """
+
+    def __init__(self, **kw):
+        for k, v in kw.items():
+            setattr(self, k, v)
+        self.fines = (self.inicios + self.agresiva.reindex(self.inicios.index)).rename("fin").astype(int)
+        self.compromiso = int(self.duracion_cadena + self.colchon_proyecto)
+
+    def __repr__(self):
+        return (f"PlanCadenaCritica(cadena={'-'.join(self.cadena)}, duracion_cadena={self.duracion_cadena}, "
+                f"CP={self.colchon_proyecto}, compromiso={self.compromiso}, "
+                f"CA={list(self.alimentacion['adoptado']) if len(self.alimentacion) else []})")
+
+    # ------------------------------------------------------------------
+    def tabla(self):
+        """Una fila por actividad: estimaciones, margen, recursos, si es de la cadena e inicio/fin del plan."""
+        acts = list(self.agresiva.index)
+        return pd.DataFrame({
+            "agresiva": self.agresiva, "segura": self.segura, "margen": self.margen,
+            "recurso": pd.Series({a: ", ".join(self.recursos[a]) for a in acts}),
+            "cadena": pd.Series({a: ("sí" if a in self.cadena else "") for a in acts}),
+            "inicio": self.inicios, "fin": self.fines}).reindex(acts)
+
+    def red_nivelada(self):
+        """Cuadro de prelaciones de la red nivelada (prelaciones + enlaces de recurso), con las
+        dos estimaciones; sirve para ``PredecessorTable.from_dataframe_of_strings``."""
+        acts = list(self.agresiva.index)
+        pred = {a: (",".join(sorted(self.predecesoras[a])) if self.predecesoras[a] else "---") for a in acts}
+        df = pd.DataFrame({"predecessor": pd.Series(pred), "agresiva": self.agresiva,
+                           "segura": self.segura}).reindex(acts)
+        df.index.name = "activity"
+        return df
+
+    # ------------------------------------------------------------------
+    def gantt_tikz(self, params=None, mostrar_recursos=True):
+        """Diagrama de Gantt del plan (TikZ): cadena crítica en rojo, alimentación en verde
+        (programada lo más tarde posible), colchones en naranja (CA delante de la cadena, CP al
+        final). Los enlaces de recurso se dibujan con flechas discontinuas."""
+        acts = list(self.agresiva.index)
+        alim = self.alimentacion[self.alimentacion["adoptado"] > 0] if len(self.alimentacion) else self.alimentacion
+        filas = acts + list(alim.index) + (["CP"] if self.colchon_proyecto > 0 else [])
+        gd = pd.DataFrame(index=filas, columns=["start", "duration", "resource", "Htotal"], dtype=object)
+        for a in acts:
+            gd.loc[a] = [int(self.inicios[a]), int(self.agresiva[a]),
+                         ", ".join(self.recursos[a]) if mostrar_recursos else "", 0 if a in self.cadena else 1]
+        for nombre, f in alim.iterrows():
+            gd.loc[nombre] = [int(f["inicio"]), int(f["adoptado"]), "", 1]
+        if self.colchon_proyecto > 0:
+            gd.loc["CP"] = [int(self.duracion_cadena), int(self.colchon_proyecto), "", 0]
+        gd["start"] = gd["start"].astype(int)
+        gd["duration"] = gd["duration"].astype(int)
+        gd["Htotal"] = gd["Htotal"].astype(int)
+        gd["resource"] = gd["resource"].astype(str)
+        ca_de = {(f["desde"], f["antes_de"]): nombre for nombre, f in alim.iterrows()}
+        prec = []
+        for a in acts:
+            for p in sorted(self.predecesoras[a]):
+                if (p, a) in ca_de:
+                    prec += [(p, ca_de[(p, a)]), (ca_de[(p, a)], a)]
+                else:
+                    prec.append((p, a))
+        for (p, c), nombre in ca_de.items():
+            if c == "fin":
+                prec.append((p, nombre))
+                if self.colchon_proyecto > 0:
+                    prec.append((nombre, "CP"))
+        if self.colchon_proyecto > 0 and self.cadena:
+            prec.append((self.cadena[-1], "CP"))
+        colores = {b: "orange!45" for b in list(alim.index) + ["CP"]}
+        estilos = {(x, y): "dashed" for x, y in zip(self.enlaces_recurso["de"], self.enlaces_recurso["a"])}
+        p = dict(inner_text="resource", fill_colors=colores, arrow_styles=estilos)
+        p.update(params or {})
+        return make_gantt_tikz(gantt_data=gd, params=p, precedences=prec)
+
+    # ------------------------------------------------------------------
+    def seguimiento(self, dia, terminadas=None, en_curso=None, verde=(10, 70), roja=(30, 90)):
+        """Informe de avance con la gestión de colchones.
+
+        ``dia``: fecha del informe (instante, contado desde 0); ``terminadas``: ``{actividad: fin
+        real}``; ``en_curso``: ``{actividad: duración restante estimada}``; las demás no han
+        empezado. Fin previsto: recorrido hacia delante de la red nivelada (las terminadas en su
+        fin real; las en curso en ``dia + restante``; las no empezadas de la cadena en cuanto
+        terminan sus predecesoras —corredor de relevos— y las de alimentación no antes de su
+        inicio del plan) con las duraciones agresivas.
+
+        - colchón consumido = fin previsto − duración de la cadena (en días y en % del CP);
+        - cadena completada = duración de la cadena − duración restante de la cadena, es decir,
+          la duración agresiva de las terminadas más ``máx(0, agresiva − restante)`` de las que
+          están en curso (en días y en % de la cadena);
+        - BPI = % de colchón restante / % de cadena restante;
+        - zona del gráfico de fiebre: verde si el consumo es menor que la recta que va de
+          ``verde[0]`` (avance 0 %) a ``verde[1]`` (avance 100 %); roja si es mayor o igual que la
+          recta de ``roja``; amarilla entre ambas.
+
+        Devuelve un dict con esas cifras, los fines previstos y el consumo de cada colchón de
+        alimentación.
+        """
+        terminadas = dict(terminadas or {})
+        en_curso = dict(en_curso or {})
+        d = self.agresiva
+        fin = {}
+        for a in self.orden:
+            if a in terminadas:
+                fin[a] = float(terminadas[a])
+            elif a in en_curso:
+                fin[a] = float(dia + en_curso[a])
+            else:
+                st = max([float(dia)] + [fin[p] for p in self.predecesoras[a]])
+                if a not in self.cadena:
+                    st = max(st, float(self.inicios[a]))
+                fin[a] = st + float(d[a])
+        fin_previsto = max(fin.values()) if fin else 0.0
+        consumo = fin_previsto - self.duracion_cadena
+        pct_consumo = 100.0 * consumo / self.colchon_proyecto if self.colchon_proyecto else float("inf")
+        filas = {}
+        hecho = 0.0
+        for c in self.cadena:
+            if c in terminadas:
+                estado, h, rest = "terminada", float(d[c]), 0.0
+            elif c in en_curso:
+                estado, rest = "en curso", float(en_curso[c])
+                h = max(0.0, float(d[c]) - rest)
+            else:
+                estado, h, rest = "pendiente", 0.0, float(d[c])
+            hecho += h
+            filas[c] = {"estado": estado, "agresiva": int(d[c]), "completado": h, "restante": rest,
+                        "fin previsto": fin[c]}
+        pct_avance = 100.0 * hecho / self.duracion_cadena if self.duracion_cadena else 100.0
+        lim_verde = verde[0] + (verde[1] - verde[0]) * pct_avance / 100.0
+        lim_roja = roja[0] + (roja[1] - roja[0]) * pct_avance / 100.0
+        zona = "verde" if pct_consumo < lim_verde - 1e-9 else ("roja" if pct_consumo >= lim_roja - 1e-9 else "amarilla")
+        bpi = ((100.0 - pct_consumo) / (100.0 - pct_avance)) if pct_avance < 100.0 - 1e-9 else float("inf")
+        cons_ca = []
+        for nombre, f in (self.alimentacion.iterrows() if len(self.alimentacion) else []):
+            entrada = self.inicios[f["antes_de"]] if f["antes_de"] != "fin" else self.duracion_cadena
+            usado = max(0.0, fin[f["desde"]] - (entrada - f["adoptado"]))
+            cons_ca.append(dict(colchon=nombre, desde=f["desde"], antes_de=f["antes_de"],
+                                fin_previsto=fin[f["desde"]], adoptado=int(f["adoptado"]), consumido=usado,
+                                pct=(100.0 * usado / f["adoptado"]) if f["adoptado"] else (0.0 if usado == 0 else float("inf"))))
+        return dict(dia=dia, fin_previsto=fin_previsto, consumo=consumo, pct_consumo=pct_consumo,
+                    avance=hecho, pct_avance=pct_avance, bpi=bpi, zona=zona,
+                    limite_verde=lim_verde, limite_roja=lim_roja,
+                    detalle=pd.DataFrame(filas).T, fines=pd.Series(fin).reindex(sorted(fin)),
+                    alimentacion=pd.DataFrame(cons_ca, columns=["colchon", "desde", "antes_de", "fin_previsto",
+                                                                 "adoptado", "consumido", "pct"]))
+
+    # ------------------------------------------------------------------
+    def simular(self, n=10000, semilla=None, regimen="relevos"):
+        """Duraciones simuladas del proyecto (array de ``n`` réplicas).
+
+        La duración de cada actividad es lognormal con mediana = estimación agresiva y
+        percentil 90 = estimación segura (constante si coinciden). Se respeta la red nivelada
+        (el orden de los recursos no cambia). Regímenes de ejecución:
+
+        - ``"relevos"`` (cadena crítica): las actividades de la cadena empiezan en cuanto
+          terminan sus predecesoras; las de alimentación, no antes de su inicio del plan.
+        - ``"tradicional"``: cronograma con las estimaciones seguras; cada actividad empieza en
+          su fecha del cronograma (o más tarde si sus predecesoras se retrasan) y, por la ley de
+          Parkinson, nunca termina antes de su estimación segura: dura ``máx(simulada, segura)``.
+        """
+        if regimen not in ("relevos", "tradicional"):
+            raise ValueError("Error: regimen debe ser 'relevos' o 'tradicional'")
+        rng = np.random.default_rng(semilla)
+        acts = sorted(self.predecesoras_originales)
+        D = {}
+        for a in acts:
+            med, p90 = float(self.agresiva[a]), float(self.segura[a])
+            sigma = math.log(p90 / med) / Z90 if (p90 > med and med > 0) else 0.0
+            D[a] = med * np.exp(sigma * rng.standard_normal(n))
+        fin = {}
+        for a in self.orden:
+            st = np.zeros(n)
+            for p in self.predecesoras[a]:
+                st = np.maximum(st, fin[p])
+            if regimen == "relevos":
+                if a not in self.cadena:
+                    st = np.maximum(st, float(self.inicios[a]))
+                fin[a] = st + D[a]
+            else:
+                st = np.maximum(st, float(self.inicio_tradicional[a]))
+                fin[a] = st + np.maximum(D[a], float(self.segura[a]))
+        return np.max(np.vstack([fin[a] for a in self.orden]), axis=0) if self.orden else np.zeros(n)
+
+
+def grafico_fiebre_tikz(puntos, verde=(10, 70), roja=(30, 90), ancho=9.0, alto=6.0, unir=True):
+    """Gráfico de fiebre de la gestión por cadena crítica (TikZ).
+
+    ``puntos``: lista de tuplas ``(% de cadena completada, % de colchón consumido, etiqueta)``
+    o de dicts devueltos por ``PlanCadenaCritica.seguimiento`` (se rotulan «día N»). Zonas:
+    verde por debajo de la recta que va de ``verde[0]`` (0 % de avance) a ``verde[1]`` (100 %),
+    roja por encima de la recta de ``roja``, amarilla entre ambas.
+    """
+    pts = []
+    for p in puntos:
+        if isinstance(p, dict):
+            pts.append((float(p["pct_avance"]), float(p["pct_consumo"]), f"día {p['dia']}"))
+        else:
+            pts.append((float(p[0]), float(p[1]), str(p[2]) if len(p) > 2 else ""))
+    ys = [y for _, y, _ in pts] or [0.0]
+    ymax = max(100.0, math.ceil(max(ys) / 10.0) * 10.0)
+    ymin = min(0.0, math.floor(min(ys) / 10.0) * 10.0)
+    sx, sy = ancho / 100.0, alto / (ymax - ymin)
+    t = [rf"\begin{{tikzpicture}}[x={sx:.4f}cm, y={sy:.4f}cm, font=\small]"]
+    v0, v1, r0, r1 = verde[0], verde[1], roja[0], roja[1]
+    t.append(rf"\fill[green!25] (0,{ymin}) -- (100,{ymin}) -- (100,{v1}) -- (0,{v0}) -- cycle;")
+    t.append(rf"\fill[yellow!45] (0,{v0}) -- (100,{v1}) -- (100,{r1}) -- (0,{r0}) -- cycle;")
+    t.append(rf"\fill[red!30] (0,{r0}) -- (100,{r1}) -- (100,{ymax}) -- (0,{ymax}) -- cycle;")
+    t.append(rf"\draw[->] (0,{ymin}) -- (106,{ymin});")
+    t.append(rf"\node[below=14pt] at (50,{ymin}) {{Cadena crítica completada (\%)}};")
+    t.append(rf"\draw[->] (0,{ymin}) -- (0,{ymax + 8});")
+    t.append(rf"\node[rotate=90] at (-13,{(ymin + ymax) / 2:.1f}) {{Colchón consumido (\%)}};")
+    if ymin < 0:
+        t.append(r"\draw[gray] (0,0) -- (100,0);")
+    for x in (0, 25, 50, 75, 100):
+        t.append(rf"\draw ({x},{ymin}) -- ++(0,-1.5pt) node[below, font=\scriptsize] {{{x}}};")
+    paso = 25 if (ymax - ymin) <= 150 else 50
+    y = ymin
+    while y <= ymax + 1e-9:
+        t.append(rf"\draw (0,{y:g}) -- ++(-1.5pt,0) node[left, font=\scriptsize] {{{y:g}}};")
+        y += paso
+
+    def recta(lim, x):
+        return lim[0] + (lim[1] - lim[0]) * x / 100.0
+    t.append(rf"\node[font=\scriptsize, text=black!70] at (85,{(ymin + recta(verde, 85)) / 2:.1f}) {{verde}};")
+    t.append(rf"\node[font=\scriptsize, text=black!70] at (20,{(recta(verde, 20) + recta(roja, 20)) / 2:.1f}) {{amarilla}};")
+    t.append(rf"\node[font=\scriptsize, text=black!70] at (12,{(recta(roja, 12) + ymax) / 2:.1f}) {{roja}};")
+    if unir and len(pts) > 1:
+        t.append(r"\draw[thick, gray] " + " -- ".join(f"({x:.2f},{y:.2f})" for x, y, _ in pts) + ";")
+    for x, y, e in pts:
+        t.append(rf"\fill[blue] ({x:.2f},{y:.2f}) circle (2pt);")
+        if e:
+            t.append(rf"\node[above left, font=\scriptsize] at ({x:.2f},{y:.2f}) {{{e}}};")
+    t.append(r"\end{tikzpicture}")
+    return "\n".join(t)
+
+
 class MonteCarloVANResult:
     """Resultado de ``ProjectGraph.monte_carlo_van``.
 
@@ -7980,6 +8446,9 @@ def make_gantt_tikz(
         Parámetros de estilo: ``arrow_width`` (1pt), ``arrow_color``
         (black!60), ``critical_arrow_color`` (red!70!black, para pares críticos
         sin hueco), ``arrow_corner`` (radio de las esquinas, 1.5pt).
+        ``fill_colors`` ({actividad: color}) cambia el relleno de barras concretas (p. ej., los
+        colchones de la cadena crítica) y ``arrow_styles`` ({(predecesora, sucesora): estilo})
+        añade un estilo TikZ a flechas concretas (p. ej., ``"dashed"``).
     """
     if params is None:
         params = dict()
@@ -8017,6 +8486,8 @@ def make_gantt_tikz(
     nan_string = params.get("nan_string", "---")
     inner_text = params.get("inner_text", None)
     inner_text_digits = params.get("inner_text_digits", 0)
+    fill_colors = params.get("fill_colors", None) or {}      # {actividad: color de relleno}
+    arrow_styles = params.get("arrow_styles", None) or {}    # {(predecesora, sucesora): estilo TikZ extra}
 
     activity_list = list(
         activity for activity in gantt_data.index if not activity.startswith("💤")
@@ -8163,6 +8634,8 @@ def make_gantt_tikz(
             color = critical_arrow_color if is_critical else arrow_color
             style = (f"->, {color}, line width={arrow_width}, "
                      f"rounded corners={arrow_corner}, shorten >=1.5pt")
+            if (pred, succ) in arrow_styles:
+                style += ", " + arrow_styles[(pred, succ)]
             if gap > 1e-9:
                 # codo en el hueco: sale por la derecha, baja/sube, entra por la izquierda
                 x_mid = x_end + min(gap, period_width) / 2
@@ -8182,6 +8655,7 @@ def make_gantt_tikz(
             if gantt_data.loc[actividad, "Htotal"] == 0
             else regular_background_color
         )
+        background_color = fill_colors.get(actividad, background_color)
         text_color = (
             critical_text_color
             if gantt_data.loc[actividad, "Htotal"] == 0
