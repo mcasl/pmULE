@@ -466,6 +466,17 @@ def _simplify_local(project: "ProjectGraph") -> "ProjectGraph":
                     new[s] = val
         return new
 
+    def fit_merged(u, v):
+        """Tras fundir u en v, el orden topologico sigue valiendo si v ocupa el puesto de v o el de u
+        entre sus predecesores y sucesores; si no, se recalcula entero (raro)."""
+        pos_u = pos.pop(u)
+        for x in (pos[v], pos_u):
+            if all(pos[p] < x for p in G.predecessors(v)) and all(x < pos[w] for w in G.successors(v)):
+                pos[v] = x
+                return
+        pos.clear()
+        pos.update({n: i for i, n in enumerate(nx.topological_sort(G))})
+
     def try_contract(u, v) -> bool:
         # (a) ningún arco real de u puede chocar con uno existente de v
         for p in G.predecessors(u):
@@ -497,9 +508,19 @@ def _simplify_local(project: "ProjectGraph") -> "ProjectGraph":
         new = propagate_growth(seeds)
         if new is None:
             return False
+        # nombres de los arcos de u y v antes de fundirlos (un arco de u puede pisar a uno de v)
+        antes = [d for x in (u, v) for _, _, d in G.in_edges(x, data="activity")]
+        antes += [d for x in (u, v) for _, _, d in G.out_edges(x, data="activity")]
         nx.contracted_nodes(G, v, u, self_loops=False, copy=False)
         A.update(new)
         del A[u]
+        for d in antes:
+            where.pop(d, None)
+        for s_, t_, d in G.in_edges(v, data="activity"):
+            where[d] = (s_, t_)
+        for s_, t_, d in G.out_edges(v, data="activity"):
+            where[d] = (s_, t_)
+        fit_merged(u, v)
         return True
 
     def try_remove(u, v) -> bool:
@@ -534,8 +555,10 @@ def _simplify_local(project: "ProjectGraph") -> "ProjectGraph":
             if not is_dummy_name(name) or name not in where:
                 continue
             u, v = where[name]
-            if try_contract(u, v) or try_remove(u, v):
-                reindex()
+            if try_contract(u, v):
+                changed = True
+            elif try_remove(u, v):
+                del where[name]              # quitar un arco no invalida el orden topologico
                 changed = True
     return ProjectGraph(G)
 
@@ -582,18 +605,23 @@ class PredecessorTable:
         self.immediate_predecessor = dict(sorted(data.items()))
         self._check_acyclic()
         # distant_predecessor MUST be calculated before immediate_predecessor. It is used by calculate_immediate_predecessor_of
-        self.distant_predecessor = self._distant_closure(
-            self.immediate_predecessor.keys()
-        )
-        self.distant_predecessor = dict(sorted(self.distant_predecessor.items()))
-        if simplify:
-            self.immediate_predecessor = {
-                key: self.calculate_immediate_predecessor_of(key)
-                for key in self.immediate_predecessor.keys()
-            }
-            self.immediate_predecessor = dict(
-                sorted(self.immediate_predecessor.items())
+        # Las clausuras se calculan con enteros de Python como conjuntos de bits (una sola vez) y se convierten a conjuntos al final.
+        nombres, masks = self._closure_masks(self.immediate_predecessor.keys())
+        self.distant_predecessor = dict(
+            sorted(
+                {n: self._bits_to_set(m, nombres) for n, m in masks.items()}.items()
             )
+        )
+        if simplify:
+            # inmediatas = ancestros que no son ancestros de otro predecesor directo
+            # (la union de los ancestros de todos los ancestros coincide con la de los predecesores directos)
+            inmediatas = {}
+            for key, directas in self.immediate_predecessor.items():
+                cubiertas = 0
+                for a in directas:
+                    cubiertas |= masks[a]
+                inmediatas[key] = self._bits_to_set(masks[key] & ~cubiertas, nombres)
+            self.immediate_predecessor = dict(sorted(inmediatas.items()))
 
     def _check_acyclic(self) -> None:
         """Lanza ValueError si la tabla de precedencias contiene un ciclo
@@ -603,10 +631,9 @@ class PredecessorTable:
         for activity, predecessors in self.immediate_predecessor.items():
             for ancestor in predecessors:
                 g.add_edge(ancestor, activity)
-        try:
-            cycle = nx.find_cycle(g)
-        except nx.NetworkXNoCycle:
+        if nx.is_directed_acyclic_graph(g):
             return
+        cycle = nx.find_cycle(g)
         chain_str = " → ".join([cycle[0][0]] + [t for _, t in cycle])
         raise ValueError(
             f"La tabla de precedencias contiene un ciclo: {chain_str}. "
@@ -622,16 +649,18 @@ class PredecessorTable:
             )
         )
 
-    def _distant_closure(self, names) -> Dict[str, Set[str]]:
-        """Conjunto de todos los ancestros de cada actividad de ``names``.
+    def _closure_masks(self, names):
+        """Ancestros de cada actividad como enteros de Python usados como conjuntos de bits.
 
-        Recorrido iterativo con memoria local: cada actividad se resuelve una sola vez
-        (una unión de conjuntos por arista), de modo que el coste es O(n·aristas)
-        y no crece con el número de rutas. No usa recursión, así que tampoco hay
-        límite por la longitud de la cadena más larga. Los conjuntos devueltos son
-        independientes entre sí (se pueden modificar sin afectar a los demás).
+        Devuelve ``(nombres, memo)``: ``nombres[i]`` es la actividad del bit ``i`` (orden alfabético) y
+        ``memo[actividad]`` la máscara de todos sus ancestros. Recorrido iterativo con memoria: cada
+        actividad se resuelve una sola vez (un OR por arista, O(aristas·n/64)), de modo que el coste no
+        crece con el número de rutas ni con el tamaño de los conjuntos de ancestros. No usa recursión
+        (sin límite por la longitud de la cadena más larga) y detecta ciclos con ``ValueError``.
         """
-        memo: Dict[str, Set[str]] = {}
+        nombres = sorted(self.immediate_predecessor)
+        bit = {n: i for i, n in enumerate(nombres)}
+        memo: Dict[str, int] = {}
         visiting: Set[str] = set()
         for root in names:
             if root in memo:
@@ -652,13 +681,25 @@ class PredecessorTable:
                     visiting.add(node)
                     stack.extend(pending)
                     continue
-                result = set(predecessors)
+                mask = 0
                 for ancestor in predecessors:
-                    result |= memo[ancestor]
-                memo[node] = result
+                    mask |= (1 << bit[ancestor]) | memo[ancestor]
+                memo[node] = mask
                 visiting.discard(node)
                 stack.pop()
-        return memo
+        return nombres, memo
+
+    @staticmethod
+    def _bits_to_set(mask: int, nombres) -> Set[str]:
+        """Conjunto de actividades cuyos bits están activos en ``mask``."""
+        return _bits_a_conjunto(mask, nombres)
+
+    def _distant_closure(self, names) -> Dict[str, Set[str]]:
+        """Conjunto de todos los ancestros de cada actividad de ``names`` (y de los ancestros que se
+        hayan resuelto por el camino). Los conjuntos devueltos son independientes entre sí
+        (se pueden modificar sin afectar a los demás)."""
+        nombres, memo = self._closure_masks(names)
+        return {n: self._bits_to_set(m, nombres) for n, m in memo.items()}
 
     def calculate_distant_predecessor_of(self, name: str) -> Set[str]:
         return set(self._distant_closure([name])[name])
@@ -1179,27 +1220,46 @@ class ProjectGraph:
                     result.add(name)
         return result
 
-    def distant_predecessor(self, dummies=False, format=None):
-        activities = self.activities if dummies else self.actual_activities
-        # Una sola pasada en orden topologico: arcos (nombres) que llegan a cada nodo.
-        # Equivale a un edge_dfs inverso por actividad, pero cuesta O(aristas * ancestros)
-        # en total en lugar de O(actividades * aristas) recorridos de networkx.
+    def _cierre_en_bits(self):
+        """Ancestros e inmediatas reales de cada arco (actividad o ficticia), como enteros de Python usados
+        como conjuntos de bits (el bit ``i`` es ``self.activities[i]``). Una sola pasada en orden topologico:
+        cuesta O(aristas * actividades / 64) en lugar de un recorrido por actividad.
+
+        Devuelve ``(todas, reales, ancestros, inmediatas)`` o ``None`` si el grafo tiene ciclos.
+        ``ancestros[x]``: arcos que deben haber terminado antes de ``x`` (ficticias incluidas);
+        ``inmediatas[x]``: actividades reales ancestros de ``x`` que no lo son de otra actividad real
+        ancestro de ``x`` (las predecesoras del grafo de Roy, su reduccion transitiva)."""
         G = self.pert_graph
-        if nx.is_directed_acyclic_graph(G):
-            llegan = {}
-            for node in nx.topological_sort(G):
-                acumulado = set()
-                for s in G.predecessors(node):
-                    acumulado.add(G.edges[s, node]["activity"])
-                    acumulado |= llegan[s]
-                llegan[node] = acumulado
-            origen = {a["activity"]: u for u, _v, a in G.edges(data=True)}
-            resultado = {}
-            for key in activities:
-                ancestros = llegan[origen[key]]
-                resultado[key] = (
-                    set(ancestros) if dummies else {x for x in ancestros if x[0] != "@"}
-                )
+        if not nx.is_directed_acyclic_graph(G):
+            return None
+        todas = self.activities
+        bit = {a: 1 << i for i, a in enumerate(todas)}
+        reales = 0
+        for a in todas:
+            if a[0] != "@":
+                reales |= bit[a]
+        llegan, tapadas = {}, {}      # por nudo: arcos que llegan, y ancestros de las actividades reales que llegan
+        for node in nx.topological_sort(G):
+            acumulado = cubiertas = 0
+            for s, _t, a in G.in_edges(node, data="activity"):
+                acumulado |= bit[a] | llegan[s]
+                cubiertas |= tapadas[s] | (llegan[s] if a[0] != "@" else 0)
+            llegan[node], tapadas[node] = acumulado, cubiertas
+        origen = {a["activity"]: u for u, _v, a in G.edges(data=True)}
+        ancestros = {k: llegan[origen[k]] for k in todas}
+        inmediatas = {k: llegan[origen[k]] & reales & ~tapadas[origen[k]] for k in todas}
+        return todas, reales, ancestros, inmediatas
+
+    def distant_predecessor(self, dummies=False, format=None):
+        todas = self.activities
+        activities = todas if dummies else [x for x in todas if x[0] != "@"]
+        cierre = self._cierre_en_bits()
+        if cierre is not None:
+            _, reales, ancestros, _ = cierre
+            resultado = {
+                key: _bits_a_conjunto(ancestros[key] if dummies else ancestros[key] & reales, todas)
+                for key in activities
+            }
         else:
             # Grafo con ciclos (p. ej. contracciones de prueba en assess_dummy): se
             # conserva el recorrido por actividad, que tolera ciclos.
@@ -4302,9 +4362,14 @@ class ProjectGraph:
 
     def roy_dag(self) -> "RoyDAG":
         """Grafo de Roy reducido transitivamente (solo actividades reales) como ``RoyDAG``."""
-        pred = self.distant_predecessor(dummies=False)
-        acts = list(pred)
-        return RoyDAG(acts, _reduccion_transitiva_desde_ancestros(acts, pred))
+        cierre = self._cierre_en_bits()
+        if cierre is None:        # con ciclos: recorrido por actividad (RoyDAG lo rechazara)
+            pred = self.distant_predecessor(dummies=False)
+            acts = list(pred)
+            return RoyDAG(acts, _reduccion_transitiva_desde_ancestros(acts, pred))
+        todas, _, _, inmediatas = cierre
+        acts = [a for a in todas if a[0] != "@"]
+        return RoyDAG(acts, [(todas[i], a) for a in acts for i in _indices_de_bits(inmediatas[a])])
 
     def svd_implicit(self, k: int = 5, dense_max: int = 400) -> dict:
         """k primeros valores/vectores singulares de R SIN enumerar las rutas.
@@ -8212,6 +8277,52 @@ def _reduccion_transitiva_desde_ancestros(acts, ancestros):
     return aristas
 
 
+def _bloque_columnas(n, m, objetivo=1_500_000):
+    """Numero de columnas por bloque para los barridos de DP: ~objetivo/n columnas (potencia de 2 entre 512 y 8192), de modo que
+    EF, LS y T de un bloque quepan en la cache. Medido en AMD EPYC y en Apple M: con N = 1e5 réplicas acelera 6-8x
+    frente a procesar la matriz entera y acota la memoria; con bloques de 256 columnas manda el overhead de Python."""
+    b = max(512, min(8192, objetivo // max(n, 1))); b = 1 << int(round(np.log2(b)))
+    return int(min(m, b))
+
+
+def _indices_de_bits(mask: int) -> list:
+    """Posiciones (de menor a mayor) de los bits activos de ``mask``, un entero de Python usado como conjunto de bits."""
+    if not mask:
+        return []
+    octetos = np.frombuffer(mask.to_bytes((mask.bit_length() + 7) // 8, "little"), dtype=np.uint8)
+    return np.flatnonzero(np.unpackbits(octetos, bitorder="little")).tolist()
+
+
+def _bits_a_conjunto(mask: int, nombres) -> set:
+    """Conjunto de ``nombres[i]`` para cada bit ``i`` activo en ``mask``."""
+    return {nombres[i] for i in _indices_de_bits(mask)}
+
+
+def _ef_inplace(pred, T, EF, row):
+    """Pasada hacia delante EF[i] = max_{j en pred[i]} EF[j] + T[i] sin crear temporales (resultado identico bit a bit
+    a EF[p].max(axis=0) + T[i]). T y EF (n, w); row (w,) es un auxiliar."""
+    for i in range(len(pred)):
+        p = pred[i]
+        if p.size == 0: EF[i] = T[i]
+        elif p.size == 1: np.add(EF[p[0]], T[i], out=EF[i])
+        else:
+            np.maximum(EF[p[0]], EF[p[1]], out=row)
+            for q in p[2:]: np.maximum(row, EF[q], out=row)
+            np.add(row, T[i], out=EF[i])
+
+
+def _ls_inplace(succ, T, tau, LS, row):
+    """Pasada hacia atras LS[i] = min_{j en succ[i]} LS[j] - T[i] (sumideros: tau - T[i]), sin temporales."""
+    for i in range(len(succ) - 1, -1, -1):
+        s = succ[i]
+        if not s: np.subtract(tau, T[i], out=LS[i])
+        elif len(s) == 1: np.subtract(LS[s[0]], T[i], out=LS[i])
+        else:
+            np.minimum(LS[s[0]], LS[s[1]], out=row)
+            for q in s[2:]: np.minimum(row, LS[q], out=row)
+            np.subtract(row, T[i], out=LS[i])
+
+
 class RoyDAG:
     """DAG de Roy reducido con s y f implicitos. Las actividades se reordenan topologicamente (self.acts)."""
 
@@ -8270,15 +8381,32 @@ class RoyDAG:
         while arg[path[-1]] >= 0: path.append(arg[path[-1]])
         return float(L[e]), path[::-1]
 
-    def critical_mask(self, T):
-        """Criticidad por actividad para matrices de duraciones T (n, m) en orden topologico: holgura total ~ 0."""
-        T = np.asarray(T, float); n, m = T.shape; EF = np.empty((n, m))
-        for i in range(n):
-            p = self.pred[i]; EF[i] = (EF[p].max(axis=0) if p.size else 0.0) + T[i]
-        tau = EF[self.snk > 0].max(axis=0); LS = np.empty((n, m)); succ = self.A.tolil().rows
-        for i in range(n - 1, -1, -1):
-            s = succ[i]; LS[i] = (LS[s].min(axis=0) if s else tau) - T[i]
-        return (LS + T - EF) < 1e-9 * np.maximum(tau, 1.0), tau
+    @property
+    def succ(self):
+        """Sucesoras de cada actividad (listas de enteros, orden topologico); se calcula una vez."""
+        if getattr(self, "_succ_cache", None) is None: self._succ_cache = [list(map(int, r)) for r in self.A.tolil().rows]
+        return self._succ_cache
+
+    def longest_path_batch(self, W, block=None):
+        """Longitud de la ruta s->f mas larga para cada columna de W (n, m) (pesos de nodo, pueden ser negativos), en una sola
+        pasada por columnas. Identico bit a bit a [longest_path(W[:, j]) for j in range(m)] y mucho mas rapido."""
+        W = np.asarray(W, float); n, m = W.shape; out = np.empty(m); snk = np.flatnonzero(self.snk)
+        blk = block or _bloque_columnas(n, m)
+        for a in range(0, m, blk):
+            b = min(m, a + blk); L = np.empty((n, b - a)); _ef_inplace(self.pred, W[:, a:b], L, np.empty(b - a)); out[a:b] = L[snk].max(axis=0)
+        return out
+
+    def critical_mask(self, T, block=None):
+        """Criticidad por actividad para matrices de duraciones T (n, m) en orden topologico: holgura total ~ 0.
+        Barridos in situ y por bloques de columnas (resultado identico bit a bit al calculo directo, con memoria acotada)."""
+        T = np.asarray(T, float); n, m = T.shape; mask = np.empty((n, m), bool); tau = np.empty(m); snk = np.flatnonzero(self.snk)
+        blk = block or _bloque_columnas(n, m); succ = self.succ
+        for a in range(0, m, blk):
+            b = min(m, a + blk); w = b - a; Tb = T[:, a:b]; row = np.empty(w); EF = np.empty((n, w)); _ef_inplace(self.pred, Tb, EF, row)
+            tb = EF[snk].max(axis=0); LS = np.empty((n, w)); _ls_inplace(succ, Tb, tb, LS, row)
+            np.add(LS, Tb, out=LS); np.subtract(LS, EF, out=LS)
+            mask[:, a:b] = LS < 1e-9 * np.maximum(tb, 1.0); tau[a:b] = tb
+        return mask, tau
 
 
 def _eigsh_robust(op, n, kk, tol, rng):
@@ -8336,7 +8464,8 @@ def tau_rank_k_roy(dag: RoyDAG, t, V, ks=None):
     """tau_k = ||R_k t||_inf = ruta mas larga con duraciones proyectadas V_k V_k^T t (t en orden topologico).
     Devuelve {k: tau_k}. Para k=1 equivale a sigma1*max(u1)*(v1.t)."""
     t = np.asarray(t, float); ks = ks or range(1, V.shape[1] + 1); c = V.T @ t
-    return {k: dag.longest_path(V[:, :k] @ c[:k]) for k in ks}
+    ks = list(ks); W = np.column_stack([V[:, :k] @ c[:k] for k in ks])      # todas las proyecciones, una sola pasada de DP
+    return {k: float(v) for k, v in zip(ks, dag.longest_path_batch(W))}
 
 
 class LatexArray(np.ndarray):
