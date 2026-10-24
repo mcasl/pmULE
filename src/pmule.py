@@ -5179,18 +5179,19 @@ class ProjectGraph:
         codigos, R, filas = self.plot_tikz_rutas(grafo, escala, etiquetas)
         svgs = _svgs_de_tikz(codigos)
         uid = "pmr" + hashlib.md5((grafo + "".join(codigos)).encode("utf-8")).hexdigest()[:10]
-        imgs = "".join(
+        imgs, comun = _compartir_svgs([
             f'<img alt="grafo y matriz de rutas" class="pmule-rut-img" style="display:{"block" if k == 0 else "none"};'
             f'width:100%;height:auto" '
             f'src="data:image/svg+xml;base64,{base64.b64encode(sv.encode("utf8")).decode("ascii")}">'
-            for k, sv in enumerate(svgs))
+            for k, sv in enumerate(svgs)], uid)
+        imgs = "".join(imgs)
         zonas = "".join(
             f'<div class="pmule-rut-zona" data-k="{k + 1}" title="Clic para resaltar la ruta" onclick="pmuleRut(this)" '
             f'style="position:absolute;left:{x * 100:.3f}%;top:{y * 100:.3f}%;width:{w * 100:.3f}%;height:{h * 100:.3f}%;'
             f'cursor:pointer"></div>' for k, (x, y, w, h) in enumerate(filas))
         ayuda = ("&#128070; <b>Interactivo:</b> haz clic en una fila de la matriz para resaltar en el grafo "
                  "las actividades y los nodos de esa ruta (otro clic la deselecciona).")
-        return (f'<div id="{uid}" class="pmule-rut" style="margin:1em 0">'
+        return (comun + f'<div id="{uid}" class="pmule-rut" style="margin:1em 0">'
                 '<style>.pmule-rut-zona:hover{background:rgba(204,102,0,.12)}</style>'
                 f'<div style="position:relative;max-width:760px;margin:0 auto">{imgs}{zonas}</div>'
                 f'<div style="text-align:center;margin:.6em 0;font-size:.95em;color:#8a4b00">{ayuda}</div></div>'
@@ -6343,11 +6344,12 @@ class ProjectGraph:
         svgs = _svgs_de_tikz(codigos)
         f = self._num_paso
         uid = "pmc" + hashlib.md5((grafo + "".join(codigos)).encode("utf-8")).hexdigest()[:10]
-        imgs = "".join(
+        imgs, comun = _compartir_svgs([
             f'<img alt="grafo" class="pmule-cal-img" style="display:{"block" if k == 0 else "none"};'
             f'margin:0 auto;width:100%;max-width:1100px;height:auto" '
             f'src="data:image/svg+xml;base64,{base64.b64encode(s.encode("utf8")).decode("ascii")}">'
-            for k, s in enumerate(svgs))
+            for k, s in enumerate(svgs)], uid)
+        imgs = "".join(imgs)
         hexcol = lambda k: self._CAL_HEX.get(self._CAL_PALETA[k % len(self._CAL_PALETA)], "#000")
         import re
         pinta = lambda t: re.sub(r'<span class="pmule-t" data-k="(\d+)">',
@@ -6375,6 +6377,7 @@ class ProjectGraph:
             filas_html.append(f'<tr><td style="padding:.25em .7em;font-weight:bold;text-align:center">{_html.escape(a)}</td>{tds}</tr>')
         ayuda = "Haz clic en un número de la tabla para ver cómo se calcula."
         return (
+            comun +
             f'<div id="{uid}" class="pmule-cal" style="margin:1em 0">'
             f'<div>{imgs}</div>'
             f'<div class="pmule-cal-formula" data-ayuda="{ayuda}" style="text-align:center;min-height:2.4em;'
@@ -9216,6 +9219,135 @@ def _id_determinista(prefijo: str, *partes) -> str:
     return base if n == 1 else f"{base}-{n}"
 
 
+_SVG_NS = "http://www.w3.org/2000/svg"
+_XLINK_NS = "http://www.w3.org/1999/xlink"
+
+
+_XLINK_PFX = "{" + _XLINK_NS + "}"
+
+
+def _ser_svg(e) -> str:
+    """Serializa un elemento SVG (``xml.etree``) sin declaraciones de espacios de nombres ni espacios sobrantes."""
+    partes = []
+    for k, v in e.attrib.items():
+        if k.startswith(_XLINK_PFX):
+            k = "xlink:" + k[len(_XLINK_PFX):]
+        if "&" in v or '"' in v or "<" in v or ">" in v:
+            v = v.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+        partes.append(f' {k}="{v}"')
+    tag = e.tag.rsplit("}", 1)[-1]
+    interior = e.text.strip() if e.text and e.text.strip() else ""
+    for h in e:
+        interior += _ser_svg(h)
+        if h.tail and h.tail.strip():
+            interior += h.tail.strip()
+    atrs = "".join(partes)
+    return f"<{tag}{atrs}>{interior}</{tag}>" if interior else f"<{tag}{atrs}/>"
+
+
+def _svg_en_elementos(svg: str):
+    """Descompone un SVG de ``pdftocairo`` en piezas reutilizables entre fotogramas.
+
+    Devuelve ``(viewBox, defs, cuerpo)`` o ``None`` si no tiene la forma esperada (entonces se deja la imagen como estaba):
+    ``defs`` es ``{id: texto}`` con los elementos con ``id`` de ``<defs>`` (glifos, máscaras, imágenes de los glifos...) y
+    ``cuerpo`` la lista de ids de los elementos de primer nivel. Los ids se sustituyen por un hash del contenido (con las
+    referencias ya renombradas), de modo que el mismo glifo o la misma caja reciben el mismo id en todos los fotogramas."""
+    import hashlib, re
+    import xml.etree.ElementTree as ET
+    raiz = ET.fromstring(svg.encode("utf-8"))
+    if raiz.tag != "{%s}svg" % _SVG_NS or not raiz.get("viewBox") or set(raiz.attrib) - {"width", "height", "viewBox", "version"}:
+        return None
+    defs_el = [h for h in raiz if h.tag == "{%s}defs" % _SVG_NS]
+    resto = [h for h in raiz if h.tag != "{%s}defs" % _SVG_NS]
+    con_id = {}
+    for d in defs_el:
+        for e in d.iter():
+            if e.get("id") is not None:
+                if any(x.get("id") is not None for x in e.iter() if x is not e):
+                    return None                    # ids anidados: no se tocan
+                con_id[e.get("id")] = e
+    if any(x.get("id") is not None for h in resto for x in h.iter()):
+        return None                                # ids en el cuerpo: no se tocan
+    patron = re.compile(r'(href="#|url\(#)([^")\s]+)')
+    sin_id = re.compile(r'^(<\w+) id="[^"]*"')
+    ser = {i: _ser_svg(e) for i, e in con_id.items()}      # cada elemento se serializa una sola vez
+    canon, en_curso = {}, set()
+
+    def reescribe(texto):
+        def sub(m):
+            r = m.group(2)
+            if r not in con_id:
+                raise KeyError(r)
+            return m.group(1) + canonico(r)
+        return patron.sub(sub, texto)
+
+    def canonico(i):
+        if i not in canon:
+            if i in en_curso:
+                raise KeyError(i)
+            en_curso.add(i)
+            texto = sin_id.sub(r"\1", ser[i], count=1)
+            canon[i] = "e" + hashlib.md5(reescribe(texto).encode("utf-8")).hexdigest()[:12]
+            en_curso.discard(i)
+        return canon[i]
+
+    try:
+        defs = {}
+        for i in con_id:
+            nuevo = sin_id.sub(rf'\1 id="{canonico(i)}"', reescribe(ser[i]), count=1)
+            defs[canonico(i)] = nuevo
+        cuerpo = []
+        for h in resto:
+            t = reescribe(_ser_svg(h))
+            bid = "b" + hashlib.md5(t.encode("utf-8")).hexdigest()[:12]
+            defs[bid] = f'<g id="{bid}">{t}</g>'
+            cuerpo.append(bid)
+    except KeyError:
+        return None
+    return raiz.get("viewBox"), defs, cuerpo
+
+
+def _compartir_svgs(fotos: list, uid: str):
+    """Sustituye en los fotogramas de un visor las imágenes ``<img src="data:image/svg+xml;base64,...">`` por SVG en
+    línea que reutiliza (``<use>``) elementos guardados una sola vez en un bloque común. Un paso de un visor cambia
+    poco respecto al anterior (se resalta una casilla o una flecha) y cada fotograma repetía todo el dibujo en base64:
+    así el HTML pesa entre 2 y 4 veces menos y el dibujo es el mismo. Devuelve ``(fotos, bloque_comun)``; lo que no se
+    puede descomponer se deja como estaba. ``PMULE_VISOR_COMPARTIDO=0`` lo desactiva."""
+    import base64, os, re
+    if os.environ.get("PMULE_VISOR_COMPARTIDO", "1").strip() == "0":
+        return fotos, ""
+    patron = re.compile(r'<img\b([^>]*?)\bsrc="data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)"([^>]*)>')
+    pfx = uid + "-"
+    defs = {}
+
+    def sustituye(m):
+        atrs = m.group(1) + m.group(3)
+        try:
+            r = _svg_en_elementos(base64.b64decode(m.group(2)).decode("utf-8"))
+        except Exception:
+            r = None
+        if r is None:
+            return m.group(0)
+        vb, d, cuerpo = r
+        defs.update(d)
+        estilo = re.search(r'style="([^"]*)"', atrs)
+        alt = re.search(r'alt="([^"]*)"', atrs)
+        clase = re.search(r'class="([^"]*)"', atrs)
+        usos = "".join(f'<use href="#{pfx}{i}"/>' for i in cuerpo)
+        return (f'<svg class="pmule-fig{" " + clase.group(1) if clase else ""}" role="img" '
+                f'aria-label="{alt.group(1) if alt else "paso"}" viewBox="{vb}"'
+                f'{" style=" + chr(34) + estilo.group(1) + chr(34) if estilo else ""}>{usos}</svg>')
+
+    nuevas = [patron.sub(sustituye, f) for f in fotos]
+    if not defs:
+        return fotos, ""
+    ids = re.compile(r'(id="|href="#|url\(#)([eb][0-9a-f]{12})(?![0-9a-f])')
+    comun = "".join(defs.values())
+    comun = ids.sub(lambda m: m.group(1) + pfx + m.group(2), comun)
+    return nuevas, ('<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">'
+                    f'<defs>{comun}</defs></svg>')
+
+
 def _html_pasos(fotos: list, inicio: int = 1) -> str:
     """Une fotogramas HTML en un visor autocontenido con botones
     (anterior / siguiente) para mostrar un cálculo paso a paso en un cuaderno
@@ -9224,6 +9356,7 @@ def _html_pasos(fotos: list, inicio: int = 1) -> str:
     fotograma en el contador (por defecto 1; el último muestra ``n + inicio - 1``)."""
     import hashlib
     uid = "pmp" + hashlib.md5("".join(fotos).encode("utf-8")).hexdigest()[:10]
+    fotos, comun = _compartir_svgs(fotos, uid)
     n = len(fotos)
     divs = "".join(
         f'<div class="pmule-paso" style="display:{"block" if k == 0 else "none"}">{c}</div>'
@@ -9231,6 +9364,7 @@ def _html_pasos(fotos: list, inicio: int = 1) -> str:
     boton = ('style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;'
              'border-radius:3px;background:#f4f4f4;cursor:pointer"')
     return (
+        comun +
         f'<div id="{uid}" class="pmule-pasos" style="margin:1em 0">'
         f'<div style="text-align:center;margin-bottom:.5em">'
         f'<button {boton} onclick="pmulePaso(\'{uid}\',-{n})">«</button>'
@@ -9248,7 +9382,7 @@ def _html_pasos(fotos: list, inicio: int = 1) -> str:
         'var e = c.querySelector(".pmule-contador"), o = parseInt(e.getAttribute("data-inicio") || "1", 10); e.textContent = "paso " + (k + o) + " de " + (p.length + o - 1); };'
         'window.pmulePantalla = window.pmulePantalla || function(id) {'
         'var c = document.getElementById(id), abierto = c.getAttribute("data-pantalla") === "1";'
-        'var imgs = c.querySelectorAll("img");'
+        'var imgs = c.querySelectorAll("img,svg.pmule-fig");'
         'if (abierto) { c.removeAttribute("data-pantalla"); c.style.cssText = c.getAttribute("data-estilo");'
         'for (var i = 0; i < imgs.length; i++) imgs[i].style.cssText = imgs[i].getAttribute("data-estilo");'
         'document.body.style.overflow = c.getAttribute("data-overflow") || ""; return; }'

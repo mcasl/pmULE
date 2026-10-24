@@ -9,6 +9,7 @@ import os
 import sys
 import re
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -152,8 +153,14 @@ class TestVisoresTiempos(unittest.TestCase):
     def _fotos(self, html):
         return html.count('class="pmule-paso"')
 
+    def _marcos(self, html):
+        """Fotogramas de un visor con elementos compartidos: el SVG en línea de cada paso."""
+        return re.findall(r'<svg class="pmule-fig".*?</svg>', html, flags=re.S)
+
     def test_pert_visor(self):
-        html = self.pg.pert_pasos_html(DUR)
+        # sin compartir elementos: una imagen base64 por fotograma
+        with mock.patch.dict(os.environ, {"PMULE_VISOR_COMPARTIDO": "0"}):
+            html = self.pg.pert_pasos_html(DUR)
         n = len(self.pg.nodes)
         m = len(self.pg.pert_graph.edges)
         total = 2 * n + m + 3                   # resultado + vacío + n + n + m holguras + final
@@ -165,8 +172,23 @@ class TestVisoresTiempos(unittest.TestCase):
         self.assertEqual(imgs[0], imgs[-1])               # el primero es el grafo resuelto
         self.assertNotEqual(imgs[1], imgs[0])
 
+    def test_pert_visor_con_elementos_compartidos(self):
+        html = self.pg.pert_pasos_html(DUR)
+        n = len(self.pg.nodes)
+        m = len(self.pg.pert_graph.edges)
+        total = 2 * n + m + 3
+        marcos = self._marcos(html)
+        self.assertEqual(self._fotos(html), total)
+        self.assertEqual(len(marcos), total)               # todos los fotogramas quedaron descompuestos
+        self.assertNotIn("data:image/svg+xml", html)
+        self.assertEqual(marcos[0], marcos[-1])            # el primero es el grafo resuelto
+        self.assertNotEqual(marcos[1], marcos[0])
+        refs = set(re.findall(r'href="#([^"]+)"', html))
+        self.assertTrue(refs and all(f'id="{r}"' in html for r in refs))
+
     def test_roy_visor(self):
-        html = self.pg.roy_pasos_html(DUR)
+        with mock.patch.dict(os.environ, {"PMULE_VISOR_COMPARTIDO": "0"}):
+            html = self.pg.roy_pasos_html(DUR)
         n = len(DUR) + 2                                    # actividades + Inicio + Fin
         self.assertEqual(self._fotos(html), 2 * n + 3)
         self.assertEqual(html.count("data:image/svg+xml;base64,"), 2 * n + 3)
@@ -174,10 +196,23 @@ class TestVisoresTiempos(unittest.TestCase):
         imgs = re.findall(r'base64,([A-Za-z0-9+/=]+)"', html)
         self.assertEqual(imgs[0], imgs[-1])
 
+    def test_roy_visor_con_elementos_compartidos(self):
+        html = self.pg.roy_pasos_html(DUR)
+        n = len(DUR) + 2
+        marcos = self._marcos(html)
+        self.assertEqual(self._fotos(html), 2 * n + 3)
+        self.assertEqual(len(marcos), 2 * n + 3)
+        self.assertEqual(marcos[0], marcos[-1])
+        refs = set(re.findall(r'href="#([^"]+)"', html))
+        self.assertTrue(refs and all(f'id="{r}"' in html for r in refs))
+
     def test_svgs_validos(self):
         import base64, re
-        html = self.pg.pert_pasos_html(DUR)
-        for b64 in re.findall(r'base64,([A-Za-z0-9+/=]+)"', html):
+        with mock.patch.dict(os.environ, {"PMULE_VISOR_COMPARTIDO": "0"}):
+            html = self.pg.pert_pasos_html(DUR)
+        b64s = re.findall(r'base64,([A-Za-z0-9+/=]+)"', html)
+        self.assertTrue(b64s)
+        for b64 in b64s:
             self.assertIn("<svg", base64.b64decode(b64).decode("utf8"))
 
     def test_display_sin_visor_conserva_la_lista(self):

@@ -38,7 +38,7 @@ From: ubuntu:24.04
         build-essential pkg-config graphviz libgraphviz-dev \
         poppler-utils \
         texlive-latex-base texlive-latex-recommended texlive-latex-extra \
-        texlive-pictures texlive-fonts-recommended texlive-lang-spanish lmodern \
+        texlive-pictures texlive-fonts-recommended texlive-lang-spanish lmodern cm-super \
         fontconfig fonts-liberation2 fonts-texgyre fonts-dejavu-core
     rm -rf /var/lib/apt/lists/*
     # Graphviz traduce su fuente por defecto (Times-Roman) a la familia genérica
