@@ -637,3 +637,51 @@ Variantes:
 - `Sostenibilidad_38` [restriccion-de-agua, nivel 2] — cuota de 50 m³/semana: pico 90 → 50 m³ nivelado, exceso 80 → 0 m³; cabe tras nivelar; hidrante: 21 k€ esperados
 - `Sostenibilidad_39` [pista-de-obra, nivel 3] — pista corta por la ZEC: 3 semana(s) y 38 k€ de semanas y camiones frente a 15 k€ de restauración (neto 23 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 23 a 38; art. 46.5 Ley 42/2007
 - `Sostenibilidad_40` [amianto, nivel 2] — 2100 m² de fibrocemento antes de F: plan de trabajo de 7 semanas y retirada de 2; 20 → 24 semanas (+4), o +2 presentando el plan 2 semana(s) antes; arts. 11, 12 y 17 RD 396/2006
+
+## 21_cadena_critica — Método de la cadena crítica
+
+Estimaciones agresivas y seguras, colchón del proyecto (cortar y pegar, raíz de la suma de cuadrados), colchones de alimentación y programación lo más tarde posible, cadena crítica con recursos, seguimiento con el gráfico de fiebre y el BPI (consumo de los colchones de alimentación, tendencia, comparación con el SPI), simulación del plan, varios proyectos con un recurso tambor (escalonamiento) y comportamientos que consumen los márgenes (multitarea, ley de Parkinson).
+
+Lección (teoría): `lecciones/21_cadena_critica.qmd` → `docs/colecciones/lecciones/21_cadena_critica.html`.
+
+Variantes:
+  - `multitarea` (nivel 1): turnos de una persona con varias tareas: fines con y sin multitarea, pérdida en cada cambio y orden que minimiza el tiempo medio
+  - `colchon-proyecto` (nivel 1): estimaciones segura y agresiva: cronograma tradicional, cadena crítica, colchón del proyecto por cortar y pegar y raíz, fecha comprometida
+  - `dimensionado-colchon` (nivel 2): cortar y pegar frente a raíz de la suma de cuadrados: probabilidad de cumplir con duraciones normales y crecimiento con el número de actividades
+  - `colchones-alimentacion` (nivel 2): colchones de alimentación (cadena de alimentación más larga, holgura disponible, colchón que no cabe) y programación lo más tarde posible; Gantt
+  - `cadena-con-recursos` (nivel 2): equipos compartidos: solapes, regla de prioridad, enlaces de recurso, red nivelada, cadena crítica distinta de la ruta crítica, colchones de recursos
+  - `plan-completo` (nivel 3): plan completo con equipos: red nivelada, cadena, colchón del proyecto y de alimentación (cortar y pegar o raíz), Gantt y comparación con el cronograma tradicional
+  - `seguimiento-fiebre` (nivel 2): tres informes de avance: fin previsto, colchón consumido, cadena completada, BPI, zona y gráfico de fiebre
+  - `monte-carlo-colchon` (nivel 3): Monte Carlo del plan por relevos: probabilidad de cada fecha, colchón para el 90 y el 95 %, cadena aislada y sesgo de convergencia
+  - `parkinson-relevos` (nivel 3): cronograma tradicional con ley de Parkinson y fechas fijas frente a relevos: probabilidad de cumplir, 0,9^k y por qué se pierden los márgenes
+  - `multiproyecto-tambor` (nivel 3): varios proyectos y un recurso tambor: multitarea, sin multitarea y escalonamiento con colchón de capacidad y colchón del tambor; lanzamiento de un proyecto nuevo
+  - `consumo-alimentacion` (nivel 2): informe con un colchón de alimentación desbordado: previsión, consumo de cada colchón, parte del consumo del CP que viene de la alimentación y prioridad por el estado de los colchones
+  - `tendencia-fiebre` (nivel 2): cuatro informes: consumo, avance, BPI y zona; velocidad de consumo, previsión con la tendencia, entrada en la zona roja y el BPI como velocidad sostenible
+  - `bpi-frente-a-spi` (nivel 3): el mismo informe con valor ganado (PV, EV, SPI con el plan de cadena crítica como línea base) y con el colchón (BPI, zona): por qué discrepan
+
+- `CadenaCritica_01` [multitarea, nivel 1] — 4 tareas en turnos de 2 días; cambio de tarea de 1 día
+- `CadenaCritica_02` [colchon-proyecto, nivel 1] — 9 actividades; cadena de 5 actividades; compromiso 35 frente a 42 días
+- `CadenaCritica_03` [dimensionado-colchon, nivel 2] — cadena de 8 actividades; colchón 15 (cortar y pegar) frente a 12 (raíz)
+- `CadenaCritica_04` [colchones-alimentacion, nivel 2] — 2 colchones de alimentación; compromiso 31 días
+- `CadenaCritica_05` [cadena-con-recursos, nivel 2] — 1 equipo; la cadena pasa por 1 enlace(s) de recurso; 37 frente a 36 días sin recursos
+- `CadenaCritica_06` [plan-completo, nivel 3] — 1 equipo; colchones por raíz; compromiso 33 frente a 40 días
+- `CadenaCritica_07` [seguimiento-fiebre, nivel 2] — cadena de 6 actividades, CP de 11 días; informes en zona verde → verde → amarilla
+- `CadenaCritica_08` [monte-carlo-colchon, nivel 3] — compromiso 46 frente a 52 días; Monte Carlo de 20000 réplicas
+- `CadenaCritica_09` [parkinson-relevos, nivel 3] — ruta tradicional de 6 actividades; compromiso 36 frente a 43 días
+- `CadenaCritica_10` [multitarea, nivel 1] — 3 tareas en turnos de 4 días; cambio de tarea de 1 día
+- `CadenaCritica_11` [colchon-proyecto, nivel 1] — 9 actividades; cadena de 5 actividades; compromiso 35 frente a 42 días
+- `CadenaCritica_12` [dimensionado-colchon, nivel 2] — cadena de 7 actividades; colchón 11 (cortar y pegar) frente a 9 (raíz)
+- `CadenaCritica_13` [colchones-alimentacion, nivel 2] — 2 colchones de alimentación; compromiso 51 días
+- `CadenaCritica_14` [cadena-con-recursos, nivel 2] — 2 equipos; la cadena pasa por 2 enlace(s) de recurso; 35 frente a 29 días sin recursos
+- `CadenaCritica_15` [plan-completo, nivel 3] — 1 equipo; colchones por raíz; compromiso 38 frente a 45 días
+- `CadenaCritica_16` [seguimiento-fiebre, nivel 2] — cadena de 5 actividades, CP de 8 días; informes en zona verde → amarilla → amarilla
+- `CadenaCritica_17` [monte-carlo-colchon, nivel 3] — compromiso 38 frente a 45 días; Monte Carlo de 20000 réplicas
+- `CadenaCritica_18` [parkinson-relevos, nivel 3] — ruta tradicional de 6 actividades; compromiso 42 frente a 49 días
+- `CadenaCritica_19` [multiproyecto-tambor, nivel 3] — 4 proyectos y un tambor; turnos de 2 días; colchón del tambor de 2 días
+- `CadenaCritica_20` [consumo-alimentacion, nivel 2] — día 12: 1 colchón de alimentación desbordado; CP consumido 33 %
+- `CadenaCritica_21` [tendencia-fiebre, nivel 2] — cadena de 25 días, CP de 8; cuatro informes (roja → verde → verde → verde)
+- `CadenaCritica_22` [bpi-frente-a-spi, nivel 3] — día 8: SPI 1.06 y zona roja (alimentación adelantada, cadena retrasada)
+- `CadenaCritica_23` [multiproyecto-tambor, nivel 3] — 3 proyectos y un tambor; turnos de 2 días; colchón del tambor de 2 días
+- `CadenaCritica_24` [consumo-alimentacion, nivel 2] — día 11: 1 colchón de alimentación desbordado; CP consumido 33 %
+- `CadenaCritica_25` [tendencia-fiebre, nivel 2] — cadena de 36 días, CP de 9; cuatro informes (amarilla → amarilla → verde → amarilla)
+- `CadenaCritica_26` [bpi-frente-a-spi, nivel 3] — día 12: SPI 0.94 y zona verde (alimentación retrasada dentro de su colchón)

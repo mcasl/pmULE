@@ -2927,7 +2927,6 @@
   "subtitulo": "pista corta por la ZEC: 2 semana(s) y 27 k€ de semanas y camiones frente a 20 k€ de restauración (neto 7 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 17 a 33; art. 46.5 Ley 42/2007",
   "ruta": "notebooks/colecciones/20_sostenibilidad/Sostenibilidad_36.py",
   "semilla": 2028036,
-  "grafo": "pert",
   "titulo_coleccion": "Sostenibilidad en el desarrollo de proyectos"
  },
  {
@@ -2938,7 +2937,6 @@
   "subtitulo": "1900 m² de fibrocemento antes de D: plan de trabajo de 7 semanas y retirada de 1; 22 → 24 semanas (+2), o +1 presentando el plan 1 semana(s) antes; arts. 11, 12 y 17 RD 396/2006",
   "ruta": "notebooks/colecciones/20_sostenibilidad/Sostenibilidad_37.py",
   "semilla": 2028037,
-  "grafo": "pert",
   "titulo_coleccion": "Sostenibilidad en el desarrollo de proyectos"
  },
  {
@@ -2959,7 +2957,6 @@
   "subtitulo": "pista corta por la ZEC: 3 semana(s) y 38 k€ de semanas y camiones frente a 15 k€ de restauración (neto 23 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 23 a 38; art. 46.5 Ley 42/2007",
   "ruta": "notebooks/colecciones/20_sostenibilidad/Sostenibilidad_39.py",
   "semilla": 2028039,
-  "grafo": "roy",
   "titulo_coleccion": "Sostenibilidad en el desarrollo de proyectos"
  },
  {
@@ -2970,7 +2967,268 @@
   "subtitulo": "2100 m² de fibrocemento antes de F: plan de trabajo de 7 semanas y retirada de 2; 20 → 24 semanas (+4), o +2 presentando el plan 2 semana(s) antes; arts. 11, 12 y 17 RD 396/2006",
   "ruta": "notebooks/colecciones/20_sostenibilidad/Sostenibilidad_40.py",
   "semilla": 2028040,
-  "grafo": "roy",
   "titulo_coleccion": "Sostenibilidad en el desarrollo de proyectos"
+ },
+ {
+  "nombre": "CadenaCritica_01",
+  "coleccion": "21_cadena_critica",
+  "variante": "multitarea",
+  "nivel": 1,
+  "subtitulo": "4 tareas en turnos de 2 días; cambio de tarea de 1 día",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_01.py",
+  "semilla": 2028101,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_02",
+  "coleccion": "21_cadena_critica",
+  "variante": "colchon-proyecto",
+  "nivel": 1,
+  "subtitulo": "9 actividades; cadena de 5 actividades; compromiso 35 frente a 42 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_02.py",
+  "semilla": 2028102,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_03",
+  "coleccion": "21_cadena_critica",
+  "variante": "dimensionado-colchon",
+  "nivel": 2,
+  "subtitulo": "cadena de 8 actividades; colchón 15 (cortar y pegar) frente a 12 (raíz)",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_03.py",
+  "semilla": 2028103,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_04",
+  "coleccion": "21_cadena_critica",
+  "variante": "colchones-alimentacion",
+  "nivel": 2,
+  "subtitulo": "2 colchones de alimentación; compromiso 31 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_04.py",
+  "semilla": 2028104,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_05",
+  "coleccion": "21_cadena_critica",
+  "variante": "cadena-con-recursos",
+  "nivel": 2,
+  "subtitulo": "1 equipo; la cadena pasa por 1 enlace(s) de recurso; 37 frente a 36 días sin recursos",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_05.py",
+  "semilla": 2028105,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_06",
+  "coleccion": "21_cadena_critica",
+  "variante": "plan-completo",
+  "nivel": 3,
+  "subtitulo": "1 equipo; colchones por raíz; compromiso 33 frente a 40 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_06.py",
+  "semilla": 2028106,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_07",
+  "coleccion": "21_cadena_critica",
+  "variante": "seguimiento-fiebre",
+  "nivel": 2,
+  "subtitulo": "cadena de 6 actividades, CP de 11 días; informes en zona verde → verde → amarilla",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_07.py",
+  "semilla": 2028107,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_08",
+  "coleccion": "21_cadena_critica",
+  "variante": "monte-carlo-colchon",
+  "nivel": 3,
+  "subtitulo": "compromiso 46 frente a 52 días; Monte Carlo de 20000 réplicas",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_08.py",
+  "semilla": 2028108,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_09",
+  "coleccion": "21_cadena_critica",
+  "variante": "parkinson-relevos",
+  "nivel": 3,
+  "subtitulo": "ruta tradicional de 6 actividades; compromiso 36 frente a 43 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_09.py",
+  "semilla": 2028109,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_10",
+  "coleccion": "21_cadena_critica",
+  "variante": "multitarea",
+  "nivel": 1,
+  "subtitulo": "3 tareas en turnos de 4 días; cambio de tarea de 1 día",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_10.py",
+  "semilla": 2028110,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_11",
+  "coleccion": "21_cadena_critica",
+  "variante": "colchon-proyecto",
+  "nivel": 1,
+  "subtitulo": "9 actividades; cadena de 5 actividades; compromiso 35 frente a 42 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_11.py",
+  "semilla": 2028111,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_12",
+  "coleccion": "21_cadena_critica",
+  "variante": "dimensionado-colchon",
+  "nivel": 2,
+  "subtitulo": "cadena de 7 actividades; colchón 11 (cortar y pegar) frente a 9 (raíz)",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_12.py",
+  "semilla": 2028112,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_13",
+  "coleccion": "21_cadena_critica",
+  "variante": "colchones-alimentacion",
+  "nivel": 2,
+  "subtitulo": "2 colchones de alimentación; compromiso 51 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_13.py",
+  "semilla": 2028113,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_14",
+  "coleccion": "21_cadena_critica",
+  "variante": "cadena-con-recursos",
+  "nivel": 2,
+  "subtitulo": "2 equipos; la cadena pasa por 2 enlace(s) de recurso; 35 frente a 29 días sin recursos",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_14.py",
+  "semilla": 2028114,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_15",
+  "coleccion": "21_cadena_critica",
+  "variante": "plan-completo",
+  "nivel": 3,
+  "subtitulo": "1 equipo; colchones por raíz; compromiso 38 frente a 45 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_15.py",
+  "semilla": 2028115,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_16",
+  "coleccion": "21_cadena_critica",
+  "variante": "seguimiento-fiebre",
+  "nivel": 2,
+  "subtitulo": "cadena de 5 actividades, CP de 8 días; informes en zona verde → amarilla → amarilla",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_16.py",
+  "semilla": 2028116,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_17",
+  "coleccion": "21_cadena_critica",
+  "variante": "monte-carlo-colchon",
+  "nivel": 3,
+  "subtitulo": "compromiso 38 frente a 45 días; Monte Carlo de 20000 réplicas",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_17.py",
+  "semilla": 2028117,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_18",
+  "coleccion": "21_cadena_critica",
+  "variante": "parkinson-relevos",
+  "nivel": 3,
+  "subtitulo": "ruta tradicional de 6 actividades; compromiso 42 frente a 49 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_18.py",
+  "semilla": 2028118,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_19",
+  "coleccion": "21_cadena_critica",
+  "variante": "multiproyecto-tambor",
+  "nivel": 3,
+  "subtitulo": "4 proyectos y un tambor; turnos de 2 días; colchón del tambor de 2 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_19.py",
+  "semilla": 2028119,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_20",
+  "coleccion": "21_cadena_critica",
+  "variante": "consumo-alimentacion",
+  "nivel": 2,
+  "subtitulo": "día 12: 1 colchón de alimentación desbordado; CP consumido 33 %",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_20.py",
+  "semilla": 2028120,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_21",
+  "coleccion": "21_cadena_critica",
+  "variante": "tendencia-fiebre",
+  "nivel": 2,
+  "subtitulo": "cadena de 25 días, CP de 8; cuatro informes (roja → verde → verde → verde)",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_21.py",
+  "semilla": 2028121,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_22",
+  "coleccion": "21_cadena_critica",
+  "variante": "bpi-frente-a-spi",
+  "nivel": 3,
+  "subtitulo": "día 8: SPI 1.06 y zona roja (alimentación adelantada, cadena retrasada)",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_22.py",
+  "semilla": 2028122,
+  "grafo": "pert",
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_23",
+  "coleccion": "21_cadena_critica",
+  "variante": "multiproyecto-tambor",
+  "nivel": 3,
+  "subtitulo": "3 proyectos y un tambor; turnos de 2 días; colchón del tambor de 2 días",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_23.py",
+  "semilla": 2028123,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_24",
+  "coleccion": "21_cadena_critica",
+  "variante": "consumo-alimentacion",
+  "nivel": 2,
+  "subtitulo": "día 11: 1 colchón de alimentación desbordado; CP consumido 33 %",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_24.py",
+  "semilla": 2028124,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_25",
+  "coleccion": "21_cadena_critica",
+  "variante": "tendencia-fiebre",
+  "nivel": 2,
+  "subtitulo": "cadena de 36 días, CP de 9; cuatro informes (amarilla → amarilla → verde → amarilla)",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_25.py",
+  "semilla": 2028125,
+  "titulo_coleccion": "Método de la cadena crítica"
+ },
+ {
+  "nombre": "CadenaCritica_26",
+  "coleccion": "21_cadena_critica",
+  "variante": "bpi-frente-a-spi",
+  "nivel": 3,
+  "subtitulo": "día 12: SPI 0.94 y zona verde (alimentación retrasada dentro de su colchón)",
+  "ruta": "notebooks/colecciones/21_cadena_critica/CadenaCritica_26.py",
+  "semilla": 2028126,
+  "grafo": "roy",
+  "titulo_coleccion": "Método de la cadena crítica"
  }
 ]
