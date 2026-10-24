@@ -28,7 +28,7 @@ from IPython.display import display, HTML, Markdown, Math
 # To find local version of the library
 sys.path.append('../src')
 
-from pmule import PredecessorTable, ProjectGraph, EarnedValue
+from pmule import PredecessorTable, ProjectGraph, EarnedValue, pinta_tikz
 # %mkdir -p ~/temp
 # %cd ~/temp
 
@@ -123,19 +123,19 @@ gantts = vg.calcula_gantts(datos_proyecto,
                           )
 
 # %%
-TexFragment(gantts['gantt_PV']).run_latex()
+pinta_tikz(gantts['gantt_PV'])
 
 # %% [markdown]
 # #### Gantt Valor Ganado
 
 # %%
-TexFragment(gantts['gantt_EV']).run_latex()
+pinta_tikz(gantts['gantt_EV'])
 
 # %% [markdown]
 # #### Gantt Coste Real
 
 # %%
-TexFragment(gantts['gantt_AC']).run_latex()
+pinta_tikz(gantts['gantt_AC'])
 
 # %% [markdown]
 # ### Apartado 2

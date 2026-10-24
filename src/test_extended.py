@@ -550,10 +550,14 @@ class TestDisplayHelpers(unittest.TestCase):
             pmule.plot_cargas(g, limite_maximo_recursos=np.full(30, 5))  # se recorta
 
     def test_pinta_tikz_calls_texfragment(self):
-        with mock.patch.object(pmule, "TexFragment") as TF, mock.patch.object(pmule, "display"):
+        # sin filename: fotograma plano por _svgs_de_tikz (con caché); con filename: TexFragment (guarda PDF y SVG)
+        with mock.patch.object(pmule, "TexFragment") as TF, mock.patch.object(pmule, "display"), \
+                mock.patch.object(pmule, "_svgs_de_tikz", return_value=["<svg/>"]) as sv:
             pmule.pinta_tikz(r"\begin{tikzpicture}\end{tikzpicture}")
+            sv.assert_called_once_with([r"\begin{tikzpicture}\end{tikzpicture}"], "patterns", plano=True)
+            TF.assert_not_called()
             pmule.pinta_tikz(r"\begin{tikzpicture}\end{tikzpicture}", filename="f")
-            self.assertEqual(TF.call_count, 2)
+            self.assertEqual(TF.call_count, 1)
             TF.return_value.run_latex.assert_any_call(save_pdf="f.pdf", save_svg="f.svg")
 
     def test_plot_tikz_with_path_compiles_via_texfragment(self):

@@ -235,7 +235,7 @@ class TestCacheYParalelismoTikz(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.llamadas = []
 
-        def falso(codigos, librerias="calc,arrows.meta", guardar=None):
+        def falso(codigos, librerias="calc,arrows.meta", guardar=None, plano=False):
             self.llamadas.append(list(codigos))
             return [f"<svg>{c}|{librerias}</svg>" for c in codigos]
         patches = [mock.patch.dict(os.environ, {"PMULE_TIKZ_CACHE": self.dir, "PMULE_TIKZ_JOBS": "4"}),
@@ -320,6 +320,22 @@ class TestTikzRealIgualAlSecuencial(unittest.TestCase):
         with mock.patch.dict(os.environ, {"PMULE_TIKZ_CACHE": d, "PMULE_TIKZ_JOBS": "2"}):
             self.assertEqual(pmule._svgs_de_tikz(cods), ref)          # en dos trozos
             self.assertEqual(pmule._svgs_de_tikz(cods), ref)          # desde la caché
+
+    def test_pinta_tikz_muestra_lo_mismo_que_jupyter_tikz_y_no_lanza_en_error(self):
+        from jupyter_tikz import TexFragment
+        from IPython.display import SVG
+        cod = r"\begin{tikzpicture}\draw[pattern=north east lines] (0,0) rectangle (2,1);\end{tikzpicture}"
+        ref = SVG(data=TexFragment(cod, tikz_libraries='patterns').run_latex().data).data
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        with mock.patch.dict(os.environ, {"PMULE_TIKZ_CACHE": d}):
+            for _ in range(2):                                         # compilando y desde la caché
+                with mock.patch.object(pmule, "display") as disp:
+                    pmule.pinta_tikz(cod)
+                self.assertEqual(disp.call_args[0][0].data, ref)
+            with mock.patch.object(pmule, "display") as disp, mock.patch("sys.stderr"):
+                pmule.pinta_tikz(r"\begin{tikzpicture}\badcommand\end{tikzpicture}")
+            disp.assert_not_called()
 
 
 if __name__ == "__main__":

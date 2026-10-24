@@ -9267,7 +9267,10 @@ def _svg_ancho_columna(svg):
     return re.sub(r'<svg\b[^>]*>', raiz, svg, count=1)
 
 
-def _preambulo_tikz(librerias: str) -> str:
+def _preambulo_tikz(librerias: str, plano: bool = False) -> str:
+    if plano:        # la plantilla de jupyter_tikz (``TexFragment``): un solo dibujo, sin margen ni paquetes extra
+        return ("\\documentclass{standalone}\n\\usepackage{tikz}\n"
+                + f"\\usetikzlibrary{{{librerias}}}\n")
     return ("\\documentclass[border=4pt,multi=tikzpicture]{standalone}\n"
             "\\usepackage[utf8]{inputenc}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath}\n"
             "\\usepackage{tikz}\n" + f"\\usetikzlibrary{{{librerias}}}\n")
@@ -9314,7 +9317,8 @@ def _version_latex() -> str:
     return " | ".join(v)
 
 
-def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: str = None) -> list:
+def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: str = None,
+                  plano: bool = False) -> list:
     """Compila una lista de ``tikzpicture`` (un fotograma cada uno) y devuelve un
     SVG por fotograma, recortado al dibujo. Necesita ``pdflatex`` y ``pdftocairo``.
 
@@ -9324,16 +9328,18 @@ def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: s
       vuelve a compilar (``PMULE_TIKZ_CACHE``, ver ``_cache_tikz``);
     - los que faltan se reparten en trozos de al menos 6 fotogramas que se compilan en paralelo
       (``PMULE_TIKZ_JOBS``, por defecto las CPU disponibles, como mucho 8).
-    Con ``guardar`` se compila todo de una vez, como siempre (hace falta el PDF entero)."""
+    Con ``guardar`` se compila todo de una vez, como siempre (hace falta el PDF entero).
+    ``plano=True`` usa la plantilla de ``jupyter_tikz`` (``\\documentclass{standalone}`` sin margen) y solo
+    vale para un fotograma por llamada."""
     import gzip, hashlib, os, shutil
     from concurrent.futures import ThreadPoolExecutor
     for exe in ("pdflatex", "pdftocairo"):
         if shutil.which(exe) is None:
             raise FileNotFoundError(f"no se encuentra {exe}: hace falta LaTeX para los fotogramas TikZ")
     if guardar:
-        return _compila_tikz(codigos, librerias, guardar)
+        return _compila_tikz(codigos, librerias, guardar, plano)
     cache = _cache_tikz()
-    base = (_preambulo_tikz(librerias) + _version_latex()).encode("utf-8")
+    base = (_preambulo_tikz(librerias, plano) + _version_latex()).encode("utf-8")
     claves = [hashlib.sha256(base + c.encode("utf-8")).hexdigest() for c in codigos]
     svg_de = {}
     if cache is not None:
@@ -9352,7 +9358,7 @@ def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: s
         tam = -(-len(ks) // trozos)
         partes = [ks[i:i + tam] for i in range(0, len(ks), tam)]
         def compila(parte):
-            return _compila_tikz([faltan[k] for k in parte], librerias)
+            return _compila_tikz([faltan[k] for k in parte], librerias, plano=plano)
         if len(partes) == 1:
             resultados = [compila(partes[0])]
         else:
@@ -9372,14 +9378,15 @@ def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: s
     return [svg_de[k] for k in claves]
 
 
-def _compila_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: str = None) -> list:
+def _compila_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: str = None,
+                  plano: bool = False) -> list:
     """Un solo ``pdflatex`` para todos los fotogramas y un ``pdftocairo`` por página. Con ``guardar``
     copia además la primera figura (``.pdf``, ``.svg`` o ``.png``)."""
     import shutil, subprocess, tempfile
     from pathlib import Path
     paginas = "\n".join(codigos)
     n = len(codigos)
-    doc = _preambulo_tikz(librerias) + "\\begin{document}\n" + paginas + "\n\\end{document}\n"
+    doc = _preambulo_tikz(librerias, plano) + "\\begin{document}\n" + paginas + "\n\\end{document}\n"
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
         (d / "f.tex").write_text(doc, encoding="utf8")
@@ -9908,7 +9915,14 @@ def pinta_tikz(dibujo, filename=None):
     if filename is not None:
         display(TexFragment(dibujo, tikz_libraries='patterns').run_latex(save_pdf=filename+'.pdf', save_svg=filename+'.svg'))
     else:
-        display(TexFragment(dibujo, tikz_libraries='patterns').run_latex())
+        # misma plantilla y mismo pdftocairo que TexFragment.run_latex (el SVG es idéntico), pero con la caché de fotogramas
+        try:
+            svg = _svgs_de_tikz([dibujo], "patterns", plano=True)[0]
+        except RuntimeError as e:             # como jupyter_tikz: se muestra el error de LaTeX y no se dibuja nada
+            import sys
+            print(e, file=sys.stderr)
+            return
+        display(SVG(data=svg))
 
 def plot_cargas(gantt_df, limite_maximo_recursos=None):
     from matplotlib import pyplot as plt
