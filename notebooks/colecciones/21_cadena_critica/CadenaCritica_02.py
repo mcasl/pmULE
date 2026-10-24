@@ -314,12 +314,15 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
-        restante = float(det['restante'].sum())
+        hecho = float(inf['avance'])
+        largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
+                  for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
         pa, pc = inf['pct_avance'], inf['pct_consumo']
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': f"({T} − {restante:g})/{T} = {pa:.1f} %",
+            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                  + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
@@ -426,3 +429,44 @@ display(Markdown(pregunta_4))
 Markdown(f'''Los márgenes individuales no se suman: es muy improbable que todas las actividades de la cadena consuman a la vez todo su margen. Si las duraciones son independientes, lo que se suma son las varianzas, y la desviación de la cadena crece como la raíz de la suma de cuadrados ({plan.calculo_colchon_proyecto["raiz"]:.2f} días frente a {margen_cadena}). Concentrar el margen al final protege la fecha de entrega con menos días que repartido por las actividades, donde además se perdería por el síndrome del estudiante y la ley de Parkinson.
 
 La estimación agresiva es la mediana: se espera que la mitad de las actividades la superen. Penalizarlo llevaría a los responsables a volver a inflar sus estimaciones, y el margen oculto reaparecería. Lo que se controla es el consumo del colchón del proyecto, no el cumplimiento de cada duración.''')
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('Con el colchón del proyecto calculado por cortar y pegar, ¿qué fecha se compromete con el cliente?',
+     ['día 35', 'día 42', 'día 34', 'día 36'],
+     'Cadena de 27 días más un colchón de 0,5·15 → 8 días: día 35. Sumar todo el margen retirado (42) devolvería la protección repartida que el método quiere evitar.'),
+    ('¿Cuántos días tiene el colchón del proyecto por el método de la raíz de la suma de cuadrados?',
+     ['7 días', '15 días', '8 días', '6 días'],
+     '√(4² + 2² + 3² + 2² + 4²) = 7,00, redondeado al día superior: 7.'),
+    ('Una actividad de la cadena tarda más que su estimación agresiva. ¿Qué debe hacer el jefe de proyecto?',
+     ['nada especial: es lo esperado la mitad de las veces y se vigila el consumo del colchón', 'pedir explicaciones al responsable por incumplir su estimación', 'retrasar la fecha comprometida en lo que se haya pasado', 'volver a las estimaciones seguras para el resto de actividades'],
+     'La estimación agresiva es la mediana: se espera que la mitad de las actividades la superen. Se controla el colchón, no el cumplimiento de cada duración.'),
+]
+TITULO_TEST = 'Cadena crítica — colchón del proyecto (cadena de 27 días)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

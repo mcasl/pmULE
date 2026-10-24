@@ -2221,6 +2221,7 @@ max-width: none !important; }
   <li><a href="#apartado-3" id="toc-apartado-3" class="nav-link" data-scroll-target="#apartado-3">Apartado 3</a></li>
   <li><a href="#apartado-4" id="toc-apartado-4" class="nav-link" data-scroll-target="#apartado-4">Apartado 4</a></li>
   <li><a href="#apartado-5" id="toc-apartado-5" class="nav-link" data-scroll-target="#apartado-5">Apartado 5</a></li>
+  <li><a href="#autoevaluación" id="toc-autoevaluación" class="nav-link" data-scroll-target="#autoevaluación">Autoevaluación</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -2250,7 +2251,7 @@ max-width: none !important; }
 <section id="enunciado" class="level1">
 <h1>Enunciado</h1>
 <p>Una empresa tiene en cartera 4 proyectos que dependen de un mismo equipo escaso, la unidad de validación de software: es el <strong>tambor</strong>, el recurso que limita cuántos proyectos puede sacar adelante la organización, y sólo atiende una tarea a la vez. Cada proyecto se ha planificado con el método de la cadena crítica y su cadena pasa una vez por el tambor. El cuadro resume, en días y con estimaciones agresivas, lo que dura la cadena de cada proyecto antes de su tarea en el tambor (<em>antes</em>), la tarea del tambor (<em>tambor</em>), lo que queda después (<em>despues</em>) y su colchón del proyecto (<em>CP</em>). Los proyectos están en el orden de prioridad fijado por la dirección. Las demás actividades de cada proyecto no compiten por el tambor.</p>
-<div id="1cc14702" class="cell" data-execution_count="4">
+<div id="75e3201b" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol type="1">
 <li>Si se lanzan los 4 proyectos el día 0 y el tambor reparte su tiempo en turnos de 2 días entre los proyectos que le esperan (multitarea, rotando en el orden de prioridad; cada proyecto entra en la rotación cuando termina su parte <em>antes</em>), ¿qué día termina cada proyecto? Compárelo con la fecha que se le comprometería si tuviera el tambor libre (antes + tambor + después + CP).<br>
@@ -2353,7 +2354,7 @@ Tabla 1: Cartera de proyectos (días, estimaciones agresivas; en orden de prior
 <h1>Resolución</h1>
 <section id="apartado-1" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-1">Apartado 1</h2>
-<div id="309d2bd3" class="cell" data-execution_count="8">
+<div id="367c31c1" class="cell" data-execution_count="8">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol type="1">
 <li>Si se lanzan los 4 proyectos el día 0 y el tambor reparte su tiempo en turnos de 2 días entre los proyectos que le esperan (multitarea, rotando en el orden de prioridad; cada proyecto entra en la rotación cuando termina su parte <em>antes</em>), ¿qué día termina cada proyecto? Compárelo con la fecha que se le comprometería si tuviera el tambor libre (antes + tambor + después + CP).<br>
@@ -2536,7 +2537,7 @@ Figura 1: Todos los proyectos lanzados el día 0 con multitarea en el tambor (t
 </div>
 </div>
 </div>
-<div id="be53160a" class="cell" data-execution_count="12">
+<div id="c897a898" class="cell" data-execution_count="12">
 <div class="cell-output cell-output-display cell-output-markdown" data-execution_count="12">
 <p>Con multitarea, 3 de los 4 proyectos (P1, P3, P4) terminan después de la fecha que se les comprometería con el tambor libre: ni siquiera su colchón del proyecto absorbe la espera.</p>
 </div>
@@ -2544,7 +2545,7 @@ Figura 1: Todos los proyectos lanzados el día 0 con multitarea en el tambor (t
 </section>
 <section id="apartado-2" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-2">Apartado 2</h2>
-<div id="7a17c979" class="cell" data-execution_count="13">
+<div id="cd42aed6" class="cell" data-execution_count="13">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="2" type="1">
 <li>Repita el cálculo si, con todos los proyectos lanzados también el día 0, el tambor no hace multitarea: cuando queda libre atiende, hasta terminarla, la tarea del proyecto de mayor prioridad que le espera.<br>
@@ -2666,7 +2667,7 @@ Tabla 4: Fin de cada proyecto sin multitarea en el tambor (todos lanzados el d�
 </figure>
 </div>
 </div>
-<div id="cb5e4635" class="cell" data-execution_count="15">
+<div id="ab8027f4" class="cell" data-execution_count="15">
 <div class="cell-output cell-output-display cell-output-markdown" data-execution_count="15">
 <p>Sin multitarea terminan antes P1, P2, P3 (media de los fines: 20.25 frente a 24.75 días) y el último proyecto termina el mismo día (29), porque el tambor hace el mismo trabajo: repartir el tambor no adelanta a nadie y retrasa a casi todos, porque cada tarea del tambor termina en su último turno y está en la cadena crítica de su proyecto.</p>
 </div>
@@ -2674,7 +2675,7 @@ Tabla 4: Fin de cada proyecto sin multitarea en el tambor (todos lanzados el d�
 </section>
 <section id="apartado-3" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-3">Apartado 3</h2>
-<div id="1b8cfa21" class="cell" data-execution_count="16">
+<div id="ff2bca7a" class="cell" data-execution_count="16">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="3" type="1">
 <li>Escalone los proyectos por el tambor: sus tareas se programan en el orden de prioridad, una detrás de otra, con un <strong>colchón de capacidad</strong> tras cada una igual al 25 % de su duración (redondeado al día superior); cada proyecto se lanza de modo que su parte <em>antes</em> termine 2 días (<strong>colchón del tambor</strong>) antes de su turno en el tambor; el primero se lanza el día 0. Dé el día de lanzamiento, el inicio en el tambor, el fin previsto y la fecha comprometida de cada proyecto, y dibuje el programa.<br>
@@ -2770,7 +2771,7 @@ Figura 2: Programa escalonado: parte antes y después en verde, colchón del ta
 </div>
 </div>
 </div>
-<div id="95fb6ea9" class="cell" data-execution_count="19">
+<div id="3d1c7fdc" class="cell" data-execution_count="19">
 <div class="cell-output cell-output-display cell-output-markdown" data-execution_count="19">
 <p>Lanzamientos: P1 el día 0, compromiso el día 17; P2 el día 2, compromiso el día 29; P3 el día 9, compromiso el día 32; P4 el día 17, compromiso el día 42.</p>
 </div>
@@ -2778,7 +2779,7 @@ Figura 2: Programa escalonado: parte antes y después en verde, colchón del ta
 </section>
 <section id="apartado-4" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-4">Apartado 4</h2>
-<div id="d144d80c" class="cell" data-execution_count="20">
+<div id="ecb4a7e3" class="cell" data-execution_count="20">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="4" type="1">
 <li>Compare los tres regímenes: fin de cada proyecto, duración media de un proyecto (de su lanzamiento a su fin) y máximo de proyectos abiertos a la vez. ¿Qué gana la organización con el escalonamiento? ¿Para qué sirven el colchón de capacidad y el colchón del tambor?<br>
@@ -2858,7 +2859,7 @@ Tabla 6: Comparación de los tres regímenes
 </figure>
 </div>
 </div>
-<div id="62bbc032" class="cell" data-execution_count="22">
+<div id="4017423a" class="cell" data-execution_count="22">
 <div class="cell-output cell-output-display cell-output-markdown" data-execution_count="22">
 <p>Con todos los proyectos lanzados a la vez hay 4 abiertos desde el día 0; escalonados, como máximo 3. Cada proyecto pasa abierto, de media, 17.50 días frente a 20.25 sin multitarea y 24.75 con multitarea: inmoviliza menos tiempo a su equipo y menos dinero, y su fecha no depende de cómo se reparta el tambor. El último proyecto termina el día 35, 6 días después que sin escalonar: es el precio de los colchones de capacidad y del tambor, la reserva que hace fiables las fechas comprometidas.</p>
 </div>
@@ -2867,7 +2868,7 @@ Tabla 6: Comparación de los tres regímenes
 </section>
 <section id="apartado-5" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-5">Apartado 5</h2>
-<div id="53738cb1" class="cell" data-execution_count="23">
+<div id="2552ca0f" class="cell" data-execution_count="23">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="5" type="1">
 <li>Llega un proyecto nuevo, P5, con antes = 7, tambor = 5, después = 7 y CP = 7 días, de prioridad menor que los anteriores. Con el programa escalonado, ¿qué día puede lanzarse y qué fecha puede comprometerse con su cliente?<br>
@@ -2875,9 +2876,49 @@ Tabla 6: Comparación de los tres regímenes
 </ol>
 </div>
 </div>
-<div id="6a4c2005" class="cell" data-execution_count="24">
+<div id="4760e3c1" class="cell" data-execution_count="24">
 <div class="cell-output cell-output-display cell-output-markdown" data-execution_count="24">
 <p>El tambor queda libre, tras la última tarea y su colchón de capacidad, el día 31. Inicio de P5 en el tambor: máx(7 + 2; 31) = <strong>31</strong>; lanzamiento: 31 − 2 − 7 = <strong>día 22</strong>; fin previsto 31 + 5 + 7 = 43; fecha comprometida 43 + 7 = <strong>día 50</strong>. Lanzarlo antes no lo adelantaría: sólo lo tendría abierto esperando al tambor.</p>
+</div>
+</div>
+</section>
+<section id="autoevaluación" class="level2">
+<h2 class="anchored" data-anchor-id="autoevaluación">Autoevaluación</h2>
+<p>Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a <code>~/temp/cuestionario_cadena_critica.gift</code>, para importarlas en Moodle.</p>
+<div id="5c27b1b0" class="cell" data-execution_count="25">
+<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="25">
+<p><strong>1. En el programa escalonado, ¿qué día se lanza P4?</strong></p>
+<ul>
+<li>✅ día 17</li>
+<li>◻️ día 19</li>
+<li>◻️ día 0</li>
+<li>◻️ día 24</li>
+</ul>
+<p><em>Entra en el tambor el día 24; se lanza 24 − 2 (colchón del tambor) − 5 (antes) = 17.</em></p>
+<p><strong>2. ¿Qué fecha puede comprometerse para el proyecto nuevo P5?</strong></p>
+<ul>
+<li>✅ día 50</li>
+<li>◻️ día 26</li>
+<li>◻️ día 48</li>
+<li>◻️ día 43</li>
+</ul>
+<p><em>El tambor queda libre el día 31; P5 entra el día máx(7 + 2; 31) = 31 y se compromete para 31 + 5 + 7 + 7 = 50.</em></p>
+<p><strong>3. Con todos los proyectos lanzados el día 0 y multitarea en el tambor, ¿qué día termina P1?</strong></p>
+<ul>
+<li>✅ día 20</li>
+<li>◻️ día 12</li>
+<li>◻️ día 18</li>
+<li>◻️ día 21</li>
+</ul>
+<p><em>Su tarea del tambor termina el día 18, en su último turno; después quedan 2 días.</em></p>
+<p><strong>4. ¿Para qué sirve el colchón de capacidad?</strong></p>
+<ul>
+<li>✅ para que el retraso de una tarea del tambor no arrastre a los proyectos siguientes</li>
+<li>◻️ para proteger la fecha de entrega de cada proyecto</li>
+<li>◻️ para que el tambor pueda hacer multitarea</li>
+<li>◻️ para lanzar antes los proyectos</li>
+</ul>
+<p><em>Las fechas de los proyectos siguientes se comprometen contando con su turno en el tambor; la fecha de entrega la protege el colchón del proyecto.</em></p>
 </div>
 </div>
 </section>

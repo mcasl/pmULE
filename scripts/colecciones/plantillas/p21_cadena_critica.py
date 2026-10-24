@@ -390,6 +390,7 @@ def _multitarea(rng):
                      "termina cuando termina su último turno), retrasa la entrega a las sucesoras y, con la pérdida de "
                      "cada cambio, reduce la capacidad real del recurso. Para decidir qué tarea va primero, la prioridad "
                      "la marca el estado de los colchones de cada proyecto, no quien más presiona."))
+    celdas += _autoevaluacion(_p_multitarea(dur, bloque, cambio), f"Cadena crítica — multitarea ({k} tareas, turnos de {bloque} días)")
     return celdas, f"{k} tareas en turnos de {bloque} días; cambio de tarea de {cambio} día{'s' if cambio > 1 else ''}"
 
 
@@ -466,6 +467,7 @@ def _colchon_proyecto(rng):
                        "La estimación agresiva es la mediana: se espera que la mitad de las actividades la superen. Penalizarlo llevaría a los "
                        "responsables a volver a inflar sus estimaciones, y el margen oculto reaparecería. Lo que se controla es el consumo del "
                        "colchón del proyecto, no el cumplimiento de cada duración.''')"))
+    celdas += _autoevaluacion(_p_colchon(plan), f"Cadena crítica — colchón del proyecto (cadena de {plan.duracion_cadena} días)")
     return _con_contexto(celdas, rng), (f"{len(df)} actividades; cadena de {len(plan.cadena)} actividades; "
                                        f"compromiso {plan.compromiso} frente a {plan.duracion_tradicional} días")
 
@@ -544,6 +546,7 @@ def _dimensionado(rng):
                        "         'de cumplir se acerca a 1 (sobreprotege las cadenas largas, a costa de alargar el compromiso); con menos de cuatro da un '\n"
                        "         f'colchón menor que la raíz y protege menos del 90 % (con n = 2, P = {norm.cdf(1.2816 * np.sqrt(2) / 2):.2f}). '\n"
                        "         f'Esta cadena tiene {len(cadena)} actividades: cortar y pegar le asigna {CP_cp - CP_rz} días más que la raíz.')"))
+    celdas += _autoevaluacion(_p_dimensionado(plan), f"Cadena crítica — dimensionado del colchón (cadena de {len(plan.cadena)} actividades)")
     return _con_contexto(celdas, rng), (f"cadena de {len(plan.cadena)} actividades; colchón {plan.colchon_proyecto} (cortar y pegar) "
                                        f"frente a {math.ceil(plan.calculo_colchon_proyecto['raiz'] - 1e-9)} (raíz)")
 
@@ -627,6 +630,7 @@ def _alimentacion(rng):
                            "         f'la fecha comprometida pasaría de {plan.compromiso} a {plan.compromiso + exceso}. Reducirlo a la holgura '\n"
                            "         'mantiene el compromiso, pero deja ese camino peor protegido: su cadena de alimentación debe empezar el primer '\n"
                            "         'día posible y conviene vigilarla de cerca.')"))
+    celdas += _autoevaluacion(_p_alimentacion(plan), f"Cadena crítica — colchones de alimentación (compromiso el día {plan.compromiso})")
     sub = (f"{len(plan.alimentacion)} colchones de alimentación" + (f" ({len(no_cabe)} no cabe)" if len(no_cabe) else "")
            + f"; compromiso {plan.compromiso} días")
     return _con_contexto(celdas, rng), sub
@@ -774,6 +778,7 @@ def _con_recursos(rng):
                      "cadena crítica, unos días antes de que termine la actividad anterior, para que esté libre y "
                      "preparado en cuanto reciba el testigo. Se pone antes de cada actividad de la cadena que usa un equipo "
                      "que no usaba su predecesora en la cadena; si la cadena sigue con el mismo equipo, no hace falta."))
+    celdas += _autoevaluacion(_p_recursos(plan, info), f"Cadena crítica — cadena con recursos (cadena de {plan.duracion_cadena} días)")
     sub = (f"{n_rec} equipo{'s' if n_rec > 1 else ''}; la cadena pasa por {int((plan.enlaces_cadena['motivo'] == 'recurso').sum())} "
            f"enlace(s) de recurso; {plan.duracion_cadena} frente a {int(info['T'])} días sin recursos")
     return _con_contexto(celdas, rng), sub
@@ -846,6 +851,7 @@ def _plan_completo(rng):
                      "la actividad anterior de la cadena (que, por la regla del corredor de relevos, puede terminar antes de "
                      "lo previsto). Añadir tiempo alargaría la cadena sin protegerla; lo que se protege es la disponibilidad "
                      "del recurso, que es lo que haría perder días a la cadena."))
+    celdas += _autoevaluacion(_p_plan_completo(plan), f"Cadena crítica — plan completo (compromiso el día {plan.compromiso})")
     sub = (f"{n_rec} equipo{'s' if n_rec > 1 else ''}; colchones por {'cortar y pegar' if metodo == 'cortar_pegar' else 'raíz'}; "
            f"compromiso {plan.compromiso} frente a {plan.duracion_tradicional} días")
     return _con_contexto(celdas, rng), sub
@@ -988,6 +994,7 @@ def _seguimiento(rng):
                      "inflar las estimaciones. Lo que importa es si queda colchón suficiente para lo que queda de cadena, y "
                      "para eso hace falta la **duración restante** de lo que está en curso: con ella se calcula el fin "
                      "previsto, el consumo del colchón y el BPI, una única señal que todo el equipo entiende."))
+    celdas += _autoevaluacion(_p_seguimiento(plan, segs), f"Cadena crítica — seguimiento (cadena de {plan.duracion_cadena} días, CP de {plan.colchon_proyecto})")
     zonas = " → ".join(s["zona"] for s in segs)
     return _con_contexto(celdas, rng), f"cadena de {len(plan.cadena)} actividades, CP de {plan.colchon_proyecto} días; informes en zona {zonas}"
 
@@ -1085,6 +1092,7 @@ def _monte_carlo(rng):
                        "         f\"si se ejecutara por relevos: sus {plan.duracion_tradicional - plan.compromiso} días de más sobre el compromiso suben la \"\n"
                        "         f\"probabilidad de {float((T_sim <= plan.compromiso).mean()):.3f} a {float((T_sim <= plan.duracion_tradicional).mean()):.3f}: \"\n"
                        "         \"está sobreprotegido, y además, por la ley de Parkinson, esos días tenderían a consumirse igualmente.\")"))
+    celdas += _autoevaluacion(_p_monte_carlo(plan, N, semilla), f"Cadena crítica — Monte Carlo del colchón (compromiso el día {plan.compromiso})")
     sub = (("con un equipo compartido; " if rec else "") +
            f"compromiso {plan.compromiso} frente a {plan.duracion_tradicional} días; Monte Carlo de {N} réplicas")
     return _con_contexto(celdas, rng), sub
@@ -1171,6 +1179,7 @@ def _parkinson(rng):
                        "estimaciones: con las mismas duraciones, ejecutando por relevos, la fecha tradicional se cumpliría con probabilidad "
                        "{float((T_rel <= T_tradicional).mean()):.3f}.''')"))
     k_trad = int(info["P"].loc[_rutas_criticas(info, df["segura"])[0][0]].sum())
+    celdas += _autoevaluacion(_p_parkinson(plan, N, semilla, k_trad), f"Cadena crítica — Parkinson frente a relevos (ruta de {k_trad} actividades)")
     return _con_contexto(celdas, rng), (f"ruta tradicional de {k_trad} actividades; "
                                        f"compromiso {plan.compromiso} frente a {plan.duracion_tradicional} días")
 
@@ -1497,6 +1506,7 @@ def _tambor(rng):
                        "         f\"lanzamiento: {s_n} − {colchon_tambor} − {nuevo['antes']} = **día {lanz_n}**; fin previsto {s_n} + {nuevo['tambor']} + \"\n"
                        "         f\"{nuevo['despues']} = {fin_n}; fecha comprometida {fin_n} + {nuevo['CP']} = **día {fin_n + nuevo['CP']}**. \"\n"
                        "         \"Lanzarlo antes no lo adelantaría: sólo lo tendría abierto esperando al tambor.\")"))
+    celdas += _autoevaluacion(_p_tambor(ns, df, q, DB, an, tn, bn, cpn, nuevo), f"Cadena crítica — varios proyectos y un tambor ({n} proyectos)")
     sub = f"{n} proyectos y un tambor; turnos de {q} días; colchón del tambor de {DB} días"
     return celdas, sub
 
@@ -1726,6 +1736,7 @@ def _consumo_alimentacion(rng):
                        "         'están programadas lo más tarde posible y su margen no es una holgura, sino su colchón; y la cadena crítica no tiene '\n"
                        "         'holgura, pero su protección es el colchón del proyecto. El porcentaje de colchón consumido da una medida común para '\n"
                        "         'comparar actividades de cadenas distintas, y la misma señal para todo el equipo.')"))
+    celdas += _autoevaluacion(_p_consumo(plan, dia, terminadas, en_curso, ns), f"Cadena crítica — consumo de los colchones de alimentación (día {dia})")
     sub = (f"día {dia}: {len(desde)} colchón de alimentación desbordado; CP consumido "
            f"{plan.seguimiento(dia, terminadas, en_curso)['pct_consumo']:.0f} %")
     return _con_contexto(celdas, rng), sub
@@ -1860,6 +1871,7 @@ def _tendencia(rng):
                        "             'amarilla': 'Con el informe en zona amarilla se mantiene preparado el plan de recuperación, sin ejecutarlo todavía.'}[zona[-1]])\n"
                        "         + ' La tendencia es una extrapolación: el siguiente informe puede confirmarla o desmentirla.')"))
     zonas = [s["zona"] for s in segs]
+    celdas += _autoevaluacion(_p_tendencia(plan, segs), f"Cadena crítica — tendencia del gráfico de fiebre (cadena de {T} días, CP de {CP})")
     sub = f"cadena de {T} días, CP de {CP}; cuatro informes ({' → '.join(zonas)})"
     return celdas, sub
 
@@ -2047,9 +2059,446 @@ def _spi(rng):
                      "tiende a 1 al final del proyecto aunque se termine tarde, porque al terminar EV = PV = presupuesto. "
                      "El valor ganado sigue siendo útil para controlar el coste (CPI) y el gasto, pero el plazo se gobierna "
                      "con los colchones."))
+    celdas += _autoevaluacion(_p_spi(plan, df, dia, term, trab, curso, s, escenario, ns), f"Cadena crítica — BPI frente a SPI (día {dia})")
     sub = (f"día {dia}: SPI {spi:.2f} y zona {s['zona']} "
            + ("(alimentación adelantada, cadena retrasada)" if escenario == "adelanto" else "(alimentación retrasada dentro de su colchón)"))
     return _con_contexto(celdas, rng), sub
+
+
+# ---------------------------------------------------------------------------
+# Autoevaluación: preguntas de opción múltiple con los datos de cada ejercicio, exportables a GIFT
+# (las calcula el generador sin consumir rng, para no alterar los datos de los cuadernos)
+# ---------------------------------------------------------------------------
+TEST_CELDA = r'''
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)
+'''.strip("\n")
+
+
+def _autoevaluacion(preguntas_test, titulo):
+    """Apartado final con el test: se muestra legible y se exporta a GIFT."""
+    lineas = ["preguntas_test = ["]
+    for q, ops, fb in preguntas_test:
+        assert len(ops) == len(set(ops)) >= 3, (q, ops)
+        lineas.append(f"    ({q!r},\n     {ops!r},\n     {fb!r}),")
+    lineas += ["]", f"TITULO_TEST = {titulo!r}"]
+    return [md("## Autoevaluación"),
+            md("Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la "
+               "primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a "
+               "`~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle."),
+            code("\n".join(lineas) + "\n" + TEST_CELDA)]
+
+
+def _coma(x, dec=0):
+    return f"{x:.{dec}f}".replace(".", ",")
+
+
+def _ops(*opciones):
+    """Opciones sin repetir, la correcta primero, como mucho cuatro."""
+    vistas = []
+    for o in opciones:
+        o = str(o)
+        if o not in vistas:
+            vistas.append(o)
+        if len(vistas) == 4:
+            break
+    return vistas
+
+
+def _ops_num(correcta, candidatas, dec=0, pre="", unidad="", paso=None):
+    """Opciones numéricas: la correcta, los distractores y, si coinciden, valores vecinos."""
+    paso = paso or (1 if dec == 0 else 5 * 10 ** -dec)
+    f = lambda v: f"{pre}{_coma(v, dec)}{unidad}"
+    vecinos = [correcta + paso, correcta - paso, correcta + 2 * paso, correcta - 2 * paso]
+    return _ops(f(correcta), *[f(c) for c in candidatas], *[f(v) for v in vecinos])
+
+
+def _Phi(z):
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def _zona_ops(zona):
+    return _ops(zona, *[z for z in ("verde", "amarilla", "roja") if z != zona], "no se puede saber sin el valor ganado")
+
+
+def _p_multitarea(dur, bloque, cambio):
+    ns = {"pd": pd}
+    exec(MULTITAREA, ns)
+    d = {f"T{i}": int(v) for i, v in enumerate(dur, 1)}
+    fin_s, _ = ns["multitarea"](d)
+    fin_m, _ = ns["multitarea"](d, bloque)
+    fin_mc, t_mc = ns["multitarea"](d, bloque, cambio)
+    fin_sc, _ = ns["multitarea"](d, None, cambio)
+    k, total = len(dur), sum(d.values())
+    n_cambios = int((t_mc["tarea"] == "cambio").sum())
+    return [
+        ("Sin multitarea y en el orden del cuadro, ¿cuál es el tiempo medio de terminación de las tareas?",
+         _ops_num(float(fin_s.mean()), [float(fin_m.mean()), total / k, float(fin_s.max())], dec=2, unidad=" días"),
+         f"Las tareas terminan en las sumas acumuladas de las duraciones ({', '.join(str(int(v)) for v in fin_s)}); "
+         f"su media es {_coma(float(fin_s.mean()), 2)} días."),
+        (f"Con multitarea en turnos de {bloque} días y sin pérdida al cambiar de tarea, ¿qué día termina la última tarea?",
+         _ops_num(total, [total + bloque, int(fin_mc.max()), max(d.values()) * k], pre="día "),
+         "El trabajo total es el mismo, así que la última tarea termina el mismo día que sin multitarea; lo que se "
+         "retrasa son las demás."),
+        (f"Con multitarea en turnos de {bloque} días y una pérdida de {cambio} día(s) en cada cambio de tarea, ¿qué día "
+         "termina la última tarea?",
+         _ops_num(int(fin_mc.max()), [total, int(fin_sc.max()), int(fin_mc.max()) + bloque], pre="día "),
+         f"Hay {n_cambios} cambios de tarea, que añaden {n_cambios * cambio} días al trabajo: la persona produce menos."),
+        ("¿Qué orden minimiza, sin multitarea, el tiempo medio de terminación?",
+         ["de la tarea más corta a la más larga", "de la tarea más larga a la más corta",
+          "el orden en que se asignaron las tareas", "repartir el tiempo en turnos iguales"],
+         "Es la regla de la duración más corta primero: adelantar una tarea corta retrasa a la larga menos de lo "
+         "que adelanta a la corta."),
+    ]
+
+
+def _margenes(plan):
+    ms = [int(plan.margen[a]) for a in plan.cadena]
+    return ms, math.ceil(0.5 * sum(ms) - 1e-9), math.sqrt(sum(m * m for m in ms))
+
+
+def _p_colchon(plan):
+    T = plan.duracion_cadena
+    ms, cp, rz = _margenes(plan)
+    rz_d = math.ceil(rz - 1e-9)
+    return [
+        ("Con el colchón del proyecto calculado por cortar y pegar, ¿qué fecha se compromete con el cliente?",
+         _ops_num(T + cp, [T + sum(ms), plan.duracion_tradicional, T + rz_d], pre="día "),
+         f"Cadena de {T} días más un colchón de 0,5·{sum(ms)} → {cp} días: día {T + cp}. Sumar todo el margen "
+         f"retirado ({T + sum(ms)}) devolvería la protección repartida que el método quiere evitar."),
+        ("¿Cuántos días tiene el colchón del proyecto por el método de la raíz de la suma de cuadrados?",
+         _ops_num(rz_d, [sum(ms), cp, math.floor(rz)], unidad=" días"),
+         f"√({' + '.join(f'{m}²' for m in ms)}) = {_coma(rz, 2)}, redondeado al día superior: {rz_d}."),
+        ("Una actividad de la cadena tarda más que su estimación agresiva. ¿Qué debe hacer el jefe de proyecto?",
+         ["nada especial: es lo esperado la mitad de las veces y se vigila el consumo del colchón",
+          "pedir explicaciones al responsable por incumplir su estimación",
+          "retrasar la fecha comprometida en lo que se haya pasado",
+          "volver a las estimaciones seguras para el resto de actividades"],
+         "La estimación agresiva es la mediana: se espera que la mitad de las actividades la superen. Se controla el "
+         "colchón, no el cumplimiento de cada duración."),
+    ]
+
+
+def _p_dimensionado(plan):
+    ms, cp, rz = _margenes(plan)
+    rz_d = math.ceil(rz - 1e-9)
+    s = rz / 1.2816
+    return [
+        ("Si cada actividad de la cadena es normal con la estimación segura como percentil 90, ¿cuánto vale la "
+         "desviación típica de la cadena?",
+         _ops_num(s, [sum(ms) / 1.2816, rz, sum(ms) / len(ms) / 1.2816], dec=2, unidad=" días"),
+         f"σ = √(Σ márgenes²)/1,2816 = {_coma(rz, 3)}/1,2816 = {_coma(s, 2)} días: se suman las varianzas, no las desviaciones."),
+        ("¿Con qué probabilidad se termina la cadena en su duración más el colchón de cortar y pegar?",
+         _ops_num(_Phi(cp / s), [_Phi(rz_d / s), 0.9, 0.5], dec=3),
+         f"P = Φ(CP/σ) = Φ({cp}/{_coma(s, 3)}) = {_coma(_Phi(cp / s), 3)}."),
+        ("Para una cadena de n actividades con el mismo margen, ¿cuándo da cortar y pegar un colchón mayor que la "
+         "raíz de la suma de cuadrados?",
+         ["con más de 4 actividades", "con más de 2 actividades", "con más de 9 actividades",
+          "nunca: siempre da un colchón menor"],
+         "n·m/2 = √n·m cuando √n = 2, es decir, n = 4; a partir de ahí cortar y pegar crece más deprisa."),
+    ]
+
+
+def _fila_ca(plan, preferir_no_cabe=True):
+    al = plan.alimentacion
+    if preferir_no_cabe and (al["requerido"] > al["disponible"]).any():
+        return al[al["requerido"] > al["disponible"]].iloc[0], al[al["requerido"] > al["disponible"]].index[0]
+    al = al[al["adoptado"] > 0] if (al["adoptado"] > 0).any() else al
+    return al.iloc[0], al.index[0]
+
+
+def _p_ca(plan):
+    f, n = _fila_ca(plan)
+    ms = [int(x) for x in str(f["margenes"]).split(" + ")]
+    return (f"¿Cuántos días de colchón de alimentación se colocan en el arco {f['desde']} → {f['antes_de']} ({n})?",
+            _ops_num(int(f["adoptado"]), [int(f["requerido"]), int(f["disponible"]), sum(ms)], unidad=" días"),
+            f"Colchón requerido {int(f['requerido'])} (cadena de alimentación {f['cadena_alimentacion']}); holgura "
+            f"disponible {int(f['disponible'])}; se adopta el menor: {int(f['adoptado'])}.")
+
+
+def _p_alimentacion(plan):
+    preguntas = [_p_ca(plan)]
+    for n, f in plan.alimentacion.iterrows():
+        x, adopt = f["desde"], int(f["adoptado"])
+        entrada = int(plan.inicios[f["antes_de"]]) if f["antes_de"] != "fin" else int(plan.duracion_cadena)
+        d = int(plan.agresiva[x])
+        if adopt > 0 and int(plan.inicios[x]) + d == entrada - adopt and int(plan.inicios[x]) > int(plan.inicio_temprano[x]):
+            preguntas.append((
+                f"En el plan de cadena crítica, ¿qué día empieza la actividad de alimentación {x}?",
+                _ops_num(int(plan.inicios[x]), [int(plan.inicio_temprano[x]), entrada - d, int(plan.inicios[x]) - adopt], pre="día "),
+                f"Lo más tarde posible con su colchón delante: termina cuando empieza {n}, {entrada} − {adopt} = "
+                f"{entrada - adopt}, y empieza el día {entrada - adopt} − {d} = {int(plan.inicios[x])} (su inicio más "
+                f"temprano sería el {int(plan.inicio_temprano[x])})."))
+            break
+    preguntas.append((
+        "¿Por qué se programan las actividades de alimentación lo más tarde posible?",
+        ["para no comprometer recursos ni dinero antes de tiempo, dejando el margen en su colchón",
+         "para que pasen a formar parte de la cadena crítica",
+         "porque así la cadena crítica es más corta",
+         "porque el colchón de alimentación se suma al colchón del proyecto"],
+        "Se retrasa el gasto y el trabajo en curso, y el margen queda a la vista en el colchón en lugar de "
+        "perderse en una holgura."))
+    return preguntas
+
+
+def _p_recursos(plan, info):
+    T = plan.duracion_cadena
+    preguntas = [
+        ("¿Cuánto dura la cadena crítica teniendo en cuenta los equipos (estimaciones agresivas)?",
+         _ops_num(T, [int(info["T"]), plan.duracion_tradicional, T + 1], unidad=" días"),
+         f"Sin los equipos la red dura {int(info['T'])} días; los enlaces de recurso la alargan hasta {T}.")]
+    rec = plan.enlaces_cadena[plan.enlaces_cadena["motivo"] == "recurso"]
+    if len(rec):
+        e = rec.iloc[0]
+        preguntas.append((
+            f"En la cadena crítica, ¿qué tipo de enlace une {e['de']} con {e['a']}?",
+            [f"de recurso: las dos las hace el equipo {e['recurso']}", "de precedencia: está en el cuadro de prelaciones",
+             "una actividad ficticia del grafo PERT", "un colchón de alimentación"],
+            "El cuadro de prelaciones no los relaciona: los encadena el equipo, que no puede hacer las dos a la vez."))
+    av = plan.colchones_recursos.iloc[0]
+    otras = [a for a in plan.cadena if a not in set(plan.colchones_recursos["antes_de"])]
+    otras += [a for a in plan.agresiva.index if a not in plan.cadena]
+    preguntas.append((
+        "¿Antes de qué actividad de la cadena se coloca un colchón de recursos?",
+        _ops(av["antes_de"], *otras),
+        f"{av['antes_de']} usa el equipo {av['recursos']}, que no usaba {av['despues_de']}, su predecesora en la "
+        "cadena: hay que avisar al equipo antes de que esta termine."))
+    preguntas.append((
+        "¿Qué es un colchón de recursos?",
+        ["un aviso al equipo para que esté preparado, sin tiempo en el cronograma",
+         "unos días que se añaden antes de la actividad", "un equipo de reserva contratado por si acaso",
+         "la holgura del equipo entre dos actividades"],
+        "Protege la disponibilidad del recurso; añadir tiempo alargaría la cadena sin protegerla."))
+    return preguntas
+
+
+def _p_plan_completo(plan):
+    T = plan.duracion_cadena
+    ms = [int(plan.margen[a]) for a in plan.cadena]
+    otro = "raiz" if plan.metodo == "cortar_pegar" else "cortar_pegar"
+    cp_otro = math.ceil(plan.calculo_colchon_proyecto[otro] - 1e-9)
+    trad = plan.duracion_tradicional
+    return [
+        ("¿Qué fecha se compromete con el cliente?",
+         _ops_num(plan.compromiso, [trad, T + sum(ms), T + cp_otro], pre="día "),
+         f"Duración de la cadena con los equipos ({T}) más el colchón del proyecto ({plan.colchon_proyecto}): día "
+         f"{plan.compromiso}."),
+        ("¿Cuántos días se ganan respecto al cronograma tradicional (estimaciones seguras, misma secuencia de los equipos)?",
+         _ops_num(trad - plan.compromiso, [trad - T, int(plan.margen.sum()) - plan.colchon_proyecto, 0], unidad=" días"),
+         f"{trad} − {plan.compromiso} = {trad - plan.compromiso} días."),
+        _p_ca(plan),
+    ]
+
+
+def _p_seguimiento(plan, segs):
+    T = plan.duracion_cadena
+    s1, s = segs[0], segs[-1]
+    det1 = s1["detalle"]
+    sin_restante = s1["dia"] + float(det1.loc[det1["estado"] != "terminada", "agresiva"].sum())
+    det = s["detalle"]
+    pa, pc = s["pct_avance"], s["pct_consumo"]
+    bruto = 100 * (T - float(det["restante"].sum())) / T
+    return [
+        (f"En el informe del día {s1['dia']}, ¿cuál es la fecha prevista de fin de la cadena?",
+         _ops_num(float(s1["fin_previsto"]), [T, plan.compromiso, sin_restante], pre="día "),
+         "Fecha del informe más la duración restante de la actividad en curso más las duraciones agresivas de las "
+         f"pendientes: día {_coma(float(s1['fin_previsto']))}."),
+        (f"En el informe del día {s['dia']}, ¿qué porcentaje de la cadena crítica está completado?",
+         _ops_num(pa, [bruto, 100 * s["dia"] / T, pc], dec=1, unidad=" %"),
+         f"(duración de la cadena − duración restante)/duración = {_coma(pa, 1)} %; de una actividad en curso no se "
+         "cuenta como restante más que su duración agresiva."),
+        (f"¿Cuál es el BPI en el informe del día {s['dia']}?",
+         _ops_num((100 - pc) / (100 - pa), [pc / pa if pa else 0.0, (100 - pa) / (100 - pc) if pc < 100 else 0.0, 1 - pc / 100],
+                  dec=2),
+         f"BPI = % de colchón restante / % de cadena restante = (100 − {_coma(pc, 1)})/(100 − {_coma(pa, 1)})."),
+        (f"¿En qué zona del gráfico de fiebre está el informe del día {s['dia']}?",
+         _zona_ops(s["zona"]),
+         f"Límite verde 10 + 0,6·{_coma(pa, 1)} = {_coma(s['limite_verde'], 1)} %; límite rojo "
+         f"30 + 0,6·{_coma(pa, 1)} = {_coma(s['limite_roja'], 1)} %; consumo {_coma(pc, 1)} %."),
+    ]
+
+
+def _p_monte_carlo(plan, N, semilla):
+    T, CP = plan.duracion_cadena, plan.colchon_proyecto
+    t = plan.simular(N, semilla=semilla, regimen="relevos")
+    p = {x: float((t <= x).mean()) for x in (T, plan.compromiso, plan.duracion_tradicional)}
+    c90, c95, c50 = (math.ceil(float(np.percentile(t, q)) - T - 1e-9) for q in (90, 95, 50))
+    return [
+        ("Según la simulación, ¿con qué probabilidad se cumple la fecha comprometida?",
+         _ops_num(p[plan.compromiso], [p[T], p[plan.duracion_tradicional], 0.9], dec=2),
+         f"Proporción de réplicas que terminan en {plan.compromiso} días o menos: {_coma(p[plan.compromiso], 3)}."),
+        ("¿Qué colchón del proyecto haría falta para cumplir con probabilidad 0,90?",
+         _ops_num(c90, [CP, c95, c50], unidad=" días"),
+         f"Percentil 90 de la duración simulada menos la duración de la cadena ({T}), redondeado al día superior: {c90}."),
+        ("¿Por qué el proyecto completo cumple la fecha con menos probabilidad que la cadena crítica aislada?",
+         ["por el sesgo de convergencia: en las uniones manda el camino que llega más tarde",
+          "porque el colchón de cortar y pegar está mal calculado",
+          "porque la simulación usa duraciones lognormales",
+          "porque las actividades de alimentación empiezan antes de lo previsto"],
+         "Los colchones de alimentación existen para que esa diferencia sea pequeña."),
+    ]
+
+
+def _p_parkinson(plan, N, semilla, k):
+    t_trad = plan.simular(N, semilla=semilla, regimen="tradicional")
+    t_rel = plan.simular(N, semilla=semilla, regimen="relevos")
+    p_trad = float((t_trad <= plan.duracion_tradicional).mean())
+    p_rel = float((t_rel <= plan.compromiso).mean())
+    return [
+        (f"Si cada una de las {k} actividades de la ruta crítica tradicional cumple su estimación segura con "
+         "probabilidad 0,9, de forma independiente, ¿qué probabilidad hay de que ninguna la supere?",
+         _ops_num(0.9 ** k, [0.9, max(0.0, 1 - 0.1 * k), 0.9 ** (k - 1)], dec=3),
+         f"0,9^{k} = {_coma(0.9 ** k, 3)}."),
+        ("En la simulación del régimen tradicional con la ley de Parkinson, ¿con qué probabilidad se cumple la fecha "
+         "prometida?",
+         _ops_num(p_trad, [p_rel, 0.9, 1.0], dec=2),
+         f"{_coma(p_trad, 3)}: como mucho 0,9^{k}, porque cualquier exceso en la ruta crítica se transmite y ningún "
+         "adelanto lo compensa."),
+        ("¿Qué describe la ley de Parkinson?",
+         ["el trabajo se alarga hasta ocupar el tiempo disponible: quien termina antes no lo comunica",
+          "con holgura, las actividades se empiezan en el último momento",
+          "en las uniones de caminos manda el que llega más tarde",
+          "repartir a una persona entre varias tareas las retrasa todas"],
+         "Las otras opciones son el síndrome del estudiante, el sesgo de convergencia y la multitarea."),
+    ]
+
+
+def _p_tambor(ns, df, q, DB, an, tn, bn, cpn, nuevo):
+    esc = ns["escalonar"](df, DB, 0.25)
+    u = esc.iloc[-1]
+    p_u = esc.index[-1]
+    libre = int(u["libre_despues"])
+    s_n = max(an + DB, libre)
+    comp = s_n + tn + bn + cpn
+    fA, _ = ns["tambor_sin_escalonar"](df, q)
+    fB, _ = ns["tambor_sin_escalonar"](df, None)
+    p1 = df.index[0]
+    a1, t1, b1, cp1 = (int(df.loc[p1, c]) for c in ("antes", "tambor", "despues", "CP"))
+    return [
+        (f"En el programa escalonado, ¿qué día se lanza {p_u}?",
+         _ops_num(int(u["lanzamiento"]), [int(u["inicio_tambor"]) - int(u["a"]), 0, int(u["inicio_tambor"])], pre="día "),
+         f"Entra en el tambor el día {int(u['inicio_tambor'])}; se lanza {int(u['inicio_tambor'])} − {DB} (colchón del "
+         f"tambor) − {int(u['a'])} (antes) = {int(u['lanzamiento'])}."),
+        (f"¿Qué fecha puede comprometerse para el proyecto nuevo {nuevo}?",
+         _ops_num(comp, [an + tn + bn + cpn, comp - int(u["colchon_capacidad"]), s_n + tn + bn], pre="día "),
+         f"El tambor queda libre el día {libre}; {nuevo} entra el día máx({an} + {DB}; {libre}) = {s_n} y se compromete "
+         f"para {s_n} + {tn} + {bn} + {cpn} = {comp}."),
+        (f"Con todos los proyectos lanzados el día 0 y multitarea en el tambor, ¿qué día termina {p1}?",
+         _ops_num(int(fA[p1]) + b1, [a1 + t1 + b1, int(fB[p1]) + b1, int(fA[p1])], pre="día "),
+         f"Su tarea del tambor termina el día {int(fA[p1])}, en su último turno; después quedan {b1} días."),
+        ("¿Para qué sirve el colchón de capacidad?",
+         ["para que el retraso de una tarea del tambor no arrastre a los proyectos siguientes",
+          "para proteger la fecha de entrega de cada proyecto", "para que el tambor pueda hacer multitarea",
+          "para lanzar antes los proyectos"],
+         "Las fechas de los proyectos siguientes se comprometen contando con su turno en el tambor; la fecha de "
+         "entrega la protege el colchón del proyecto."),
+    ]
+
+
+def _p_consumo(plan, dia, terminadas, en_curso, ns):
+    s, fin, cons = _penetracion(plan, dia, terminadas, en_curso, ns)
+    solo = ns["fin_solo_cadena"](plan, dia, terminadas, en_curso)
+    T = plan.duracion_cadena
+    desb = cons[cons["pasa a la cadena"] > 0].iloc[0]
+    n = cons[cons["pasa a la cadena"] > 0].index[0]
+    consumido = int(str(desb["consumido = máx(0, fin previsto − inicio del colchón)"]).split(" = ")[-1])
+    pct_ca = cons["% consumido"].astype(float)
+    prioridad = {}
+    for a in sorted(en_curso):
+        cs = ns["colchones_que_protegen"](plan, a)
+        prioridad[a] = max(s["pct_consumo"] if c == "CP" else float(pct_ca[c]) for c in cs)
+    orden = sorted(prioridad, key=lambda a: -prioridad[a])
+    resto = [a for a in orden[1:]] + [a for a in plan.cadena if a not in prioridad] + [a for a in sorted(plan.agresiva.index) if a not in prioridad]
+    return [
+        (f"¿Cuántos días pasan a la cadena crítica desde el colchón de alimentación {n} ({desb['arco']})?",
+         _ops_num(int(desb["pasa a la cadena"]), [consumido, int(desb["colchón (días)"]), 0], unidad=" días"),
+         f"Consume {consumido} días de un colchón de {int(desb['colchón (días)'])}: el exceso, "
+         f"{int(desb['pasa a la cadena'])}, retrasa a la actividad de la cadena en la que desemboca."),
+        ("¿Cuántos días del colchón del proyecto se consumen por culpa de las cadenas de alimentación?",
+         _ops_num(float(s["fin_previsto"]) - solo, [float(s["consumo"]), solo - T, int(desb["pasa a la cadena"]) + 1], unidad=" días"),
+         f"Fin previsto {_coma(float(s['fin_previsto']))}; si la alimentación no la retrasara, la cadena terminaría el "
+         f"día {solo}: {_coma(float(s['fin_previsto']) - solo)} día(s) se deben a la alimentación."),
+        ("Según la gestión por colchones, ¿qué actividad en curso debe reforzarse primero?",
+         _ops(orden[0], *resto),
+         f"Es la de colchón más consumido en porcentaje ({_coma(prioridad[orden[0]], 1)} %)."),
+    ]
+
+
+def _p_tendencia(plan, segs):
+    T, CP = plan.duracion_cadena, plan.colchon_proyecto
+    xs = [100 * int(round(s["avance"])) / T for s in segs]
+    ys = [100 * (int(round(s["fin_previsto"])) - T) / CP for s in segs]
+    dias = [s["dia"] for s in segs]
+    v = (ys[-1] - ys[-2]) / (xs[-1] - xs[-2])
+    y100 = ys[-1] + v * (100 - xs[-1])
+    bpi = (100 - ys[-1]) / (100 - xs[-1])
+    lv, lr = 10 + 0.6 * xs[-1], 30 + 0.6 * xs[-1]
+    zona = "verde" if ys[-1] < lv else ("roja" if ys[-1] >= lr else "amarilla")
+    return [
+        ("¿Cuál es la velocidad de consumo del colchón en el último tramo (entre los dos últimos informes)?",
+         _ops_num(v, [(ys[-1] - ys[-2]) / (dias[-1] - dias[-2]), ys[-1] / xs[-1], bpi], dec=2),
+         f"({_coma(ys[-1], 1)} − {_coma(ys[-2], 1)})/({_coma(xs[-1], 1)} − {_coma(xs[-2], 1)}) = {_coma(v, 2)} puntos de "
+         "colchón por punto de cadena."),
+        ("Si se mantiene esa velocidad, ¿qué porcentaje del colchón se habrá consumido al terminar la cadena?",
+         _ops_num(y100, [100 * ys[-1] / xs[-1], ys[-1] + 0.6 * (100 - xs[-1]), 100.0], dec=1, unidad=" %"),
+         f"{_coma(ys[-1], 1)} + {_coma(v, 2)}·(100 − {_coma(xs[-1], 1)}) = {_coma(y100, 1)} %."),
+        ("Si la velocidad de consumo es mayor que el BPI del último informe, ¿qué ocurrirá si se mantiene?",
+         ["el colchón se agotará antes de terminar la cadena", "el proyecto entrará de inmediato en la zona roja",
+          "el proyecto terminará antes de la fecha comprometida", "habrá que recalcular la cadena crítica"],
+         "El BPI, (100 − y)/(100 − x), es la velocidad media que el colchón puede soportar hasta el final."),
+        (f"¿En qué zona está el informe del día {dias[-1]}?",
+         _zona_ops(zona),
+         f"Límites {_coma(lv, 1)} % y {_coma(lr, 1)} % para un {_coma(xs[-1], 1)} % de cadena; consumo {_coma(ys[-1], 1)} %."),
+    ]
+
+
+def _p_spi(plan, df, dia, term, trab, curso, s, escenario, ns):
+    tabla = ns["detalle_pv_ev"](plan, df, dia, term, trab, curso)
+    pv, ev, spi = ns["indices"](tabla)
+    _, _, spi_c = ns["indices"](tabla, tabla["cadena"] == "sí")
+    _, _, spi_a = ns["indices"](tabla, tabla["cadena"] != "sí")
+    if escenario == "adelanto":
+        motivo = (["el trabajo adelantado en la alimentación compensa en el SPI el retraso de la cadena crítica",
+                   "la cadena crítica va adelantada", "el colchón del proyecto está mal dimensionado",
+                   "el SPI no incluye las actividades de la cadena crítica"],
+                  "El SPI suma en dinero todas las actividades; la fecha sólo depende de la cadena y de sus colchones.")
+    else:
+        motivo = (["la alimentación va retrasada, pero su retraso cabe en sus colchones de alimentación",
+                   "la cadena crítica va retrasada", "el colchón del proyecto ya está agotado",
+                   "el SPI sólo mide la cadena crítica"],
+                  "Un retraso de la alimentación que no desborda su colchón no llega a la cadena ni consume colchón del proyecto.")
+    return [
+        ("¿Cuánto vale el SPI de todo el proyecto en el día del informe?",
+         _ops_num(spi, [spi_c, spi_a, pv / ev if ev else 0.0], dec=2),
+         f"SPI = EV/PV = {_coma(ev, 2)}/{_coma(pv, 2)} = {_coma(spi, 3)}."),
+        ("¿En qué zona del gráfico de fiebre está el informe?",
+         _zona_ops(s["zona"]),
+         f"Consumo {_coma(s['pct_consumo'], 1)} % con un {_coma(s['pct_avance'], 1)} % de cadena completada."),
+        ("¿Por qué discrepan el SPI y la gestión por colchones en este informe?", motivo[0], motivo[1]),
+        ("¿Qué indicador debe guiar las decisiones para proteger la fecha comprometida?",
+         ["el BPI y el gráfico de fiebre", "el SPI de todo el proyecto", "el SPI de las actividades de alimentación",
+          "el CPI del valor ganado"],
+         "El BPI mira sólo lo que fija la entrega; el valor ganado sigue siendo útil para controlar el coste."),
+    ]
 
 
 VARIANTES = [

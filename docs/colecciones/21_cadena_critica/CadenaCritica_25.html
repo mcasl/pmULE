@@ -2220,6 +2220,7 @@ max-width: none !important; }
   <li><a href="#apartado-2" id="toc-apartado-2" class="nav-link" data-scroll-target="#apartado-2">Apartado 2</a></li>
   <li><a href="#apartado-3" id="toc-apartado-3" class="nav-link" data-scroll-target="#apartado-3">Apartado 3</a></li>
   <li><a href="#apartado-4" id="toc-apartado-4" class="nav-link" data-scroll-target="#apartado-4">Apartado 4</a></li>
+  <li><a href="#autoevaluación" id="toc-autoevaluación" class="nav-link" data-scroll-target="#autoevaluación">Autoevaluación</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -2303,7 +2304,7 @@ Tabla 1: Informes de avance (días)
 </figure>
 </div>
 </div>
-<div id="0a557968" class="cell" data-execution_count="5">
+<div id="9018c19f" class="cell" data-execution_count="5">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol type="1">
 <li>Para cada informe calcule el porcentaje de colchón consumido, el de cadena completada, el BPI (porcentaje de colchón restante entre porcentaje de cadena restante) y la zona.<br>
@@ -2334,7 +2335,7 @@ Tabla 1: Informes de avance (días)
 <h1>Resolución</h1>
 <section id="apartado-1" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-1">Apartado 1</h2>
-<div id="50c2c8cc" class="cell" data-execution_count="7">
+<div id="5a0dabbd" class="cell" data-execution_count="7">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol type="1">
 <li>Para cada informe calcule el porcentaje de colchón consumido, el de cadena completada, el BPI (porcentaje de colchón restante entre porcentaje de cadena restante) y la zona.<br>
@@ -2411,7 +2412,7 @@ Tabla 2: Consumo, avance, BPI y zona de cada informe
 </section>
 <section id="apartado-2" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-2">Apartado 2</h2>
-<div id="98e60ee1" class="cell" data-execution_count="9">
+<div id="c9d7e027" class="cell" data-execution_count="9">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="2" type="1">
 <li>Calcule la velocidad de consumo del colchón entre cada dos informes consecutivos: puntos de porcentaje de colchón consumidos por cada punto de porcentaje de cadena completada. Compárela con la pendiente de las fronteras de las zonas (0,6). ¿Qué indica una velocidad mayor que 0,6? ¿Y una mayor que 1?<br>
@@ -2459,7 +2460,7 @@ Tabla 3: Velocidad de consumo entre informes consecutivos
 </section>
 <section id="apartado-3" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-3">Apartado 3</h2>
-<div id="d81aae58" class="cell" data-execution_count="11">
+<div id="856644e0" class="cell" data-execution_count="11">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="3" type="1">
 <li>Si se mantuviera la velocidad del último tramo, ¿qué porcentaje del colchón se habría consumido al terminar la cadena y qué día terminaría el proyecto? ¿Se cumpliría la fecha comprometida? ¿Con qué porcentaje de cadena completada entraría el proyecto en la zona roja?<br>
@@ -2467,7 +2468,7 @@ Tabla 3: Velocidad de consumo entre informes consecutivos
 </ol>
 </div>
 </div>
-<div id="b7b55465" class="cell" data-execution_count="12">
+<div id="ca54375c" class="cell" data-execution_count="12">
 <div class="cell-output cell-output-display cell-output-markdown" data-execution_count="12">
 <p>Con la velocidad del último tramo (1.14), al terminar la cadena se habría consumido 66.7 + 1.14·(100 − 77.8) = <strong>92.1 %</strong> del colchón: el proyecto terminaría hacia el día 36 + 0.921·9 = <strong>44.3</strong>, dentro de la fecha comprometida (45). La recta de la tendencia, y = 66.7 + 1.14·(x − 77.8), corta la frontera roja, y = 30 + 0,6·x, en x = (30 − 66.7 + 1.14·77.8)/(1.14 − 0,6) = <strong>96.2 %</strong> de cadena completada: entraría en la zona roja antes de terminar.</p>
 </div>
@@ -2489,7 +2490,7 @@ Figura 1: Gráfico de fiebre con los informes y la tendencia del último tramo 
 </section>
 <section id="apartado-4" class="level2">
 <h2 class="anchored" data-anchor-id="apartado-4">Apartado 4</h2>
-<div id="46163036" class="cell" data-execution_count="14">
+<div id="5bdf44ab" class="cell" data-execution_count="14">
 <div class="cell-output cell-output-display cell-output-markdown">
 <ol start="4" type="1">
 <li>Demuestre que el BPI de un informe es la velocidad media de consumo que el colchón puede soportar hasta el final de la cadena. Compárelo con la velocidad del último tramo y diga qué debería hacer el jefe de proyecto.<br>
@@ -2497,10 +2498,50 @@ Figura 1: Gráfico de fiebre con los informes y la tendencia del último tramo 
 </ol>
 </div>
 </div>
-<div id="ecad6b8d" class="cell" data-execution_count="15">
+<div id="165a9aa5" class="cell" data-execution_count="15">
 <div class="cell-output cell-output-display cell-output-markdown" data-execution_count="15">
 <p>Si en un informe se han consumido y % del colchón con x % de cadena completada, para terminar justo con el 100 % del colchón consumido la velocidad media hasta el final debe ser (100 − y)/(100 − x), que es exactamente el BPI. Un BPI mayor que 1 dice que queda proporcionalmente más colchón que cadena; comparado con la velocidad real dice si el ritmo de consumo es sostenible.</p>
 <p>En el último informe el BPI es 1.50 y la velocidad del último tramo, 1.14: el ritmo actual es sostenible: el colchón alcanzaría hasta el final. Con el informe en zona amarilla se mantiene preparado el plan de recuperación, sin ejecutarlo todavía. La tendencia es una extrapolación: el siguiente informe puede confirmarla o desmentirla.</p>
+</div>
+</div>
+</section>
+<section id="autoevaluación" class="level2">
+<h2 class="anchored" data-anchor-id="autoevaluación">Autoevaluación</h2>
+<p>Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a <code>~/temp/cuestionario_cadena_critica.gift</code>, para importarlas en Moodle.</p>
+<div id="b9013a46" class="cell" data-execution_count="16">
+<div class="cell-output cell-output-display cell-output-markdown" data-execution_count="16">
+<p><strong>1. ¿Cuál es la velocidad de consumo del colchón en el último tramo (entre los dos últimos informes)?</strong></p>
+<ul>
+<li>✅ 1,14</li>
+<li>◻️ 2,47</li>
+<li>◻️ 0,86</li>
+<li>◻️ 1,50</li>
+</ul>
+<p><em>(66,7 − 44,4)/(77,8 − 58,3) = 1,14 puntos de colchón por punto de cadena.</em></p>
+<p><strong>2. Si se mantiene esa velocidad, ¿qué porcentaje del colchón se habrá consumido al terminar la cadena?</strong></p>
+<ul>
+<li>✅ 92,1 %</li>
+<li>◻️ 85,7 %</li>
+<li>◻️ 80,0 %</li>
+<li>◻️ 100,0 %</li>
+</ul>
+<p><em>66,7 + 1,14·(100 − 77,8) = 92,1 %.</em></p>
+<p><strong>3. Si la velocidad de consumo es mayor que el BPI del último informe, ¿qué ocurrirá si se mantiene?</strong></p>
+<ul>
+<li>✅ el colchón se agotará antes de terminar la cadena</li>
+<li>◻️ el proyecto entrará de inmediato en la zona roja</li>
+<li>◻️ el proyecto terminará antes de la fecha comprometida</li>
+<li>◻️ habrá que recalcular la cadena crítica</li>
+</ul>
+<p><em>El BPI, (100 − y)/(100 − x), es la velocidad media que el colchón puede soportar hasta el final.</em></p>
+<p><strong>4. ¿En qué zona está el informe del día 34?</strong></p>
+<ul>
+<li>✅ amarilla</li>
+<li>◻️ verde</li>
+<li>◻️ roja</li>
+<li>◻️ no se puede saber sin el valor ganado</li>
+</ul>
+<p><em>Límites 56,7 % y 76,7 % para un 77,8 % de cadena; consumo 66,7 %.</em></p>
 </div>
 </div>
 </section>

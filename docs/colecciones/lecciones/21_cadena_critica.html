@@ -4139,7 +4139,7 @@ window.Quarto = {
 </table>
 <p><strong>Sin recursos compartidos.</strong> Con las estimaciones seguras el proyecto dura 4 + 6 + 4 = 14 días (A–C–F). Con las agresivas, la cadena crítica es A–C–F, de 10 días, y su margen suma 1 + 2 + 1 = 4. Colchón del proyecto: cortar y pegar, 0,5 · 4 = 2 días; raíz, <span class="math inline">\(\sqrt{1 + 4 + 1} = 2{,}45 \to 3\)</span>. Con cortar y pegar se compromete el día 12, dos antes que el cronograma tradicional.</p>
 <p>Colchones de alimentación (cortar y pegar): en F desemboca D, cuya cadena de alimentación más larga es B–D (márgenes 1 + 1, colchón 1; holgura disponible: inicio de F, 7, menos el fin más temprano de D, 4, es decir, 3 días: cabe); al final del proyecto llega G, con la cadena B–E–G (márgenes 1 + 1 + 1, colchón 1,5 → 2; holgura 10 − 6 = 4). Programando hacia atrás: G termina en 10 − 2 = 8 y empieza en 6; E termina en 6 y empieza en 4; D termina en 7 − 1 = 6 y empieza en 5; B termina en mín(5, 4) = 4 y empieza en 2.</p>
-<div id="4b5bacee" class="cell" data-execution_count="2">
+<div id="6286e01e" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -4150,7 +4150,7 @@ window.Quarto = {
 </div>
 </div>
 <p><strong>Con un equipo compartido.</strong> Si C y D los hace el mismo equipo X, en el cronograma sin recursos se solapan en el día 4 (C ocupa [3, 7) y D [3, 4)). Con la regla de prioridad, C (inicio más tardío 3) va antes que D (6): D espera a que C termine y se añade el enlace de recurso C → D. La red nivelada dura 3 + 4 + 1 + 3 = 11 días por <strong>A–C–D–F</strong>: esa es la cadena crítica, distinta de la ruta crítica A–C–F, y pasa por un enlace de recurso. Colchón del proyecto: 0,5 · (1 + 2 + 1 + 1) = 2,5 → 3 días; compromiso, el día 14 (el cronograma tradicional con la misma secuencia del equipo dura 4 + 6 + 2 + 4 = 16). Colchón de recursos: avisar al equipo X antes de que termine A.</p>
-<div id="39342960" class="cell" data-execution_count="3">
+<div id="01b1c336" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -4161,7 +4161,7 @@ window.Quarto = {
 </div>
 </div>
 <p><strong>Seguimiento.</strong> Con el plan sin recursos (cadena de 10 días, CP de 2), un informe del día 5 dice que A terminó el día 3 y B el día 4, que a C le quedan 3 días y a E, 1 (D aún no ha empezado): fin previsto 5 + 3 + 3 = 11, colchón consumido 1 día (50 %); cadena completada (10 − 6)/10 = 40 %; BPI = 50/60 = 0,83; límites 10 + 0,6 · 40 = 34 % y 30 + 0,6 · 40 = 54 %: zona <strong>amarilla</strong>, hay que preparar un plan de recuperación.</p>
-<div id="7a60a225" class="cell" data-execution_count="4">
+<div id="0ac74456" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -4194,6 +4194,7 @@ window.Quarto = {
 <section id="qué-practica-cada-variante" class="level2">
 <h2 class="anchored" data-anchor-id="qué-practica-cada-variante">Qué practica cada variante</h2>
 <p><em>multitarea</em>: fines de varias tareas con y sin multitarea, pérdida por cambio y orden de menor tiempo medio. <em>colchon-proyecto</em>: cronograma tradicional, cadena con estimaciones agresivas, colchón por los dos métodos y fecha comprometida. <em>dimensionado-colchon</em>: probabilidad que da cada método con duraciones normales y cómo crecen con el número de actividades. <em>colchones-alimentacion</em>: cadenas de alimentación, holgura disponible, colchón que no cabe y programación lo más tarde posible. <em>cadena-con-recursos</em>: solapes, regla de prioridad, enlaces de recurso, red nivelada, cadena distinta de la ruta crítica y colchones de recursos. <em>plan-completo</em>: todo el plan con equipos y comparación con el cronograma tradicional. <em>seguimiento-fiebre</em>: tres informes de avance, BPI, zonas y gráfico de fiebre. <em>monte-carlo-colchon</em>: probabilidad de cada fecha, colchón para el 90 y el 95 % y sesgo de convergencia. <em>parkinson-relevos</em>: régimen tradicional con la ley de Parkinson frente a relevos y la cota <span class="math inline">\(0{,}9^k\)</span>. <em>multiproyecto-tambor</em>: varios proyectos con un recurso tambor lanzados a la vez (con y sin multitarea) o escalonados con colchón de capacidad y del tambor, y lanzamiento de un proyecto nuevo. <em>consumo-alimentacion</em>: previsión desde un informe, consumo de cada colchón de alimentación, colchón desbordado que pasa a la cadena, parte del consumo del colchón del proyecto que viene de la alimentación y prioridad por el estado de los colchones. <em>tendencia-fiebre</em>: cuatro informes, velocidad de consumo, previsión con la tendencia, entrada en la zona roja y el BPI como velocidad sostenible. <em>bpi-frente-a-spi</em>: el mismo informe con valor ganado (PV, EV, SPI global, de la cadena y de la alimentación) y con el colchón (BPI y zona), y por qué discrepan.</p>
+<p>Cada cuaderno termina con una <strong>autoevaluación</strong> de respuesta múltiple calculada con sus propios datos (los distractores son errores típicos: sumar todo el margen, contar los días trabajados en lugar de los que quedan, confundir el BPI con la velocidad de consumo…). La misma celda la exporta en formato GIFT a <code>~/temp/cuestionario_cadena_critica.gift</code> para importarla en Moodle.</p>
 
 
 </section>

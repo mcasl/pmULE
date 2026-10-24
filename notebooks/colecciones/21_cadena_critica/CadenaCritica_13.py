@@ -314,12 +314,15 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
-        restante = float(det['restante'].sum())
+        hecho = float(inf['avance'])
+        largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
+                  for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
         pa, pc = inf['pct_avance'], inf['pct_consumo']
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': f"({T} − {restante:g})/{T} = {pa:.1f} %",
+            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                  + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
@@ -411,3 +414,44 @@ display(Markdown(pregunta_4))
 
 # %% [markdown]
 # Programar la alimentación lo más tarde posible evita comprometer recursos y dinero antes de tiempo (el gasto se retrasa, el trabajo en curso es menor y se pueden incorporar cambios con menos pérdida) y deja el margen donde protege: en el colchón, a la vista de todos, en lugar de en una holgura que se consumiría por el síndrome del estudiante. A cambio, el camino de alimentación queda sin más protección que su colchón: si se retrasa más que él, el retraso pasa a la cadena crítica y consume colchón del proyecto. Por eso se vigila el consumo de cada colchón de alimentación.
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('¿Cuántos días de colchón de alimentación se colocan en el arco A → E (CA1)?',
+     ['1 días', '7 días', '2 días', '0 días'],
+     'Colchón requerido 1 (cadena de alimentación A); holgura disponible 7; se adopta el menor: 1.'),
+    ('En el plan de cadena crítica, ¿qué día empieza la actividad de alimentación A?',
+     ['día 6', 'día 0', 'día 7', 'día 5'],
+     'Lo más tarde posible con su colchón delante: termina cuando empieza CA1, 9 − 1 = 8, y empieza el día 8 − 2 = 6 (su inicio más temprano sería el 0).'),
+    ('¿Por qué se programan las actividades de alimentación lo más tarde posible?',
+     ['para no comprometer recursos ni dinero antes de tiempo, dejando el margen en su colchón', 'para que pasen a formar parte de la cadena crítica', 'porque así la cadena crítica es más corta', 'porque el colchón de alimentación se suma al colchón del proyecto'],
+     'Se retrasa el gasto y el trabajo en curso, y el margen queda a la vista en el colchón en lugar de perderse en una holgura.'),
+]
+TITULO_TEST = 'Cadena crítica — colchones de alimentación (compromiso el día 51)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

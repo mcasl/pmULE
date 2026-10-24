@@ -312,3 +312,47 @@ En el último informe el BPI es {bpi[dn]:.2f} y la velocidad del último tramo, 
             {'verde': 'Con el informe en zona verde basta con seguir vigilando la tendencia.',
              'amarilla': 'Con el informe en zona amarilla se mantiene preparado el plan de recuperación, sin ejecutarlo todavía.'}[zona[-1]])
          + ' La tendencia es una extrapolación: el siguiente informe puede confirmarla o desmentirla.')
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('¿Cuál es la velocidad de consumo del colchón en el último tramo (entre los dos últimos informes)?',
+     ['1,14', '2,47', '0,86', '1,50'],
+     '(66,7 − 44,4)/(77,8 − 58,3) = 1,14 puntos de colchón por punto de cadena.'),
+    ('Si se mantiene esa velocidad, ¿qué porcentaje del colchón se habrá consumido al terminar la cadena?',
+     ['92,1 %', '85,7 %', '80,0 %', '100,0 %'],
+     '66,7 + 1,14·(100 − 77,8) = 92,1 %.'),
+    ('Si la velocidad de consumo es mayor que el BPI del último informe, ¿qué ocurrirá si se mantiene?',
+     ['el colchón se agotará antes de terminar la cadena', 'el proyecto entrará de inmediato en la zona roja', 'el proyecto terminará antes de la fecha comprometida', 'habrá que recalcular la cadena crítica'],
+     'El BPI, (100 − y)/(100 − x), es la velocidad media que el colchón puede soportar hasta el final.'),
+    ('¿En qué zona está el informe del día 34?',
+     ['amarilla', 'verde', 'roja', 'no se puede saber sin el valor ganado'],
+     'Límites 56,7 % y 76,7 % para un 77,8 % de cadena; consumo 66,7 %.'),
+]
+TITULO_TEST = 'Cadena crítica — tendencia del gráfico de fiebre (cadena de 36 días, CP de 9)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

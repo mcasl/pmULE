@@ -335,12 +335,15 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
-        restante = float(det['restante'].sum())
+        hecho = float(inf['avance'])
+        largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
+                  for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
         pa, pc = inf['pct_avance'], inf['pct_consumo']
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': f"({T} − {restante:g})/{T} = {pa:.1f} %",
+            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                  + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
@@ -538,3 +541,44 @@ plan.colchones_recursos.rename(columns={'antes_de': 'antes de', 'recursos': 'equ
 
 # %% [markdown]
 # El colchón de recursos es un aviso, no una espera: el equipo se compromete a estar libre cuando termine la actividad anterior de la cadena (que, por la regla del corredor de relevos, puede terminar antes de lo previsto). Añadir tiempo alargaría la cadena sin protegerla; lo que se protege es la disponibilidad del recurso, que es lo que haría perder días a la cadena.
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('¿Qué fecha se compromete con el cliente?',
+     ['día 33', 'día 40', 'día 34', 'día 32'],
+     'Duración de la cadena con los equipos (27) más el colchón del proyecto (6): día 33.'),
+    ('¿Cuántos días se ganan respecto al cronograma tradicional (estimaciones seguras, misma secuencia de los equipos)?',
+     ['7 días', '13 días', '9 días', '0 días'],
+     '40 − 33 = 7 días.'),
+    ('¿Cuántos días de colchón de alimentación se colocan en el arco A → E (CA1)?',
+     ['1 días', '11 días', '2 días', '0 días'],
+     'Colchón requerido 1 (cadena de alimentación A); holgura disponible 11; se adopta el menor: 1.'),
+]
+TITULO_TEST = 'Cadena crítica — plan completo (compromiso el día 33)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

@@ -335,12 +335,15 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
-        restante = float(det['restante'].sum())
+        hecho = float(inf['avance'])
+        largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
+                  for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
         pa, pc = inf['pct_avance'], inf['pct_consumo']
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': f"({T} − {restante:g})/{T} = {pa:.1f} %",
+            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                  + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
@@ -438,3 +441,44 @@ Markdown(f'''La probabilidad de que ninguna de las {k} actividades de la ruta cr
 0,9^{k} = **{0.9 ** k:.3f}**. Con la ley de Parkinson y las fechas fijas, cualquier exceso de una actividad crítica retrasa el proyecto y ningún adelanto lo compensa, así que la probabilidad de cumplir no puede ser mayor que esa (la simulada es {float((T_trad <= T_tradicional).mean()):.3f}: también fallan las no críticas que se pasan de su holgura).
 
 Cada estimación segura protege su actividad, no la fecha de entrega: el margen se pierde porque los adelantos no se transmiten (ley de Parkinson), porque quien tiene holgura empieza tarde (síndrome del estudiante) y porque en las convergencias manda el camino que llega más tarde. La cadena crítica retira esos márgenes y los concentra en colchones: promete {T_tradicional - plan.compromiso} días antes y cumple con probabilidad {float((T_rel <= plan.compromiso).mean()):.3f}. La última columna de la tabla muestra que el problema no estaba en las estimaciones: con las mismas duraciones, ejecutando por relevos, la fecha tradicional se cumpliría con probabilidad {float((T_rel <= T_tradicional).mean()):.3f}.''')
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('Si cada una de las 6 actividades de la ruta crítica tradicional cumple su estimación segura con probabilidad 0,9, de forma independiente, ¿qué probabilidad hay de que ninguna la supere?',
+     ['0,531', '0,900', '0,400', '0,590'],
+     '0,9^6 = 0,531.'),
+    ('En la simulación del régimen tradicional con la ley de Parkinson, ¿con qué probabilidad se cumple la fecha prometida?',
+     ['0,50', '0,89', '0,90', '1,00'],
+     '0,504: como mucho 0,9^6, porque cualquier exceso en la ruta crítica se transmite y ningún adelanto lo compensa.'),
+    ('¿Qué describe la ley de Parkinson?',
+     ['el trabajo se alarga hasta ocupar el tiempo disponible: quien termina antes no lo comunica', 'con holgura, las actividades se empiezan en el último momento', 'en las uniones de caminos manda el que llega más tarde', 'repartir a una persona entre varias tareas las retrasa todas'],
+     'Las otras opciones son el síndrome del estudiante, el sesgo de convergencia y la multitarea.'),
+]
+TITULO_TEST = 'Cadena crítica — Parkinson frente a relevos (ruta de 6 actividades)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)
