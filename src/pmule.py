@@ -664,10 +664,9 @@ class PredecessorTable:
         return set(self._distant_closure([name])[name])
 
     def calculate_immediate_predecessor_of(self, name: str) -> Dict[str, str]:
-        predecessors = self.distant_predecessor[name].copy()
-        for ancestor in predecessors:
-            predecessors = predecessors - self.distant_predecessor[ancestor]
-        return predecessors
+        predecessors = self.distant_predecessor[name]
+        cubiertas = set().union(*(self.distant_predecessor[a] for a in predecessors))
+        return predecessors - cubiertas
 
     @property
     def start_activities(self) -> Set[str]:
@@ -4304,11 +4303,8 @@ class ProjectGraph:
     def roy_dag(self) -> "RoyDAG":
         """Grafo de Roy reducido transitivamente (solo actividades reales) como ``RoyDAG``."""
         pred = self.distant_predecessor(dummies=False)
-        G = nx.DiGraph(); G.add_nodes_from(pred)
-        for a, ps in pred.items():
-            for p in ps:
-                if p in pred: G.add_edge(p, a)
-        return RoyDAG(list(G.nodes), list(nx.transitive_reduction(G).edges()))
+        acts = list(pred)
+        return RoyDAG(acts, _reduccion_transitiva_desde_ancestros(acts, pred))
 
     def svd_implicit(self, k: int = 5, dense_max: int = 400) -> dict:
         """k primeros valores/vectores singulares de R SIN enumerar las rutas.
@@ -8187,6 +8183,33 @@ def make_Roy(linkage_matrix):
 # ----------------------------------------------------------------------
 import scipy.sparse as _sp_impl
 from scipy.sparse.linalg import splu as _splu, LinearOperator as _LinearOperator, eigsh as _eigsh
+
+
+def _reduccion_transitiva_desde_ancestros(acts, ancestros):
+    """Aristas (p, a) de la reduccion transitiva de un DAG dado por el conjunto de ANCESTROS de cada nodo.
+
+    p es predecesora inmediata de a si es ancestro de a y no lo es de ningun otro ancestro de a.
+    Con conjuntos de bits (enteros de Python) cuesta O(n * ancestros * n/64) en lugar de
+    construir el cierre como grafo y reducirlo con networkx (varios segundos con n ~ 1 000).
+    Las aristas salen ordenadas por la posicion de ``acts``.
+    """
+    ix = {a: i for i, a in enumerate(acts)}
+    bit = {a: 1 << i for a, i in ix.items()}
+    masc = {}
+    for a in acts:
+        m = 0
+        for p in ancestros[a]:
+            if p in bit: m |= bit[p]
+        masc[a] = m
+    aristas = []
+    for a in acts:
+        anc = [p for p in ancestros[a] if p in bit]
+        if not anc: continue
+        cubiertos = 0
+        for q in anc: cubiertos |= masc[q]
+        inmediatas = masc[a] & ~cubiertos
+        aristas.extend((p, a) for p in sorted(anc, key=ix.__getitem__) if inmediatas & bit[p])
+    return aristas
 
 
 class RoyDAG:
