@@ -2,7 +2,7 @@ from jupyter_tikz import TexFragment
 from numpyarray_to_latex.jupyter import to_jup
 from numpyarray_to_latex import to_ltx
 from IPython.display import display, Image, SVG, Latex, Markdown, Math, HTML
-from functools import reduce
+from functools import lru_cache, reduce
 from itertools import chain, product, islice
 import math
 from math import ceil
@@ -6716,7 +6716,8 @@ class ProjectGraph:
                 for clave, valor in visibles.get(nodo, {}).items():
                     celdas[clave] = tinta(nodo, clave, f(valor))
                 resaltadas = {}
-                for n_, clave in (negrita or ()):
+                # un conjunto no tiene orden: se ordena para que el TikZ (y la caché) sea el mismo en cada proceso
+                for n_, clave in (sorted(negrita) if isinstance(negrita, (set, frozenset)) else (negrita or ())):
                     if n_ == nodo:
                         color = (colores_region or {}).get((nodo, clave)) or (colores_valores or {}).get(
                             (nodo, clave), "orange!80!black" if nodo == actual else "black")
@@ -9266,22 +9267,119 @@ def _svg_ancho_columna(svg):
     return re.sub(r'<svg\b[^>]*>', raiz, svg, count=1)
 
 
+def _preambulo_tikz(librerias: str) -> str:
+    return ("\\documentclass[border=4pt,multi=tikzpicture]{standalone}\n"
+            "\\usepackage[utf8]{inputenc}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath}\n"
+            "\\usepackage{tikz}\n" + f"\\usetikzlibrary{{{librerias}}}\n")
+
+
+def _jobs_tikz() -> int:
+    """Procesos de LaTeX en paralelo: ``PMULE_TIKZ_JOBS`` o las CPU disponibles (como mucho 8)."""
+    import os
+    try:
+        return max(1, int(os.environ["PMULE_TIKZ_JOBS"]))
+    except (KeyError, ValueError):
+        pass
+    try:
+        n = len(os.sched_getaffinity(0))          # respeta las CPU asignadas por SLURM o el contenedor
+    except AttributeError:
+        n = os.cpu_count() or 1
+    return max(1, min(n, 8))
+
+
+def _cache_tikz():
+    """Carpeta de la caché de fotogramas compilados (``PMULE_TIKZ_CACHE``; ``0`` o vacío la desactiva).
+    Por defecto ``~/.cache/pmule/tikz``. Se puede borrar sin más."""
+    import os
+    from pathlib import Path
+    d = os.environ.get("PMULE_TIKZ_CACHE")
+    if d is not None and d.strip() in ("", "0"):
+        return None
+    if d:
+        return Path(d)
+    try:
+        return Path.home() / ".cache" / "pmule" / "tikz"
+    except RuntimeError:                           # sin HOME (algunos contenedores): sin caché
+        return None
+
+
+@lru_cache(maxsize=None)
+def _version_latex() -> str:
+    """Versiones de pdflatex y pdftocairo: parte de la clave de la caché, para que un cambio de LaTeX la invalide."""
+    import subprocess
+    v = []
+    for cmd in (["pdflatex", "--version"], ["pdftocairo", "-v"]):
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        v.append((r.stdout + r.stderr).strip().splitlines()[0] if (r.stdout + r.stderr).strip() else "?")
+    return " | ".join(v)
+
+
 def _svgs_de_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: str = None) -> list:
     """Compila una lista de ``tikzpicture`` (un fotograma cada uno) y devuelve un
-    SVG por fotograma, recortado al dibujo. Un solo ``pdflatex`` para todos (el
-    grafo es el mismo en todos, así que las cajas casi coinciden y no saltan al
-    pasar de uno a otro). Necesita ``pdflatex`` y ``pdftocairo``."""
-    import shutil, subprocess, tempfile
-    from pathlib import Path
+    SVG por fotograma, recortado al dibujo. Necesita ``pdflatex`` y ``pdftocairo``.
+
+    El resultado de cada fotograma no depende de los demás (``standalone`` con ``multi=tikzpicture``
+    recorta cada uno por separado), así que se puede acelerar sin cambiar ni un byte de la salida:
+    - caché en disco por hash (preámbulo + versión de LaTeX + código): un fotograma ya compilado no se
+      vuelve a compilar (``PMULE_TIKZ_CACHE``, ver ``_cache_tikz``);
+    - los que faltan se reparten en trozos de al menos 6 fotogramas que se compilan en paralelo
+      (``PMULE_TIKZ_JOBS``, por defecto las CPU disponibles, como mucho 8).
+    Con ``guardar`` se compila todo de una vez, como siempre (hace falta el PDF entero)."""
+    import gzip, hashlib, os, shutil
+    from concurrent.futures import ThreadPoolExecutor
     for exe in ("pdflatex", "pdftocairo"):
         if shutil.which(exe) is None:
             raise FileNotFoundError(f"no se encuentra {exe}: hace falta LaTeX para los fotogramas TikZ")
+    if guardar:
+        return _compila_tikz(codigos, librerias, guardar)
+    cache = _cache_tikz()
+    base = (_preambulo_tikz(librerias) + _version_latex()).encode("utf-8")
+    claves = [hashlib.sha256(base + c.encode("utf-8")).hexdigest() for c in codigos]
+    svg_de = {}
+    if cache is not None:
+        for k in set(claves):
+            try:
+                svg_de[k] = gzip.decompress((cache / f"{k}.svg.gz").read_bytes()).decode("utf-8")
+            except (OSError, EOFError, ValueError):
+                pass
+    faltan = {}                                   # clave -> código, sin repetidos y en orden
+    for k, c in zip(claves, codigos):
+        if k not in svg_de:
+            faltan.setdefault(k, c)
+    if faltan:
+        ks = list(faltan)
+        trozos = max(1, min(_jobs_tikz(), len(ks) // 6))
+        tam = -(-len(ks) // trozos)
+        partes = [ks[i:i + tam] for i in range(0, len(ks), tam)]
+        def compila(parte):
+            return _compila_tikz([faltan[k] for k in parte], librerias)
+        if len(partes) == 1:
+            resultados = [compila(partes[0])]
+        else:
+            with ThreadPoolExecutor(len(partes)) as ex:
+                resultados = list(ex.map(compila, partes))
+        for parte, svgs in zip(partes, resultados):
+            for k, svg in zip(parte, svgs):
+                svg_de[k] = svg
+                if cache is not None:
+                    try:                          # escritura atómica: varios procesos pueden compartir la caché
+                        cache.mkdir(parents=True, exist_ok=True)
+                        tmp = cache / f".{k}.{os.getpid()}.tmp"
+                        tmp.write_bytes(gzip.compress(svg.encode("utf-8"), 6))
+                        os.replace(tmp, cache / f"{k}.svg.gz")
+                    except OSError:
+                        pass
+    return [svg_de[k] for k in claves]
+
+
+def _compila_tikz(codigos: list, librerias: str = "calc,arrows.meta", guardar: str = None) -> list:
+    """Un solo ``pdflatex`` para todos los fotogramas y un ``pdftocairo`` por página. Con ``guardar``
+    copia además la primera figura (``.pdf``, ``.svg`` o ``.png``)."""
+    import shutil, subprocess, tempfile
+    from pathlib import Path
     paginas = "\n".join(codigos)
     n = len(codigos)
-    doc = ("\\documentclass[border=4pt,multi=tikzpicture]{standalone}\n"
-           "\\usepackage[utf8]{inputenc}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath}\n"
-           "\\usepackage{tikz}\n" + f"\\usetikzlibrary{{{librerias}}}\n"
-           "\\begin{document}\n" + paginas + "\n\\end{document}\n")
+    doc = _preambulo_tikz(librerias) + "\\begin{document}\n" + paginas + "\n\\end{document}\n"
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
         (d / "f.tex").write_text(doc, encoding="utf8")

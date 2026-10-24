@@ -5,13 +5,18 @@
 - ``PredecessorTable`` con bitsets da las mismas predecesoras lejanas e inmediatas que la formula con conjuntos.
 """
 
+import os
 import random
+import shutil
+import tempfile
 import time
 import unittest
+from unittest import mock
 
 import numpy as np
 
 from pmule import PredecessorTable, ProjectGraph, RoyDAG, implicit_svd_roy, tau_rank_k_roy
+import pmule
 from pmule import _bits_a_conjunto, _bloque_columnas, _indices_de_bits, _reduccion_transitiva_desde_ancestros
 
 
@@ -221,6 +226,100 @@ class TestProyectosGrandes(unittest.TestCase):
         self.assertEqual(dag.n, 800)
         self.assertLess(t1 - t0, 20.0, f"crear el proyecto tardo {t1 - t0:.1f} s")
         self.assertLess(t2 - t1, 5.0, f"distant_predecessor + roy_dag tardaron {t2 - t1:.1f} s")
+
+
+class TestCacheYParalelismoTikz(unittest.TestCase):
+    """``_svgs_de_tikz``: caché en disco por fotograma y compilación por trozos en paralelo, con la misma salida."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.llamadas = []
+
+        def falso(codigos, librerias="calc,arrows.meta", guardar=None):
+            self.llamadas.append(list(codigos))
+            return [f"<svg>{c}|{librerias}</svg>" for c in codigos]
+        patches = [mock.patch.dict(os.environ, {"PMULE_TIKZ_CACHE": self.dir, "PMULE_TIKZ_JOBS": "4"}),
+                   mock.patch.object(pmule, "_compila_tikz", falso),
+                   mock.patch.object(pmule, "_version_latex", lambda: "latex-falso"),
+                   mock.patch("shutil.which", lambda exe: "/usr/bin/" + exe)]
+        for pa in patches:
+            pa.start()
+            self.addCleanup(pa.stop)
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def test_cache_evita_recompilar_y_da_lo_mismo(self):
+        cods = [f"\\begin{{tikzpicture}}\\node{{{i}}};\\end{{tikzpicture}}" for i in range(10)]
+        a = pmule._svgs_de_tikz(cods)
+        n = sum(len(c) for c in self.llamadas)
+        self.assertEqual(n, 10)
+        b = pmule._svgs_de_tikz(cods)
+        self.assertEqual(a, b)
+        self.assertEqual(sum(len(c) for c in self.llamadas), n, "la segunda llamada no debe compilar nada")
+        c = pmule._svgs_de_tikz(cods[:5] + ["otro fotograma"])
+        self.assertEqual(c[:5], a[:5])
+        self.assertEqual(self.llamadas[-1], ["otro fotograma"])
+        self.assertEqual(c[5], "<svg>otro fotograma|calc,arrows.meta</svg>")
+
+    def test_la_clave_incluye_las_librerias_y_la_version_de_latex(self):
+        pmule._svgs_de_tikz(["x"], "calc")
+        pmule._svgs_de_tikz(["x"], "calc,patterns")
+        self.assertEqual(len(self.llamadas), 2)
+        with mock.patch.object(pmule, "_version_latex", lambda: "otra-version"):
+            pmule._svgs_de_tikz(["x"], "calc")
+        self.assertEqual(len(self.llamadas), 3)
+
+    def test_repetidos_se_compilan_una_vez(self):
+        r = pmule._svgs_de_tikz(["a", "b", "a", "a"])
+        self.assertEqual(sum(len(c) for c in self.llamadas), 2)
+        self.assertEqual([x.split("|")[0] for x in r], ["<svg>a", "<svg>b", "<svg>a", "<svg>a"])
+
+    def test_trozos_de_al_menos_seis_fotogramas_y_orden_conservado(self):
+        cods = [f"f{i:03d}" for i in range(40)]
+        r = pmule._svgs_de_tikz(cods)
+        self.assertEqual(len(self.llamadas), 4)                       # 4 trabajos
+        self.assertTrue(all(len(c) >= 6 for c in self.llamadas))
+        self.assertEqual([x.split("|")[0][5:] for x in r], cods)
+        self.llamadas.clear()
+        pmule._svgs_de_tikz([f"g{i}" for i in range(11)])
+        self.assertEqual(len(self.llamadas), 1)                       # 11 // 6 = 1: un solo trozo
+
+    def test_guardar_y_cache_desactivada(self):
+        pmule._svgs_de_tikz(["x"], guardar=os.path.join(self.dir, "x.svg"))
+        pmule._svgs_de_tikz(["x"], guardar=os.path.join(self.dir, "x.svg"))
+        self.assertEqual(len(self.llamadas), 2)                       # con guardar no se usa la caché
+        self.assertEqual(os.listdir(self.dir), [])
+        with mock.patch.dict(os.environ, {"PMULE_TIKZ_CACHE": "0"}):
+            self.assertIsNone(pmule._cache_tikz())
+            self.llamadas.clear()
+            pmule._svgs_de_tikz(["y"]); pmule._svgs_de_tikz(["y"])
+            self.assertEqual(len(self.llamadas), 2)
+
+    def test_cache_corrupta_se_ignora(self):
+        pmule._svgs_de_tikz(["z"])
+        for f in os.listdir(self.dir):
+            with open(os.path.join(self.dir, f), "wb") as fh:
+                fh.write(b"no es gzip")
+        self.llamadas.clear()
+        self.assertEqual(pmule._svgs_de_tikz(["z"]), ["<svg>z|calc,arrows.meta</svg>"])
+        self.assertEqual(len(self.llamadas), 1)
+
+    def test_jobs(self):
+        with mock.patch.dict(os.environ, {"PMULE_TIKZ_JOBS": "3"}):
+            self.assertEqual(pmule._jobs_tikz(), 3)
+        with mock.patch.dict(os.environ, {"PMULE_TIKZ_JOBS": "x"}):
+            self.assertTrue(1 <= pmule._jobs_tikz() <= 8)
+
+
+@unittest.skipUnless(shutil.which("pdflatex") and shutil.which("pdftocairo"), "hace falta pdflatex y pdftocairo")
+class TestTikzRealIgualAlSecuencial(unittest.TestCase):
+    def test_trozos_y_cache_dan_los_mismos_svg_que_una_sola_compilacion(self):
+        cods = [rf"\begin{{tikzpicture}}\node[draw,circle] {{{i}}}; \draw (0,0) -- ({i},1);\end{{tikzpicture}}" for i in range(14)]
+        ref = pmule._compila_tikz(cods)
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        with mock.patch.dict(os.environ, {"PMULE_TIKZ_CACHE": d, "PMULE_TIKZ_JOBS": "2"}):
+            self.assertEqual(pmule._svgs_de_tikz(cods), ref)          # en dos trozos
+            self.assertEqual(pmule._svgs_de_tikz(cods), ref)          # desde la caché
 
 
 if __name__ == "__main__":
