@@ -365,3 +365,47 @@ Markdown(f'Ordenando de la más corta a la más larga ({" → ".join(orden_spt)}
 
 # %% [markdown]
 # El método de la cadena crítica pide **evitar la multitarea** en las actividades de la cadena: quien trabaja en una actividad crítica se dedica a ella hasta terminarla y la entrega en cuanto acaba, como el corredor de relevos. La multitarea alarga todas las actividades que se reparten (cada una termina cuando termina su último turno), retrasa la entrega a las sucesoras y, con la pérdida de cada cambio, reduce la capacidad real del recurso. Para decidir qué tarea va primero, la prioridad la marca el estado de los colchones de cada proyecto, no quien más presiona.
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('Sin multitarea y en el orden del cuadro, ¿cuál es el tiempo medio de terminación de las tareas?',
+     ['18,75 días', '27,75 días', '7,75 días', '31,00 días'],
+     'Las tareas terminan en las sumas acumuladas de las duraciones (7, 15, 22, 31); su media es 18,75 días.'),
+    ('Con multitarea en turnos de 2 días y sin pérdida al cambiar de tarea, ¿qué día termina la última tarea?',
+     ['día 31', 'día 33', 'día 46', 'día 36'],
+     'El trabajo total es el mismo, así que la última tarea termina el mismo día que sin multitarea; lo que se retrasa son las demás.'),
+    ('Con multitarea en turnos de 2 días y una pérdida de 1 día(s) en cada cambio de tarea, ¿qué día termina la última tarea?',
+     ['día 46', 'día 31', 'día 34', 'día 48'],
+     'Hay 15 cambios de tarea, que añaden 15 días al trabajo: la persona produce menos.'),
+    ('¿Qué orden minimiza, sin multitarea, el tiempo medio de terminación?',
+     ['de la tarea más corta a la más larga', 'de la tarea más larga a la más corta', 'el orden en que se asignaron las tareas', 'repartir el tiempo en turnos iguales'],
+     'Es la regla de la duración más corta primero: adelantar una tarea corta retrasa a la larga menos de lo que adelanta a la corta.'),
+]
+TITULO_TEST = 'Cadena crítica — multitarea (4 tareas, turnos de 2 días)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

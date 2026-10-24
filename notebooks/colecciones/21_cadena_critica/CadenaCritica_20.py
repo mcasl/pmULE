@@ -524,3 +524,44 @@ Markdown(f'El técnico debe reforzar **{primera}**, cuyo colchón ({prioridad.lo
          'están programadas lo más tarde posible y su margen no es una holgura, sino su colchón; y la cadena crítica no tiene '
          'holgura, pero su protección es el colchón del proyecto. El porcentaje de colchón consumido da una medida común para '
          'comparar actividades de cadenas distintas, y la misma señal para todo el equipo.')
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('¿Cuántos días pasan a la cadena crítica desde el colchón de alimentación CA1 (D → H)?',
+     ['2 días', '6 días', '4 días', '0 días'],
+     'Consume 6 días de un colchón de 4: el exceso, 2, retrasa a la actividad de la cadena en la que desemboca.'),
+    ('¿Cuántos días del colchón del proyecto se consumen por culpa de las cadenas de alimentación?',
+     ['2 días', '0 días', '3 días', '1 días'],
+     'Fin previsto 26; si la alimentación no la retrasara, la cadena terminaría el día 24: 2 día(s) se deben a la alimentación.'),
+    ('Según la gestión por colchones, ¿qué actividad en curso debe reforzarse primero?',
+     ['D', 'E', 'G', 'B'],
+     'Es la de colchón más consumido en porcentaje (150,0 %).'),
+]
+TITULO_TEST = 'Cadena crítica — consumo de los colchones de alimentación (día 12)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

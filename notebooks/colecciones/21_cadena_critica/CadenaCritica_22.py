@@ -476,3 +476,47 @@ display(Markdown(pregunta_4))
 # Para proteger la fecha comprometida manda la gestión por colchones: el BPI y el gráfico de fiebre miran sólo lo que fija la entrega (la cadena crítica, y la alimentación cuando desborda su colchón) y comparan lo que queda de colchón con lo que queda de cadena. La Guía del PMBOK presenta el BPI precisamente como una señal pensada para proteger la fecha de entrega y para decidir las prioridades del trabajo diario, a diferencia del SPI.
 #
 # Limitaciones del SPI en este caso: (1) suma en dinero todas las actividades, críticas o no, de modo que el trabajo hecho fuera de la cadena compensa el retraso de la cadena (o el retraso de la alimentación dentro de su colchón parece un problema); (2) depende de la línea base: con las actividades de alimentación lo más tarde posible, empezarlas antes eleva el EV sin cambiar la fecha de fin; (3) tiende a 1 al final del proyecto aunque se termine tarde, porque al terminar EV = PV = presupuesto. El valor ganado sigue siendo útil para controlar el coste (CPI) y el gasto, pero el plazo se gobierna con los colchones.
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('¿Cuánto vale el SPI de todo el proyecto en el día del informe?',
+     ['1,06', '0,64', '1,89', '0,95'],
+     'SPI = EV/PV = 38,10/36,00 = 1,058.'),
+    ('¿En qué zona del gráfico de fiebre está el informe?',
+     ['roja', 'verde', 'amarilla', 'no se puede saber sin el valor ganado'],
+     'Consumo 71,4 % con un 10,3 % de cadena completada.'),
+    ('¿Por qué discrepan el SPI y la gestión por colchones en este informe?',
+     ['el trabajo adelantado en la alimentación compensa en el SPI el retraso de la cadena crítica', 'la cadena crítica va adelantada', 'el colchón del proyecto está mal dimensionado', 'el SPI no incluye las actividades de la cadena crítica'],
+     'El SPI suma en dinero todas las actividades; la fecha sólo depende de la cadena y de sus colchones.'),
+    ('¿Qué indicador debe guiar las decisiones para proteger la fecha comprometida?',
+     ['el BPI y el gráfico de fiebre', 'el SPI de todo el proyecto', 'el SPI de las actividades de alimentación', 'el CPI del valor ganado'],
+     'El BPI mira sólo lo que fija la entrega; el valor ganado sigue siendo útil para controlar el coste.'),
+]
+TITULO_TEST = 'Cadena crítica — BPI frente a SPI (día 8)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

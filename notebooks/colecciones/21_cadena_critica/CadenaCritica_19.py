@@ -505,3 +505,47 @@ Markdown(f"El tambor queda libre, tras la última tarea y su colchón de capacid
          f"lanzamiento: {s_n} − {colchon_tambor} − {nuevo['antes']} = **día {lanz_n}**; fin previsto {s_n} + {nuevo['tambor']} + "
          f"{nuevo['despues']} = {fin_n}; fecha comprometida {fin_n} + {nuevo['CP']} = **día {fin_n + nuevo['CP']}**. "
          "Lanzarlo antes no lo adelantaría: sólo lo tendría abierto esperando al tambor.")
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('En el programa escalonado, ¿qué día se lanza P4?',
+     ['día 17', 'día 19', 'día 0', 'día 24'],
+     'Entra en el tambor el día 24; se lanza 24 − 2 (colchón del tambor) − 5 (antes) = 17.'),
+    ('¿Qué fecha puede comprometerse para el proyecto nuevo P5?',
+     ['día 50', 'día 26', 'día 48', 'día 43'],
+     'El tambor queda libre el día 31; P5 entra el día máx(7 + 2; 31) = 31 y se compromete para 31 + 5 + 7 + 7 = 50.'),
+    ('Con todos los proyectos lanzados el día 0 y multitarea en el tambor, ¿qué día termina P1?',
+     ['día 20', 'día 12', 'día 18', 'día 21'],
+     'Su tarea del tambor termina el día 18, en su último turno; después quedan 2 días.'),
+    ('¿Para qué sirve el colchón de capacidad?',
+     ['para que el retraso de una tarea del tambor no arrastre a los proyectos siguientes', 'para proteger la fecha de entrega de cada proyecto', 'para que el tambor pueda hacer multitarea', 'para lanzar antes los proyectos'],
+     'Las fechas de los proyectos siguientes se comprometen contando con su turno en el tambor; la fecha de entrega la protege el colchón del proyecto.'),
+]
+TITULO_TEST = 'Cadena crítica — varios proyectos y un tambor (4 proyectos)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

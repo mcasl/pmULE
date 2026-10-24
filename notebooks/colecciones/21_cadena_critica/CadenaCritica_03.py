@@ -315,12 +315,15 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
-        restante = float(det['restante'].sum())
+        hecho = float(inf['avance'])
+        largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
+                  for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
         pa, pc = inf['pct_avance'], inf['pct_consumo']
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': f"({T} − {restante:g})/{T} = {pa:.1f} %",
+            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                  + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
@@ -428,3 +431,44 @@ Markdown(f'Con m = {m:.2f} días, cortar y pegar crece linealmente (n·m/2) y la
          'de cumplir se acerca a 1 (sobreprotege las cadenas largas, a costa de alargar el compromiso); con menos de cuatro da un '
          f'colchón menor que la raíz y protege menos del 90 % (con n = 2, P = {norm.cdf(1.2816 * np.sqrt(2) / 2):.2f}). '
          f'Esta cadena tiene {len(cadena)} actividades: cortar y pegar le asigna {CP_cp - CP_rz} días más que la raíz.')
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('Si cada actividad de la cadena es normal con la estimación segura como percentil 90, ¿cuánto vale la desviación típica de la cadena?',
+     ['8,83 días', '23,41 días', '11,31 días', '2,93 días'],
+     'σ = √(Σ márgenes²)/1,2816 = 11,314/1,2816 = 8,83 días: se suman las varianzas, no las desviaciones.'),
+    ('¿Con qué probabilidad se termina la cadena en su duración más el colchón de cortar y pegar?',
+     ['0,955', '0,913', '0,900', '0,500'],
+     'P = Φ(CP/σ) = Φ(15/8,828) = 0,955.'),
+    ('Para una cadena de n actividades con el mismo margen, ¿cuándo da cortar y pegar un colchón mayor que la raíz de la suma de cuadrados?',
+     ['con más de 4 actividades', 'con más de 2 actividades', 'con más de 9 actividades', 'nunca: siempre da un colchón menor'],
+     'n·m/2 = √n·m cuando √n = 2, es decir, n = 4; a partir de ahí cortar y pegar crece más deprisa.'),
+]
+TITULO_TEST = 'Cadena crítica — dimensionado del colchón (cadena de 8 actividades)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)
