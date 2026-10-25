@@ -634,7 +634,7 @@ Variantes:
 - `Dilema_21` [linea-base-reescrita, nivel 2] — arranque 2 semanas tarde por el cliente: SPI 0.85 contra la línea base y 1,00 contra la desplazada sin aprobar
 - `Dilema_22` [pago-subcontratistas, nivel 2] — pagar a 90 días: +4.2 k€ para el contratista, −11.4 k€ para las subcontratas; máximo legal 60
 - `Dilema_23` [adjudicacion-conflicto, nivel 1] — contrato privado: la Oferta 1 queda 15.0 puntos por debajo con los criterios del pliego
-- `Dilema_24` [holgura-oculta, nivel 2] — A con holguras 5/2/2 y «no tiene ningún margen»; ceder 1 a H
+- `Dilema_24` [holgura-oculta, nivel 2] — C con holguras 5/2/2 y «no tiene ningún margen»; ceder 1 a B
 - `Dilema_25` [coste-hundido, nivel 2] — VAN restante 224 k€ (continuar) con VAN total -216 k€
 - `Dilema_26` [recurso-desviado, nivel 2] — parar B 2 semanas (holgura 0): 2 de retraso, 9.9 k€ de penalidad frente a 14.9 k€ del otro proyecto
 - `Dilema_27` [baja-temeraria, nivel 3] — baja 28.3 % (umbral 27.7 %) y plazo 18 con P = 0.09: temeraria y sin buena fe

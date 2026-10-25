@@ -216,7 +216,7 @@ datos_enunciado
 #| label: tbl-calendarioEntregado
 calendario_entregado = pd.DataFrame([
 #  activity, inicio_mas_temprano, fin_mas_temprano, inicio_mas_tardio, fin_mas_tardio, H_total, H_libre
-    ('A'     , 0                  , 1               , 3                , 4             , 3      , 0      ),
+    ('A'     , 0                  , 1               , 3                , 4             , 3      , 3      ),
     ('B'     , 0                  , 4               , 0                , 4             , 0      , 0      ),
     ('C'     , 0                  , 4               , 2                , 4             , 0      , 0      ),
     ('D'     , 4                  , 6               , 13               , 15            , 9      , 10     ),
@@ -282,7 +282,7 @@ display(Markdown(pregunta_3))
 #| tbl-cap: "Calendario correcto"
 #| label: tbl-calendarioCorrecto
 calendario = proyecto.calendar(d)
-proyecto.display_calendario(d)
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'H_libre']]
 
 # %%
 difieren = (calendario[c.columns] != c).any(axis=1)

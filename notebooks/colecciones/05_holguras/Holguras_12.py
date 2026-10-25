@@ -209,36 +209,36 @@ for item in sorted(dir()):
 #| label: tbl-datosEnunciado
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor, duration
-    ('A'     , '---'      , 8       ),
-    ('B'     , '---'      , 6       ),
-    ('C'     , '---'      , 4       ),
-    ('D'     , 'A,B,C'    , 7       ),
-    ('E'     , 'D'        , 1       ),
-    ('F'     , 'D'        , 6       ),
-    ('G'     , 'F'        , 8       ),
-    ('H'     , 'F'        , 8       ),
-    ('I'     , 'E,G,H'    , 8       ),
-    ('J'     , 'I'        , 2       ),
+    ('A'     , '---'      , 7       ),
+    ('B'     , '---'      , 1       ),
+    ('C'     , '---'      , 6       ),
+    ('D'     , 'A,B'      , 3       ),
+    ('E'     , 'C'        , 5       ),
+    ('F'     , 'D'        , 3       ),
+    ('G'     , 'D,E'      , 4       ),
+    ('H'     , 'D'        , 1       ),
+    ('I'     , 'F,H'      , 7       ),
+    ('J'     , 'G,I'      , 5       ),
 ], columns=['activity', 'predecessor', 'duration']).set_index('activity')
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde al lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
 #| label: tbl-descripciones
 descripciones = pd.Series({
-    'A': 'Estudio de sombras y producción',
-    'B': 'Cálculo estructural de la cubierta',
-    'C': 'Tramitación de permisos',
-    'D': 'Acopio de módulos e inversores',
-    'E': 'Montaje de la estructura soporte',
-    'F': 'Colocación de módulos',
-    'G': 'Cableado de corriente continua',
-    'H': 'Instalación de inversores',
-    'I': 'Cuadro de protecciones y contador',
-    'J': 'Canalizaciones hasta el punto de conexión',
+    'A': 'Estudio de requisitos',
+    'B': 'Diseño de la arquitectura',
+    'C': 'Diseño de interfaz y prototipo',
+    'D': 'Base de datos y modelo',
+    'E': 'API del servidor',
+    'F': 'Pantallas principales',
+    'G': 'Módulo de pagos',
+    'H': 'Notificaciones y sincronización',
+    'I': 'Pruebas de integración',
+    'J': 'Pruebas con usuarios',
 }, name='Descripción')
 descripciones.to_frame()
 
@@ -256,19 +256,22 @@ proyecto = prelaciones.create_project()
 # %%
 display(Markdown(pregunta_1))
 
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Calendario y holguras"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario
 
 # %% [markdown]
 # Con los números sustituidos, actividad a actividad (ES, EF, LS y LF son inicio y fin más tempranos y más tardíos; «pred.» y «suc.» las predecesoras y sucesoras inmediatas):

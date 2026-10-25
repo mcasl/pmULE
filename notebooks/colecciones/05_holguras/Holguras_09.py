@@ -198,8 +198,8 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 pregunta_1 = "1. Calcule para cada actividad sus fechas más tempranas y más tardías de inicio y fin, y sus holguras total, libre e independiente.  "
 pregunta_2 = "2. Determine el camino crítico. ¿Cuántas rutas críticas tiene el proyecto?  "
 pregunta_3 = "3. ¿Qué actividades pueden retrasarse sin afectar ni al plazo del proyecto ni al inicio más temprano de ninguna otra actividad? ¿Cuáles pueden retrasarse sin afectar al plazo pero obligando a retrasar a alguna sucesora? Justifíquelo con las holguras.  "
-pregunta_4 = "4. La actividad B se retrasa tanto como permite su holgura total (18 semanas). Compruebe que el plazo no cambia y determine qué ocurre con las fechas y holguras de sus sucesoras.  "
-pregunta_5 = "5. Suponga que las predecesoras de F terminan en su fecha más tardía. ¿Cuánto puede retrasarse entonces F sin afectar a nadie? Relaciónelo con su holgura independiente.  "
+pregunta_4 = "4. La actividad E se retrasa tanto como permite su holgura total (3 semanas). Compruebe que el plazo no cambia y determine qué ocurre con las fechas y holguras de sus sucesoras.  "
+pregunta_5 = "5. Suponga que las predecesoras de G terminan en su fecha más tardía. ¿Cuánto puede retrasarse entonces G sin afectar a nadie? Relaciónelo con su holgura independiente.  "
 
 for item in sorted(dir()):
     if item.startswith('pregunta_'):
@@ -211,17 +211,37 @@ for item in sorted(dir()):
 datos_enunciado = pd.DataFrame([
 #  activity, predecessor, duration
     ('A'     , '---'      , 6       ),
-    ('B'     , '---'      , 2       ),
-    ('C'     , '---'      , 7       ),
-    ('D'     , 'A'        , 6       ),
-    ('E'     , 'B'        , 2       ),
-    ('F'     , 'B'        , 7       ),
-    ('G'     , 'C,D'      , 8       ),
-    ('H'     , 'G'        , 7       ),
-    ('I'     , 'E,F,H'    , 4       ),
-    ('J'     , 'I'        , 1       ),
+    ('B'     , '---'      , 4       ),
+    ('C'     , '---'      , 8       ),
+    ('D'     , 'C'        , 7       ),
+    ('E'     , 'A,B,C'    , 5       ),
+    ('F'     , 'B,C'      , 2       ),
+    ('G'     , 'E,F'      , 1       ),
+    ('H'     , 'D,F'      , 2       ),
+    ('I'     , 'G,H'      , 8       ),
+    ('J'     , 'I'        , 2       ),
 ], columns=['activity', 'predecessor', 'duration']).set_index('activity')
 datos_enunciado
+
+# %% [markdown]
+# El proyecto corresponde a la organización de un congreso científico; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+
+# %%
+#| tbl-cap: "Descripción de las actividades"
+#| label: tbl-descripciones
+descripciones = pd.Series({
+    'A': 'Definición del programa y fechas',
+    'B': 'Reserva de la sede',
+    'C': 'Convocatoria de comunicaciones',
+    'D': 'Página web e inscripciones',
+    'E': 'Contratación de ponentes invitados',
+    'F': 'Revisión de los trabajos recibidos',
+    'G': 'Elaboración del programa definitivo',
+    'H': 'Contratación de catering y viajes',
+    'I': 'Edición del libro de actas',
+    'J': 'Preparación de salas y audiovisuales',
+}, name='Descripción')
+descripciones.to_frame()
 
 # %% [markdown]
 # # Resolución
@@ -237,12 +257,15 @@ proyecto = prelaciones.create_project()
 # %%
 display(Markdown(pregunta_1))
 
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -258,7 +281,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Calendario y holguras del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario
 
 # %% [markdown]
 # Con los números sustituidos, actividad a actividad (ES, EF, LS y LF son inicio y fin más tempranos y más tardíos; «pred.» y «suc.» las predecesoras y sucesoras inmediatas):
@@ -309,21 +332,21 @@ calendario.loc[solo_sucesoras, ['H_total', 'H_libre', 'H_independiente']]
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# Un retraso de B igual a su holgura total equivale a alargar su duración en 18 semanas. Recalculamos el calendario con esa duración.
+# Un retraso de E igual a su holgura total equivale a alargar su duración en 3 semanas. Recalculamos el calendario con esa duración.
 
 # %%
 duraciones_retraso = datos_proyecto['duration'].copy()
-duraciones_retraso['B'] += 18
+duraciones_retraso['E'] += 3
 calendario_retraso = proyecto.calendar(duraciones_retraso)
-sucesoras = sorted(s for s, ps in prelaciones.immediate_predecessor.items() if 'B' in ps)
+sucesoras = sorted(s for s, ps in prelaciones.immediate_predecessor.items() if 'E' in ps)
 comparacion = pd.concat({'antes': calendario.loc[sucesoras, ['inicio_mas_temprano', 'H_total', 'H_libre']],
                          'después': calendario_retraso.loc[sucesoras, ['inicio_mas_temprano', 'H_total', 'H_libre']]}, axis=1)
 comparacion
 
 # %%
 Markdown(f'La duración del proyecto sigue siendo {proyecto.duration(duraciones_retraso)} semanas, '
-         f'pero B ha consumido holgura que compartía con sus sucesoras: las que tenían inicio más temprano '
-         f'anterior al nuevo fin de B se retrasan y su holgura total se reduce; alguna pasa a ser crítica.')
+         f'pero E ha consumido holgura que compartía con sus sucesoras: las que tenían inicio más temprano '
+         f'anterior al nuevo fin de E se retrasan y su holgura total se reduce; alguna pasa a ser crítica.')
 
 # %% [markdown]
 # ## Apartado 5
@@ -332,10 +355,10 @@ Markdown(f'La duración del proyecto sigue siendo {proyecto.duration(duraciones_
 display(Markdown(pregunta_5))
 
 # %%
-fila = calendario.loc['F']
-predecesoras = sorted(prelaciones.immediate_predecessor['F'])
-sucesoras_V = sorted(s for s, ps in prelaciones.immediate_predecessor.items() if 'F' in ps)
+fila = calendario.loc['G']
+predecesoras = sorted(prelaciones.immediate_predecessor['G'])
+sucesoras_V = sorted(s for s, ps in prelaciones.immediate_predecessor.items() if 'G' in ps)
 fin_tardio_pred = int(calendario.loc[predecesoras, 'fin_mas_tardio'].max())
 inicio_temprano_suc = int(calendario.loc[sucesoras_V, 'inicio_mas_temprano'].min())
 margen = inicio_temprano_suc - fin_tardio_pred - int(fila['duracion'])
-Markdown(f'''Si las predecesoras de F ({", ".join(predecesoras)}) acaban en su fecha más tardía, F no puede empezar antes de la semana {fin_tardio_pred}. Para no mover a sus sucesoras ({", ".join(sucesoras_V)}) debe acabar antes de la semana {inicio_temprano_suc}. Le quedan {inicio_temprano_suc} − {fin_tardio_pred} − {int(fila["duracion"])} = {margen} semanas, es decir, su holgura independiente, {int(fila["H_independiente"])} (si el cálculo sale negativo la holgura es cero). Su holgura libre, {int(fila["H_libre"])}, supone en cambio que las predecesoras acaban lo antes posible.''')
+Markdown(f'''Si las predecesoras de G ({", ".join(predecesoras)}) acaban en su fecha más tardía, G no puede empezar antes de la semana {fin_tardio_pred}. Para no mover a sus sucesoras ({", ".join(sucesoras_V)}) debe acabar antes de la semana {inicio_temprano_suc}. Le quedan {inicio_temprano_suc} − {fin_tardio_pred} − {int(fila["duracion"])} = {margen} semanas, es decir, su holgura independiente, {int(fila["H_independiente"])} (si el cálculo sale negativo la holgura es cero). Su holgura libre, {int(fila["H_libre"])}, supone en cambio que las predecesoras acaban lo antes posible.''')

@@ -3557,7 +3557,7 @@
   "coleccion": "19_etica",
   "variante": "holgura-oculta",
   "nivel": 2,
-  "subtitulo": "A con holguras 5/2/2 y «no tiene ningún margen»; ceder 1 a H",
+  "subtitulo": "C con holguras 5/2/2 y «no tiene ningún margen»; ceder 1 a B",
   "grafo": "roy",
   "ruta": "notebooks/colecciones/19_etica/Dilema_24.py",
   "semilla": 2027924,

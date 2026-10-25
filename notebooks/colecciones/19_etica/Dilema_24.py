@@ -1,6 +1,6 @@
 # ---
 # title: Dilema 24
-# subtitle: "A con holguras 5/2/2 y «no tiene ningún margen»; ceder 1 a H"
+# subtitle: "C con holguras 5/2/2 y «no tiene ningún margen»; ceder 1 a B"
 # coleccion: 19_etica
 # variante: holgura-oculta
 # nivel: 2
@@ -212,15 +212,15 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# La actividad crítica H va retrasada y el jefe de proyecto pide a los responsables de las actividades que se solapan con ella que cedan a alguien de su equipo durante 1 semana, lo que retrasaría la actividad cedente otras tantas. Al responsable de A le pregunta si puede.
+# La actividad crítica B va retrasada y el jefe de proyecto pide a los responsables de las actividades que se solapan con ella que cedan a alguien de su equipo durante 1 semana, lo que retrasaría la actividad cedente otras tantas. Al responsable de C le pregunta si puede.
 
 # %% [markdown]
-# > **De: Responsable de A (al jefe de proyecto)**
-# > Imposible: A no tiene ningún margen, si cedo a alguien retraso el proyecto.
+# > **De: Responsable de C (al jefe de proyecto)**
+# > Imposible: C no tiene ningún margen, si cedo a alguien retraso el proyecto.
 
 # %% [markdown]
-# > **De: Responsable de A (a un compañero, en privado)**
-# > A tiene margen de sobra, pero si lo digo me quitan gente cada vez que alguien va mal. El margen es mío: me lo gané planificando bien.
+# > **De: Responsable de C (a un compañero, en privado)**
+# > C tiene margen de sobra, pero si lo digo me quitan gente cada vez que alguien va mal. El margen es mío: me lo gané planificando bien.
 
 # %% [markdown]
 # ## Criterio de referencia
@@ -234,9 +234,9 @@ datos_enunciado
 # Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).
 
 # %%
-pregunta_1 = "1. (A) Calcule el calendario y las tres holguras (total, libre e independiente) de A, mostrando cómo se obtienen.  "
-pregunta_2 = "2. (A) ¿Qué ocurre si A se retrasa 1 semana? ¿Y si consume toda su holgura total? Identifique en cada caso qué actividades se ven afectadas y si cambia la duración del proyecto.  "
-pregunta_3 = "3. (B) Según los criterios de referencia, ¿qué incumple el responsable de A? ¿Es distinto decir «no tengo margen» de no mencionar el margen? ¿A quién pertenece la holgura según el criterio de la lección?  "
+pregunta_1 = "1. (A) Calcule el calendario y las tres holguras (total, libre e independiente) de C, mostrando cómo se obtienen.  "
+pregunta_2 = "2. (A) ¿Qué ocurre si C se retrasa 1 semana? ¿Y si consume toda su holgura total? Identifique en cada caso qué actividades se ven afectadas y si cambia la duración del proyecto.  "
+pregunta_3 = "3. (B) Según los criterios de referencia, ¿qué incumple el responsable de C? ¿Es distinto decir «no tengo margen» de no mencionar el margen? ¿A quién pertenece la holgura según el criterio de la lección?  "
 pregunta_4 = "4. (C) Como jefe de proyecto, ¿cómo organizaría la información sobre holguras para que esto no dependa de la buena voluntad de cada responsable? Aplique la rúbrica.  "
 
 for item in sorted(dir()):
@@ -247,19 +247,22 @@ for item in sorted(dir()):
 # # Resolución
 
 # %%
-X, Y, semanas_cedidas = 'A', 'H', 1
+X, Y, semanas_cedidas = 'C', 'B', 1
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
 
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo Roy con el camino crítico"
 #| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -271,7 +274,7 @@ display(Markdown(pregunta_1))
 # %%
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario
 
 # %%
 #| tbl-cap: "Cómo se obtiene cada fecha y cada holgura"
@@ -309,11 +312,11 @@ Markdown(f'''Retrasar {X} {semanas_cedidas} semana(s): duración {T_ceder} (= {d
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **C1 y C4.** «A no tiene ningún margen» es una **afirmación falsa** (C1): el responsable sabe que tiene 5 semanas de holgura total. Si sólo hubiera callado, sería C4, retención de información: el jefe de proyecto necesita las holguras para decidir y las holguras no son un dato privado del responsable, sino del plan. Sobre a quién pertenece la holgura el criterio de la lección es el de la holgura libre: hasta 2 semanas A puede usarla sin afectar a nadie; entre 2 y 5 la usa a costa de las actividades siguientes (D se vuelven críticas); y la decisión de a quién se asigna la holgura compartida es del jefe de proyecto, no de quien la «descubre» primero. Lo que no es objetivo —si es justo que quien planifica bien pierda su margen— se trata en C.
+# **C1 y C4.** «C no tiene ningún margen» es una **afirmación falsa** (C1): el responsable sabe que tiene 5 semanas de holgura total. Si sólo hubiera callado, sería C4, retención de información: el jefe de proyecto necesita las holguras para decidir y las holguras no son un dato privado del responsable, sino del plan. Sobre a quién pertenece la holgura el criterio de la lección es el de la holgura libre: hasta 2 semanas C puede usarla sin afectar a nadie; entre 2 y 5 la usa a costa de las actividades siguientes (D se vuelven críticas); y la decisión de a quién se asigna la holgura compartida es del jefe de proyecto, no de quien la «descubre» primero. Lo que no es objetivo —si es justo que quien planifica bien pierda su margen— se trata en C.
 
 # %%
 preguntas_test = [
-    ('Decir «A no tiene margen» sabiendo que tiene 5 semanas de holgura total es…', ['C1, afirmación falsa', 'C4, retención de información', 'C8, reserva declarada', 'una estimación prudente'],
+    ('Decir «C no tiene margen» sabiendo que tiene 5 semanas de holgura total es…', ['C1, afirmación falsa', 'C4, retención de información', 'C8, reserva declarada', 'una estimación prudente'],
      'Se afirma algo que se sabe falso; callar habría sido C4.'),
     ('La holgura que una actividad puede consumir sin afectar a ninguna otra es la…', ['libre', 'total', 'independiente', 'de la ruta'],
      'Holgura libre: mín ES de las sucesoras − EF.'),
@@ -348,4 +351,4 @@ display(Markdown(pregunta_4))
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
 # %% [markdown]
-# Lo que depende de la buena voluntad falla; lo que está en el procedimiento no: el calendario con las tres holguras lo publica el jefe de proyecto cada semana a partir de los datos de todos, de modo que el margen de cada actividad es visible y la pregunta no es «¿tienes margen?» sino «el plan dice que tienes 2 semanas libres: te pido 1». Para el incentivo perverso («si lo digo me quitan gente»): reconocer explícitamente a quien cede, y ceder sólo dentro de la holgura libre salvo decisión del jefe de proyecto. Prueba de reversibilidad para el responsable: ¿aceptaría que el responsable de H le escondiera su margen cuando fuera él quien lo necesitara?
+# Lo que depende de la buena voluntad falla; lo que está en el procedimiento no: el calendario con las tres holguras lo publica el jefe de proyecto cada semana a partir de los datos de todos, de modo que el margen de cada actividad es visible y la pregunta no es «¿tienes margen?» sino «el plan dice que tienes 2 semanas libres: te pido 1». Para el incentivo perverso («si lo digo me quitan gente»): reconocer explícitamente a quien cede, y ceder sólo dentro de la holgura libre salvo decisión del jefe de proyecto. Prueba de reversibilidad para el responsable: ¿aceptaría que el responsable de B le escondiera su margen cuando fuera él quien lo necesitara?
