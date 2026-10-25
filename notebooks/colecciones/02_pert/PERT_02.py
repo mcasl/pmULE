@@ -316,9 +316,9 @@ print(f'El grafo tiene {len(rutas)} rutas entre el nodo inicial y el final.')
 display(Markdown(pregunta_5))
 
 # %%
-#| tbl-cap: "Cuadro de ancestros"
-#| label: tbl-ancestros
-proyecto.distant_predecessor(format='DataFrame')
+#| fig-cap: "Grafo PERT y cuadro de ancestros"
+#| label: fig-ancestros
+proyecto.display_ancestros('pert')
 
 # %% [markdown]
 # Para cada actividad, el conjunto de actividades que aparecen antes que ella en alguna ruta debe coincidir con su fila del cuadro de ancestros:

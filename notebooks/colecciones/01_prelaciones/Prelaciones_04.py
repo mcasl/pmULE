@@ -274,7 +274,7 @@ display(Markdown(pregunta_3))
 # %%
 #| tbl-cap: "Cuadro de ancestros"
 #| label: tbl-ancestros
-proyecto.distant_predecessor(format='DataFrame')
+proyecto.display_distant_linkage_matrix()
 
 # %%
 G = nx.DiGraph([(p, a) for a, ps in prelaciones.immediate_predecessor.items() for p in ps])
@@ -291,4 +291,4 @@ display(Markdown(pregunta_4))
 # %%
 #| fig-cap: "Grafo PERT del proyecto"
 #| label: fig-pert
-proyecto.pert(durations=False, ranksep=1)
+proyecto.display_ancestros('pert')

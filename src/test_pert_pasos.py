@@ -456,3 +456,28 @@ def test_visor_de_pasos_con_teclas_de_flecha():
     h = _html_pasos(["<p>a</p>", "<p>b</p>"])
     assert "ArrowRight" in h and "ArrowLeft" in h and "pmuleActivo" in h
     assert "ctrlKey" in h and "isContentEditable" in h        # no se roban atajos ni la escritura
+
+
+def test_visor_de_ancestros():
+    """Visor de ancestros: una imagen por actividad más la neutra; el PERT resalta exactamente los ancestros."""
+    import networkx as nx
+    import pandas as pd
+    from pmule import PredecessorTable
+    d = pd.DataFrame([('A', '---'), ('B', '---'), ('C', 'A'), ('D', 'A,B'), ('E', 'C,D')],
+                     columns=['activity', 'predecessor']).set_index('activity')
+    p = PredecessorTable.from_dataframe_of_strings(d, activity='activity', predecessor='predecessor').create_project()
+    D = p.distant_linkage_dataframe
+    assert bool(D.loc['E', 'A']) and bool(D.loc['E', 'D']) and not bool(D.loc['C', 'B'])
+    for g in ("pert", "roy"):
+        codigos, tabla, zonas = p.plot_tikz_ancestros(g)
+        assert len(codigos) == len(D) + 1 and tabla.shape == D.shape
+        assert {k for k, *_ in zonas} == set(range(1, len(D) + 1))      # todas se pueden pulsar
+        assert all(0 <= x <= 1 and 0 <= y <= 1 for _, x, y, w, h in zonas)
+        assert "orange" in codigos[3] and "blue" in codigos[3] and "orange" not in codigos[0]
+    anc = p.distant_predecessor()
+    G = p.pert_graph
+    arco = {dd['activity']: (u, v) for u, v, dd in G.edges(data=True)}
+    for a in anc:                       # las flechas reales resaltadas son exactamente los ancestros
+        nodos = nx.ancestors(G, arco[a][0]) | {arco[a][0]}
+        reales = {dd['activity'] for _, y, dd in G.edges(data=True) if y in nodos and not dd['activity'].startswith('@')}
+        assert reales == anc[a]

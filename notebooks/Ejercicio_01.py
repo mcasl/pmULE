@@ -140,9 +140,9 @@ prelaciones.display_immediate_linkage_matrix()
 proyecto.display_pert_construccion(tabla=prelaciones)
 
 # %%
-#| tbl-cap: "Cuadro de ancestros (prelaciones transitivas)"
-#| label: tbl-CuadroAncestros
-proyecto.distant_predecessor(format='DataFrame')
+#| fig-cap: "Grafo PERT y cuadro de ancestros (prelaciones transitivas)"
+#| label: fig-CuadroAncestros
+proyecto.display_ancestros('pert')
 
 # %% [markdown]
 # ## Apartado 2

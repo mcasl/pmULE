@@ -1278,6 +1278,23 @@ class ProjectGraph:
         return resultado
 
     @property
+    def distant_linkage_dataframe(self) -> pd.DataFrame:
+        """Cuadro de ancestros (prelaciones transitivas) como matriz booleana: una fila por actividad
+        y una columna por antecesora (alfabético); ``True`` si la columna es ancestro de la fila."""
+        nombres = sorted(self.distant_predecessor())
+        M = pd.DataFrame(False, index=nombres, columns=nombres, dtype=bool)
+        M.index.name = "activities"
+        for a, ps in self.distant_predecessor().items():
+            for x in ps:
+                M.loc[a, x] = True
+        return M
+
+    def display_distant_linkage_matrix(self, ordenar: bool = False):
+        """Cuadro de ancestros (prelaciones completas) como figura TikZ (``MatrizEnlace``), como
+        :meth:`PredecessorTable.display_distant_linkage_matrix`."""
+        return MatrizEnlace(self.distant_linkage_dataframe, ordenar=ordenar)
+
+    @property
     def nodes(self):
         return [f"{nodo}" for nodo in list(nx.topological_sort(self.pert_graph))]
 
@@ -5194,9 +5211,10 @@ class ProjectGraph:
         """Visor HTML de la matriz de rutas, todo en TikZ: el grafo PERT o Roy encima de la
         matriz y, al hacer clic en una fila de la matriz, se resaltan en el grafo las
         actividades y los nodos de esa ruta (otro clic la deselecciona). Hace falta LaTeX."""
-        import base64, hashlib
+        import base64, hashlib, json
         codigos, R, filas = self.plot_tikz_rutas(grafo, escala, etiquetas)
         svgs = _svgs_de_tikz(codigos)
+        ratio = _razon_svg(svgs[0])
         uid = "pmr" + hashlib.md5((grafo + "".join(codigos)).encode("utf-8")).hexdigest()[:10]
         imgs, comun = _compartir_svgs([
             f'<img alt="grafo y matriz de rutas" class="pmule-rut-img" style="display:{"block" if k == 0 else "none"};'
@@ -5205,21 +5223,24 @@ class ProjectGraph:
             for k, sv in enumerate(svgs)], uid)
         imgs = "".join(imgs)
         zonas = "".join(
-            f'<div class="pmule-rut-zona" data-k="{k + 1}" title="Clic para resaltar la ruta" onclick="pmuleRut(this)" '
+            f'<div class="pmule-rut-zona" data-k="{k + 1}" title="Clic para resaltar la ruta" onclick="pmuleSelZ(this)" '
             f'style="position:absolute;left:{x * 100:.3f}%;top:{y * 100:.3f}%;width:{w * 100:.3f}%;height:{h * 100:.3f}%;'
             f'cursor:pointer"></div>' for k, (x, y, w, h) in enumerate(filas))
         ayuda = ("&#128070; <b>Interactivo:</b> haz clic en una fila de la matriz para resaltar en el grafo "
-                 "las actividades y los nodos de esa ruta (otro clic la deselecciona).")
-        return (comun + f'<div id="{uid}" class="pmule-rut" style="margin:1em 0">'
+                 "las actividades y los nodos de esa ruta (otro clic la deselecciona), o usa los botones y las "
+                 "flechas del teclado.")
+        N = len(filas)
+        nombres = json.dumps([f"{n}" for n in R.index], ensure_ascii=False)
+        return (comun + f'<div id="{uid}" class="pmule-rut pmule-sel" style="margin:1em 0">'
                 '<style>.pmule-rut-zona:hover{background:rgba(204,102,0,.12)}</style>'
-                f'<div style="position:relative;max-width:760px;margin:0 auto">{imgs}{zonas}</div>'
+                + _barra_sel(uid, N, f"ninguna ruta (0 de {N})") +
+                f'<div class="pmule-caja" data-ratio="{ratio:.4f}" style="position:relative;max-width:760px;margin:0 auto">{imgs}{zonas}</div>'
                 f'<div style="text-align:center;margin:.6em 0;font-size:.95em;color:#8a4b00">{ayuda}</div></div>'
-                '<script>window.pmuleRut = window.pmuleRut || function(z) {'
-                'var box = z.closest(".pmule-rut"), imgs = box.querySelectorAll(".pmule-rut-img");'
-                'var k = parseInt(z.getAttribute("data-k")), sel = box.getAttribute("data-sel") === String(k);'
-                'for (var i = 0; i < imgs.length; i++) imgs[i].style.display = "none";'
-                'if (sel) { box.removeAttribute("data-sel"); imgs[0].style.display = "block"; return; }'
-                'box.setAttribute("data-sel", String(k)); imgs[k].style.display = "block"; };</script>')
+                '<script>' + _JS_VISORES + f'(function(){{var box = document.getElementById("{uid}"), '
+                'imgs = box.querySelectorAll(".pmule-rut-img"), k = 0, E = ' + nombres + ';'
+                f'window.PMULE_SEL["{uid}"] = {{n: {N}, get: function() {{ return k; }},'
+                'set: function(j) { k = j; for (var i = 0; i < imgs.length; i++) imgs[i].style.display = (i === j ? "block" : "none"); },'
+                f'etq: function(j) {{ return j ? E[j - 1] + " (" + j + " de {N})" : "ninguna ruta (0 de {N})"; }}}};}})();</script>')
 
     def display_rutas(self, grafo: str = "pert", escala: float = 1.0, etiquetas: dict = None,
                       max_rutas: int = 40) -> None:
@@ -5235,6 +5256,208 @@ class ProjectGraph:
             import warnings
             warnings.warn(f"No se pudo generar el visor de rutas ({e}); se muestra la matriz.")
             display(self.display_path_matrix(dummies=False))
+
+    def plot_tikz_ancestros(self, grafo: str = "pert", escala: float = 1.0, etiquetas: dict = None):
+        """Imágenes TikZ del visor de ancestros: el grafo PERT o Roy (sin tiempos) encima de la tabla
+        de prelaciones completas (cuadro de ancestros). La primera lo muestra todo sin resaltar y hay
+        una más por cada actividad (en el orden de filas de la tabla): la actividad dada en naranja
+        y sus ancestros en azul, más gruesos, tanto en el grafo como en la tabla (fila de la actividad
+        en naranja y sus ancestros marcados en azul); lo no afectado del grafo queda en gris claro. Todas tienen la misma caja, para superponer zonas
+        de clic. Devuelve ``(codigos, tabla, zonas)``: ``tabla`` es el ``DataFrame`` booleano y
+        ``zonas`` una lista ``(k, x, y, ancho, alto)`` de zonas de clic (fracciones de la imagen, origen
+        arriba a la izquierda) donde ``k`` es la posición de la actividad en la tabla más uno."""
+        if grafo not in ("pert", "roy"):
+            raise ValueError("grafo debe ser 'pert' o 'roy'")
+        D = self.distant_linkage_dataframe.astype(bool)
+        filas = [f"{a}" for a in D.index]
+        anc = {f"{a}": {f"{x}" for x in v} for a, v in self.distant_predecessor().items()}
+        zonas_grafo = []                       # (actividad, cx, cy, ancho, alto) en cm del grafo
+        if grafo == "pert":
+            G = self.pert_graph
+            trazado = self._trazado_pert({}, escala, False)
+            pos = trazado["pos"] if trazado else self._pert_posiciones(escala, None)
+            xs = [x for x, _ in pos.values()]; ys = [y for _, y in pos.values()]
+            if trazado:
+                for x, y in trazado["etiquetas"].values():
+                    xs.append(x); ys.append(y)
+                for r in trazado["rutas"].values():
+                    for x, y in r:
+                        xs.append(x); ys.append(y)
+            gx0, gx1, gy0, gy1 = min(xs) - 0.7, max(xs) + 0.7, min(ys) - 0.7, max(ys) + 0.7
+            arco_de = {d.get("activity", ""): (f"{u}", f"{v}") for u, v, d in G.edges(data=True)}
+            todos = [(f"{u}", f"{v}") for u, v in G.edges()]
+            for a in filas:
+                if a not in arco_de:
+                    continue
+                u, v = arco_de[a]
+                if trazado and (u, v) in trazado["etiquetas"]:
+                    lx, ly = trazado["etiquetas"][(u, v)]
+                else:
+                    lx, ly = (pos[u][0] + pos[v][0]) / 2, (pos[u][1] + pos[v][1]) / 2
+                zonas_grafo.append((a, lx, ly, 1.5, 0.8))
+                pts = ([pos[u]] + list(trazado["rutas"].get((u, v), [])) + [pos[v]]) if trazado else [pos[u], pos[v]]
+                for t in (0.2, 0.35, 0.65, 0.8):          # a lo largo de la flecha
+                    k = t * (len(pts) - 1)
+                    i0 = min(int(k), len(pts) - 2)
+                    f = k - i0
+                    px = pts[i0][0] + f * (pts[i0 + 1][0] - pts[i0][0])
+                    py = pts[i0][1] + f * (pts[i0 + 1][1] - pts[i0][1])
+                    zonas_grafo.append((a, px, py, 0.7, 0.7))
+
+            def grafo_cuerpo(a):
+                if a is None:
+                    ea = {e: "hecho" for e in todos}
+                else:
+                    nodos_previos = nx.ancestors(G, arco_de[a][0]) | {arco_de[a][0]}
+                    ea = {e: ("actual" if e == arco_de[a] else
+                              "previa" if e[1] in nodos_previos else "gris") for e in todos}
+                if a is None:
+                    en = {n: "hecho" for n in pos}
+                else:
+                    tocados = {x for e, st in ea.items() if st != "gris" for x in e}
+                    en = {n: ("hecho" if n in tocados else "gris") for n in pos}
+                return self._pert_fotograma(pos, {}, {}, escala, {}, {}, trazado=trazado,
+                                            con_duracion=False, estilo_arcos=ea, estilo_nodos=en,
+                                            numeros=True, color_actual="orange")
+        else:
+            et = {"start": "Inicio", "finish": "Fin"}
+            et.update(etiquetas or {})
+            G = self._roy_grafo_actual()
+            trazado = _disposicion_capas({f"{n}": (self._ROY_ANCHO, self._ROY_ALTO) for n in G.nodes},
+                                         [(f"{u}", f"{v}") for u, v in G.edges()],
+                                         separacion=0.3 * escala, hueco=0.4 * escala)
+            if trazado:
+                pos = trazado["pos"]
+            else:
+                capa = self._roy_capas(G)
+                from collections import defaultdict
+                por_capa = defaultdict(list)
+                for n in sorted(G.nodes, key=lambda n: f"{n}"):
+                    por_capa[capa[n]].append(n)
+                pos = {f"{n}": ((self._ROY_ANCHO + 1.1) * c * escala, ((len(ns) - 1) / 2.0 - i) * (self._ROY_ALTO + 0.6) * escala)
+                       for c, ns in por_capa.items() for i, n in enumerate(ns)}
+            ident = {f"{n}": f"r{k}" for k, n in enumerate(sorted(G.nodes, key=lambda n: f"{n}"))}
+            xs = [x for x, _ in pos.values()]; ys = [y for _, y in pos.values()]
+            if trazado:
+                for r in trazado["rutas"].values():
+                    for x, y in r:
+                        xs.append(x); ys.append(y)
+            gx0, gx1, gy0, gy1 = min(xs) - 1.5, max(xs) + 1.5, min(ys) - 1.2, max(ys) + 1.2
+            for a in filas:
+                if a in pos:
+                    zonas_grafo.append((a, pos[a][0], pos[a][1], self._ROY_ANCHO, self._ROY_ALTO))
+            NARANJA = dict(borde="orange!80!black", grosor="very thick", relleno="orange!20", barra="orange!70!black")
+            AZUL = dict(borde="blue!80!black", grosor="very thick", relleno="blue!15", barra="blue!70!black")
+
+            def grafo_cuerpo(a):
+                previos = anc[a] if a is not None else set()
+                L, A = [], []
+                for u, v in G.edges():
+                    u, v = f"{u}", f"{v}"
+                    est = ["->", "thick"]
+                    if a is not None:
+                        if v in (previos | {a}) and u in previos:
+                            est += ["blue!80!black", "ultra thick"]
+                        else:
+                            est += ["gray!45"]
+                    if trazado and (u, v) in trazado["rutas"]:
+                        A.append(rf"  \draw[{', '.join(est)}] "
+                                 + self._ruta_tikz(u, v, pos, trazado["rutas"][(u, v)],
+                                                   trazado["curva"][(u, v)], lambda m: ident[m]) + ";")
+                        continue
+                    curva = self._curvatura_tikz(pos, u, v, 0.8 * escala)
+                    A.append(rf"  \draw[{', '.join(est)}] ({ident[u]}) {'to[' + curva + ']' if curva else '--'} ({ident[v]});")
+                for nodo, (x, y) in pos.items():
+                    if a is None:
+                        estilo = {}
+                    elif nodo == a:
+                        estilo = NARANJA
+                    elif nodo in previos:
+                        estilo = AZUL
+                    else:
+                        estilo = dict(borde="gray!45", grosor="thick", relleno="white", color_texto="text=gray!55")
+                    L += self._roy_caja_tikz(ident[nodo], x, y, self._tex_texto(f"{et.get(nodo, nodo)}"), None, **estilo)
+                return "\n".join(L + A)
+        # ensamblaje: grafo arriba, tabla debajo, todo en una caja común
+        nf, nc = D.shape
+        _, ancho, margen, alto = _geometria_matriz(D)
+        Wm, Hm = (nc + margen) * ancho, (nf + alto) * 0.78
+        gw, gh = gx1 - gx0, gy1 - gy0
+        BW = max(gw, Wm) + 0.4
+        hueco = 0.9
+        BH = gh + hueco + Hm + 0.1
+        gx_off = (BW - gw) / 2
+        mx_off = (BW - Wm) / 2
+        y_cab = -(gh + hueco)
+        y_cel = y_cab - alto * 0.78
+
+        def ensambla(a):
+            fl = {a: "actual"} if a is not None else None
+            L = [r"\begin{tikzpicture}[>=stealth]", _COLORES_MATRIZ,
+                 rf"\path (0,0) rectangle ({BW:.2f},{-BH:.2f});",
+                 rf"\begin{{scope}}[xshift={gx_off - gx0:.2f}cm,yshift={-gy1:.2f}cm]", grafo_cuerpo(a), r"\end{scope}",
+                 rf"\begin{{scope}}[xshift={mx_off + margen * ancho:.2f}cm,yshift={y_cel:.2f}cm,"
+                 rf"x={ancho:.2f}cm,y=0.78cm,font=\small]"]
+            L += _cuerpo_matriz_tikz(D, fl, celdas_color="blue")
+            L += [r"\end{scope}", r"\end{tikzpicture}"]
+            return "\n".join(L)
+
+        codigos = [ensambla(None)] + [ensambla(a) for a in filas]
+        k_de = {a: k + 1 for k, a in enumerate(filas)}
+        zonas = [(k_de[a], (cx - w / 2 + gx_off - gx0) / BW, -(cy + h / 2 - gy1) / BH, w / BW, h / BH)
+                 for a, cx, cy, w, h in zonas_grafo]
+        zonas += [(k + 1, mx_off / BW, -(y_cel - k * 0.78) / BH, Wm / BW, 0.78 / BH) for k in range(nf)]
+        return codigos, D, zonas
+
+    def ancestros_html(self, grafo: str = "pert", escala: float = 1.0, etiquetas: dict = None) -> str:
+        """Visor HTML, todo en TikZ: el grafo PERT o Roy encima de la tabla de prelaciones completas
+        (ancestros). Al hacer clic en una flecha del dibujo (o un nodo, en el Roy) o en una fila de la
+        tabla se resalta la actividad en naranja y sus ancestros en azul, más gruesos (otro clic en la misma
+        la deselecciona). Hace falta LaTeX."""
+        import base64, hashlib, json
+        codigos, D, zonas = self.plot_tikz_ancestros(grafo, escala, etiquetas)
+        svgs = _svgs_de_tikz(codigos)
+        ratio = _razon_svg(svgs[0])
+        uid = "pma" + hashlib.md5((grafo + "".join(codigos)).encode("utf-8")).hexdigest()[:10]
+        imgs, comun = _compartir_svgs([
+            f'<img alt="grafo y tabla de ancestros" class="pmule-anc-img" style="display:{"block" if k == 0 else "none"};'
+            f'width:100%;height:auto" '
+            f'src="data:image/svg+xml;base64,{base64.b64encode(sv.encode("utf8")).decode("ascii")}">'
+            for k, sv in enumerate(svgs)], uid)
+        imgs = "".join(imgs)
+        div = "".join(
+            f'<div class="pmule-anc-zona" data-k="{k}" title="Clic para resaltar los ancestros" onclick="pmuleSelZ(this)" '
+            f'style="position:absolute;left:{x * 100:.3f}%;top:{y * 100:.3f}%;width:{w * 100:.3f}%;height:{h * 100:.3f}%;'
+            f'cursor:pointer"></div>' for k, x, y, w, h in zonas)
+        ayuda = ("&#128070; <b>Interactivo:</b> haz clic en una flecha del dibujo (o en un nodo, en el Roy) o en una "
+                 "fila de la tabla para resaltar los ancestros de esa actividad (otro clic la deselecciona), o usa "
+                 "los botones y las flechas del teclado.")
+        N = len(D)
+        nombres = json.dumps([f"{n}" for n in D.index], ensure_ascii=False)
+        return (comun + f'<div id="{uid}" class="pmule-anc pmule-sel" style="margin:1em 0">'
+                '<style>.pmule-anc-zona:hover{background:rgba(204,102,0,.12)}</style>'
+                + _barra_sel(uid, N, f"ninguna actividad (0 de {N})") +
+                f'<div class="pmule-caja" data-ratio="{ratio:.4f}" style="position:relative;max-width:760px;margin:0 auto">{imgs}{div}</div>'
+                f'<div style="text-align:center;margin:.6em 0;font-size:.95em;color:#8a4b00">{ayuda}</div></div>'
+                '<script>' + _JS_VISORES + f'(function(){{var box = document.getElementById("{uid}"), '
+                'imgs = box.querySelectorAll(".pmule-anc-img"), k = 0, E = ' + nombres + ';'
+                f'window.PMULE_SEL["{uid}"] = {{n: {N}, get: function() {{ return k; }},'
+                'set: function(j) { k = j; for (var i = 0; i < imgs.length; i++) imgs[i].style.display = (i === j ? "block" : "none"); },'
+                f'etq: function(j) {{ return j ? "actividad " + E[j - 1] + " (" + j + " de {N})" : "ninguna actividad (0 de {N})"; }}}};}})();</script>')
+
+    def display_ancestros(self, grafo: str = "pert", escala: float = 1.0, etiquetas: dict = None,
+                          max_actividades: int = 30) -> None:
+        """Muestra en un cuaderno el visor de ancestros (:meth:`ancestros_html`); sin LaTeX, o con más de
+        ``max_actividades`` actividades (una imagen por actividad), se muestra la tabla estática."""
+        if len(self.distant_linkage_dataframe) > max_actividades:
+            display(self.display_distant_linkage_matrix())
+            return
+        try:
+            display(HTML(self.ancestros_html(grafo, escala, etiquetas)))
+        except (FileNotFoundError, RuntimeError) as e:
+            import warnings
+            warnings.warn(f"No se pudo generar el visor de ancestros ({e}); se muestra la tabla.")
+            display(PredecessorTable._estilo_matriz(self.distant_linkage_dataframe))
 
     def pert_construccion_html(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
                                textos: dict = None) -> str:
@@ -6395,27 +6618,39 @@ class ProjectGraph:
                           for c, _ in self._CAL_COLUMNAS)
             filas_html.append(f'<tr><td style="padding:.25em .7em;font-weight:bold;text-align:center">{_html.escape(a)}</td>{tds}</tr>')
         ayuda = "Haz clic en un número de la tabla para ver cómo se calcula."
+        orden = [f"{a}|{c}" for a in filas for c, _ in self._CAL_COLUMNAS]
+        N = len(orden)
+        etqs = json.dumps([f"{nombres[c]}({a})" for a in filas for c, _ in self._CAL_COLUMNAS], ensure_ascii=False)
         return (
             comun +
-            f'<div id="{uid}" class="pmule-cal" style="margin:1em 0">'
-            f'<div>{imgs}</div>'
+            f'<div id="{uid}" class="pmule-cal pmule-sel" style="margin:1em 0">'
+            + _barra_sel(uid, N, f"ninguna celda (0 de {N})") +
+            f'<div class="pmule-zoom"><div>{imgs}</div>'
             f'<div class="pmule-cal-formula" data-ayuda="{ayuda}" style="text-align:center;min-height:2.4em;'
             f'margin:.6em 0;font-size:1.05em">{ayuda}</div>'
             f'<div style="text-align:center;margin:.8em 0 .4em;font-size:.95em;color:#8a4b00">'
             f'&#128070; <b>Interactivo:</b> haz clic en cualquier celda de la tabla para ver c&oacute;mo se calcula '
-            f'(otro clic la deselecciona).</div>'
-            f'<table style="border-collapse:collapse;margin:0 auto"><tr>{cab}</tr>{"".join(filas_html)}</table></div>'
+            f'(otro clic la deselecciona), o usa los botones y las flechas del teclado.</div>'
+            f'<table style="border-collapse:collapse;margin:0 auto"><tr>{cab}</tr>{"".join(filas_html)}</table></div></div>'
             f'<script>window.PMULE_CAL = window.PMULE_CAL || {{}}; PMULE_CAL["{uid}"] = {json.dumps(datos, ensure_ascii=False)};'
-            'window.pmuleCal = window.pmuleCal || function(td) {'
-            'var box = td.closest(".pmule-cal"), D = window.PMULE_CAL[box.id], clave = td.getAttribute("data-a") + "|" + td.getAttribute("data-c");'
-            'var imgs = box.querySelectorAll(".pmule-cal-img"), F = box.querySelector(".pmule-cal-formula"), cs = box.querySelectorAll(".pmule-cal-td");'
+            + _JS_VISORES +
+            'window.pmuleCalSet = window.pmuleCalSet || function(box, clave) {'
+            'var D = window.PMULE_CAL[box.id], imgs = box.querySelectorAll(".pmule-cal-img"), F = box.querySelector(".pmule-cal-formula"), cs = box.querySelectorAll(".pmule-cal-td");'
             'for (var i = 0; i < cs.length; i++) { cs[i].style.background = ""; cs[i].style.outline = ""; cs[i].style.color = ""; cs[i].style.fontWeight = ""; }'
             'var mostrar = function(k) { for (var i = 0; i < imgs.length; i++) imgs[i].style.display = (i === k ? "block" : "none"); };'
-            'if (box.getAttribute("data-sel") === clave) { box.removeAttribute("data-sel"); mostrar(0); F.innerHTML = F.getAttribute("data-ayuda"); return; }'
+            'if (!clave) { box.removeAttribute("data-sel"); mostrar(0); F.innerHTML = F.getAttribute("data-ayuda"); return; }'
             'box.setAttribute("data-sel", clave); var e = D[clave]; mostrar(e.i); F.innerHTML = e.f;'
-            'td.style.background = "#fde3cc"; td.style.outline = "2px solid #cc6600";'
+            'var a = clave.split("|"), td = box.querySelector(\'.pmule-cal-td[data-a="\' + a[0] + \'"][data-c="\' + a[1] + \'"]\');'
+            'if (td) { td.style.background = "#fde3cc"; td.style.outline = "2px solid #cc6600"; }'
             'for (var j = 0; j < e.t.length; j++) { var o = box.querySelector(\'.pmule-cal-td[data-a="\' + e.t[j][0] + \'"][data-c="\' + e.t[j][1] + \'"]\');'
-            'if (o) { o.style.outline = "2px solid " + e.t[j][2]; o.style.color = e.t[j][2]; o.style.fontWeight = "bold"; } } };</script>')
+            'if (o) { o.style.outline = "2px solid " + e.t[j][2]; o.style.color = e.t[j][2]; o.style.fontWeight = "bold"; } } };'
+            'window.pmuleCal = window.pmuleCal || function(td) {'
+            'var box = td.closest(".pmule-cal"), s = window.PMULE_SEL[box.id], clave = td.getAttribute("data-a") + "|" + td.getAttribute("data-c");'
+            'window.pmuleSelIr(box.id, box.getAttribute("data-sel") === clave ? 0 : s.orden.indexOf(clave) + 1, 1); };'
+            f'(function() {{ var box = document.getElementById("{uid}"), orden = {json.dumps(orden)}, E = {etqs};'
+            f'window.PMULE_SEL["{uid}"] = {{n: {N}, orden: orden, get: function() {{ return orden.indexOf(box.getAttribute("data-sel")) + 1; }},'
+            'set: function(j) { window.pmuleCalSet(box, j ? orden[j - 1] : null); },'
+            f'etq: function(j) {{ return j ? E[j - 1] + " (" + j + " de {N})" : "ninguna celda (0 de {N})"; }}}}; }})();</script>')
 
     def display_calendario(self, durations, escala: float = 1.0, grafo: str = "pert") -> None:
         """Muestra en un cuaderno el calendario interactivo (:meth:`calendario_html`) con
@@ -9367,6 +9602,88 @@ def _compartir_svgs(fotos: list, uid: str):
                     f'<defs>{comun}</defs></svg>')
 
 
+_BOTON_VISOR = ('style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;'
+                'border-radius:3px;background:#f4f4f4;cursor:pointer"')
+
+#: JavaScript común de todos los visores (se incluye en cada uno; las definiciones se hacen una sola vez por
+#: página): avance paso a paso (``pmulePaso``), selección de un elemento (``pmuleSelIr``), pantalla completa
+#: de ambos y manejo del teclado (flechas ← →, Esc).
+_JS_VISORES = (
+    'window.pmulePaso = window.pmulePaso || function(id, d) {'
+    'var c = document.getElementById(id), p = c.querySelectorAll(".pmule-paso"), k = 0;'
+    'for (var i = 0; i < p.length; i++) { if (p[i].style.display !== "none") k = i; p[i].style.display = "none"; }'
+    'k = Math.max(0, Math.min(p.length - 1, k + d)); p[k].style.display = "block";'
+    'var e = c.querySelector(".pmule-contador"), o = parseInt(e.getAttribute("data-inicio") || "1", 10); e.textContent = "paso " + (k + o) + " de " + (p.length + o - 1); };'
+    'window.pmulePantalla = window.pmulePantalla || function(id) {'
+    'var c = document.getElementById(id), abierto = c.getAttribute("data-pantalla") === "1";'
+    'var imgs = c.querySelectorAll("img,svg.pmule-fig");'
+    'if (abierto) { c.removeAttribute("data-pantalla"); c.style.cssText = c.getAttribute("data-estilo");'
+    'for (var i = 0; i < imgs.length; i++) imgs[i].style.cssText = imgs[i].getAttribute("data-estilo");'
+    'document.body.style.overflow = c.getAttribute("data-overflow") || ""; return; }'
+    'c.setAttribute("data-pantalla", "1"); c.setAttribute("data-estilo", c.style.cssText);'
+    'c.setAttribute("data-overflow", document.body.style.overflow);'
+    'c.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#fff;margin:0;padding:.8em;overflow:auto";'
+    'document.body.style.overflow = "hidden";'
+    'for (var i = 0; i < imgs.length; i++) { imgs[i].setAttribute("data-estilo", imgs[i].style.cssText);'
+    'imgs[i].style.cssText = "display:block;margin:0 auto;width:100%;height:calc(100vh - 5em);object-fit:contain"; } };'
+    # visores de selección (rutas, ancestros, producto, calendario): ``PMULE_SEL[id] = {n, get, set, etq}``
+    'window.PMULE_SEL = window.PMULE_SEL || {};'
+    'window.pmuleSelIr = window.pmuleSelIr || function(id, d, abs) {'
+    'var s = window.PMULE_SEL[id]; if (!s) return;'
+    'var k = Math.max(0, Math.min(s.n, abs ? d : s.get() + d)); s.set(k);'
+    'var e = document.getElementById(id).querySelector(".pmule-contador"); if (e) e.textContent = s.etq(k); };'
+    'window.pmuleSelZ = window.pmuleSelZ || function(z) {'
+    'var box = z.closest(".pmule-sel"), s = window.PMULE_SEL[box.id], j = parseInt(z.getAttribute("data-k"));'
+    'window.pmuleSelIr(box.id, s.get() === j ? 0 : j, 1); };'
+    'window.pmulePantallaSel = window.pmulePantallaSel || function(id) {'
+    'var c = document.getElementById(id), abierto = c.getAttribute("data-pantalla") === "1";'
+    'var cajas = c.querySelectorAll(".pmule-caja"), zs = c.querySelectorAll(".pmule-zoom");'
+    'if (abierto) { c.removeAttribute("data-pantalla"); c.style.cssText = c.getAttribute("data-estilo");'
+    'for (var i = 0; i < cajas.length; i++) cajas[i].style.maxWidth = cajas[i].getAttribute("data-mw");'
+    'for (var i = 0; i < zs.length; i++) zs[i].style.zoom = "";'
+    'document.body.style.overflow = c.getAttribute("data-overflow") || ""; return; }'
+    'c.setAttribute("data-pantalla", "1"); c.setAttribute("data-estilo", c.style.cssText);'
+    'c.setAttribute("data-overflow", document.body.style.overflow);'
+    'c.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#fff;margin:0;padding:.8em;overflow:auto";'
+    'document.body.style.overflow = "hidden";'
+    'for (var i = 0; i < cajas.length; i++) { var x = cajas[i], r = parseFloat(x.getAttribute("data-ratio") || "1");'
+    'x.setAttribute("data-mw", x.style.maxWidth);'
+    'x.style.maxWidth = Math.max(300, Math.min(window.innerWidth - 40, (window.innerHeight - 110) / r)) + "px"; }'
+    'for (var i = 0; i < zs.length; i++) zs[i].style.zoom = Math.max(1, Math.min(2.2, (window.innerWidth - 40) / Math.max(1, zs[i].scrollWidth))); };'
+    'if (!window.pmuleTeclas) { window.pmuleTeclas = true; window.pmuleActivo = null;'
+    'var SEL = ".pmule-pasos, .pmule-sel";'
+    'var marca = function(e) { var c = e.target.closest ? e.target.closest(SEL) : null; if (c) window.pmuleActivo = c.id; };'
+    'document.addEventListener("mouseover", marca); document.addEventListener("click", marca); document.addEventListener("focusin", marca);'
+    'var visible = function(c) { var r = c.getBoundingClientRect(), h = window.innerHeight || document.documentElement.clientHeight;'
+    'return Math.max(0, Math.min(r.bottom, h) - Math.max(r.top, 0)); };'
+    'document.addEventListener("keydown", function(e) {'
+    'if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;'
+    'var t = e.target; if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;'
+    'var c = document.querySelector(".pmule-pasos[data-pantalla=\'1\'], .pmule-sel[data-pantalla=\'1\']");'
+    'if (c && e.key === "Escape") { if (c.classList.contains("pmule-sel")) window.pmulePantallaSel(c.id); else window.pmulePantalla(c.id); return; }'
+    'if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;'
+    'if (!c) { c = window.pmuleActivo ? document.getElementById(window.pmuleActivo) : null;'
+    'if (!c || visible(c) <= 0) { c = null; var mejor = 0, todos = document.querySelectorAll(SEL);'
+    'for (var i = 0; i < todos.length; i++) { var v = visible(todos[i]); if (v > mejor) { mejor = v; c = todos[i]; } } } }'
+    'if (!c) return; e.preventDefault(); var d = e.key === "ArrowRight" ? 1 : -1;'
+    'if (c.classList.contains("pmule-sel")) window.pmuleSelIr(c.id, d); else window.pmulePaso(c.id, d); }); }')
+
+
+def _barra_sel(uid: str, n: int, etiqueta: str) -> str:
+    """Barra de botones de un visor de selección (rutas, ancestros, producto, calendario): ninguna / anterior /
+    siguiente / última y pantalla completa, como la de :func:`_html_pasos`."""
+    B = _BOTON_VISOR
+    return (f'<div style="text-align:center;margin-bottom:.5em">'
+            f'<button {B} title="Quitar la selección" onclick="pmuleSelIr(\'{uid}\',0,1)">«</button>'
+            f'<button {B} onclick="pmuleSelIr(\'{uid}\',-1)">‹ anterior</button>'
+            f'<span class="pmule-contador" title="También con las flechas ← → del teclado" '
+            f'style="margin:0 .8em">{etiqueta}</span>'
+            f'<button {B} onclick="pmuleSelIr(\'{uid}\',1)">siguiente ›</button>'
+            f'<button {B} onclick="pmuleSelIr(\'{uid}\',{n},1)">»</button>'
+            f'<button {B} title="Ampliar a pantalla completa (Esc para cerrar)" '
+            f'onclick="pmulePantallaSel(\'{uid}\')">⛶</button></div>')
+
+
 def _html_pasos(fotos: list, inicio: int = 1) -> str:
     """Une fotogramas HTML en un visor autocontenido con botones
     (anterior / siguiente) para mostrar un cálculo paso a paso en un cuaderno
@@ -9380,8 +9697,7 @@ def _html_pasos(fotos: list, inicio: int = 1) -> str:
     divs = "".join(
         f'<div class="pmule-paso" style="display:{"block" if k == 0 else "none"}">{c}</div>'
         for k, c in enumerate(fotos))
-    boton = ('style="margin:0 .2em;padding:.1em .7em;border:1px solid #888;'
-             'border-radius:3px;background:#f4f4f4;cursor:pointer"')
+    boton = _BOTON_VISOR
     return (
         comun +
         f'<div id="{uid}" class="pmule-pasos" style="margin:1em 0">'
@@ -9394,38 +9710,14 @@ def _html_pasos(fotos: list, inicio: int = 1) -> str:
         f'<button {boton} title="Ampliar a pantalla completa (Esc para cerrar)" '
         f'onclick="pmulePantalla(\'{uid}\')">⛶</button>'
         f'</div>{divs}</div>'
-        '<script>window.pmulePaso = window.pmulePaso || function(id, d) {'
-        'var c = document.getElementById(id), p = c.querySelectorAll(".pmule-paso"), k = 0;'
-        'for (var i = 0; i < p.length; i++) { if (p[i].style.display !== "none") k = i; p[i].style.display = "none"; }'
-        'k = Math.max(0, Math.min(p.length - 1, k + d)); p[k].style.display = "block";'
-        'var e = c.querySelector(".pmule-contador"), o = parseInt(e.getAttribute("data-inicio") || "1", 10); e.textContent = "paso " + (k + o) + " de " + (p.length + o - 1); };'
-        'window.pmulePantalla = window.pmulePantalla || function(id) {'
-        'var c = document.getElementById(id), abierto = c.getAttribute("data-pantalla") === "1";'
-        'var imgs = c.querySelectorAll("img,svg.pmule-fig");'
-        'if (abierto) { c.removeAttribute("data-pantalla"); c.style.cssText = c.getAttribute("data-estilo");'
-        'for (var i = 0; i < imgs.length; i++) imgs[i].style.cssText = imgs[i].getAttribute("data-estilo");'
-        'document.body.style.overflow = c.getAttribute("data-overflow") || ""; return; }'
-        'c.setAttribute("data-pantalla", "1"); c.setAttribute("data-estilo", c.style.cssText);'
-        'c.setAttribute("data-overflow", document.body.style.overflow);'
-        'c.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#fff;margin:0;padding:.8em;overflow:auto";'
-        'document.body.style.overflow = "hidden";'
-        'for (var i = 0; i < imgs.length; i++) { imgs[i].setAttribute("data-estilo", imgs[i].style.cssText);'
-        'imgs[i].style.cssText = "display:block;margin:0 auto;width:100%;height:calc(100vh - 5em);object-fit:contain"; } };'
-        'if (!window.pmuleTeclas) { window.pmuleTeclas = true; window.pmuleActivo = null;'
-        'var marca = function(e) { var c = e.target.closest ? e.target.closest(".pmule-pasos") : null; if (c) window.pmuleActivo = c.id; };'
-        'document.addEventListener("mouseover", marca); document.addEventListener("click", marca); document.addEventListener("focusin", marca);'
-        'var visible = function(c) { var r = c.getBoundingClientRect(), h = window.innerHeight || document.documentElement.clientHeight;'
-        'return Math.max(0, Math.min(r.bottom, h) - Math.max(r.top, 0)); };'
-        'document.addEventListener("keydown", function(e) {'
-        'if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;'
-        'var t = e.target; if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;'
-        'var c = document.querySelector(".pmule-pasos[data-pantalla=\'1\']");'
-        'if (c && e.key === "Escape") { window.pmulePantalla(c.id); return; }'
-        'if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;'
-        'if (!c) { c = window.pmuleActivo ? document.getElementById(window.pmuleActivo) : null;'
-        'if (!c || visible(c) <= 0) { c = null; var mejor = 0, todos = document.querySelectorAll(".pmule-pasos");'
-        'for (var i = 0; i < todos.length; i++) { var v = visible(todos[i]); if (v > mejor) { mejor = v; c = todos[i]; } } } }'
-        'if (!c) return; e.preventDefault(); window.pmulePaso(c.id, e.key === "ArrowRight" ? 1 : -1); }); }</script>')
+        '<script>' + _JS_VISORES + '</script>')
+
+def _razon_svg(svg: str) -> float:
+    """Razón alto/ancho del ``viewBox`` de un SVG (1 si no se puede leer)."""
+    import re
+    m = re.search(r'viewBox="\s*[-\d.]+[ ,]+[-\d.]+[ ,]+([\d.]+)[ ,]+([\d.]+)"', svg)
+    return float(m.group(2)) / float(m.group(1)) if m and float(m.group(1)) > 0 else 1.0
+
 
 def _svg_ancho_columna(svg):
     """Quita ``width``/``height`` fijos de la raíz del SVG (conserva ``viewBox``)
@@ -9637,7 +9929,8 @@ _COLORES_MATRIZ = (r"\definecolor{narosc}{RGB}{204,102,0}\definecolor{narcl}{RGB
 
 
 def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), valor: str = None,
-                        valor_cero: str = None, resalte: str = None, rotulo: str = r"precedente $\to$\\ actividad $\downarrow$") -> list:
+                        valor_cero: str = None, resalte: str = None, rotulo: str = r"precedente $\to$\\ actividad $\downarrow$",
+                        celdas_color: str = None) -> list:
     """Líneas TikZ de una matriz booleana de enlace (sin ``tikzpicture``; con
     ``x`` = ancho de celda e ``y`` = 0,78 cm). Cuadrícula fina, celdas redondeadas en
     naranja claro (con la letra de la predecesora o una marca) y cabeceras en gris.
@@ -9646,7 +9939,9 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), val
     ``valor`` escribe ese texto (p. ej. ``"1"``) en las celdas marcadas, en vez de la letra
     de la columna o la marca ✓; ``valor_cero``, si se da, se escribe en gris claro en las
     celdas vacías; ``resalte`` es el color (p. ej. ``"blue"``) con que se resalta la fila
-    ``"actual"`` en vez del naranja; ``rotulo`` es el texto de la esquina."""
+    ``"actual"`` en vez del naranja; ``celdas_color``, el color de las celdas marcadas de la
+    fila ``"actual"`` (la banda y el nombre de la fila siguen en naranja); ``rotulo`` es el
+    texto de la esquina."""
     filas = filas or {}
     columnas = {f"{c}" for c in columnas}
     nombres = [f"{n}" for n in data.index]
@@ -9687,9 +9982,10 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), val
             if bool(data.iloc[i, j]):
                 cx, cy = j + 0.5, -i - 0.5
                 fila_res = bool(resalte) and filas.get(nombres[i]) == "actual"
-                relleno = "gris!25" if gris else (f"{resalte}!28" if fila_res else "narcl")
+                celda_c = celdas_color if (celdas_color and filas.get(nombres[i]) == "actual") else None
+                relleno = "gris!25" if gris else (f"{resalte}!28" if fila_res else f"{celda_c}!28" if celda_c else "narcl")
                 L.append(rf"\fill[{relleno},rounded corners=2pt] ({j + 0.08},{cy - 0.42}) rectangle ({j + 0.92},{cy + 0.42});")
-                tinta = "grisosc!35" if gris else (f"{resalte}!65!black" if fila_res else "narosc")
+                tinta = "grisosc!35" if gris else (f"{resalte}!65!black" if fila_res else f"{celda_c}!65!black" if celda_c else "narosc")
                 if valor is not None:
                     L.append(rf"\node[{tinta},font=\bfseries] at ({cx},{cy}) {{{valor}}};")
                 elif modo == "letra":
@@ -9788,7 +10084,9 @@ def producto_rutas_html(path_matrix, tiempos, resultado=None) -> str:
            f'#{uid} tr.sel td{{background:#dbeafe}}'
            f'#{uid} td.cj{{border-color:#1d4ed8;background:#dbeafe;font-weight:bold;color:#0b2a7a}}'
            f'#{uid} .nota{{font-size:.85em;color:#555;margin:.3em 0 0;text-align:center}}</style>')
-    js = ("<script>(function(){var r=document.getElementById('%s'),fijo=null;"
+    N = nr
+    nombres_js = __import__("json").dumps([f"{n}" for n in R.index], ensure_ascii=False)
+    js = "<script>" + _JS_VISORES + ("(function(){var r=document.getElementById('%s'),fijo=null,E=%s;"
           "function mostrar(i){r.querySelectorAll('.sel').forEach(function(e){e.classList.remove('sel')});"
           "r.querySelectorAll('.cj').forEach(function(e){e.classList.remove('cj')});if(i===null)return;"
           "var fr=r.querySelector('.rr tr[data-i=\"'+i+'\"]');if(!fr)return;fr.classList.add('sel');"
@@ -9796,16 +10094,22 @@ def producto_rutas_html(path_matrix, tiempos, resultado=None) -> str:
           "r.querySelectorAll('.tt td[data-a=\"'+a+'\"]').forEach(function(t){t.classList.add('cj')})});"
           "r.querySelectorAll('.xx tr[data-i=\"'+i+'\"]').forEach(function(x){x.classList.add('sel');"
           "x.querySelectorAll('td').forEach(function(c){c.classList.add('cj')})})}"
+          "window.PMULE_SEL['%s']={n:%d,get:function(){return fijo===null?0:parseInt(fijo)+1},"
+          "set:function(j){fijo=j?String(j-1):null;mostrar(fijo)},"
+          "etq:function(j){return j?E[j-1]+' ('+j+' de %d)':'ninguna ruta (0 de %d)'}};"
           "r.querySelectorAll('.rr tbody tr').forEach(function(f){var i=f.dataset.i;"
           "f.addEventListener('mouseenter',function(){mostrar(i)});"
-          "f.addEventListener('click',function(){fijo=(fijo===i)?null:i;mostrar(fijo)})});"
-          "r.querySelector('.rr').addEventListener('mouseleave',function(){mostrar(fijo)})})();</script>") % uid
-    return (f'{css}<div id="{uid}"><div class="box">'
+          "f.addEventListener('click',function(){window.pmuleSelIr('%s',fijo===i?0:parseInt(i)+1,1)})});"
+          "r.querySelector('.rr').addEventListener('mouseleave',function(){mostrar(fijo)})})();</script>"
+          ) % (uid, nombres_js, uid, N, N, N, uid)
+    return (f'{css}<div id="{uid}" class="pmule-sel" style="margin:1em 0">' + _barra_sel(uid, N, f"ninguna ruta (0 de {N})")
+            + f'<div class="pmule-zoom"><div class="box">'
             + tabla([""] + list(R.columns), filas_r, "rr") + '<div class="op">×</div>'
             + tabla([""] + [str(c) for c in T.columns], filas_t, "tt")
             + '<div class="op">=</div>' + tabla([str(c) for c in RT.columns], filas_x, "xx")
             + '</div><p class="nota">👆 Interactivo: pasa el ratón (o toca) una fila de la matriz de rutas: '
-              'se recuadran los valores que se suman y el resultado.</p></div>' + js)
+              'se recuadran los valores que se suman y el resultado. También con los botones y las flechas del teclado.</p></div></div>'
+            + js)
 
 
 def display_producto_rutas(path_matrix, tiempos, resultado=None) -> None:

@@ -310,7 +310,7 @@ proyecto = prelaciones.create_project()
 # %%
 #| tbl-cap: "Cuadro de ancestros (prelaciones transitivas)"
 #| label: tbl-ancestros
-proyecto.distant_predecessor(format='DataFrame')
+proyecto.display_distant_linkage_matrix()
 
 # %%
 ancestros = proyecto.distant_predecessor()
@@ -329,4 +329,4 @@ display(Markdown(pregunta_4))
 # %%
 #| fig-cap: "Grafo PERT del proyecto"
 #| label: fig-pert
-proyecto.pert(durations=False, ranksep=1)
+proyecto.display_ancestros('pert')

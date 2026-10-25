@@ -116,7 +116,7 @@ def _base(k, rng):
     celdas += apartado(ap); ap += 1
     celdas.append(code("proyecto = prelaciones.create_project()"))
     celdas.append(code('#| tbl-cap: "Cuadro de ancestros (prelaciones transitivas)"\n#| label: tbl-ancestros\n'
-                       "proyecto.distant_predecessor(format='DataFrame')"))
+                       "proyecto.display_distant_linkage_matrix()"))
     celdas.append(code("ancestros = proyecto.distant_predecessor()\n"
                        "for p, a in redundantes:\n"
                        "    print(f'{p} ∈ ancestros({a}): {p in ancestros[a]}')"))
@@ -124,7 +124,8 @@ def _base(k, rng):
     celdas.append(md("Las actividades ficticias (discontinuas) del grafo transmiten precisamente las "
                      "prelaciones que no pueden representarse compartiendo nodos. Siguiendo hacia atrás los "
                      "arcos desde el final de cada actividad se recorren todos sus ancestros."))
-    celdas += fig_grafo(durations="False", cap="Grafo PERT del proyecto", label="fig-pert")
+    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
+                       "proyecto.display_ancestros('pert')"))
     sub = f"{n} actividades, {len(redundantes)} prelaciones redundantes" + (", una errata con ciclo" if con_ciclo else "")
     return celdas, sub
 
@@ -186,13 +187,14 @@ def _texto(rng):
                        "print('Actividades finales:  ', ', '.join(sorted(prelaciones.end_activities)))"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Cuadro de ancestros"\n#| label: tbl-ancestros\n'
-                       "proyecto.distant_predecessor(format='DataFrame')"))
+                       "proyecto.display_distant_linkage_matrix()"))
     celdas.append(code("G = nx.DiGraph([(p, a) for a, ps in prelaciones.immediate_predecessor.items() for p in ps])\n"
                        "G.add_nodes_from(datos_proyecto.index)\n"
                        "redundantes = sorted(set(G.edges) - set(nx.transitive_reduction(G).edges))\n"
                        "print('Prelaciones redundantes:', redundantes or 'ninguna')"))
     celdas += apartado(4)
-    celdas += fig_grafo(durations="False", cap="Grafo PERT del proyecto", label="fig-pert")
+    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
+                       "proyecto.display_ancestros('pert')"))
     return celdas, f"{n} actividades descritas en texto ({ctx['tema']})"
 
 
@@ -253,9 +255,9 @@ def _grafo_erroneo(rng):
                        "proyecto = prelaciones.create_project()"))
     celdas += apartado(1)
     celdas.append(code('#| tbl-cap: "Cuadro de ancestros según el cuadro de prelaciones"\n#| label: tbl-ancestrosCuadro\n'
-                       "proyecto.distant_predecessor(format='DataFrame')"))
+                       "proyecto.display_distant_linkage_matrix()"))
     celdas.append(code('#| tbl-cap: "Cuadro de ancestros según el grafo dibujado"\n#| label: tbl-ancestrosGrafo\n'
-                       "proyecto_dibujado.distant_predecessor(format='DataFrame')"))
+                       "proyecto_dibujado.display_distant_linkage_matrix()"))
     celdas += apartado(2)
     celdas.append(md("Una prelación que está en el cuadro y no en el grafo se detecta porque alguna actividad "
                      "tiene menos ancestros en el grafo; una que sobra, porque tiene más. Para localizar la "

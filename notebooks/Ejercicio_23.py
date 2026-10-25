@@ -210,9 +210,9 @@ proyecto.roy(durations=False, ranksep=0.6)
 # El cuadro de ancestros, o de prelaciones transitivas, recoge todos las actividades previas a una actividad dada. Puede ser de utilidad para comparar dos grafos PERT o Roy y comprobar si se trata de distintas representaciones de un mismo proyecto.
 
 # %%
-#| tbl-cap: "Cuadro de prelaciones transitivas (ancestros)"
-#| label: tbl-prelacionesTransitivas
-pd.Series({key: ', '.join(sorted(list(value))) for key, value in proyecto.distant_predecessor().items()}).to_frame(name='ancestros')
+#| fig-cap: "Grafo PERT y cuadro de prelaciones transitivas (ancestros)"
+#| label: fig-prelacionesTransitivas
+proyecto.display_ancestros('pert')
 
 # %% [markdown]
 # ## Apartado 4

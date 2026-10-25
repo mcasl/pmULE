@@ -272,12 +272,12 @@ display(Markdown(pregunta_1))
 # %%
 #| tbl-cap: "Cuadro de ancestros según el cuadro de prelaciones"
 #| label: tbl-ancestrosCuadro
-proyecto.distant_predecessor(format='DataFrame')
+proyecto.display_distant_linkage_matrix()
 
 # %%
 #| tbl-cap: "Cuadro de ancestros según el grafo dibujado"
 #| label: tbl-ancestrosGrafo
-proyecto_dibujado.distant_predecessor(format='DataFrame')
+proyecto_dibujado.display_distant_linkage_matrix()
 
 # %% [markdown]
 # ## Apartado 2

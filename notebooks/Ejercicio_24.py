@@ -211,7 +211,7 @@ display(Markdown(pregunta_4))
 # %%
 #| tbl-cap: "Cuadro de prelaciones transitivas (ancestros)"
 #| label: tbl-CuadroAncestros
-pd.Series({key: ', '.join(sorted(list(value))) for key, value in proyecto.distant_predecessor().items()}).to_frame().rename({0:'Preceding Activities'}, axis=1)
+proyecto.display_distant_linkage_matrix()
 
 # %%
 

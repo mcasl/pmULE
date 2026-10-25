@@ -105,8 +105,8 @@ def _base(k, rng):
                        "pd.Series({ruta: ' - '.join(acts) for ruta, acts in rutas.items()}).to_frame('actividades')"))
     celdas.append(code("print(f'El grafo tiene {len(rutas)} rutas entre el nodo inicial y el final.')"))
     celdas += apartado(ap); ap += 1
-    celdas.append(code('#| tbl-cap: "Cuadro de ancestros"\n#| label: tbl-ancestros\n'
-                       "proyecto.distant_predecessor(format='DataFrame')"))
+    celdas.append(code('#| fig-cap: "Grafo PERT y cuadro de ancestros"\n#| label: fig-ancestros\n'
+                       "proyecto.display_ancestros('pert')"))
     celdas.append(md("Para cada actividad, el conjunto de actividades que aparecen antes que ella en alguna ruta "
                      "debe coincidir con su fila del cuadro de ancestros:"))
     celdas.append(code("ancestros = proyecto.distant_predecessor()\n"

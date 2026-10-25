@@ -145,10 +145,8 @@ datos_proyecto[['b', 'm', 'a', 'duracion', 'cur']]
 # %%
 #| tbl-cap: "Determinación de las prelaciones transitivas"
 #| label: tbl-PrelacionesTransitivas
-prelaciones_distantes = pd.Series({key: ' '.join(sorted(value)) for key,value in proyecto.distant_predecessor().items()})
-prelaciones_distantes = pd.DataFrame(prelaciones_distantes)
-prelaciones_distantes.columns=['Precedentes']
-prelaciones_distantes
+prelaciones_distantes = pd.Series({key: ' '.join(sorted(value)) for key,value in proyecto.distant_predecessor().items()}).to_frame('Precedentes')
+proyecto.display_distant_linkage_matrix()
 
 # %% [markdown]
 # ### Cálculo de tiempos tempranos  y tardíos con el método de Zaderenko
