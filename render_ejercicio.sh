@@ -25,6 +25,10 @@ if [[ -z "${VIRTUAL_ENV:-}" && -f ".venv/bin/activate" ]]; then
 fi
 export QUARTO_PYTHON="${QUARTO_PYTHON:-$(command -v python3)}"
 
+# El .ipynb no se versiona: se genera (o actualiza) desde el .py
+if command -v jupytext >/dev/null 2>&1 && [[ -f "$JUPYTEXT_PY" ]]; then
+    jupytext --sync --quiet "$JUPYTEXT_PY"
+fi
 if [[ ! -f "$NOTEBOOK" ]]; then
     echo "Error: Notebook not found → $NOTEBOOK"
     exit 1
@@ -45,12 +49,10 @@ else
 fi
 
 echo "→ Git add..."
-git add "$NOTEBOOK"        # el HTML (docs/) se publica con scripts/publica_docs.sh
-[[ -f "$JUPYTEXT_PY" ]] && git add "$JUPYTEXT_PY"
+[[ -f "$JUPYTEXT_PY" ]] && git add "$JUPYTEXT_PY"   # el HTML (docs/) se publica con scripts/publica_docs.sh
 
 echo ""
 echo "Done! 🎉"
 echo "Files staged:"
-echo "  • $NOTEBOOK"
 [[ -f "$JUPYTEXT_PY" ]] && echo "  • $JUPYTEXT_PY"
 echo "  • $TARGET"

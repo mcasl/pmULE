@@ -190,7 +190,7 @@ def escribir_readme(resumen):
     lineas = ["# Colecciones de ejercicios cortos por competencia", "",
               "Cada carpeta es una colección de ejercicios breves que ejercitan una sola competencia. "
               "Los cuadernos siguen el guion de los `Ejercicio_NN` (enunciado con `pregunta_N`, tabla de datos, "
-              "resolución por apartados con pmULE) y están emparejados con jupytext (`.py` ↔ `.ipynb`).", "",
+              "resolución por apartados con pmULE) y están escritos como `.py` (jupytext percent); los `.ipynb` se generan al renderizar y no se versionan.", "",
               "Se generan con `python -m scripts.colecciones.generador` desde la raíz del repositorio "
               "(`--listar` muestra las variantes; ver la ayuda del script). Cada colección tiene varias *variantes*, "
               "una por concepto que se quiere comprobar; el ejercicio k usa la variante k (cíclicamente). "

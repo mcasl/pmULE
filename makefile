@@ -1,4 +1,4 @@
-.PHONY: sync dev lsp lab kernel clean hooks test test-fast golden test-colecciones colecciones lecciones
+.PHONY: sync dev lsp lab kernel clean test test-fast golden test-colecciones colecciones lecciones
 sync:
 	uv sync --frozen
 
@@ -18,9 +18,6 @@ clean:
 	rm -rf .venv
 	uv cache clean
 
-hooks:
-	ln -sf ../../scripts/pre-commit-jupytext.sh .git/hooks/pre-commit
-	@echo "hook pre-commit instalado (sincroniza pares jupytext de notebooks/)"
 
 # Suite completa: unitarios (src/test_*.py) + regresión de cuadernos (src/tests_ejercicios)
 test: dev

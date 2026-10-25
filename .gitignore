@@ -23,6 +23,8 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Jupyter
+# Los .ipynb se generan desde los .py (jupytext); no se versionan
+notebooks/**/*.ipynb
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 

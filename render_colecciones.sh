@@ -23,11 +23,16 @@ export QUARTO_PYTHON
 if [ $# -gt 0 ]; then
     cuadernos="$*"
 else
-    cuadernos="$(find notebooks/colecciones -name '*.ipynb' -not -path '*/.ipynb_checkpoints/*' | sort)"
+    cuadernos="$(find notebooks/colecciones -name '*.py' -not -path '*/.ipynb_checkpoints/*' | sort | sed 's/\.py$/.ipynb/')"
 fi
 
 n=0
 for nb in $cuadernos; do
+    case "$nb" in *.py) nb="${nb%.py}.ipynb" ;; esac
+    # El .ipynb no se versiona: se genera (o actualiza) desde el .py
+    if command -v jupytext >/dev/null 2>&1 && [ -f "${nb%.ipynb}.py" ]; then
+        jupytext --sync --quiet "${nb%.ipynb}.py"
+    fi
     [ -f "$nb" ] || { echo "No existe: $nb" >&2; exit 1; }
     nombre="$(basename "$nb" .ipynb)"
     # docs/<ruta relativa a notebooks/>: notebooks/colecciones/05_x/A.ipynb -> docs/colecciones/05_x/A.html
@@ -46,7 +51,7 @@ for nb in $cuadernos; do
     if command -v jupytext >/dev/null 2>&1; then
         jupytext --sync --quiet "$nb"
     fi
-    git add "$nb" "${nb%.ipynb}.py" 2>/dev/null || true
+    git add "${nb%.ipynb}.py" 2>/dev/null || true
     n=$((n + 1))
 done
 echo "Hecho: ${n} cuaderno(s) renderizado(s) en docs/colecciones/"

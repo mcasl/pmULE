@@ -14,7 +14,7 @@
 #
 # Pasos: comprobar conexión (si falla: VPN) → jupytext --sync local → rsync de
 # ida → sbatch --wait (array, una tarea por cuaderno) → rsync de vuelta →
-# git add de .ipynb y .py. Los HTML de docs/ no se versionan en master: se publican
+# git add del .py (los .ipynb se generan desde él y no se versionan). Los HTML de docs/ no se versionan en master: se publican
 # con scripts/publica_docs.sh (rama gh-pages, un solo commit).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -25,9 +25,10 @@ MAX=
 BUILD=0
 cuadernos=()
 
-todos() { find notebooks -name '*.ipynb' -not -path '*/.ipynb_checkpoints/*' \
+# Los .ipynb no se versionan (se generan desde los .py con jupytext): la lista sale de los .py.
+todos() { find notebooks -name '*.py' -not -path '*/.ipynb_checkpoints/*' \
             \( -path 'notebooks/Ejercicio_*' -o -path 'notebooks/colecciones/*' -o -path 'notebooks/examenes/*' \) \
-            -not -path 'notebooks/colecciones/lecciones/*' | sort; }
+            -not -path 'notebooks/colecciones/lecciones/*' | sort | sed 's/\.py$/.ipynb/'; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -41,6 +42,7 @@ while [ $# -gt 0 ]; do
             done < <(todos)
             shift ;;
         *.ipynb) cuadernos+=("$1") ;;
+        *.py) cuadernos+=("${1%.py}.ipynb") ;;
         *) echo "Argumento no reconocido: $1" >&2; exit 1 ;;
     esac
     shift
@@ -66,7 +68,7 @@ fi
 echo "→ jupytext --sync de ${#cuadernos[@]} cuaderno(s)"
 if command -v jupytext >/dev/null 2>&1 || [ -x .venv/bin/jupytext ]; then
     JT="$(command -v jupytext || echo .venv/bin/jupytext)"
-    "$JT" --sync --quiet "${cuadernos[@]}"
+    "$JT" --sync --quiet "${cuadernos[@]/%.ipynb/.py}"      # crea/actualiza el .ipynb (no versionado) desde el .py
     rsync -az notebooks "$HOST:$REMOTO/repo/"
 fi
 
@@ -106,7 +108,7 @@ if [ ${#htmls[@]} -gt 0 ]; then
     "$PY" scripts/cluster/incrusta_cdn.py "${htmls[@]}"
     "$PY" scripts/normaliza_ids.py "${htmls[@]}"      # ids de tablas deterministas (git no acumula ruido)
     for i in "${!hechos[@]}"; do
-        git add "${hechos[$i]}" "${hechos[$i]%.ipynb}.py" 2>/dev/null || true
+        git add "${hechos[$i]%.ipynb}.py" 2>/dev/null || true
     done
 fi
 echo "Hecho: $ok de $n cuaderno(s) renderizados (publica con scripts/publica_docs.sh)."
