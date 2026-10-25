@@ -8502,7 +8502,7 @@ def make_Roy(linkage_matrix):
 # R^T R = Σ_p 1_p 1_p^T se aplica a un vector con dos barridos de DP (O(aristas)),
 # de modo que Lanczos da los σ_i, v_i dominantes aunque el nº de rutas sea
 # exponencial; y τ_k = ‖R_k t‖∞ es el CPM con duraciones proyectadas V_k V_kᵀ t.
-# Copia del módulo experiments/cluster_roy/implicit_svd.py (mantener ambos sincronizados).
+# Implementación única (25-10-2026): experiments/cluster_roy/implicit_svd.py del repo paper-arXiv-2026 sólo re-exporta estos nombres.
 # ----------------------------------------------------------------------
 import scipy.sparse as _sp_impl
 from scipy.sparse.linalg import splu as _splu, LinearOperator as _LinearOperator, eigsh as _eigsh
