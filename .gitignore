@@ -35,6 +35,8 @@ notebooks/**/*.ipynb
 
 /.quarto/
 **/*.quarto_ipynb
+# Caché de Quarto (freeze) de las lecciones: se conserva en local, no se versiona
+notebooks/_freeze/
 
 # Instrucciones locales para Claude (contienen datos privados)
 CLAUDE.md
