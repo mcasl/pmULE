@@ -4,6 +4,7 @@
 # coleccion: 06_matriz_caminos
 # variante: rutas-a-grafo-svd
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -330,20 +331,26 @@ datos_proyecto
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo PERT reconstruido, con tiempos y ruta crítica"
 #| label: fig-pert
-proyecto.display_pert_pasos(datos_proyecto['duration'])
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
 
 # %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Grafo Roy reconstruido"
 #| label: fig-roy
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%

@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: huella-del-proyecto
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

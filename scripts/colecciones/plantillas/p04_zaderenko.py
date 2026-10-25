@@ -4,13 +4,23 @@ import networkx as nx
 import pandas as pd
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
-                        literal_dataframe, literal_dict, BMATRIX)
+                        literal_dataframe, literal_dict, BMATRIX, ESTADO)
 
 META = dict(slug="04_zaderenko", prefijo="Zaderenko",
             titulo="Método de Zaderenko y calendario",
             descripcion="Calcular con la matriz de Zaderenko los tiempos tempranos y tardíos, el calendario "
                         "de las actividades y el diagrama de Gantt.",
             n_defecto=3)
+
+def _roy_ilustrativo():
+    """Grafo Roy equivalente, como ilustración (la matriz de Zaderenko opera sobre el PERT)."""
+    if ESTADO["grafo"] == "roy":
+        return []
+    return [md("A modo ilustrativo, este mismo proyecto como grafo Roy (actividades en los nodos); "
+               "la matriz de Zaderenko se construye sobre los sucesos del grafo PERT."),
+            *fig_grafo(durations="False", cap="Grafo Roy equivalente (ilustrativo)",
+                       label="fig-royIlustrativo", tipo="roy")]
+
 
 
 def _base(k, rng):
@@ -47,6 +57,7 @@ def _base(k, rng):
     celdas.append(code('#| tbl-cap: "Cuadro de prelaciones expandido"\n#| label: tbl-prelacionesExpandido\n'
                        "prelaciones.display_immediate_linkage_matrix()"))
     celdas += fig_grafo(durations="False", cap="Grafo PERT con numeración de nodos", label="fig-pert")
+    celdas += _roy_ilustrativo()
     celdas += apartado(ap); ap += 1
     celdas.append(md("En la matriz de Zaderenko la casilla (i, j) contiene la duración de la actividad que va "
                      "del nodo i al nodo j (cero para las ficticias). El tiempo más temprano de un nodo es el "
@@ -160,6 +171,7 @@ def _matriz_dada(rng):
     celdas.append(code("prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
     celdas += fig_grafo(durations="False", cap="Grafo PERT reconstruido", label="fig-pert")
+    celdas += _roy_ilustrativo()
     celdas.append(md("La numeración de los nodos puede diferir de la del enunciado (hay varias numeraciones "
                      "válidas), pero la matriz tiene las mismas actividades en las mismas posiciones relativas."))
     celdas += apartado(3)
@@ -221,6 +233,7 @@ def _prediccion(rng):
                        "proyecto = prelaciones.create_project()"))
     celdas += apartado(1)
     celdas += fig_grafo(durations="False", cap="Grafo PERT con numeración de nodos", label="fig-pert")
+    celdas += _roy_ilustrativo()
     celdas.append(md("A ojo sólo puede intuirse: las rutas con más actividades o con actividades largas son las "
                      "candidatas. La forma del grafo no basta; hacen falta las duraciones."))
     celdas += apartado(2)
@@ -409,6 +422,7 @@ def _gantt_dado(rng):
                        "         'pero puede ser una coincidencia de fechas; y las predecesoras reales con holgura entre su fin y el inicio de la sucesora no se ven en el Gantt. '\n"
                        "         'Por eso el Gantt no determina el cuadro de prelaciones.')"))
     celdas += fig_grafo(durations="prelaciones_recuperadas['duration']", cap="Grafo PERT con el camino crítico", label="fig-pert")
+    celdas += _roy_ilustrativo()
     return celdas, f"{n} actividades; sólo se conoce el Gantt de inicios tempranos"
 
 

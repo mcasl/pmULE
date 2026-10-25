@@ -4,6 +4,7 @@
 # coleccion: 11_recursos
 # variante: nivelacion
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

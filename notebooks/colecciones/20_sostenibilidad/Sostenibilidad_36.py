@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: pista-de-obra
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

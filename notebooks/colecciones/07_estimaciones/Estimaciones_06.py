@@ -4,6 +4,7 @@
 # coleccion: 07_estimaciones
 # variante: tres-estimaciones-b
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -196,7 +197,7 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 # %%
 pregunta_1 = "1. Calcule la duración media y la varianza de cada actividad según el método PERT.  "
 pregunta_2 = "2. Recupere la estimación optimista de E y C a partir de su duración media.  "
-pregunta_3 = "3. Dibuje el grafo PERT, determine el camino crítico con las duraciones medias y la duración media del proyecto. ¿Qué papel juegan las estimaciones optimista y pesimista en ese cálculo?  "
+pregunta_3 = "3. Dibuje el grafo Roy, determine el camino crítico con las duraciones medias y la duración media del proyecto. ¿Qué papel juegan las estimaciones optimista y pesimista en ese cálculo?  "
 pregunta_4 = "4. Para la actividad B, compare la media y la desviación típica que resultan de suponer una distribución Beta-PERT, una triangular y una uniforme con los mismos valores extremos. ¿Cuál es más prudente?  "
 
 for item in sorted(dir()):
@@ -294,12 +295,15 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 duraciones = datos_proyecto['duration'].round().astype(int)
 
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo Roy con las duraciones medias y el camino crítico"
 #| label: fig-pert
+proyecto.roy(durations=duraciones, ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
 proyecto.display_roy_pasos(duraciones)
 
 # %%

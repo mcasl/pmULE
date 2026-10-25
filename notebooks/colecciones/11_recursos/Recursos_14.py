@@ -4,6 +4,7 @@
 # coleccion: 11_recursos
 # variante: interrumpibles
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

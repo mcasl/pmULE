@@ -4,6 +4,7 @@
 # coleccion: 13_formula_compleccion
 # variante: gradiente
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

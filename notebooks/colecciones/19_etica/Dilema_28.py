@@ -4,6 +4,7 @@
 # coleccion: 19_etica
 # variante: imputacion-cruzada
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

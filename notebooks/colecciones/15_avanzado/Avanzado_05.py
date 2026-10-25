@@ -4,6 +4,7 @@
 # coleccion: 15_avanzado
 # variante: fechas-calendario
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -254,11 +255,22 @@ festivos = [np.datetime64('2026-10-22'), np.datetime64('2026-10-26')]
 display(Markdown(pregunta_1))
 
 # %%
+#| fig-cap: "Grafo Roy con tiempos y camino crítico"
+#| label: fig-grafo
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 #| tbl-cap: "Calendario en días laborables"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = proyecto.duration(datos_proyecto['duration'])
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
 
 # %% [markdown]
 # ## Apartado 2

@@ -4,6 +4,7 @@
 # coleccion: 01_prelaciones
 # variante: texto
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -199,7 +200,7 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 pregunta_1 = "1. Construya el cuadro de prelaciones inmediatas a partir del texto (una fila por actividad con sus predecesoras inmediatas).  "
 pregunta_2 = "2. Construya el cuadro de prelaciones expandido e indique las actividades iniciales y finales.  "
 pregunta_3 = "3. Construya el cuadro de ancestros y compruebe que ninguna prelación del texto es redundante.  "
-pregunta_4 = "4. Dibuje el grafo PERT con el mínimo número de ficticias.  "
+pregunta_4 = "4. Dibuje el grafo Roy del proyecto.  "
 
 for item in sorted(dir()):
     if item.startswith('pregunta_'):
@@ -308,6 +309,6 @@ print('Prelaciones redundantes:', redundantes or 'ninguna')
 display(Markdown(pregunta_4))
 
 # %%
-#| fig-cap: "Grafo PERT del proyecto"
-#| label: fig-pert
-proyecto.display_ancestros('pert')
+#| fig-cap: "Grafo Roy del proyecto"
+#| label: fig-roy
+proyecto.display_ancestros('roy')

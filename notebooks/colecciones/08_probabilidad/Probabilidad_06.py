@@ -4,6 +4,7 @@
 # coleccion: 08_probabilidad
 # variante: diagnostico
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

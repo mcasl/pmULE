@@ -4,6 +4,7 @@
 # coleccion: 09_montecarlo
 # variante: percentiles
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -4,6 +4,7 @@
 # coleccion: 10_reduccion
 # variante: programacion-lineal
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

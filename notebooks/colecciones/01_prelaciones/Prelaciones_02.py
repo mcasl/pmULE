@@ -4,6 +4,7 @@
 # coleccion: 01_prelaciones
 # variante: redundancias-b
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

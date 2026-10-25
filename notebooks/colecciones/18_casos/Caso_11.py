@@ -4,6 +4,7 @@
 # coleccion: 18_casos
 # variante: contingencia-planta
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

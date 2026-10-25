@@ -4,6 +4,7 @@
 # coleccion: 14_comprension
 # variante: disena-una-red
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

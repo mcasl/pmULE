@@ -6,7 +6,7 @@ import pandas as pd
 
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
-                        literal_dataframe, literal_dict, BMATRIX)
+                        literal_dataframe, literal_dict, BMATRIX, grafo_nombre, ESTADO)
 
 META = dict(slug="06_matriz_caminos", prefijo="Caminos",
             titulo="Matriz de caminos",
@@ -39,7 +39,7 @@ def _base(k, rng):
                  "actividades según el primer vector singular. Compare con la ruta crítica."]
     else:
         celdas.append(md("Considere el proyecto cuyo cuadro de prelaciones y duraciones (en días) se adjunta."))
-        pregs = ["Dibuje el grafo PERT y enumere todas sus rutas entre el nodo inicial y el final.",
+        pregs = [f"Dibuje el grafo {grafo_nombre()} y enumere todas sus rutas entre el nodo inicial y el final.",
                  "Construya la matriz de caminos del proyecto (una fila por ruta, una columna por actividad).",
                  "Calcule la duración de cada ruta como producto de la matriz de caminos por el vector de "
                  "duraciones, y la duración del proyecto como el máximo. Identifique la ruta crítica.",
@@ -107,16 +107,22 @@ def _base(k, rng):
                            "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                            "proyecto = prelaciones.create_project()"))
         celdas += apartado(ap); ap += 1
-        celdas += fig_grafo(durations="False", cap="Grafo PERT con numeración de nodos", label="fig-pert", tipo="pert")
-        celdas.append(md("Las rutas se enumeran recorriendo el grafo desde el nodo inicial: en cada nodo se "
-                         "abre una rama por cada arco saliente. Las ficticias se recorren pero no se anotan."))
+        celdas += fig_grafo(durations="False",
+                            cap=("Grafo PERT con numeración de nodos" if ESTADO["grafo"] != "roy" else "Grafo Roy"),
+                            label="fig-pert")
+        if ESTADO["grafo"] == "roy":
+            celdas.append(md("Las rutas se enumeran recorriendo el grafo desde el nodo de inicio: en cada nodo se "
+                             "abre una rama por cada arco saliente."))
+        else:
+            celdas.append(md("Las rutas se enumeran recorriendo el grafo desde el nodo inicial: en cada nodo se "
+                             "abre una rama por cada arco saliente. Las ficticias se recorren pero no se anotan."))
         celdas.append(code('#| tbl-cap: "Rutas del proyecto"\n#| label: tbl-rutas\n'
                            "rutas = proyecto.paths(dummies=False)\n"
                            "pd.Series({r: ' - '.join(a) for r, a in rutas.items()}).to_frame('actividades')"))
         celdas += apartado(ap); ap += 1
         celdas.append(code('#| tbl-cap: "Matriz de caminos"\n#| label: tbl-matrizCaminos\n'
                            "path_matrix = proyecto.path_matrix(dummies=False)\n"
-                           "proyecto.display_rutas('pert')"))
+                           f"proyecto.display_rutas('{ESTADO['grafo']}')"))
         celdas += apartado(ap); ap += 1
         celdas.append(code("duraciones = datos_proyecto['duration'][path_matrix.columns]\n"
                            "duraciones_rutas = path_matrix @ duraciones\n"
@@ -189,7 +195,7 @@ def _escenarios(rng):
                  "de las actividades (en días): optimista, normal y pesimista. Se quiere conocer la duración del "
                  "proyecto en los tres sin repetir tres veces el cálculo de tiempos.")]
     celdas.append(preguntas([
-        "Dibuje el grafo PERT y construya la matriz de caminos R.",
+        f"Dibuje el grafo {grafo_nombre()} y construya la matriz de caminos R.",
         "Disponga los tres escenarios como columnas de una matriz T (una fila por actividad) y calcule el "
         "producto R·T. ¿Qué representa cada columna del resultado?",
         "Obtenga la duración del proyecto en cada escenario como el máximo de cada columna, e indique la ruta "
@@ -207,7 +213,7 @@ def _escenarios(rng):
     celdas += fig_grafo(durations="False", cap="Grafo PERT", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de caminos"\n#| label: tbl-matrizCaminos\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
-                       "proyecto.display_rutas('pert')"))
+                       f"proyecto.display_rutas('{ESTADO['grafo']}')"))
     celdas += apartado(2)
     celdas.append(code("T = escenarios.loc[R.columns]\n"
                        "duraciones_rutas = R @ T\n"

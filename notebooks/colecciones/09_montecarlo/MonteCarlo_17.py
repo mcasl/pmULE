@@ -4,6 +4,7 @@
 # coleccion: 09_montecarlo
 # variante: recursos-limitados
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

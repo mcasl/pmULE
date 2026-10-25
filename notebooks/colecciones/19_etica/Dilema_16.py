@@ -4,6 +4,7 @@
 # coleccion: 19_etica
 # variante: verdad-a-medias
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

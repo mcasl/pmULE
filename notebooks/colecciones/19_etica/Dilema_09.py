@@ -4,6 +4,7 @@
 # coleccion: 19_etica
 # variante: adjudicacion-conflicto
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

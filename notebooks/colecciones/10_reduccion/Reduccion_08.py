@@ -4,6 +4,7 @@
 # coleccion: 10_reduccion
 # variante: cur-y-ackoff
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

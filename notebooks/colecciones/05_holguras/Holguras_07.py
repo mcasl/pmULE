@@ -4,6 +4,7 @@
 # coleccion: 05_holguras
 # variante: mini-a-mano
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -245,13 +246,16 @@ proyecto = prelaciones.create_project()
 # %%
 display(Markdown(pregunta_1))
 
+# %%
+#| fig-cap: "Grafo PERT"
+#| label: fig-pert
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
 # %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
 
 # %%
-#| fig-cap: "Grafo Roy"
-#| label: fig-pert
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Rutas del proyecto y su duración"
@@ -294,7 +298,7 @@ detalle[['H_total = LS − ES', 'H_libre = mín ES suc. − EF', 'H_indep. = má
 # %%
 #| tbl-cap: "Calendario y holguras según la librería"
 #| label: tbl-calendario
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario
 
 # %% [markdown]
 # ## Apartado 4

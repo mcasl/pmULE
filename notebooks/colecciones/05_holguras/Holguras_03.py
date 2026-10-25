@@ -4,6 +4,7 @@
 # coleccion: 05_holguras
 # variante: varias-criticas
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

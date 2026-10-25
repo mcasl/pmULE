@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: clausula-social
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

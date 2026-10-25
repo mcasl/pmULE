@@ -4,6 +4,7 @@
 # coleccion: 21_cadena_critica
 # variante: bpi-frente-a-spi
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

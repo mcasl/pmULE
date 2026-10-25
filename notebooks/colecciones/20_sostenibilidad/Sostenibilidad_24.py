@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: tierras-sobrantes
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

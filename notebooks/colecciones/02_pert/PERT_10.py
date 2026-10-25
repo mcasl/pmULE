@@ -4,6 +4,7 @@
 # coleccion: 02_pert
 # variante: ficticias-sobrantes
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

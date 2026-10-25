@@ -4,6 +4,7 @@
 # coleccion: 07_estimaciones
 # variante: deterministas
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

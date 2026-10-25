@@ -111,8 +111,10 @@ def anadir_variantes(plantilla, semilla, repeticiones, ejecutar, indice):
     for r in existentes:
         en = _entrada_desde_fichero(meta, r.stem, r)
         en["semilla"] = semilla_de(semilla, indice, int(r.stem.rsplit("_", 1)[1]))
-        texto = r.read_text(encoding="utf8")
-        en["grafo"] = "roy" if ".roy(" in texto else ("pert" if ".pert(" in texto else None)
+        if not en.get("grafo"):
+            texto = r.read_text(encoding="utf8")
+            en["grafo"] = ("roy" if (".roy(" in texto or "display_roy_pasos(" in texto)
+                           else ("pert" if (".pert(" in texto or "display_pert_pasos(" in texto) else None))
         entradas.append(en)
     usadas = {en["variante"] for en in entradas}
     nuevas = [v for v in plantilla.VARIANTES if v.nombre not in usadas]
@@ -146,7 +148,7 @@ def anadir_variantes(plantilla, semilla, repeticiones, ejecutar, indice):
 def _leer_cabecera(ruta_py):
     texto = ruta_py.read_text(encoding="utf8")
     campos = {}
-    for clave in ("subtitle", "variante", "nivel", "coleccion"):
+    for clave in ("subtitle", "variante", "nivel", "coleccion", "grafo"):
         m = re.search(rf'^# {clave}: "?(.*?)"?$', texto, re.M)
         if m:
             campos[clave] = m.group(1)
@@ -157,6 +159,7 @@ def _entrada_desde_fichero(meta, nombre, ruta_py):
     c = _leer_cabecera(ruta_py)
     return dict(nombre=nombre, coleccion=meta["slug"], variante=c.get("variante", ""),
                 nivel=int(c.get("nivel", 0) or 0), subtitulo=c.get("subtitle", ""),
+                grafo=c.get("grafo") or None,
                 ruta=str(ruta_py.relative_to(REPO)), semilla=None)
 
 

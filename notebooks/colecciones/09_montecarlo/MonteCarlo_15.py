@@ -4,6 +4,7 @@
 # coleccion: 09_montecarlo
 # variante: correlacionadas
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

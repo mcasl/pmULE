@@ -4,6 +4,7 @@
 # coleccion: 09_montecarlo
 # variante: a-mano
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

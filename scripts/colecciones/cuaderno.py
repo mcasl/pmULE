@@ -18,6 +18,7 @@ CABECERA = """\
 # coleccion: {coleccion}
 # variante: {variante}
 # nivel: {nivel}
+# grafo: {grafo}
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -311,6 +312,11 @@ class Variante:
 ESTADO = {"grafo": "pert"}   # grafo activo mientras se genera un cuaderno (lo fija despachar)
 
 
+def grafo_nombre() -> str:
+    """Nombre del grafo activo para los textos del enunciado («PERT» o «Roy»)."""
+    return "Roy" if ESTADO["grafo"] == "roy" else "PERT"
+
+
 def fig_grafo(durations: str = "datos_proyecto['duration']", cap: str = "Grafo PERT",
               label: str = "fig-pert", obj: str = "proyecto", tipo: str | None = None,
               ranksep: float = 1) -> list[tuple]:
@@ -344,10 +350,11 @@ def partir_enunciado(celdas: list[tuple]) -> tuple[list, list]:
 
 
 def render(celdas: list[tuple], titulo: str, subtitulo: str, coleccion: str = "",
-           variante: str = "", nivel: int = 0) -> str:
+           variante: str = "", nivel: int = 0, grafo: str = "") -> str:
     """Devuelve el texto completo del cuaderno en formato py:percent."""
     partes = [CABECERA.format(titulo=titulo, subtitulo=subtitulo, coleccion=coleccion,
-                              variante=variante, nivel=nivel).rstrip("\n")]
+                              variante=variante, nivel=nivel,
+                              grafo=grafo or ESTADO["grafo"]).rstrip("\n")]
     partes.append(_celda_code(PREAMBULO))
     partes.append(_celda_code(DETALLES.strip("\n")))
     partes.append(_celda_code(TEMP))

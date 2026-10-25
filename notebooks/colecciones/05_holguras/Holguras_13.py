@@ -4,6 +4,7 @@
 # coleccion: 05_holguras
 # variante: diagnostico
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
-                        literal_dataframe, literal_dict, BMATRIX)
+                        literal_dataframe, literal_dict, BMATRIX, grafo_nombre, ESTADO)
 
 META = dict(slug="01_prelaciones", prefijo="Prelaciones",
             titulo="Cuadro de prelaciones",
@@ -58,7 +58,7 @@ def _base(k, rng):
               "él, indique las actividades iniciales y finales del proyecto.",
               "Construya el cuadro de ancestros (prelaciones transitivas) y compruebe que las prelaciones "
               "redundantes del apartado anterior aparecen en él.",
-              "Dibuje el grafo PERT del proyecto y compruebe sobre él el cuadro de ancestros."]
+              f"Dibuje el grafo {grafo_nombre()} del proyecto y compruebe sobre él el cuadro de ancestros."]
     celdas.append(preguntas(pregs))
     celdas.append(code('#| tbl-cap: "Cuadro de prelaciones tal y como lo recibimos"\n#| label: tbl-datosEnunciado\n'
                        + literal_dataframe(df)))
@@ -121,11 +121,17 @@ def _base(k, rng):
                        "for p, a in redundantes:\n"
                        "    print(f'{p} ∈ ancestros({a}): {p in ancestros[a]}')"))
     celdas += apartado(ap); ap += 1
-    celdas.append(md("Las actividades ficticias (discontinuas) del grafo transmiten precisamente las "
-                     "prelaciones que no pueden representarse compartiendo nodos. Siguiendo hacia atrás los "
-                     "arcos desde el final de cada actividad se recorren todos sus ancestros."))
-    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
-                       "proyecto.display_ancestros('pert')"))
+    if ESTADO["grafo"] == "roy":
+        celdas.append(md("En el grafo Roy cada actividad es un nodo y cada prelación inmediata un arco, sin "
+                         "actividades ficticias. Siguiendo hacia atrás los arcos desde cada actividad se "
+                         "recorren todos sus ancestros."))
+    else:
+        celdas.append(md("Las actividades ficticias (discontinuas) del grafo transmiten precisamente las "
+                         "prelaciones que no pueden representarse compartiendo nodos. Siguiendo hacia atrás los "
+                         "arcos desde el final de cada actividad se recorren todos sus ancestros."))
+    celdas.append(code(f'#| fig-cap: "Grafo {grafo_nombre()} del proyecto"\n'
+                       f'#| label: fig-{ESTADO["grafo"]}\n'
+                       f"proyecto.display_ancestros('{ESTADO['grafo']}')"))
     sub = f"{n} actividades, {len(redundantes)} prelaciones redundantes" + (", una errata con ciclo" if con_ciclo else "")
     return celdas, sub
 
@@ -167,7 +173,8 @@ def _texto(rng):
         "Construya el cuadro de prelaciones inmediatas a partir del texto (una fila por actividad con sus predecesoras inmediatas).",
         "Construya el cuadro de prelaciones expandido e indique las actividades iniciales y finales.",
         "Construya el cuadro de ancestros y compruebe que ninguna prelación del texto es redundante.",
-        "Dibuje el grafo PERT con el mínimo número de ficticias."]))
+        ("Dibuje el grafo PERT con el mínimo número de ficticias." if ESTADO["grafo"] != "roy"
+         else "Dibuje el grafo Roy del proyecto.")]))
     celdas.append(md("# Resolución"))
     celdas += apartado(1)
     celdas.append(md("Se recorre el texto actividad por actividad anotando sólo las predecesoras que el texto "
@@ -193,8 +200,9 @@ def _texto(rng):
                        "redundantes = sorted(set(G.edges) - set(nx.transitive_reduction(G).edges))\n"
                        "print('Prelaciones redundantes:', redundantes or 'ninguna')"))
     celdas += apartado(4)
-    celdas.append(code('#| fig-cap: "Grafo PERT del proyecto"\n#| label: fig-pert\n'
-                       "proyecto.display_ancestros('pert')"))
+    celdas.append(code(f'#| fig-cap: "Grafo {grafo_nombre()} del proyecto"\n'
+                       f'#| label: fig-{ESTADO["grafo"]}\n'
+                       f"proyecto.display_ancestros('{ESTADO['grafo']}')"))
     return celdas, f"{n} actividades descritas en texto ({ctx['tema']})"
 
 
@@ -236,19 +244,23 @@ def _grafo_erroneo(rng):
     err, (p_q, a_q), (p_a, a_a) = estado["err"], estado["quitada"], estado["anadida"]
     df = P.tabla_base(info)
     celdas = [md("# Enunciado"),
-              md("Un compañero ha dibujado el grafo PERT que se muestra a continuación a partir del cuadro de "
+              md(f"Un compañero ha dibujado el grafo {grafo_nombre()} que se muestra a continuación a partir del cuadro de "
                  "prelaciones adjunto. Sospechamos que el grafo no refleja exactamente el cuadro.")]
     celdas.append(code('#| tbl-cap: "Cuadro de prelaciones (correcto)"\n#| label: tbl-datosEnunciado\n'
                        + literal_dataframe(df)))
-    celdas.append(code('#| fig-cap: "Grafo PERT dibujado por el compañero"\n#| label: fig-pertErroneo\n'
+    dibujo = ("proyecto_dibujado.pert(durations=False, ranksep=1)" if ESTADO["grafo"] != "roy"
+              else "proyecto_dibujado.roy(durations=False, ranksep=1.2, nodesep=1.2)")
+    celdas.append(code(f'#| fig-cap: "Grafo {grafo_nombre()} dibujado por el compañero"\n'
+                       f'#| label: fig-{ESTADO["grafo"]}Erroneo\n'
                        + literal_dict(P.a_strings(err), "prelaciones_del_grafo") + "\n"
                        "proyecto_dibujado = ProjectGraph.from_dict_of_strings(prelaciones_del_grafo)\n"
-                       "proyecto_dibujado.pert(durations=False, ranksep=1)"))
+                       + dibujo))
     celdas.append(preguntas([
         "Construya el cuadro de ancestros a partir del cuadro de prelaciones y, por separado, a partir del grafo "
         "dibujado (siguiendo los arcos hacia atrás).",
         "Compare ambos cuadros e identifique qué prelaciones sobran y cuáles faltan en el grafo.",
-        "Dibuje el grafo PERT correcto. ¿Cambia el número de ficticias?"]))
+        ("Dibuje el grafo PERT correcto. ¿Cambia el número de ficticias?" if ESTADO["grafo"] != "roy"
+         else "Dibuje el grafo Roy correcto. ¿Cambia el número de arcos?")]))
     celdas.append(md("# Resolución"))
     celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
@@ -279,7 +291,12 @@ def _grafo_erroneo(rng):
                      "prelación cambian las que son redundantes)."))
     celdas += apartado(3)
     celdas += fig_grafo(durations="False", cap="Grafo PERT correcto", label="fig-pertCorrecto")
-    celdas.append(code("Markdown(f'El grafo correcto tiene {len(proyecto.dummies)} ficticia(s) frente a {len(proyecto_dibujado.dummies)} del dibujado.')"))
+    if ESTADO["grafo"] == "roy":
+        celdas.append(code("arcos = sum(len(ps) for ps in prelaciones.immediate_predecessor.values())\n"
+                           "arcos_dibujado = sum(len(ps) for ps in PredecessorTable.from_dict_of_strings(prelaciones_del_grafo).immediate_predecessor.values())\n"
+                           "Markdown(f'El grafo correcto tiene {arcos} arcos de prelación frente a {arcos_dibujado} del dibujado.')"))
+    else:
+        celdas.append(code("Markdown(f'El grafo correcto tiene {len(proyecto.dummies)} ficticia(s) frente a {len(proyecto_dibujado.dummies)} del dibujado.')"))
     return celdas, f"{n} actividades, grafo con una prelación de más y otra de menos"
 
 
@@ -398,7 +415,7 @@ def _datos_sucios(rng):
         "válido: nombres en mayúscula, predecesoras separadas por comas y `---` para las actividades iniciales.",
         "Construya el proyecto, indique las actividades iniciales y finales y compruebe que no hay "
         "prelaciones redundantes ni ciclos.",
-        "Dibuje el grafo PERT."]))
+        f"Dibuje el grafo {grafo_nombre()}."]))
     celdas.append(code('#| tbl-cap: "Tabla recibida"\n#| label: tbl-datosEnunciado\n'
                        + literal_dataframe(tabla, indice="actividad")))
     celdas.append(md("# Resolución"))
@@ -452,17 +469,17 @@ def _datos_sucios(rng):
 
 VARIANTES = [
     Variante("redundancias", 1, "cuadro con prelaciones redundantes: depurarlo, cuadro expandido y de ancestros",
-             lambda rng: _base(1, rng), grafo="pert"),
-    Variante("redundancias-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng), grafo="pert"),
+             lambda rng: _base(1, rng), grafo="alterno"),
+    Variante("redundancias-b", 1, "ídem con otro proyecto", lambda rng: _base(2, rng), grafo="alterno"),
     Variante("ciclo", 2, "errata que crea un ciclo: detectarla con la librería y corregirla antes de depurar",
-             lambda rng: _base(3, rng), grafo="pert"),
-    Variante("texto", 2, "las prelaciones llegan como texto corrido con contexto; hay que tabularlas", _texto, grafo="pert"),
+             lambda rng: _base(3, rng), grafo="alterno"),
+    Variante("texto", 2, "las prelaciones llegan como texto corrido con contexto; hay que tabularlas", _texto, grafo="alterno"),
     Variante("grafo-erroneo", 3, "se da un grafo PERT con una prelación de más y otra de menos: encontrarlas "
-                                 "comparando cuadros de ancestros", _grafo_erroneo, grafo="pert"),
+                                 "comparando cuadros de ancestros", _grafo_erroneo, grafo="alterno"),
     Variante("numeracion-nodos", 2, "numerar los nodos del PERT con i < j en cada arco; nodos intercambiables; contar las numeraciones válidas",
              _numeracion_nodos, grafo="pert"),
     Variante("datos-sucios", 1, "cuadro transcrito con minúsculas, separadores y duplicados: normalizarlo con reglas antes de construir el proyecto",
-             _datos_sucios, grafo="pert"),
+             _datos_sucios, grafo="alterno"),
 ]
 
 

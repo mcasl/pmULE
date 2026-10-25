@@ -4,6 +4,7 @@
 # coleccion: 06_matriz_caminos
 # variante: escenarios
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -194,7 +195,7 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 # Para el proyecto cuyo cuadro de prelaciones se adjunta se manejan tres escenarios de duración de las actividades (en días): optimista, normal y pesimista. Se quiere conocer la duración del proyecto en los tres sin repetir tres veces el cálculo de tiempos.
 
 # %%
-pregunta_1 = "1. Dibuje el grafo PERT y construya la matriz de caminos R.  "
+pregunta_1 = "1. Dibuje el grafo Roy y construya la matriz de caminos R.  "
 pregunta_2 = "2. Disponga los tres escenarios como columnas de una matriz T (una fila por actividad) y calcule el producto R·T. ¿Qué representa cada columna del resultado?  "
 pregunta_3 = "3. Obtenga la duración del proyecto en cada escenario como el máximo de cada columna, e indique la ruta crítica de cada uno. ¿Es siempre la misma?  "
 pregunta_4 = "4. ¿Por qué este procedimiento es el mismo que se usa en el método de Monte Carlo?  "
@@ -261,13 +262,13 @@ display(Markdown(pregunta_1))
 # %%
 #| fig-cap: "Grafo Roy"
 #| label: fig-pert
-proyecto.display_roy_construccion(tabla=prelaciones)
+proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
 
 # %%
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
 R = proyecto.path_matrix(dummies=False)
-proyecto.display_rutas("roy")
+proyecto.display_rutas('roy')
 
 # %% [markdown]
 # ## Apartado 2

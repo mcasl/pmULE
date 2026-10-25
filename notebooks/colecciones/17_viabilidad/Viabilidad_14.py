@@ -4,6 +4,7 @@
 # coleccion: 17_viabilidad
 # variante: crashing-van
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

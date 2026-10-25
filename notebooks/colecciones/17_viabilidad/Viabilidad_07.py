@@ -4,6 +4,7 @@
 # coleccion: 17_viabilidad
 # variante: vinculo-proyecto
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -4,6 +4,7 @@
 # coleccion: 08_probabilidad
 # variante: hito
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

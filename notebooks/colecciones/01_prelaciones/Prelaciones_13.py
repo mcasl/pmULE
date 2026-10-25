@@ -4,6 +4,7 @@
 # coleccion: 01_prelaciones
 # variante: numeracion-nodos
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

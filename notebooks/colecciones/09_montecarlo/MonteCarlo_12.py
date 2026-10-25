@@ -4,6 +4,7 @@
 # coleccion: 09_montecarlo
 # variante: a-mano
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -241,7 +242,7 @@ replicas = pd.DataFrame([
 replicas
 
 # %%
-pregunta_1 = "1. Dibuje el grafo PERT, enumere las rutas y escriba la matriz de rutas R (una fila por ruta, una columna por actividad).  "
+pregunta_1 = "1. Dibuje el grafo Roy, enumere las rutas y escriba la matriz de rutas R (una fila por ruta, una columna por actividad).  "
 pregunta_2 = "2. Escriba la matriz de tiempos T con las réplicas como columnas y calcule a mano el producto R·T. ¿Qué es cada elemento del resultado?  "
 pregunta_3 = "3. Obtenga la duración del proyecto en cada réplica como el máximo de cada columna (τ = ‖R·t‖∞ para cada columna t). Calcule la media y la desviación típica muestral de las cinco duraciones.  "
 pregunta_4 = "4. Para cada réplica, ¿qué ruta ha sido la crítica? Calcule el índice de criticidad de cada ruta y de cada actividad con estas cinco réplicas. Compare con el camino crítico de las duraciones medias.  "
@@ -274,12 +275,15 @@ proyecto = prelaciones.create_project()
 # %%
 display(Markdown(pregunta_1))
 
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo Roy con las duraciones medias"
 #| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
@@ -287,7 +291,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| label: tbl-matrizRutas
 R = proyecto.path_matrix(dummies=False)
 rutas = proyecto.paths(dummies=False)
-proyecto.display_rutas("roy")
+proyecto.display_rutas('roy')
 
 # %% [markdown]
 # ## Apartado 2

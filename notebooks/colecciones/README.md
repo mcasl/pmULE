@@ -1,6 +1,6 @@
 # Colecciones de ejercicios cortos por competencia
 
-Cada carpeta es una colección de ejercicios breves que ejercitan una sola competencia. Los cuadernos siguen el guion de los `Ejercicio_NN` (enunciado con `pregunta_N`, tabla de datos, resolución por apartados con pmULE) y están emparejados con jupytext (`.py` ↔ `.ipynb`).
+Cada carpeta es una colección de ejercicios breves que ejercitan una sola competencia. Los cuadernos siguen el guion de los `Ejercicio_NN` (enunciado con `pregunta_N`, tabla de datos, resolución por apartados con pmULE) y están escritos como `.py` (jupytext percent); los `.ipynb` se generan al renderizar y no se versionan.
 
 Se generan con `python -m scripts.colecciones.generador` desde la raíz del repositorio (`--listar` muestra las variantes; ver la ayuda del script). Cada colección tiene varias *variantes*, una por concepto que se quiere comprobar; el ejercicio k usa la variante k (cíclicamente). Los datos de cada ejercicio son deterministas (semilla fija) y se eligen por muestreo hasta que el proyecto presenta los rasgos que la variante necesita (ficticias, varias rutas críticas, holguras distintas, sobrecoste, …). La mitad de los cuadernos llevan además un contexto narrativo con la descripción de cada actividad.
 
@@ -37,6 +37,12 @@ Variantes:
 - `Prelaciones_12` [grafo-erroneo, nivel 3] — 9 actividades, grafo con una prelación de más y otra de menos
 - `Prelaciones_13` [numeracion-nodos, nivel 2] — 7 actividades, 7 nodos; numeración de los nodos
 - `Prelaciones_14` [datos-sucios, nivel 1] — 9 actividades; tabla con 8 formatos distintos que normalizar
+- `Prelaciones_15` [redundancias, nivel 1] — 10 actividades, 2 prelaciones redundantes
+- `Prelaciones_16` [texto, nivel 2] — 9 actividades descritas en texto (la organización de un congreso científico)
+- `Prelaciones_17` [ciclo, nivel 2] — 9 actividades, 2 prelaciones redundantes, una errata con ciclo
+- `Prelaciones_18` [datos-sucios, nivel 1] — 9 actividades; tabla con 8 formatos distintos que normalizar
+- `Prelaciones_19` [grafo-erroneo, nivel 3] — 9 actividades, grafo con una prelación de más y otra de menos
+- `Prelaciones_20` [redundancias-b, nivel 1] — 10 actividades, 2 prelaciones redundantes
 
 ## 02_pert — Grafo PERT y actividades ficticias
 
@@ -115,6 +121,12 @@ Variantes:
 - `Zaderenko_12` [prediccion, nivel 2] — 8 actividades; predicción cualitativa sobre H, E y F
 - `Zaderenko_13` [plazo-impuesto, nivel 2] — 9 actividades; duración 31, plazo impuesto 28 (3 rutas lo exceden)
 - `Zaderenko_14` [gantt-dado, nivel 3] — 7 actividades; sólo se conoce el Gantt de inicios tempranos
+- `Zaderenko_15` [zaderenko, nivel 1] — 8 actividades, 8 nodos, 1 ficticias
+- `Zaderenko_16` [zaderenko-b, nivel 1] — 9 actividades, 9 nodos, 2 ficticias
+- `Zaderenko_17` [zaderenko-c, nivel 2] — 10 actividades, 9 nodos, 1 ficticias
+- `Zaderenko_18` [matriz-dada, nivel 3] — 8 actividades, 8 nodos; reconstrucción desde la matriz
+- `Zaderenko_19` [prediccion, nivel 2] — 9 actividades; predicción cualitativa sobre H, E y C
+- `Zaderenko_20` [plazo-impuesto, nivel 2] — 9 actividades; duración 29, plazo impuesto 27 (1 rutas lo exceden)
 
 ## 05_holguras — Holguras y camino crítico
 
@@ -145,6 +157,12 @@ Variantes:
 - `Holguras_12` [vigilancia, nivel 2] — 10 actividades; ordenación por vigilancia y actividades sin margen
 - `Holguras_13` [diagnostico, nivel 3] — 9 actividades; calendario con errores en D y C
 - `Holguras_14` [mini-a-mano, nivel 1] — 5 actividades, 2 rutas, sin ficticias; cálculo completo a mano
+- `Holguras_15` [tres-holguras, nivel 1] — 9 actividades, 1 ruta(s) crítica(s)
+- `Holguras_16` [tres-holguras-b, nivel 2] — 9 actividades, 1 ruta(s) crítica(s)
+- `Holguras_17` [varias-criticas, nivel 2] — 10 actividades, 2 ruta(s) crítica(s)
+- `Holguras_18` [holgura-compartida, nivel 2] — 9 actividades; B y D comparten 3 semanas de holgura
+- `Holguras_19` [vigilancia, nivel 2] — 9 actividades; ordenación por vigilancia y actividades sin margen
+- `Holguras_20` [mini-a-mano, nivel 1] — 5 actividades, 2 rutas, sin ficticias; cálculo completo a mano
 
 ## 06_matriz_caminos — Matriz de caminos
 
@@ -166,6 +184,8 @@ Variantes:
 - `Caminos_06` [matriz-y-duracion-b, nivel 1] — 8 actividades, 8 rutas
 - `Caminos_07` [rutas-a-grafo-svd, nivel 3] — 8 actividades, 5 rutas, reconstrucción desde las rutas y SVD
 - `Caminos_08` [escenarios, nivel 2] — 8 actividades, 4 rutas, tres escenarios
+- `Caminos_09` [matriz-y-duracion, nivel 1] — 9 actividades, 6 rutas
+- `Caminos_10` [matriz-y-duracion-b, nivel 1] — 9 actividades, 6 rutas
 
 ## 07_estimaciones — Estimaciones de duración (a, m, b)
 
@@ -187,6 +207,8 @@ Variantes:
 - `Estimaciones_06` [tres-estimaciones-b, nivel 1] — 8 actividades, 1 con estimaciones asimétricas
 - `Estimaciones_07` [tres-estimaciones-c, nivel 1] — 7 actividades, 3 con estimaciones asimétricas
 - `Estimaciones_08` [deterministas, nivel 2] — 9 actividades, 2 de duración fija
+- `Estimaciones_09` [tres-estimaciones, nivel 1] — 8 actividades, 4 con estimaciones asimétricas
+- `Estimaciones_10` [tres-estimaciones-b, nivel 1] — 7 actividades, 4 con estimaciones asimétricas
 
 ## 08_probabilidad — Probabilidad de cumplir el plazo (aproximación normal)
 
@@ -220,6 +242,10 @@ Variantes:
 - `Probabilidad_14` [diagnostico, nivel 2] — 9 actividades; resolución con σ sumadas y con la ruta equivocada
 - `Probabilidad_15` [hito, nivel 2] — 9 actividades; hito al final de E (fecha media 14, comprometida 15)
 - `Probabilidad_16` [ser-critica, nivel 3] — dos cadenas paralelas de 3 y 2 actividades; P(ruta no crítica resulta la más larga)
+- `Probabilidad_17` [normal, nivel 1] — 9 actividades, 1 ruta(s) crítica(s), σ = 1.27
+- `Probabilidad_18` [dos-rutas-criticas, nivel 2] — 10 actividades, 2 ruta(s) crítica(s), σ = 1.04
+- `Probabilidad_19` [dos-rutas-criticas-b, nivel 2] — 9 actividades, 2 ruta(s) crítica(s), σ = 1.10
+- `Probabilidad_20` [casi-critica-variable, nivel 3] — 10 actividades; segunda ruta a 1 semana(s) de la crítica y mucho más variable
 
 ## 09_montecarlo — Método de Monte Carlo
 
@@ -255,6 +281,9 @@ Variantes:
 - `MonteCarlo_15` [correlacionadas, nivel 3] — 9 actividades; 4 expuestas a un factor común (σ_F = 0.15)
 - `MonteCarlo_16` [percentiles, nivel 2] — 9 actividades; plazo del cliente 33; percentiles y retraso esperado
 - `MonteCarlo_17` [recursos-limitados, nivel 3] — 8 actividades triangulares; límite 3 operarios, plazo 19
+- `MonteCarlo_18` [recursos-limitados, nivel 3] — 9 actividades triangulares; límite 3 operarios, plazo 23
+- `MonteCarlo_19` [normal, nivel 1] — 8 actividades, 6 rutas, distribución normal
+- `MonteCarlo_20` [triangular, nivel 2] — 8 actividades, 5 rutas, distribución triangular
 
 ## 10_reduccion — Reducción de la duración con mínimo coste
 
@@ -289,6 +318,10 @@ Variantes:
 - `Reduccion_14` [cur-por-tramos, nivel 3] — 9 actividades; CUR por tramos, reducir 3 semanas
 - `Reduccion_15` [crashing-recursos, nivel 3] — 9 actividades; límite 3 operarios, reducir dos semanas (Ackoff sin recursos falla)
 - `Reduccion_16` [crashing-incertidumbre, nivel 3] — duraciones triangulares; plazo de 18 semanas; reducción y probabilidad
+- `Reduccion_17` [crashing-recursos, nivel 3] — 8 actividades; límite 3 operarios, reducir dos semanas (Ackoff sin recursos falla)
+- `Reduccion_18` [crashing-incertidumbre, nivel 3] — duraciones triangulares; plazo de 21 semanas; reducción y probabilidad
+- `Reduccion_19` [cur-y-ackoff, nivel 1] — 9 actividades, reducción de 3 semanas
+- `Reduccion_20` [costes-indirectos, nivel 2] — 8 actividades, costes indirectos de 3 k€/semana
 
 ## 11_recursos — Nivelación y asignación de recursos
 
@@ -322,6 +355,10 @@ Variantes:
 - `Recursos_14` [interrumpibles, nivel 3] — 8 actividades; 5 operarios; interrumpir o no interrumpir
 - `Recursos_15` [limites-simultaneos, nivel 3] — 8 actividades; 4 operarios y 2 equipos a la vez
 - `Recursos_16` [limites-simultaneos, nivel 3] — 8 actividades; 4 operarios y 2 equipos a la vez
+- `Recursos_17` [nivelacion, nivel 1] — 9 actividades, nivelación
+- `Recursos_18` [asignacion, nivel 2] — 9 actividades, asignación con límite 5→8
+- `Recursos_19` [dos-recursos, nivel 3] — 9 actividades, dos recursos y propuesta de desplazamiento
+- `Recursos_20` [consumible, nivel 2] — 9 actividades; combustible con suministro de 80 l/semana
 
 ## 12_valor_ganado — Método del valor ganado
 
@@ -364,6 +401,15 @@ Variantes:
 - `ValorGanado_19` [prevision-incertidumbre, nivel 3] — duraciones triangulares y costes inciertos; controles en las semanas [6, 12, 17]
 - `ValorGanado_20` [ev-recursos, nivel 3] — límite de 3 operarios y línea base sin recursos
 - `ValorGanado_21` [ev-recursos-incertidumbre, nivel 3] — límite de 3 operarios; dos líneas base; control en la semana 11
+- `ValorGanado_22` [prevision-incertidumbre, nivel 3] — duraciones triangulares y costes inciertos; controles en las semanas [6, 11, 16]
+- `ValorGanado_23` [ev-recursos, nivel 3] — límite de 3 operarios y línea base sin recursos
+- `ValorGanado_24` [ev-recursos-incertidumbre, nivel 3] — límite de 3 operarios; dos líneas base; control en la semana 10
+- `ValorGanado_25` [indicadores-eac, nivel 1] — 8 actividades, un punto de control (semana 10), EAC/VAC/TCPI
+- `ValorGanado_26` [earned-schedule, nivel 2] — 8 actividades, un punto de control (semana 11), programación ganada
+- `ValorGanado_27` [tendencia, nivel 2] — 8 actividades, tres puntos de control (semanas 5, 9, 14)
+- `ValorGanado_28` [coste-bien-plazo-mal, nivel 2] — 9 actividades; punto de control en la semana 11: coste bien plazo mal
+- `ValorGanado_29` [plazo-bien-coste-mal, nivel 2] — 8 actividades; punto de control en la semana 11: plazo bien coste mal
+- `ValorGanado_30` [diagnostico, nivel 2] — 9 actividades; resolución con CPI y SPI intercambiados
 
 ## 13_formula_compleccion — La fórmula del tiempo de compleción τ = ‖R·t‖∞
 
@@ -397,6 +443,10 @@ Variantes:
 - `Formula_14` [svd-vs-montecarlo, nivel 3] — 10 actividades, 11 rutas; criticidad Monte Carlo frente a |v₁|
 - `Formula_15` [editar-R, nivel 2] — 7 actividades; añadir E → F cambia τ de 29 a 32
 - `Formula_16` [casi-criticas, nivel 2] — 9 actividades; 2 rutas con margen ≤ 2
+- `Formula_17` [tau-norma-infinito, nivel 1] — 8 actividades, 4 rutas; τ como norma infinito
+- `Formula_18` [gradiente, nivel 2] — 9 actividades, 2 rutas críticas; gradiente con empates
+- `Formula_19` [svd-vs-montecarlo, nivel 3] — 9 actividades, 12 rutas; criticidad Monte Carlo frente a |v₁|
+- `Formula_20` [editar-R, nivel 2] — 8 actividades; añadir G → F cambia τ de 30 a 36
 
 ## 14_comprension — Comprensión conceptual
 
@@ -439,6 +489,10 @@ Variantes:
 - `Avanzado_04` [pdm-desfases, nivel 3] — 8 actividades; 4 relaciones PDM no ordinarias (1 CC, 1 FF)
 - `Avanzado_05` [fechas-calendario, nivel 2] — 8 actividades; inicio 2026-09-21, 2 festivos
 - `Avanzado_06` [decision-economica, nivel 2] — 8 actividades; indirectos 8, plazo 22, penalización 11, prima 6
+- `Avanzado_07` [pdm-desfases, nivel 3] — 7 actividades; 4 relaciones PDM no ordinarias (1 CC, 1 FF)
+- `Avanzado_08` [fechas-calendario, nivel 2] — 8 actividades; inicio 2026-05-04, 2 festivos
+- `Avanzado_09` [decision-economica, nivel 2] — 9 actividades; indirectos 2, plazo 37, penalización 11, prima 1
+- `Avanzado_10` [fechas-calendario, nivel 2] — 9 actividades; inicio 2026-03-16, 2 festivos
 
 ## 16_gantt_grafos — Gantt y grafos: ida y vuelta
 
@@ -460,6 +514,8 @@ Variantes:
 - `Gantt_06` [roy-a-gantt, nivel 1] — 7 actividades, 1 ficticias; del Roy al Gantt
 - `Gantt_07` [gantt-a-roy, nivel 2] — 7 actividades, 2 ficticias en PERT; del Gantt al Roy
 - `Gantt_08` [gantt-a-pert, nivel 2] — 7 actividades, 1 ficticias en PERT; del Gantt al PERT
+- `Gantt_09` [pert-a-gantt, nivel 1] — 8 actividades, 3 ficticias; del PERT al Gantt
+- `Gantt_10` [roy-a-gantt, nivel 1] — 7 actividades, 2 ficticias; del Roy al Gantt
 
 ## 17_viabilidad — Viabilidad financiera: flujos de caja, VAN, TIR y payback
 
@@ -491,6 +547,12 @@ Variantes:
 - `Viabilidad_12` [van-montecarlo, nivel 3] — 8 actividades, 18 meses, I0 = 950 k€, ingreso 30 ± 10 k€/mes durante 48 meses, k = 8%; distribución del VAN
 - `Viabilidad_13` [recursos-van, nivel 3] — límite de 3 operarios, ingresos de 65 k€/mes durante 36 meses
 - `Viabilidad_14` [crashing-van, nivel 3] — ingresos de 35 k€/mes durante 36 meses; reducción mes a mes con Ackoff
+- `Viabilidad_15` [recursos-van, nivel 3] — límite de 3 operarios, ingresos de 35 k€/mes durante 60 meses
+- `Viabilidad_16` [crashing-van, nivel 3] — ingresos de 35 k€/mes durante 48 meses; reducción mes a mes con Ackoff
+- `Viabilidad_17` [caso-base, nivel 1] — una línea de envasado automatizada: I0 = 590 k€, 6 años, k = 12%; VAN 236, TIR 22.1%
+- `Viabilidad_18` [vinculo-proyecto, nivel 2] — 8 actividades, 18 meses de inversión (I0 = 1050 k€), 35 k€/mes durante 60 meses, k = 12%
+- `Viabilidad_19` [alternativas, nivel 2] — A y B (5 años) con conflicto VAN/TIR (Fisher 10.7%), C de 4 años; k = 6%
+- `Viabilidad_20` [sensibilidad, nivel 2] — una aplicación de gestión por suscripción: umbrales de precio, volumen y coste variable; escenarios; inflación 4%
 
 ## 18_casos — Casos de decisión con varios implicados
 
@@ -517,6 +579,15 @@ Variantes:
 - `Caso_09` [oferta-comercial, nivel 2] — oferta comercial: media 16, P(≤16) = 0.32 por Monte Carlo, plazo 90 % 18.8; óptimo 17
 - `Caso_10` [comite-inversion, nivel 3] — comité de inversión: una línea de envasado automatizada; VAN 128 k€ (14%), precio −20% con prob. 40%
 - `Caso_11` [contingencia-planta, nivel 3] — límite de 3 operarios, plazo mes 16, penalización 6 k€/mes y VAN
+- `Caso_12` [contingencia-planta, nivel 3] — límite de 3 operarios, plazo mes 18, penalización 10 k€/mes y VAN
+- `Caso_13` [reforma-laboratorio, nivel 3] — reforma del laboratorio: 3 semanas de retraso, alquiler 4 k€/sem, bolsa 5 k€
+- `Caso_14` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 1 operario en 2–3 (1 sem. de retraso) frente a 3–4
+- `Caso_15` [comite-valor-ganado, nivel 3] — comité y valor ganado: C declarada al 67 % frente al 27 % real; SPI 1.00 → 0.88
+- `Caso_16` [oferta-comercial, nivel 2] — oferta comercial: media 24, P(≤24) = 0.29 por Monte Carlo, plazo 90 % 26.1; óptimo 25
+- `Caso_17` [comite-inversion, nivel 3] — comité de inversión: una nave logística con reparto de última milla; VAN 340 k€ (33%), precio −12% con prob. 40%
+- `Caso_18` [contingencia-planta, nivel 3] — límite de 3 operarios, plazo mes 21, penalización 6 k€/mes y VAN
+- `Caso_19` [reforma-laboratorio, nivel 3] — reforma del laboratorio: 3 semanas de retraso, alquiler 4 k€/sem, bolsa 6 k€
+- `Caso_20` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 2 operarios en 7–8 (2 sem. de retraso) frente a 10–11
 
 ## 19_etica — Ética en el desarrollo de proyectos
 
@@ -568,6 +639,8 @@ Variantes:
 - `Dilema_26` [recurso-desviado, nivel 2] — parar B 2 semanas (holgura 0): 2 de retraso, 9.9 k€ de penalidad frente a 14.9 k€ del otro proyecto
 - `Dilema_27` [baja-temeraria, nivel 3] — baja 28.3 % (umbral 27.7 %) y plazo 18 con P = 0.09: temeraria y sin buena fe
 - `Dilema_28` [imputacion-cruzada, nivel 1] — 530 h (32 k€) de A a B: CPI de A de 0.72 a 1.02; no subvencionable
+- `Dilema_29` [informe-maquillado, nivel 2] — informe con avance = gastado/presupuesto: SPI 1.11 y CPI 1,00 frente a 0.76 y 0.69 verificados
+- `Dilema_30` [verdad-a-medias, nivel 2] — «la ruta crítica acaba en la semana 16» frente a P(T ≤ 16) = 0.50 (PERT) y 0.43 (MC)
 
 ## 20_sostenibilidad — Sostenibilidad en el desarrollo de proyectos
 
@@ -685,3 +758,7 @@ Variantes:
 - `CadenaCritica_24` [consumo-alimentacion, nivel 2] — día 11: 1 colchón de alimentación desbordado; CP consumido 33 %
 - `CadenaCritica_25` [tendencia-fiebre, nivel 2] — cadena de 36 días, CP de 9; cuatro informes (amarilla → amarilla → verde → amarilla)
 - `CadenaCritica_26` [bpi-frente-a-spi, nivel 3] — día 12: SPI 0.94 y zona verde (alimentación retrasada dentro de su colchón)
+- `CadenaCritica_27` [multitarea, nivel 1] — 3 tareas en turnos de 3 días; cambio de tarea de 1 día
+- `CadenaCritica_28` [colchon-proyecto, nivel 1] — 8 actividades; cadena de 4 actividades; compromiso 30 frente a 36 días
+- `CadenaCritica_29` [dimensionado-colchon, nivel 2] — cadena de 8 actividades; colchón 11 (cortar y pegar) frente a 9 (raíz)
+- `CadenaCritica_30` [colchones-alimentacion, nivel 2] — 3 colchones de alimentación; compromiso 35 días

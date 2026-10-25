@@ -4,6 +4,7 @@
 # coleccion: 21_cadena_critica
 # variante: seguimiento-fiebre
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

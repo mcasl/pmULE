@@ -1,0 +1,404 @@
+# ---
+# title: Viabilidad 16
+# subtitle: "ingresos de 35 k€/mes durante 48 meses; reducción mes a mes con Ackoff"
+# coleccion: 17_viabilidad
+# variante: crashing-van
+# nivel: 3
+# grafo: roy
+# lang: es
+# documentclass: scrreprt
+# papersize: A4
+# classoption: []
+# execute:
+#     echo: False
+#     enabled: true
+#     freeze: false
+# toc: true
+# format:
+#     html:
+#         theme: cosmo
+#         embed-resources: true
+#         fig-responsive: true
+# warning: false
+# message: false
+# jupyter: python3
+# ---
+
+# %%
+import os, sys
+import warnings
+warnings.filterwarnings('ignore')
+from IPython.display import display, Markdown, Math
+import numpy as np
+import pandas as pd
+import networkx as nx
+from scipy.stats import norm
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
+from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
+                   pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
+                   tanto_por_uno, ordena_rutas)
+
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
+
+# %%
+# Funciones auxiliares para mostrar los cálculos intermedios paso a paso
+from itertools import combinations as _combinations
+
+
+def detalle_tiempos_nodos(proyecto, duraciones):
+    """Tiempos tempranos y tardíos de los nodos con los candidatos que se comparan en cada uno."""
+    G = proyecto.pert_graph
+    d = {data['activity']: (0 if data['activity'].startswith('@') else int(duraciones[data['activity']]))
+         for _, _, data in G.edges(data=True)}
+    nodos = list(proyecto.nodes)
+    early, filas = {}, []
+    for j in nodos:
+        entrantes = [(i, data['activity']) for i, _, data in G.in_edges(j, data=True)]
+        if not entrantes:
+            early[j] = 0
+            filas.append({'nodo': j, 'candidatos t_i + d_ij': 'nodo inicial', 'tiempo temprano = máx': 0})
+            continue
+        cand = {f'{a}: {early[i]} + {d[a]} = {early[i] + d[a]}': early[i] + d[a] for i, a in entrantes}
+        early[j] = max(cand.values())
+        filas.append({'nodo': j, 'candidatos t_i + d_ij': '; '.join(cand), 'tiempo temprano = máx': early[j]})
+    tempranos = pd.DataFrame(filas).set_index('nodo')
+    late, filas = {}, []
+    for i in reversed(nodos):
+        salientes = [(j, data['activity']) for _, j, data in G.out_edges(i, data=True)]
+        if not salientes:
+            late[i] = early[i]
+            filas.append({'nodo': i, 'candidatos t*_j − d_ij': 'nodo final (= su tiempo temprano)', 'tiempo tardío = mín': late[i]})
+            continue
+        cand = {f'{a}: {late[j]} − {d[a]} = {late[j] - d[a]}': late[j] - d[a] for j, a in salientes}
+        late[i] = min(cand.values())
+        filas.append({'nodo': i, 'candidatos t*_j − d_ij': '; '.join(cand), 'tiempo tardío = mín': late[i]})
+    tardios = pd.DataFrame(filas).set_index('nodo')
+    return tempranos, tardios
+
+
+def detalle_holguras(calendario, prelaciones):
+    """Cómo se obtiene cada fecha y cada holgura a partir de las vecinas."""
+    pred = prelaciones.immediate_predecessor
+    suc = {a: sorted(s for s, ps in pred.items() if a in ps) for a in calendario.index}
+    fin = int(calendario['fin_mas_temprano'].max())
+    filas = []
+    for a in calendario.index:
+        ES, EF = int(calendario.loc[a, 'inicio_mas_temprano']), int(calendario.loc[a, 'fin_mas_temprano'])
+        LS, LF = int(calendario.loc[a, 'inicio_mas_tardio']), int(calendario.loc[a, 'fin_mas_tardio'])
+        dur = int(calendario.loc[a, 'duracion'])
+        ps, ss = sorted(pred[a]), suc[a]
+        ef_pred = {p: int(calendario.loc[p, 'fin_mas_temprano']) for p in ps}
+        es_suc = {s: int(calendario.loc[s, 'inicio_mas_temprano']) for s in ss}
+        lf_pred = {p: int(calendario.loc[p, 'fin_mas_tardio']) for p in ps}
+        ls_suc = {s: int(calendario.loc[s, 'inicio_mas_tardio']) for s in ss}
+        min_es_suc = min(es_suc.values()) if es_suc else fin
+        max_lf_pred = max(lf_pred.values()) if lf_pred else 0
+        filas.append({
+            'actividad': a,
+            'ES = máx EF pred.': (f"máx({', '.join(f'{p}: {v}' for p, v in ef_pred.items())}) = {ES}" if ps else f'inicial → {ES}'),
+            'EF = ES + d': f'{ES} + {dur} = {EF}',
+            'LF = mín LS suc.': (f"mín({', '.join(f'{s}: {v}' for s, v in ls_suc.items())}) = {LF}" if ss else f'final → {LF}'),
+            'LS = LF − d': f'{LF} − {dur} = {LS}',
+            'H_total = LS − ES': f'{LS} − {ES} = {LS - ES}',
+            'H_libre = mín ES suc. − EF': f"{min_es_suc}{'' if ss else ' (fin)'} − {EF} = {min_es_suc - EF}",
+            'H_indep. = máx(0, mín ES suc. − máx LF pred. − d)': f'máx(0, {min_es_suc} − {max_lf_pred} − {dur}) = {max(0, min_es_suc - max_lf_pred - dur)}',
+        })
+    return pd.DataFrame(filas).set_index('actividad')
+
+
+def detalle_rutas(R, valores, nombre='duración', decimales=0):
+    """Suma término a término de un valor (duraciones, varianzas…) a lo largo de cada ruta."""
+    filas = {}
+    for r in R.index:
+        acts = list(R.columns[R.loc[r] == 1])
+        total = float(sum(valores[a] for a in acts))
+        filas[r] = {'actividades': ' - '.join(acts),
+                    f'{nombre} = suma': ' + '.join(f'{a}({valores[a]:.{decimales}f})' for a in acts) + f' = {total:.{decimales}f}',
+                    nombre: total}
+    return pd.DataFrame(filas).T
+
+
+def detalle_estimaciones(datos, a='a', m='m', b='b'):
+    """Media y varianza PERT de cada actividad con los números sustituidos."""
+    filas = {}
+    for act, fila in datos.iterrows():
+        A, M, B = float(fila[a]), float(fila[m]), float(fila[b])
+        filas[act] = {'D = (a + 4m + b)/6': f'({A:g} + 4·{M:g} + {B:g})/6 = {(A + 4 * M + B) / 6:.2f}',
+                      'σ² = ((b − a)/6)²': f'(({B:g} − {A:g})/6)² = {((B - A) / 6) ** 2:.3f}'}
+    return pd.DataFrame(filas).T
+
+
+def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
+    """En cada paso de Ackoff-Sasieni: rutas críticas, opciones consideradas (actividades comunes y parejas)
+    con su coste, y la elegida."""
+    R = proyecto.path_matrix(dummies=False)
+    d = duraciones.astype(float).copy()
+    filas = []
+    for paso, elegidas in sorted(pasos.items()):
+        L = R @ d[R.columns]
+        T = float(L.max())
+        criticas = [r for r in L.index if np.isclose(L[r], T)]
+        conjuntos = [set(R.columns[R.loc[r] == 1]) for r in criticas]
+        con_margen = {x for x in R.columns if d[x] > topes[x] and np.isfinite(cur[x])}
+        opciones = {x: float(cur[x]) for x in set.intersection(*conjuntos) & con_margen}
+        if len(conjuntos) > 1:
+            cand = sorted(set().union(*conjuntos) & con_margen)
+            for p, q in _combinations(cand, 2):
+                if all(p in s or q in s for s in conjuntos) and p not in opciones and q not in opciones:
+                    opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
+        orden = sorted(opciones.items(), key=lambda kv: kv[1])
+        filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
+                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
+        for x in elegidas:
+            d[x] -= 1
+    return pd.DataFrame(filas).set_index('paso')
+
+
+def detalle_valor_ganado(datos_vg, calendario, semana):
+    """PV, EV y AC actividad a actividad en el punto de control."""
+    filas = {}
+    for a, fila in datos_vg.iterrows():
+        es, dur = int(calendario.loc[a, 'inicio_mas_temprano']), int(calendario.loc[a, 'duracion'])
+        frac = min(max(semana - es, 0), dur) / dur
+        filas[a] = {'BAC': float(fila['BAC']), 'planificado hasta la semana': f'{min(max(semana - es, 0), dur)} de {dur}',
+                    'PV = BAC·fracción': f'{fila["BAC"]:.0f}·{frac:.2f} = {fila["BAC"] * frac:.1f}',
+                    'realizado (%)': int(fila['performed']),
+                    'EV = BAC·%': f'{fila["BAC"]:.0f}·{fila["performed"] / 100:.2f} = {fila["BAC"] * fila["performed"] / 100:.1f}',
+                    'AC': float(fila['AC']), 'PV_i': fila['BAC'] * frac, 'EV_i': fila['BAC'] * fila['performed'] / 100}
+    t = pd.DataFrame(filas).T
+    return t
+
+
+def muestra_formula(nombre, expresion, valor, unidades=''):
+    """Una línea «nombre = expresión = valor» en Markdown."""
+    return Markdown(f'**{nombre}** = {expresion} = **{valor}**{(" " + unidades) if unidades else ""}')
+
+# %%
+# %%capture
+# %mkdir -p ~/temp
+# %cd ~/temp
+
+
+# %% [markdown]
+# # Enunciado
+
+# %% [markdown]
+# Una empresa va a ejecutar el proyecto de inversión cuyo cuadro de prelaciones, duración normal y tope (meses), coste unitario de reducción (CUR, k€ por mes recortado) y presupuesto (BAC, k€) se adjunta. El coste de cada actividad se desembolsa uniformemente a lo largo de su duración; el coste de reducción se suma a su presupuesto. Cuando el proyecto termina, la instalación genera 35 k€ al mes durante 48 meses. La empresa descuenta al 10% anual. Las actividades con CUR infinito no se pueden acelerar.
+
+# %%
+pregunta_1 = "1. Calcule la duración y el VAN del proyecto sin reducir.  "
+pregunta_2 = "2. Aplique el algoritmo de Ackoff-Sasieni mes a mes. Para cada mes recortado, calcule el coste acumulado de reducción, la duración resultante y el VAN.  "
+pregunta_3 = "3. ¿Cuántos meses conviene recortar? Compare con la reducción a mínimo coste directo (no recortar) y con recortar al máximo.  "
+pregunta_4 = "4. Calcule el flujo mensual mínimo para que compense recortar uno, dos, … meses. ¿Cómo cambia la decisión si el flujo real fuera un 30 % menor?  "
+
+for item in sorted(dir()):
+    if item.startswith('pregunta_'):
+        display(Markdown(eval(item)))
+
+# %%
+#| tbl-cap: "Datos del proyecto"
+#| label: tbl-datosEnunciado
+datos_enunciado = pd.DataFrame([
+#  activity, predecessor, duration, cap_duration, ucr   , BAC
+    ('A'     , '---'      , 8       , 6           , 2     , 150),
+    ('B'     , '---'      , 3       , 3           , np.inf, 125),
+    ('C'     , 'A,B'      , 4       , 1           , 5     , 175),
+    ('D'     , 'A,B'      , 3       , 1           , 2     , 50 ),
+    ('E'     , 'A,B'      , 2       , 1           , 4     , 200),
+    ('F'     , 'D,E'      , 2       , 1           , 2     , 150),
+    ('G'     , 'C,D'      , 5       , 3           , 3     , 200),
+    ('H'     , 'F'        , 4       , 4           , np.inf, 125),
+    ('I'     , 'G,H'      , 2       , 1           , 9     , 50 ),
+], columns=['activity', 'predecessor', 'duration', 'cap_duration', 'ucr', 'BAC']).set_index('activity')
+datos_enunciado
+
+# %% [markdown]
+# # Resolución
+
+# %%
+def van(flujos, k):
+    '''Valor actual neto de una lista de flujos (el primero en t = 0) a la tasa k.'''
+    return float(sum(f / (1 + k) ** t for t, f in enumerate(flujos)))
+
+def tir(flujos):
+    '''Tasa que anula el VAN (por bisección entre −99 % y 1000 %).'''
+    from scipy.optimize import brentq
+    return float(brentq(lambda k: van(flujos, k), -0.99, 10.0))
+
+def tabla_descuento(flujos, k):
+    '''Año, flujo, factor de descuento, valor actual y valores acumulados (simple y descontado).'''
+    t = pd.DataFrame({'flujo': list(flujos)}, index=pd.Index(range(len(flujos)), name='año'))
+    t['(1 + k)^-t'] = [(1 + k) ** -i for i in t.index]
+    t['valor actual'] = t['flujo'] * t['(1 + k)^-t']
+    t['acumulado'] = t['flujo'].cumsum()
+    t['acumulado descontado'] = t['valor actual'].cumsum()
+    return t
+
+def payback(flujos, k=None):
+    '''Periodo de recuperación (años, con interpolación lineal dentro del año); descontado si se da k.'''
+    acum = 0.0
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return float(t - 1 + (-acum) / v)
+        acum += v
+    return float('inf')
+
+def anualidad_equivalente(VAN, k, n):
+    '''Anualidad constante durante n años cuyo valor actual es VAN.'''
+    return float(VAN * k / (1 - (1 + k) ** -n))
+
+# %%
+datos_proyecto = datos_enunciado.copy()
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()
+F, N, k = 35.0, 48, 0.1
+BAC = datos_proyecto['BAC']
+tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']
+
+# %% [markdown]
+# ## Apartado 1
+
+# %%
+display(Markdown(pregunta_1))
+
+# %%
+#| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico"
+#| label: fig-grafo
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| tbl-cap: "Calendario con las duraciones normales (meses)"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+duracion_normal = int(proyecto.duration(datos_proyecto['duration']))
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+
+# %% [markdown]
+# El coste mensual de cada actividad es su BAC entre su duración; la fila *Total* del Gantt es el desembolso de cada mes. En los meses 1…T el flujo es −desembolso y en los T+1…T+N, +F; la tasa mensual equivalente cumple $(1 + k_m)^{12} = 1 + k$.
+
+# %%
+#| fig-cap: "Gantt de inicios más tempranos con el coste mensual de cada actividad (k€)"
+#| label: fig-ganttCostes
+datos_gantt = datos_proyecto.copy()
+datos_gantt['coste_mensual'] = datos_gantt['BAC'] / datos_gantt['duration']
+gantt_costes, dibujo = proyecto.gantt(datos_gantt, 'duration', 'coste_mensual', total='ambas', acumulado=True, tikz=True,
+                                      params=dict(inner_text_digits=1, **GANTT_PARAMS))
+pinta_tikz(dibujo)
+
+# %%
+def desembolsos(duraciones, sobrecoste=None):
+    '''Desembolso de cada mes con unas duraciones dadas (inicios más tempranos); el sobrecoste de reducción
+    de cada actividad se suma a su BAC y se reparte en su nueva duración.'''
+    cal = proyecto.calendar(duraciones)
+    T = int(cal['fin_mas_temprano'].max())
+    pagos = pd.Series(0.0, index=range(1, T + 1))
+    for a in datos_proyecto.index:
+        es, d = int(cal.loc[a, 'inicio_mas_temprano']), int(duraciones[a])
+        total = float(BAC[a]) + (0.0 if sobrecoste is None else float(sobrecoste[a]))
+        for m in range(es + 1, es + d + 1):
+            pagos[m] += total / d
+    return pagos
+def flujo_mensual(pagos):
+    return [0.0] + [-float(x) for x in pagos] + [F] * N
+k_mensual = (1 + k) ** (1 / 12) - 1
+pagos0 = desembolsos(datos_proyecto['duration'])
+VAN0 = van(flujo_mensual(pagos0), k_mensual)
+display(pd.DataFrame({'desembolso (k€)': pagos0}).T.round(1))
+Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin reducir: {duracion_normal} meses de inversión ({pagos0.sum():.0f} k€ = Σ BAC) y '
+         f'VAN = {VAN0:.1f} k€ (valor actual de los ingresos {van([0.0] * (duracion_normal + 1) + [F] * N, k_mensual):.1f} menos el de los desembolsos '
+         f'{-van([0.0] + [-float(x) for x in pagos0], k_mensual):.1f}).')
+
+# %%
+tabla = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, F, N, k, reduccion_max=8)
+Markdown(f'`crashing_van` da lo mismo: sin reducir, {tabla.loc[0, "duración"]:.0f} meses y VAN {tabla.loc[0, "VAN"]:.1f} k€.')
+
+# %% [markdown]
+# ## Apartado 2
+
+# %%
+display(Markdown(pregunta_2))
+
+# %% [markdown]
+# En cada paso del algoritmo de Ackoff-Sasieni se acorta un mes la ruta (o rutas) crítica(s) eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a la vez. La tabla muestra, para cada ruta, el CUR de sus actividades y su duración tras cada paso; las últimas filas, el margen que le queda a cada actividad.
+
+# %%
+#| tbl-cap: "Algoritmo de Ackoff-Sasieni (hasta ocho meses)"
+#| label: tbl-ackoff
+tabla_ackoff, pasos, duraciones_reducidas, margen = proyecto.ackoff(
+    durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=8, report=False)
+tabla_ackoff
+
+# %%
+#| tbl-cap: "Opciones consideradas en cada paso"
+#| label: tbl-ackoffPaso
+detalle_ackoff(proyecto, datos_proyecto['duration'], tope, ucr, pasos)
+
+# %% [markdown]
+# Para cada mes recortado: el coste de reducción se suma al BAC de las actividades acortadas (y se reparte en su nueva duración), el proyecto termina antes y los ingresos empiezan antes. La tabla repite el cálculo del VAN mes a mes, con las reducciones acumuladas de cada paso (separadas por |):
+
+# %%
+#| tbl-cap: "Reducción mes a mes: actividades acortadas, coste, duración y VAN"
+#| label: tbl-crashingVan
+acortadas = {0: '—'}
+for r in tabla.index[1:]:
+    acortadas[r] = ' | '.join(', '.join(pasos[j]) for j in sorted(pasos) if j < r)
+tabla.insert(0, 'actividades acortadas (paso a paso)', pd.Series(acortadas))
+tabla.round(2)
+
+# %%
+comprobacion = []
+d = datos_proyecto['duration'].astype(float).copy(); sobrecoste = pd.Series(0.0, index=datos_proyecto.index)
+for r in tabla.index[1:]:
+    for a in pasos[r - 1]:
+        d[a] -= 1; sobrecoste[a] += float(ucr[a])
+    comprobacion.append({'meses recortados': r, 'duración': int(proyecto.duration(d.astype(int))), 'coste de reducción': float(sobrecoste.sum()),
+                         'VAN mes a mes': van(flujo_mensual(desembolsos(d.astype(int), sobrecoste)), k_mensual)})
+pd.DataFrame(comprobacion).set_index('meses recortados').round(2)
+
+# %% [markdown]
+# La comprobación mes a mes (desembolsos con el sobrecoste incluido y los ingresos adelantados) coincide con la columna VAN de `crashing_van`.
+
+# %% [markdown]
+# ## Apartado 3
+
+# %%
+display(Markdown(pregunta_3))
+
+# %%
+optimo = int(tabla['VAN'].idxmax())
+Markdown(f'Conviene recortar {optimo} mes(es): duración {tabla.loc[optimo, "duración"]:.0f} meses, '
+         f'VAN {tabla.loc[optimo, "VAN"]:.1f} k€ (sin recortar {tabla.loc[0, "VAN"]:.1f}; recortando al máximo '
+         f'{tabla["VAN"].iloc[-1]:.1f}). El óptimo no es la duración de mínimo coste directo ni la mínima: es donde lo que '
+         'cuesta el siguiente mes recortado iguala lo que vale cobrarlo un mes antes.')
+
+# %% [markdown]
+# ## Apartado 4
+
+# %%
+display(Markdown(pregunta_4))
+
+# %%
+t0 = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, 0.0, N, k, reduccion_max=8)['VAN']
+t1 = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, 1.0, N, k, reduccion_max=8)['VAN']
+pend = t1 - t0                      # el VAN es lineal en F
+umbral = ((t0.loc[0] - t0) / (pend - pend.loc[0])).drop(0).rename('flujo mínimo (k€/mes)')
+display(umbral.round(2).to_frame())
+v2 = t0 + 0.7 * F * pend
+Markdown(f'Con un flujo un 30 % menor ({0.7 * F:.1f} k€/mes) conviene recortar {int(v2.idxmax())} mes(es): '
+         'cuanto menor es el ingreso, menos vale adelantarlo y antes se detiene la reducción.')

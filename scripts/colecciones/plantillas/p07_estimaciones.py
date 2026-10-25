@@ -3,7 +3,7 @@ cálculo inverso, comparación Beta-PERT / triangular / uniforme."""
 import pandas as pd
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
-                        literal_dataframe, literal_dict, BMATRIX)
+                        literal_dataframe, literal_dict, BMATRIX, grafo_nombre)
 
 META = dict(slug="07_estimaciones", prefijo="Estimaciones",
             titulo="Estimaciones de duración (a, m, b)",
@@ -35,7 +35,7 @@ def _base(k, rng):
                  "se extravió la estimación optimista, pero se conserva la duración media que se había calculado.")]
     pregs = ["Calcule la duración media y la varianza de cada actividad según el método PERT.",
              f"Recupere la estimación optimista de {ocultas[0]} y {ocultas[1]} a partir de su duración media.",
-             "Dibuje el grafo PERT, determine el camino crítico con las duraciones medias y la duración media "
+             f"Dibuje el grafo {grafo_nombre()}, determine el camino crítico con las duraciones medias y la duración media "
              "del proyecto. ¿Qué papel juegan las estimaciones optimista y pesimista en ese cálculo?",
              f"Para la actividad {comparar}, compare la media y la desviación típica que resultan de suponer "
              "una distribución Beta-PERT, una triangular y una uniforme con los mismos valores extremos. "

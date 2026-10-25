@@ -4,6 +4,7 @@
 # coleccion: 21_cadena_critica
 # variante: colchon-proyecto
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

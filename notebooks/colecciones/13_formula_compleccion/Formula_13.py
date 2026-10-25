@@ -4,6 +4,7 @@
 # coleccion: 13_formula_compleccion
 # variante: patterson
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: amianto
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

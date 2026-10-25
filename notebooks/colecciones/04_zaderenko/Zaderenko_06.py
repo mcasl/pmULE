@@ -4,6 +4,7 @@
 # coleccion: 04_zaderenko
 # variante: plazo-impuesto
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -235,12 +236,15 @@ plazo = 22
 # %%
 display(Markdown(pregunta_1))
 
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
-
 # %%
 #| tbl-cap: "Matriz de Zaderenko"
 #| label: tbl-zaderenko
+proyecto.zaderenko(durations=datos_proyecto['duration'])
+
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
 proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 
 # %%
@@ -248,7 +252,7 @@ proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_proyecto = proyecto.duration(datos_proyecto['duration'])
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
 
 # %%
 Markdown(f'La duración del proyecto es {duracion_proyecto} semanas, {duracion_proyecto - plazo} más que el plazo: no se cumple.')

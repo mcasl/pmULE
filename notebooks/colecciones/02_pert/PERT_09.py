@@ -4,6 +4,7 @@
 # coleccion: 02_pert
 # variante: compartir-nodos
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

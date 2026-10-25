@@ -201,6 +201,8 @@ def _fechas(rng):
                        f"inicio = np.datetime64('{inicio}')\n"
                        f"festivos = [np.datetime64('{festivos[0]}'), np.datetime64('{festivos[1]}')]"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos de los nodos y camino crítico",
+                        label="fig-grafo")
     celdas.append(code('#| tbl-cap: "Calendario en días laborables"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "duracion = proyecto.duration(datos_proyecto['duration'])\n"
@@ -304,6 +306,8 @@ def _decision_economica(rng):
                        "proyecto = prelaciones.create_project()\n"
                        f"coste_indirecto_semanal, plazo_contrato, penalizacion_semanal, prima_semanal = {indirecto}, {plazo}, {penal}, {prima}"))
     celdas += apartado(1)
+    celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones normales y el camino crítico",
+                        label="fig-grafo")
     celdas.append(code("duracion_normal = proyecto.duration(datos_proyecto['duration'])\n"
                        "coste_directo_normal = float(datos_proyecto['cost_normal'].sum())\n"
                        "def coste_plazo(T):\n"

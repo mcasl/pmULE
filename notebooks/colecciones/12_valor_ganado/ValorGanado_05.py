@@ -4,6 +4,7 @@
 # coleccion: 12_valor_ganado
 # variante: plazo-bien-coste-mal
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

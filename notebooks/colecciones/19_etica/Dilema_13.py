@@ -4,6 +4,7 @@
 # coleccion: 19_etica
 # variante: baja-temeraria
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

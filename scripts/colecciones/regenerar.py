@@ -41,8 +41,17 @@ from .plantillas import PLANTILLAS                                        # noqa
 def _enunciado(texto: str) -> str:
     i = texto.find("# # Resolución")
     texto = texto[:i] if i >= 0 else texto
+    texto = re.sub(r"^# grafo: .*\n", "", texto, flags=re.M)   # la cabecera grafo no es enunciado
     # np.str_('x') (numpy 2 con pandas 2) y 'x' (pandas 3) son el mismo dato
     return re.sub(r"np\.str_\('([^']*)'\)", r"'\1'", texto)
+
+
+def _cuenta(texto: str, metodo: str) -> int:
+    """Apariciones del grafo ``metodo`` en el cuaderno: llamadas directas y visores."""
+    extra = texto.count("display_roy_construccion(") if metodo == "roy" else 0
+    return (texto.count(f".{metodo}(") + texto.count(f"display_{metodo}_pasos(") + extra
+            + texto.count(f"display_ancestros('{metodo}'") + texto.count(f'display_ancestros("{metodo}"')
+            + texto.count(f"display_rutas('{metodo}'") + texto.count(f'display_rutas("{metodo}"'))
 
 
 def _generar(plantilla, variante, k, grafo, semilla):
@@ -65,9 +74,12 @@ def regenerar_cuaderno(plantilla, ruta_py: Path, semilla: int, escribir: bool) -
     if not candidatas:
         return dict(ruta=ruta_py, estado="variante desconocida", variante=nombre_variante)
     variante = candidatas[0]
-    if variante.grafo != "alterno":
+    g_cab = cab.get("grafo")
+    if g_cab in ("pert", "roy", "ambos"):
+        grafos = [g_cab]                        # la cabecera del cuaderno manda
+    elif variante.grafo != "alterno":
         grafos = [variante.grafo]
-    elif ".roy(" not in viejo and ".pert(" not in viejo:
+    elif _cuenta(viejo, "roy") == 0 and _cuenta(viejo, "pert") == 0:
         # el cuaderno antiguo no dibujaba grafo: se aplica la regla de las vueltas del generador
         grafos = ["pert" if ((k - 1) // len(plantilla.VARIANTES)) % 2 == 0 else "roy"]
     else:
@@ -82,9 +94,9 @@ def regenerar_cuaderno(plantilla, ruta_py: Path, semilla: int, escribir: bool) -
         if len(grafos) == 1:
             puntos = (0, 0.0)
         else:
-            # el grafo correcto es el que reproduce las llamadas .pert( / .roy( del cuaderno existente;
-            # a igualdad, el texto más parecido
-            desajuste = abs(viejo.count(".roy(") - texto.count(".roy(")) + abs(viejo.count(".pert(") - texto.count(".pert("))
+            # el grafo correcto es el que reproduce las llamadas .pert( / .roy( (o sus visores
+            # de pasos) del cuaderno existente; a igualdad, el texto más parecido
+            desajuste = abs(_cuenta(viejo, "roy") - _cuenta(texto, "roy")) + abs(_cuenta(viejo, "pert") - _cuenta(texto, "pert"))
             puntos = (-desajuste, difflib.SequenceMatcher(None, viejo, texto, autojunk=False).quick_ratio())
         if mejor_puntos is None or puntos > mejor_puntos:
             mejor, mejor_puntos = (grafo, texto), puntos

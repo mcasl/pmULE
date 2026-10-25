@@ -4,6 +4,7 @@
 # coleccion: 03_roy
 # variante: predecesora-dominante
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

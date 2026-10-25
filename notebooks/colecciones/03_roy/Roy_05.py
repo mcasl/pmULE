@@ -4,6 +4,7 @@
 # coleccion: 03_roy
 # variante: desde-sucesoras
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -4,6 +4,7 @@
 # coleccion: 07_estimaciones
 # variante: tres-estimaciones-c
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

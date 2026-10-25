@@ -4,6 +4,7 @@
 # coleccion: 10_reduccion
 # variante: crashing-recursos
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -256,20 +257,23 @@ base = datos_proyecto[['predecessor', 'duration', 'operarios']]
 # %%
 display(Markdown(pregunta_1))
 
+# %%
+#| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico (sin límite de operarios)"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
 # %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
 
 # %%
-#| fig-cap: "Grafo PERT con las duraciones normales y el camino crítico (sin límite de operarios)"
-#| label: fig-pert
-proyecto.display_pert_pasos(datos_proyecto['duration'])
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Calendario sin límite de recursos"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_libre = proyecto.duration(datos_proyecto['duration'])
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
 
 # %%
 #| fig-cap: "Gantt de inicios más tempranos con los operarios de cada actividad (fila Total: carga semanal)"
@@ -338,11 +342,7 @@ display(Markdown(pregunta_2))
 #| label: tbl-ackoff
 tabla_ack, pasos_ack, dur_ack, margen = proyecto.ackoff(durations=datos_proyecto['duration'],
     min_durations=datos_proyecto['cap_duration'], costs=datos_proyecto['ucr'], reduction=2, report=False)
-proyecto.display_ackoff_pasos_tikz(
-    durations=datos_proyecto['duration'],
-    min_durations=datos_proyecto['cap_duration'],
-    costs=datos_proyecto['ucr'],
-    reduction=2)
+tabla_ack
 
 # %%
 #| tbl-cap: "Opciones consideradas en cada paso"

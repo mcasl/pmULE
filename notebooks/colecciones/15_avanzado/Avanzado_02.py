@@ -4,6 +4,7 @@
 # coleccion: 15_avanzado
 # variante: fechas-calendario
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -256,11 +257,22 @@ festivos = [np.datetime64('2026-10-09'), np.datetime64('2026-11-03')]
 display(Markdown(pregunta_1))
 
 # %%
+#| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"
+#| label: fig-grafo
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
+
+# %%
 #| tbl-cap: "Calendario en días laborables"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = proyecto.duration(datos_proyecto['duration'])
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
 
 # %% [markdown]
 # ## Apartado 2

@@ -4,6 +4,7 @@
 # coleccion: 08_probabilidad
 # variante: casi-critica-variable
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

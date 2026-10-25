@@ -4,6 +4,7 @@
 # coleccion: 16_gantt_grafos
 # variante: gantt-a-pert
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

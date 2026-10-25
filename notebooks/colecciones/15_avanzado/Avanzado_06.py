@@ -4,6 +4,7 @@
 # coleccion: 15_avanzado
 # variante: decision-economica
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -257,6 +258,17 @@ coste_indirecto_semanal, plazo_contrato, penalizacion_semanal, prima_semanal = 8
 display(Markdown(pregunta_1))
 
 # %%
+#| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico"
+#| label: fig-grafo
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
 duracion_normal = proyecto.duration(datos_proyecto['duration'])
 coste_directo_normal = float(datos_proyecto['cost_normal'].sum())
 def coste_plazo(T):
@@ -276,11 +288,7 @@ display(Markdown(pregunta_2))
 tabla_ackoff, pasos, duraciones_tope, margen_restante = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'], reduction=100, report=False)
-proyecto.display_ackoff_pasos_tikz(
-    durations=datos_proyecto['duration'],
-    min_durations=datos_proyecto['cap_duration'],
-    costs=datos_proyecto['ucr'],
-    reduction=100)
+tabla_ackoff
 
 # %%
 #| tbl-cap: "Opciones consideradas en cada paso"

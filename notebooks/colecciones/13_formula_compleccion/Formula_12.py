@@ -4,6 +4,7 @@
 # coleccion: 13_formula_compleccion
 # variante: nucleo-incidencia
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

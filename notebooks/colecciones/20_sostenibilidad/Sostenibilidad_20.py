@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: energia-en-obra
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -4,6 +4,7 @@
 # coleccion: 17_viabilidad
 # variante: van-montecarlo
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

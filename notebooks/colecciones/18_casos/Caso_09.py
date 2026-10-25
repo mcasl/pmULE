@@ -4,6 +4,7 @@
 # coleccion: 18_casos
 # variante: oferta-comercial
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

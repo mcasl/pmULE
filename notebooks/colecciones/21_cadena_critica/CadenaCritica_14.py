@@ -4,6 +4,7 @@
 # coleccion: 21_cadena_critica
 # variante: cadena-con-recursos
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -4,6 +4,7 @@
 # coleccion: 09_montecarlo
 # variante: triangular
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -194,7 +195,7 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 # Considere el proyecto cuyo cuadro de prelaciones y estimaciones optimista, más probable y pesimista (en semanas) se adjunta. Suponga que la duración de cada actividad sigue una distribución triangular de parámetros $(a, m, b)$.
 
 # %%
-pregunta_1 = "1. Dibuje el grafo PERT, construya la matriz de caminos y calcule la duración del proyecto con las duraciones medias.  "
+pregunta_1 = "1. Dibuje el grafo Roy, construya la matriz de caminos y calcule la duración del proyecto con las duraciones medias.  "
 pregunta_2 = "2. Genere 10000 réplicas de las duraciones de las actividades y, con la matriz de caminos, obtenga la duración del proyecto en cada una. Calcule su media, desviación típica y percentiles 5, 50 y 95.  "
 pregunta_3 = "3. Calcule la probabilidad de terminar en 37 semanas o menos y la duración que puede comprometerse con un 90% de probabilidad. Compare con la aproximación normal por el camino crítico y explique las diferencias.  "
 pregunta_4 = "4. Calcule el índice de criticidad de cada ruta y de cada actividad. ¿Qué actividad no crítica convendría vigilar?  "
@@ -260,19 +261,22 @@ proyecto = prelaciones.create_project()
 # %%
 display(Markdown(pregunta_1))
 
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo Roy con las duraciones medias"
 #| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
 path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_rutas("roy")
+proyecto.display_rutas('roy')
 
 # %%
 duraciones = datos_proyecto['duration'][path_matrix.columns]

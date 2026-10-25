@@ -4,6 +4,7 @@
 # coleccion: 04_zaderenko
 # variante: gantt-dado
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -338,11 +339,21 @@ Markdown(f'El cuadro recuperado reproduce el Gantt: {compatible}. Una predecesor
          'pero puede ser una coincidencia de fechas; y las predecesoras reales con holgura entre su fin y el inicio de la sucesora no se ven en el Gantt. '
          'Por eso el Gantt no determina el cuadro de prelaciones.')
 
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-pert
+proyecto.pert(durations=prelaciones_recuperadas['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
 proyecto.display_pert_pasos(prelaciones_recuperadas['duration'])
 
+# %% [markdown]
+# A modo ilustrativo, este mismo proyecto como grafo Roy (actividades en los nodos); la matriz de Zaderenko se construye sobre los sucesos del grafo PERT.
+
+# %%
+#| fig-cap: "Grafo Roy equivalente (ilustrativo)"
+#| label: fig-royIlustrativo
+proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)

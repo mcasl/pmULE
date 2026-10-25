@@ -4,6 +4,7 @@
 # coleccion: 06_matriz_caminos
 # variante: matriz-y-duracion-b
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -284,7 +285,7 @@ display(Markdown(pregunta_2))
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
 path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_rutas("pert")
+proyecto.display_rutas('pert')
 
 # %% [markdown]
 # ## Apartado 3

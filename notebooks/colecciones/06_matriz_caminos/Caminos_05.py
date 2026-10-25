@@ -4,6 +4,7 @@
 # coleccion: 06_matriz_caminos
 # variante: matriz-y-duracion
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -194,7 +195,7 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 # Considere el proyecto cuyo cuadro de prelaciones y duraciones (en días) se adjunta.
 
 # %%
-pregunta_1 = "1. Dibuje el grafo PERT y enumere todas sus rutas entre el nodo inicial y el final.  "
+pregunta_1 = "1. Dibuje el grafo Roy y enumere todas sus rutas entre el nodo inicial y el final.  "
 pregunta_2 = "2. Construya la matriz de caminos del proyecto (una fila por ruta, una columna por actividad).  "
 pregunta_3 = "3. Calcule la duración de cada ruta como producto de la matriz de caminos por el vector de duraciones, y la duración del proyecto como el máximo. Identifique la ruta crítica.  "
 pregunta_4 = "4. Calcule la sensibilidad de la duración del proyecto a cada actividad: ¿en cuánto aumenta la duración si una actividad dura un día más? ¿Y si dura un día menos?  "
@@ -261,12 +262,12 @@ proyecto = prelaciones.create_project()
 display(Markdown(pregunta_1))
 
 # %%
-#| fig-cap: "Grafo PERT con numeración de nodos"
+#| fig-cap: "Grafo Roy"
 #| label: fig-pert
-proyecto.pert(durations=False, ranksep=1)
+proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
 
 # %% [markdown]
-# Las rutas se enumeran recorriendo el grafo desde el nodo inicial: en cada nodo se abre una rama por cada arco saliente. Las ficticias se recorren pero no se anotan.
+# Las rutas se enumeran recorriendo el grafo desde el nodo de inicio: en cada nodo se abre una rama por cada arco saliente.
 
 # %%
 #| tbl-cap: "Rutas del proyecto"
@@ -284,7 +285,7 @@ display(Markdown(pregunta_2))
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
 path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_rutas("pert")
+proyecto.display_rutas('roy')
 
 # %% [markdown]
 # ## Apartado 3

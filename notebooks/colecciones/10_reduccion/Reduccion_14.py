@@ -4,6 +4,7 @@
 # coleccion: 10_reduccion
 # variante: cur-por-tramos
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

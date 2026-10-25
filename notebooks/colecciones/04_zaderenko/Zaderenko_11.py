@@ -4,6 +4,7 @@
 # coleccion: 04_zaderenko
 # variante: matriz-dada
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -270,6 +271,14 @@ proyecto = prelaciones.create_project()
 proyecto.pert(durations=False, ranksep=1)
 
 # %% [markdown]
+# A modo ilustrativo, este mismo proyecto como grafo Roy (actividades en los nodos); la matriz de Zaderenko se construye sobre los sucesos del grafo PERT.
+
+# %%
+#| fig-cap: "Grafo Roy equivalente (ilustrativo)"
+#| label: fig-royIlustrativo
+proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
 # La numeración de los nodos puede diferir de la del enunciado (hay varias numeraciones válidas), pero la matriz tiene las mismas actividades en las mismas posiciones relativas.
 
 # %% [markdown]
@@ -278,12 +287,15 @@ proyecto.pert(durations=False, ranksep=1)
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
-
 # %%
 #| tbl-cap: "Matriz de Zaderenko calculada"
 #| label: tbl-zaderenko
+proyecto.zaderenko(durations=datos_proyecto['duration'])
+
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
 proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 
 # %%
@@ -314,7 +326,7 @@ display(Markdown(pregunta_4))
 # %%
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
-proyecto.display_calendario(datos_proyecto['duration'])
+proyecto.calendar(datos_proyecto['duration'])[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
 
 # %%
 camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])

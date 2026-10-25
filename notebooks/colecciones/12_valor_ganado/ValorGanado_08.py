@@ -4,6 +4,7 @@
 # coleccion: 12_valor_ganado
 # variante: coste-no-uniforme
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

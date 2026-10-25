@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: ventana-ambiental
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

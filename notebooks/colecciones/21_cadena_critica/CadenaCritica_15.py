@@ -4,6 +4,7 @@
 # coleccion: 21_cadena_critica
 # variante: plan-completo
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

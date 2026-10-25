@@ -4,6 +4,7 @@
 # coleccion: 01_prelaciones
 # variante: grafo-erroneo
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

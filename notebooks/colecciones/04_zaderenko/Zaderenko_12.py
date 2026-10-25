@@ -4,6 +4,7 @@
 # coleccion: 04_zaderenko
 # variante: prediccion
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -257,6 +258,14 @@ display(Markdown(pregunta_1))
 proyecto.pert(durations=False, ranksep=1)
 
 # %% [markdown]
+# A modo ilustrativo, este mismo proyecto como grafo Roy (actividades en los nodos); la matriz de Zaderenko se construye sobre los sucesos del grafo PERT.
+
+# %%
+#| fig-cap: "Grafo Roy equivalente (ilustrativo)"
+#| label: fig-royIlustrativo
+proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
 # A ojo sólo puede intuirse: las rutas con más actividades o con actividades largas son las candidatas. La forma del grafo no basta; hacen falta las duraciones.
 
 # %% [markdown]
@@ -274,12 +283,15 @@ display(Markdown(pregunta_2))
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
-
 # %%
 #| tbl-cap: "Matriz de Zaderenko"
 #| label: tbl-zaderenko
+proyecto.zaderenko(durations=datos_proyecto['duration'])
+
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
 proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 
 # %%
@@ -287,7 +299,7 @@ proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_proyecto = proyecto.duration(datos_proyecto['duration'])
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
 
 # %%
 #| tbl-cap: "Fechas de cada actividad a partir de los tiempos de sus nodos"

@@ -2,7 +2,7 @@
 su interpretación."""
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
-                        literal_dataframe, literal_dict, BMATRIX)
+                        literal_dataframe, literal_dict, BMATRIX, grafo_nombre)
 
 META = dict(slug="05_holguras", prefijo="Holguras",
             titulo="Holguras y camino crítico",
@@ -337,7 +337,7 @@ def _mini(rng):
               md("Considere el pequeño proyecto cuyo cuadro de prelaciones y duraciones (en días) se adjunta. "
                  "Resuélvalo completamente a mano, anotando cada operación, antes de comprobarlo con la librería.")]
     celdas.append(preguntas([
-        "Dibuje el grafo PERT y enumere todas las rutas desde el inicio hasta el final con su duración. "
+        f"Dibuje el grafo {grafo_nombre()} y enumere todas las rutas desde el inicio hasta el final con su duración. "
         "¿Cuál es la duración del proyecto y cuál la ruta crítica?",
         "Calcule, por el paso hacia adelante, el inicio y fin más tempranos de cada actividad; por el paso "
         "hacia atrás, el fin e inicio más tardíos.",

@@ -4,6 +4,7 @@
 # coleccion: 17_viabilidad
 # variante: van-montecarlo
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -293,15 +294,18 @@ display(Markdown(pregunta_1))
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
-proyecto.display_calendario(datos_proyecto['duration'])
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
 
 # %%
-#| fig-cap: "Grafo Roy con el camino crítico"
+#| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-grafo
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 pagos = pd.Series(0.0, index=range(1, duracion + 1))

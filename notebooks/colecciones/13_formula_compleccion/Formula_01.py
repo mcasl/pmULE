@@ -4,6 +4,7 @@
 # coleccion: 13_formula_compleccion
 # variante: tau-norma-infinito
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

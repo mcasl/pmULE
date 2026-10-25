@@ -4,6 +4,7 @@
 # coleccion: 18_casos
 # variante: comite-valor-ganado
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

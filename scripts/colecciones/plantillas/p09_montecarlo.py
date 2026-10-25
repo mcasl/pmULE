@@ -5,7 +5,7 @@ import pandas as pd
 
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
-                        literal_dataframe, literal_dict, BMATRIX)
+                        literal_dataframe, literal_dict, BMATRIX, grafo_nombre, ESTADO)
 
 META = dict(slug="09_montecarlo", prefijo="MonteCarlo",
             titulo="Método de Monte Carlo",
@@ -49,7 +49,7 @@ def _base(k, rng):
         celdas.append(md(f"Considere el proyecto cuyo cuadro de prelaciones y estimaciones optimista, más probable y "
                          f"pesimista (en semanas) se adjunta. Suponga que la duración de cada actividad sigue una "
                          f"distribución {nombre_dist} de parámetros $(a, m, b)$."))
-    pregs = ["Dibuje el grafo PERT, construya la matriz de caminos y calcule la duración del proyecto con las "
+    pregs = [f"Dibuje el grafo {grafo_nombre()}, construya la matriz de caminos y calcule la duración del proyecto con las "
              "duraciones medias.",
              f"Genere {N} réplicas de las duraciones de las actividades y, con la matriz de caminos, obtenga la "
              "duración del proyecto en cada una. Calcule su media, desviación típica y percentiles 5, 50 y 95.",
@@ -88,7 +88,7 @@ def _base(k, rng):
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de caminos"\n#| label: tbl-matrizCaminos\n'
                        "path_matrix = proyecto.path_matrix(dummies=False)\n"
-                       "proyecto.display_rutas('pert')"))
+                       f"proyecto.display_rutas('{ESTADO['grafo']}')"))
     celdas.append(code("duraciones = datos_proyecto['duration'][path_matrix.columns]\n"
                        "duraciones_rutas_medias = path_matrix @ duraciones\n"
                        "duracion_media = int(duraciones_rutas_medias.max())\n"
@@ -220,7 +220,7 @@ def _a_mano(rng):
     celdas.append(code('#| tbl-cap: "Duraciones simuladas (una columna por réplica)"\n#| label: tbl-replicas\n'
                        + literal_dataframe(T, nombre="replicas")))
     celdas.append(preguntas([
-        "Dibuje el grafo PERT, enumere las rutas y escriba la matriz de rutas R (una fila por ruta, una columna por actividad).",
+        f"Dibuje el grafo {grafo_nombre()}, enumere las rutas y escriba la matriz de rutas R (una fila por ruta, una columna por actividad).",
         "Escriba la matriz de tiempos T con las réplicas como columnas y calcule a mano el producto R·T. "
         "¿Qué es cada elemento del resultado?",
         "Obtenga la duración del proyecto en cada réplica como el máximo de cada columna (τ = ‖R·t‖∞ para cada "
@@ -239,7 +239,7 @@ def _a_mano(rng):
     celdas.append(code('#| tbl-cap: "Matriz de rutas R"\n#| label: tbl-matrizRutas\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
                        "rutas = proyecto.paths(dummies=False)\n"
-                       "proyecto.display_rutas('pert')"))
+                       f"proyecto.display_rutas('{ESTADO['grafo']}')"))
     celdas += apartado(2)
     celdas.append(code("T = replicas.loc[R.columns]\n"
                        "RT = R @ T\n"
@@ -422,7 +422,7 @@ def _convergencia(rng):
     celdas += apartado(1)
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias y el camino crítico", label="fig-pert")
     celdas.append(code('#| tbl-cap: "Matriz de rutas"\n#| label: tbl-matrizRutas\n'
-                       "proyecto.display_rutas('pert')"))
+                       f"proyecto.display_rutas('{ESTADO['grafo']}')"))
     celdas.append(code('#| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"\n#| label: tbl-rutas\n'
                        "datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2\n"
                        "medias_rutas = detalle_rutas(R, datos_proyecto['duration'][R.columns], nombre='duración media')\n"

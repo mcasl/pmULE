@@ -4,6 +4,7 @@
 # coleccion: 05_holguras
 # variante: tres-holguras
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

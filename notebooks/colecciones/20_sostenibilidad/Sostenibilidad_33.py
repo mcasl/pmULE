@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: turno-de-noche
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

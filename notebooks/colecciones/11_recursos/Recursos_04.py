@@ -4,6 +4,7 @@
 # coleccion: 11_recursos
 # variante: consumible
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

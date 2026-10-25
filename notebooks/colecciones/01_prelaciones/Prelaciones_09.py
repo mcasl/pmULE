@@ -4,6 +4,7 @@
 # coleccion: 01_prelaciones
 # variante: redundancias-b
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -197,7 +198,7 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 pregunta_1 = "1. Identifique las prelaciones redundantes y escriba el cuadro de prelaciones inmediatas mínimo.  "
 pregunta_2 = "2. Construya el cuadro de prelaciones expandido (matriz de prelaciones inmediatas) y, a partir de él, indique las actividades iniciales y finales del proyecto.  "
 pregunta_3 = "3. Construya el cuadro de ancestros (prelaciones transitivas) y compruebe que las prelaciones redundantes del apartado anterior aparecen en él.  "
-pregunta_4 = "4. Dibuje el grafo PERT del proyecto y compruebe sobre él el cuadro de ancestros.  "
+pregunta_4 = "4. Dibuje el grafo Roy del proyecto y compruebe sobre él el cuadro de ancestros.  "
 
 for item in sorted(dir()):
     if item.startswith('pregunta_'):
@@ -324,9 +325,9 @@ for p, a in redundantes:
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# Las actividades ficticias (discontinuas) del grafo transmiten precisamente las prelaciones que no pueden representarse compartiendo nodos. Siguiendo hacia atrás los arcos desde el final de cada actividad se recorren todos sus ancestros.
+# En el grafo Roy cada actividad es un nodo y cada prelación inmediata un arco, sin actividades ficticias. Siguiendo hacia atrás los arcos desde cada actividad se recorren todos sus ancestros.
 
 # %%
-#| fig-cap: "Grafo PERT del proyecto"
-#| label: fig-pert
-proyecto.display_ancestros('pert')
+#| fig-cap: "Grafo Roy del proyecto"
+#| label: fig-roy
+proyecto.display_ancestros('roy')

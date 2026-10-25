@@ -4,6 +4,7 @@
 # coleccion: 01_prelaciones
 # variante: ciclo
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

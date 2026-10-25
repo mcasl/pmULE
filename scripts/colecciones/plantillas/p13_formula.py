@@ -7,7 +7,7 @@ import pandas as pd
 import networkx as nx
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
-                        literal_dataframe, literal_dict, BMATRIX)
+                        literal_dataframe, literal_dict, BMATRIX, ESTADO)
 
 META = dict(slug="13_formula_compleccion", prefijo="Formula",
             titulo="La fórmula del tiempo de compleción τ = ‖R·t‖∞",
@@ -95,7 +95,7 @@ def _tau(rng):
     celdas.append(code('#| tbl-cap: "Matriz de rutas R"\n#| label: tbl-R\n'
                        "rutas = proyecto.paths(dummies=False)\n"
                        "display(pd.Series({r: ' - '.join(a) for r, a in rutas.items()}).to_frame('actividades'))\n"
-                       "proyecto.display_rutas('pert')"))
+                       f"proyecto.display_rutas('{ESTADO['grafo']}')"))
     celdas.append(code("Markdown(f'R tiene {R.shape[0]} filas (rutas) y {R.shape[1]} columnas (actividades).')"))
     celdas += apartado(2)
     celdas.append(code("Rt = R @ t\n"
@@ -215,7 +215,7 @@ def _svd(rng):
     celdas.append(code(BMATRIX))
     celdas.append(code(PREP))
     celdas += apartado(1)
-    celdas.append(code('#| tbl-cap: "Matriz de rutas R"\n#| label: tbl-R\n' "proyecto.display_rutas('pert')"))
+    celdas.append(code('#| tbl-cap: "Matriz de rutas R"\n#| label: tbl-R\n' f"proyecto.display_rutas('{ESTADO['grafo']}')"))
     celdas.append(code("U, S, Vt = np.linalg.svd(R.values.astype(float), full_matrices=False)\n"
                        "u1, v1 = U[:, 0], Vt[0, :]\n"
                        "if u1.sum() < 0:\n"

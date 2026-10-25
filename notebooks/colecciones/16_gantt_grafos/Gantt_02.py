@@ -4,6 +4,7 @@
 # coleccion: 16_gantt_grafos
 # variante: roy-a-gantt
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

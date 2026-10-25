@@ -4,6 +4,7 @@
 # coleccion: 08_probabilidad
 # variante: normal
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

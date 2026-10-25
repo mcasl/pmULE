@@ -4,6 +4,7 @@
 # coleccion: 08_probabilidad
 # variante: varianza-maxima
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -4,6 +4,7 @@
 # coleccion: 11_recursos
 # variante: limite-insuficiente
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

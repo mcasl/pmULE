@@ -4,6 +4,7 @@
 # coleccion: 04_zaderenko
 # variante: zaderenko-b
 # nivel: 1
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -246,6 +247,14 @@ prelaciones.display_immediate_linkage_matrix()
 proyecto.pert(durations=False, ranksep=1)
 
 # %% [markdown]
+# A modo ilustrativo, este mismo proyecto como grafo Roy (actividades en los nodos); la matriz de Zaderenko se construye sobre los sucesos del grafo PERT.
+
+# %%
+#| fig-cap: "Grafo Roy equivalente (ilustrativo)"
+#| label: fig-royIlustrativo
+proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
 # ## Apartado 2
 
 # %%
@@ -254,12 +263,15 @@ display(Markdown(pregunta_2))
 # %% [markdown]
 # En la matriz de Zaderenko la casilla (i, j) contiene la duración de la actividad que va del nodo i al nodo j (cero para las ficticias). El tiempo más temprano de un nodo es el máximo, sobre su columna, de «tiempo temprano del origen más duración»; el más tardío es el mínimo, sobre su fila, de «tiempo tardío del destino menos duración». Los tempranos se calculan de izquierda a derecha y los tardíos de derecha a izquierda, partiendo del tiempo temprano del último nodo.
 
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
-
 # %%
 #| tbl-cap: "Matriz de Zaderenko"
 #| label: tbl-zaderenko
+proyecto.zaderenko(durations=datos_proyecto['duration'])
+
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso (avance con los botones):
+
+# %%
 proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 
 # %%
@@ -299,19 +311,22 @@ display(Markdown(pregunta_3))
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
 
 # %%
 #| tbl-cap: "Fechas de cada actividad a partir de los tiempos de sus nodos"
 #| label: tbl-fechasPaso
 detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d', 'H_total = LS − ES']]
 
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"
 #| label: fig-pertTiempos
+proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+
+# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -347,4 +362,4 @@ Markdown(f'La holgura total de A es {holgura} días. Un retraso de 8 días '
 # %%
 #| tbl-cap: "Calendario con la nueva duración"
 #| label: tbl-calendarioNuevo
-proyecto.display_calendario(duraciones_nuevas)
+proyecto.calendar(duraciones_nuevas)[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]

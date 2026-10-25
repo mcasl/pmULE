@@ -4,6 +4,7 @@
 # coleccion: 10_reduccion
 # variante: penalizacion
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

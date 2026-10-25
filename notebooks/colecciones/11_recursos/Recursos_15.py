@@ -4,6 +4,7 @@
 # coleccion: 11_recursos
 # variante: limites-simultaneos
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

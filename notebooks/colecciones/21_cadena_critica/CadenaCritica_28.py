@@ -1,0 +1,472 @@
+# ---
+# title: CadenaCritica 28
+# subtitle: "8 actividades; cadena de 4 actividades; compromiso 30 frente a 36 días"
+# coleccion: 21_cadena_critica
+# variante: colchon-proyecto
+# nivel: 1
+# grafo: roy
+# lang: es
+# documentclass: scrreprt
+# papersize: A4
+# classoption: []
+# execute:
+#     echo: False
+#     enabled: true
+#     freeze: false
+# toc: true
+# format:
+#     html:
+#         theme: cosmo
+#         embed-resources: true
+#         fig-responsive: true
+# warning: false
+# message: false
+# jupyter: python3
+# ---
+
+# %%
+import os, sys
+import warnings
+warnings.filterwarnings('ignore')
+from IPython.display import display, Markdown, Math
+import numpy as np
+import pandas as pd
+import networkx as nx
+from scipy.stats import norm
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+
+# Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
+_aqui = os.path.abspath('.')
+while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui, 'src', 'pmule.py')):
+    _aqui = os.path.dirname(_aqui)
+sys.path.append(os.path.join(_aqui, 'src'))
+from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
+                   pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
+                   tanto_por_uno, ordena_rutas)
+
+GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
+
+
+# %%
+# Funciones auxiliares para mostrar los cálculos intermedios paso a paso
+from itertools import combinations as _combinations
+
+
+def detalle_tiempos_nodos(proyecto, duraciones):
+    """Tiempos tempranos y tardíos de los nodos con los candidatos que se comparan en cada uno."""
+    G = proyecto.pert_graph
+    d = {data['activity']: (0 if data['activity'].startswith('@') else int(duraciones[data['activity']]))
+         for _, _, data in G.edges(data=True)}
+    nodos = list(proyecto.nodes)
+    early, filas = {}, []
+    for j in nodos:
+        entrantes = [(i, data['activity']) for i, _, data in G.in_edges(j, data=True)]
+        if not entrantes:
+            early[j] = 0
+            filas.append({'nodo': j, 'candidatos t_i + d_ij': 'nodo inicial', 'tiempo temprano = máx': 0})
+            continue
+        cand = {f'{a}: {early[i]} + {d[a]} = {early[i] + d[a]}': early[i] + d[a] for i, a in entrantes}
+        early[j] = max(cand.values())
+        filas.append({'nodo': j, 'candidatos t_i + d_ij': '; '.join(cand), 'tiempo temprano = máx': early[j]})
+    tempranos = pd.DataFrame(filas).set_index('nodo')
+    late, filas = {}, []
+    for i in reversed(nodos):
+        salientes = [(j, data['activity']) for _, j, data in G.out_edges(i, data=True)]
+        if not salientes:
+            late[i] = early[i]
+            filas.append({'nodo': i, 'candidatos t*_j − d_ij': 'nodo final (= su tiempo temprano)', 'tiempo tardío = mín': late[i]})
+            continue
+        cand = {f'{a}: {late[j]} − {d[a]} = {late[j] - d[a]}': late[j] - d[a] for j, a in salientes}
+        late[i] = min(cand.values())
+        filas.append({'nodo': i, 'candidatos t*_j − d_ij': '; '.join(cand), 'tiempo tardío = mín': late[i]})
+    tardios = pd.DataFrame(filas).set_index('nodo')
+    return tempranos, tardios
+
+
+def detalle_holguras(calendario, prelaciones):
+    """Cómo se obtiene cada fecha y cada holgura a partir de las vecinas."""
+    pred = prelaciones.immediate_predecessor
+    suc = {a: sorted(s for s, ps in pred.items() if a in ps) for a in calendario.index}
+    fin = int(calendario['fin_mas_temprano'].max())
+    filas = []
+    for a in calendario.index:
+        ES, EF = int(calendario.loc[a, 'inicio_mas_temprano']), int(calendario.loc[a, 'fin_mas_temprano'])
+        LS, LF = int(calendario.loc[a, 'inicio_mas_tardio']), int(calendario.loc[a, 'fin_mas_tardio'])
+        dur = int(calendario.loc[a, 'duracion'])
+        ps, ss = sorted(pred[a]), suc[a]
+        ef_pred = {p: int(calendario.loc[p, 'fin_mas_temprano']) for p in ps}
+        es_suc = {s: int(calendario.loc[s, 'inicio_mas_temprano']) for s in ss}
+        lf_pred = {p: int(calendario.loc[p, 'fin_mas_tardio']) for p in ps}
+        ls_suc = {s: int(calendario.loc[s, 'inicio_mas_tardio']) for s in ss}
+        min_es_suc = min(es_suc.values()) if es_suc else fin
+        max_lf_pred = max(lf_pred.values()) if lf_pred else 0
+        filas.append({
+            'actividad': a,
+            'ES = máx EF pred.': (f"máx({', '.join(f'{p}: {v}' for p, v in ef_pred.items())}) = {ES}" if ps else f'inicial → {ES}'),
+            'EF = ES + d': f'{ES} + {dur} = {EF}',
+            'LF = mín LS suc.': (f"mín({', '.join(f'{s}: {v}' for s, v in ls_suc.items())}) = {LF}" if ss else f'final → {LF}'),
+            'LS = LF − d': f'{LF} − {dur} = {LS}',
+            'H_total = LS − ES': f'{LS} − {ES} = {LS - ES}',
+            'H_libre = mín ES suc. − EF': f"{min_es_suc}{'' if ss else ' (fin)'} − {EF} = {min_es_suc - EF}",
+            'H_indep. = máx(0, mín ES suc. − máx LF pred. − d)': f'máx(0, {min_es_suc} − {max_lf_pred} − {dur}) = {max(0, min_es_suc - max_lf_pred - dur)}',
+        })
+    return pd.DataFrame(filas).set_index('actividad')
+
+
+def detalle_rutas(R, valores, nombre='duración', decimales=0):
+    """Suma término a término de un valor (duraciones, varianzas…) a lo largo de cada ruta."""
+    filas = {}
+    for r in R.index:
+        acts = list(R.columns[R.loc[r] == 1])
+        total = float(sum(valores[a] for a in acts))
+        filas[r] = {'actividades': ' - '.join(acts),
+                    f'{nombre} = suma': ' + '.join(f'{a}({valores[a]:.{decimales}f})' for a in acts) + f' = {total:.{decimales}f}',
+                    nombre: total}
+    return pd.DataFrame(filas).T
+
+
+def detalle_estimaciones(datos, a='a', m='m', b='b'):
+    """Media y varianza PERT de cada actividad con los números sustituidos."""
+    filas = {}
+    for act, fila in datos.iterrows():
+        A, M, B = float(fila[a]), float(fila[m]), float(fila[b])
+        filas[act] = {'D = (a + 4m + b)/6': f'({A:g} + 4·{M:g} + {B:g})/6 = {(A + 4 * M + B) / 6:.2f}',
+                      'σ² = ((b − a)/6)²': f'(({B:g} − {A:g})/6)² = {((B - A) / 6) ** 2:.3f}'}
+    return pd.DataFrame(filas).T
+
+
+def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
+    """En cada paso de Ackoff-Sasieni: rutas críticas, opciones consideradas (actividades comunes y parejas)
+    con su coste, y la elegida."""
+    R = proyecto.path_matrix(dummies=False)
+    d = duraciones.astype(float).copy()
+    filas = []
+    for paso, elegidas in sorted(pasos.items()):
+        L = R @ d[R.columns]
+        T = float(L.max())
+        criticas = [r for r in L.index if np.isclose(L[r], T)]
+        conjuntos = [set(R.columns[R.loc[r] == 1]) for r in criticas]
+        con_margen = {x for x in R.columns if d[x] > topes[x] and np.isfinite(cur[x])}
+        opciones = {x: float(cur[x]) for x in set.intersection(*conjuntos) & con_margen}
+        if len(conjuntos) > 1:
+            cand = sorted(set().union(*conjuntos) & con_margen)
+            for p, q in _combinations(cand, 2):
+                if all(p in s or q in s for s in conjuntos) and p not in opciones and q not in opciones:
+                    opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
+        orden = sorted(opciones.items(), key=lambda kv: kv[1])
+        filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
+                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
+        for x in elegidas:
+            d[x] -= 1
+    return pd.DataFrame(filas).set_index('paso')
+
+
+def detalle_valor_ganado(datos_vg, calendario, semana):
+    """PV, EV y AC actividad a actividad en el punto de control."""
+    filas = {}
+    for a, fila in datos_vg.iterrows():
+        es, dur = int(calendario.loc[a, 'inicio_mas_temprano']), int(calendario.loc[a, 'duracion'])
+        frac = min(max(semana - es, 0), dur) / dur
+        filas[a] = {'BAC': float(fila['BAC']), 'planificado hasta la semana': f'{min(max(semana - es, 0), dur)} de {dur}',
+                    'PV = BAC·fracción': f'{fila["BAC"]:.0f}·{frac:.2f} = {fila["BAC"] * frac:.1f}',
+                    'realizado (%)': int(fila['performed']),
+                    'EV = BAC·%': f'{fila["BAC"]:.0f}·{fila["performed"] / 100:.2f} = {fila["BAC"] * fila["performed"] / 100:.1f}',
+                    'AC': float(fila['AC']), 'PV_i': fila['BAC'] * frac, 'EV_i': fila['BAC'] * fila['performed'] / 100}
+    t = pd.DataFrame(filas).T
+    return t
+
+
+def muestra_formula(nombre, expresion, valor, unidades=''):
+    """Una línea «nombre = expresión = valor» en Markdown."""
+    return Markdown(f'**{nombre}** = {expresion} = **{valor}**{(" " + unidades) if unidades else ""}')
+
+# %%
+# %%capture
+# %mkdir -p ~/temp
+# %cd ~/temp
+
+
+# %% [markdown]
+# # Enunciado
+
+# %% [markdown]
+# Se va a programar un proyecto con el método de la cadena crítica. Para cada actividad, su responsable ha dado una estimación **segura** (con la que cumpliría aproximadamente nueve de cada diez veces, el percentil 90) y una estimación **agresiva pero alcanzable** (la mediana, el percentil 50), ambas en días. Las actividades no comparten recursos. Los colchones se redondean al día superior.
+
+# %%
+pregunta_1 = "1. Calcule la duración del proyecto con las estimaciones seguras (cronograma tradicional) e indique su ruta crítica.  "
+pregunta_2 = "2. Con las estimaciones agresivas, determine la cadena crítica y su duración, y el margen de seguridad retirado de cada una de sus actividades.  "
+pregunta_3 = "3. Dimensione el colchón del proyecto por el método de cortar y pegar y por el de la raíz de la suma de cuadrados. ¿Qué fecha se compromete con el cliente con el de cortar y pegar? ¿Cuántos días se ganan respecto al cronograma tradicional?  "
+pregunta_4 = "4. ¿Por qué el colchón del proyecto es menor que el margen total retirado de la cadena? ¿Por qué no debe penalizarse a quien supere su estimación agresiva?  "
+
+for item in sorted(dir()):
+    if item.startswith('pregunta_'):
+        display(Markdown(eval(item)))
+
+# %%
+#| tbl-cap: "Cuadro de datos del enunciado (días)"
+#| label: tbl-datosEnunciado
+datos_enunciado = pd.DataFrame([
+#  activity, predecessor, agresiva, segura
+    ('A'     , '---'      , 3       , 5     ),
+    ('B'     , '---'      , 5       , 7     ),
+    ('C'     , '---'      , 7       , 10    ),
+    ('D'     , 'A,B,C'    , 6       , 10    ),
+    ('E'     , 'A'        , 8       , 12    ),
+    ('F'     , 'D,E'      , 6       , 9     ),
+    ('G'     , 'D,E'      , 4       , 6     ),
+    ('H'     , 'F,G'      , 4       , 7     ),
+], columns=['activity', 'predecessor', 'agresiva', 'segura']).set_index('activity')
+datos_enunciado
+
+# %% [markdown]
+# # Resolución
+
+# %%
+datos_proyecto = datos_enunciado.copy()
+prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
+proyecto = prelaciones.create_project()
+R = proyecto.path_matrix(dummies=False)
+
+# %%
+# Funciones auxiliares de la cadena crítica: cálculos intermedios con los números sustituidos
+from math import ceil, sqrt
+from pmule import grafico_fiebre_tikz
+pd.set_option('display.max_colwidth', None)
+GANTT_CC = dict(GANTT_PARAMS, period_width=0.6, activity_inner_text_style=r'\bfseries\small')
+
+
+def sin_decimales(tabla):
+    """Números enteros sin «.0» al mostrar una tabla."""
+    return tabla.map(lambda v: f'{v:g}' if isinstance(v, float) else v)
+
+
+def tabla_margenes(datos, actividades):
+    """Margen retirado (segura − agresiva) de cada actividad."""
+    t = datos.loc[list(actividades), ['segura', 'agresiva']].copy()
+    t['margen = segura − agresiva'] = [f'{s} − {a} = {s - a}' for s, a in zip(t['segura'], t['agresiva'])]
+    return t.T
+
+
+def detalle_colchon(margenes, nombre='colchón'):
+    """Colchón por cortar y pegar y por la raíz de la suma de cuadrados (redondeo al día superior)."""
+    ms = [int(m) for m in margenes]
+    suma, cuad = sum(ms), sum(m * m for m in ms)
+    cp, rz = 0.5 * suma, sqrt(cuad)
+    return pd.DataFrame({nombre: {
+        'cortar y pegar = 0,5·Σ márgenes': f"0,5·({' + '.join(map(str, ms))}) = 0,5·{suma} = {cp:g} → {ceil(cp - 1e-9)}",
+        'raíz = √(Σ márgenes²)': f"√({' + '.join(f'{m}²' for m in ms)}) = √{cuad} = {rz:.2f} → {ceil(rz - 1e-9)}"}})
+
+
+def tabla_alimentacion(plan):
+    """Colchones de alimentación: arco en el que desemboca la cadena de alimentación, colchón
+    requerido, holgura disponible y colchón adoptado."""
+    filas = {}
+    for nombre, fila in plan.alimentacion.iterrows():
+        ms = [int(x) for x in str(fila['margenes']).split(' + ')]
+        if plan.metodo_alimentacion == 'cortar_pegar':
+            calc = f"0,5·({' + '.join(map(str, ms))}) = {0.5 * sum(ms):g} → {int(fila['requerido'])}"
+        else:
+            calc = f"√({' + '.join(f'{m}²' for m in ms)}) = {sqrt(sum(m * m for m in ms)):.2f} → {int(fila['requerido'])}"
+        entrada = int(plan.inicio_temprano[fila['antes_de']]) if fila['antes_de'] != 'fin' else int(plan.duracion_cadena)
+        fin_p = int(plan.inicio_temprano[fila['desde']] + plan.agresiva[fila['desde']])
+        filas[nombre] = {'arco': f"{fila['desde']} → {fila['antes_de']}",
+                         'cadena de alimentación': fila['cadena_alimentacion'],
+                         'colchón requerido': calc,
+                         'holgura disponible = inicio de la cadena − fin más temprano': f"{entrada} − {fin_p} = {int(fila['disponible'])}",
+                         'colchón adoptado = mín(requerido, disponible)': int(fila['adoptado'])}
+    return pd.DataFrame(filas).T
+
+
+def detalle_alap(plan):
+    """Programación lo más tarde posible de las actividades de alimentación (de la última a la primera)."""
+    cadena = set(plan.cadena)
+    ca = {(fila['desde'], fila['antes_de']): (n, int(fila['adoptado'])) for n, fila in plan.alimentacion.iterrows()}
+    suc = {a: sorted(b for b in plan.predecesoras if a in plan.predecesoras[b]) for a in plan.predecesoras}
+    filas = {}
+    for a in reversed(plan.orden):
+        if a in cadena:
+            continue
+        cands = []
+        for b in suc[a]:
+            if b in cadena:
+                n, fb = ca[(a, b)]
+                cands.append(f'{b} − {n}: {int(plan.inicios[b])} − {fb} = {int(plan.inicios[b]) - fb}')
+            else:
+                cands.append(f'{b}: {int(plan.inicios[b])}')
+        if not suc[a]:
+            n, fb = ca[(a, 'fin')]
+            cands.append(f'fin − {n}: {plan.duracion_cadena} − {fb} = {plan.duracion_cadena - fb}')
+        fin = int(plan.inicios[a] + plan.agresiva[a])
+        filas[a] = {'fin = mín(inicio de las sucesoras)': f"mín({'; '.join(cands)}) = {fin}",
+                    'inicio = fin − duración': f'{fin} − {int(plan.agresiva[a])} = {int(plan.inicios[a])}',
+                    'inicio más temprano': int(plan.inicio_temprano[a])}
+    return pd.DataFrame(filas).T
+
+
+def resumen_informes(plan, informes):
+    """Cálculos de cada informe de avance con los números sustituidos."""
+    T, CP = plan.duracion_cadena, plan.colchon_proyecto
+    columnas = {}
+    for inf in informes:
+        det = inf['detalle']
+        curso = det[det['estado'] == 'en curso']
+        pend = det[det['estado'] == 'pendiente']
+        partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
+        hecho = float(inf['avance'])
+        largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
+                  for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
+        pa, pc = inf['pct_avance'], inf['pct_consumo']
+        columnas[f"día {inf['dia']}"] = {
+            'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
+            'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
+            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                  + (f" ({'; '.join(largas)})" if largas else '')),
+            'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
+            'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
+            'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
+            'zona': inf['zona']}
+    return pd.DataFrame(columnas)
+
+# %% [markdown]
+# ## Apartado 1
+
+# %%
+display(Markdown(pregunta_1))
+
+# %%
+datos_proyecto['duration'] = datos_proyecto['segura']
+
+# %%
+#| fig-cap: "Grafo Roy con las estimaciones seguras y su camino crítico"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
+proyecto.display_roy_pasos(datos_proyecto['duration'])
+
+# %%
+#| tbl-cap: "Calendario del cronograma tradicional (estimaciones seguras)"
+#| label: tbl-calendario
+calendario = proyecto.calendar(datos_proyecto['duration'])
+proyecto.display_calendario(datos_proyecto['duration'], grafo="roy")
+
+# %%
+#| tbl-cap: "Duración de cada ruta con las estimaciones seguras"
+#| label: tbl-rutasSeguras
+rutas_seguras = detalle_rutas(R, datos_proyecto['segura'][R.columns])
+rutas_seguras
+
+# %%
+T_tradicional = int(rutas_seguras['duración'].max())
+ruta_tradicional = rutas_seguras['duración'].astype(float).idxmax()
+Markdown(f'El cronograma tradicional dura **{T_tradicional} días**; ruta crítica: {rutas_seguras.loc[ruta_tradicional, "actividades"]}.')
+
+# %% [markdown]
+# ## Apartado 2
+
+# %%
+display(Markdown(pregunta_2))
+
+# %% [markdown]
+# La cadena crítica es la secuencia más larga de actividades dependientes con las estimaciones agresivas. Sin recursos compartidos, es la ruta crítica calculada con esas estimaciones.
+
+# %%
+#| fig-cap: "Grafo Roy con las estimaciones agresivas: su camino crítico es la cadena crítica"
+#| label: fig-pertAgresiva
+proyecto.roy(durations=datos_proyecto['agresiva'], ranksep=1.2, nodesep=1.2)
+
+# %%
+#| tbl-cap: "Duración de cada ruta con las estimaciones agresivas"
+#| label: tbl-rutasAgresivas
+rutas_agresivas = detalle_rutas(R, datos_proyecto['agresiva'][R.columns])
+rutas_agresivas
+
+# %%
+plan = proyecto.plan_cadena_critica(datos_proyecto, agresiva='agresiva', segura='segura', metodo='cortar_pegar')
+cadena = plan.cadena
+Markdown(f'Cadena crítica: **{" - ".join(cadena)}**, con {" + ".join(str(int(datos_proyecto.loc[a, "agresiva"])) for a in cadena)} = '
+         f'**{plan.duracion_cadena} días**.')
+
+# %%
+#| tbl-cap: "Margen retirado de las actividades de la cadena"
+#| label: tbl-margenes
+tabla_margenes(datos_proyecto, cadena)
+
+# %%
+margen_cadena = int(plan.margen[cadena].sum())
+Markdown(f'El margen retirado de la cadena suma {" + ".join(str(int(plan.margen[a])) for a in cadena)} = **{margen_cadena} días**.')
+
+# %% [markdown]
+# ## Apartado 3
+
+# %%
+display(Markdown(pregunta_3))
+
+# %%
+#| tbl-cap: "Colchón del proyecto por los dos métodos"
+#| label: tbl-colchon
+detalle_colchon(plan.margen[cadena], 'colchón del proyecto')
+
+# %%
+CP = plan.colchon_proyecto
+Markdown(f'Con cortar y pegar el colchón es de {CP} días y la fecha comprometida, {plan.duracion_cadena} + {CP} = '
+         f'**{plan.compromiso} días**, frente a los {T_tradicional} del cronograma tradicional: '
+         f'**{T_tradicional - plan.compromiso} días menos**. Con la raíz de la suma de cuadrados el colchón sería de '
+         f'{ceil(plan.calculo_colchon_proyecto["raiz"] - 1e-9)} días.')
+
+# %% [markdown]
+# ## Apartado 4
+
+# %%
+display(Markdown(pregunta_4))
+
+# %%
+Markdown(f'''Los márgenes individuales no se suman: es muy improbable que todas las actividades de la cadena consuman a la vez todo su margen. Si las duraciones son independientes, lo que se suma son las varianzas, y la desviación de la cadena crece como la raíz de la suma de cuadrados ({plan.calculo_colchon_proyecto["raiz"]:.2f} días frente a {margen_cadena}). Concentrar el margen al final protege la fecha de entrega con menos días que repartido por las actividades, donde además se perdería por el síndrome del estudiante y la ley de Parkinson.
+
+La estimación agresiva es la mediana: se espera que la mitad de las actividades la superen. Penalizarlo llevaría a los responsables a volver a inflar sus estimaciones, y el margen oculto reaparecería. Lo que se controla es el consumo del colchón del proyecto, no el cumplimiento de cada duración.''')
+
+# %% [markdown]
+# ## Autoevaluación
+
+# %% [markdown]
+# Preguntas de respuesta múltiple con los datos de este ejercicio (la correcta, marcada con ✅, es la primera de cada lista). La celda las exporta también en formato GIFT, con las opciones barajadas, a `~/temp/cuestionario_cadena_critica.gift`, para importarlas en Moodle.
+
+# %%
+preguntas_test = [
+    ('Con el colchón del proyecto calculado por cortar y pegar, ¿qué fecha se compromete con el cliente?',
+     ['día 30', 'día 36', 'día 31', 'día 29'],
+     'Cadena de 23 días más un colchón de 0,5·13 → 7 días: día 30. Sumar todo el margen retirado (36) devolvería la protección repartida que el método quiere evitar.'),
+    ('¿Cuántos días tiene el colchón del proyecto por el método de la raíz de la suma de cuadrados?',
+     ['7 días', '13 días', '6 días', '8 días'],
+     '√(3² + 4² + 3² + 3²) = 6,56, redondeado al día superior: 7.'),
+    ('Una actividad de la cadena tarda más que su estimación agresiva. ¿Qué debe hacer el jefe de proyecto?',
+     ['nada especial: es lo esperado la mitad de las veces y se vigila el consumo del colchón', 'pedir explicaciones al responsable por incumplir su estimación', 'retrasar la fecha comprometida en lo que se haya pasado', 'volver a las estimaciones seguras para el resto de actividades'],
+     'La estimación agresiva es la mediana: se espera que la mitad de las actividades la superen. Se controla el colchón, no el cumplimiento de cada duración.'),
+]
+TITULO_TEST = 'Cadena crítica — colchón del proyecto (cadena de 23 días)'
+import os, re
+
+
+def a_gift(preguntas_test, titulo, semilla=1):
+    """Preguntas en formato GIFT (Moodle): caracteres especiales escapados y opciones barajadas."""
+    esc = lambda s: re.sub(r'([~=#{}:])', r'\\\1', str(s))
+    r = np.random.default_rng(semilla)
+    lineas = [f'$CATEGORY: {titulo}', '']
+    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
+        cuerpo = ' '.join(('=' if j == 0 else '~') + esc(ops[j]) for j in r.permutation(len(ops)))
+        lineas.append(f'::{esc(titulo)} P{i}::{esc(q)} {{{cuerpo} ####{esc(fb)}}}')
+        lineas.append('')
+    return '\n'.join(lineas)
+
+
+gift = a_gift(preguntas_test, TITULO_TEST)
+os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
+with open(os.path.expanduser('~/temp/cuestionario_cadena_critica.gift'), 'w', encoding='utf8') as f:
+    f.write(gift)
+from pmule import muestra_test
+muestra_test(preguntas_test)

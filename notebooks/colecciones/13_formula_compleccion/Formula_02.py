@@ -4,6 +4,7 @@
 # coleccion: 13_formula_compleccion
 # variante: gradiente
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -236,13 +237,16 @@ t = datos_proyecto['duration'][R.columns]
 # %%
 display(Markdown(pregunta_1))
 
+# %%
+#| fig-cap: "Grafo Roy con tiempos y rutas críticas"
+#| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
 # %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
 
 # %%
-#| fig-cap: "Grafo PERT con tiempos y rutas críticas"
-#| label: fig-pert
-proyecto.display_pert_pasos(datos_proyecto['duration'])
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 Rt = R @ t

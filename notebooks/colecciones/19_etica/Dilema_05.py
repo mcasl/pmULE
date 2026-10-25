@@ -4,6 +4,7 @@
 # coleccion: 19_etica
 # variante: horas-extra
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: fraccionamiento-eia
 # nivel: 3
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

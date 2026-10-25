@@ -4,6 +4,7 @@
 # coleccion: 08_probabilidad
 # variante: dos-rutas-criticas
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4

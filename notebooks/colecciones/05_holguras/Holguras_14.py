@@ -4,6 +4,7 @@
 # coleccion: 05_holguras
 # variante: mini-a-mano
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -194,7 +195,7 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 # Considere el pequeño proyecto cuyo cuadro de prelaciones y duraciones (en días) se adjunta. Resuélvalo completamente a mano, anotando cada operación, antes de comprobarlo con la librería.
 
 # %%
-pregunta_1 = "1. Dibuje el grafo PERT y enumere todas las rutas desde el inicio hasta el final con su duración. ¿Cuál es la duración del proyecto y cuál la ruta crítica?  "
+pregunta_1 = "1. Dibuje el grafo Roy y enumere todas las rutas desde el inicio hasta el final con su duración. ¿Cuál es la duración del proyecto y cuál la ruta crítica?  "
 pregunta_2 = "2. Calcule, por el paso hacia adelante, el inicio y fin más tempranos de cada actividad; por el paso hacia atrás, el fin e inicio más tardíos.  "
 pregunta_3 = "3. Calcule las holguras total, libre e independiente de cada actividad escribiendo la fórmula con los números sustituidos.  "
 pregunta_4 = "4. La actividad B tiene holgura total mayor que la libre. Explique con las fechas de sus sucesoras por qué.  "
@@ -230,12 +231,15 @@ proyecto = prelaciones.create_project()
 # %%
 display(Markdown(pregunta_1))
 
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
-
 # %%
 #| fig-cap: "Grafo Roy"
 #| label: fig-pert
+proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+
+# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
@@ -279,7 +283,7 @@ detalle[['H_total = LS − ES', 'H_libre = mín ES suc. − EF', 'H_indep. = má
 # %%
 #| tbl-cap: "Calendario y holguras según la librería"
 #| label: tbl-calendario
-proyecto.display_calendario(datos_proyecto['duration'])
+calendario
 
 # %% [markdown]
 # ## Apartado 4

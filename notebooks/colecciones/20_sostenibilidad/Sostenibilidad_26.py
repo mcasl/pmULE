@@ -4,6 +4,7 @@
 # coleccion: 20_sostenibilidad
 # variante: hormigon-bajo-carbono
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
