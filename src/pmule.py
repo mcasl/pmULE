@@ -2564,9 +2564,14 @@ class ProjectGraph:
             duracion_proyecto = gantt_df.data.columns.drop('H_total').max()
         return pasos, my_data, maximo, p
 
-    def asignar_pasos_tikz_html(self, data, duration_label='duration', resource_label='resources',
-                                maximo=None, escala: float = 1.0) -> str:
-        """Visor paso a paso del algoritmo de asignación (:meth:`asignar`) en TikZ. El paso 0
+    def asignar_pasos_tikz(self, data, duration_label='duration', resource_label='resources',
+                           maximo=None, escala: float = 1.0, primero: str = "resultado"):
+        """Fotogramas TikZ y pies de :meth:`asignar_pasos_tikz_html` (para diapositivas o
+        figuras): devuelve ``(codigos, pies)``, un ``tikzpicture`` y un texto por paso.
+        Con ``primero="problema"`` el primer fotograma es el problema sin resolver (fechas
+        tempranas, demanda y límite) en lugar del resultado final.
+
+        Visor paso a paso del algoritmo de asignación (:meth:`asignar`) en TikZ. El paso 0
         es el resultado final. Después, para cada periodo evaluado: si la demanda cabe en el
         límite, un fotograma; si no, tres: (1) las actividades candidatas numeradas por orden
         de prioridad y el criterio que se aplica, (2) cuáles se ejecutan (verde) y cuáles se
@@ -2637,6 +2642,23 @@ class ProjectGraph:
                     "después las de menor holgura total y, a igualdad, las más cortas, mientras la carga acumulada "
                     "no supere el límite; las demás se posponen un periodo (💤 en el diagrama). "
                     "Pulse «siguiente» para ver cómo se decide periodo a periodo.".replace("💤", "zz"))
+        if primero == "problema":
+            # primer fotograma: el problema sin resolver (fechas tempranas, demanda y límite)
+            _, P_i = filas_y_periodos(p, data)
+            g_i, dib_i = gantt_tikz(p, data, P_i)
+            lineas = dib_i.strip().split("\n")
+            codigos[0] = (lineas[0].replace("scale=1", f"scale={escala}") + "\n"
+                          rf"\useasboundingbox ({BX0},{BY0}) rectangle ({BX1:.2f},{BY1:.2f});" + "\n"
+                          + "\n".join(lineas[1:-1]) + "\n\\end{tikzpicture}")
+            tot = g_i.data.loc["Total"].drop("H_total", errors="ignore")
+            exceso = [str(c) for c in tot.index if float(tot[c]) > float(maximo[c])]
+            pies[0] = ("Planteamiento: con todas las actividades en sus fechas tempranas, la demanda (fila «Total») "
+                       + (f"supera el máximo disponible en los periodos {', '.join(exceso[:-1])} y {exceso[-1]}"
+                          if len(exceso) > 1 else f"supera el máximo disponible en el periodo {exceso[0]}"
+                          if exceso else "no supera el máximo disponible")
+                       + ". Hay que decidir, periodo a periodo, qué actividades se posponen.")
+        elif primero != "resultado":
+            raise ValueError("primero debe ser 'resultado' o 'problema'")
         grupos, run = [], []
         for ps in pasos:
             if ps["total"] <= ps["limite"]:
@@ -2677,8 +2699,9 @@ class ProjectGraph:
                 continue
             codigos.append(fotograma(ps["proy_antes"], ps["antes"], per, {a: (rank[a], "cand") for a in cand.index}))
             pies.append(f"Periodo {per}: la demanda total ({f(tot)}) supera el máximo ({f(lim)}); hay que decidir qué "
-                        "actividades se ejecutan. Criterio de prioridad: (1) las ya empezadas, que no se interrumpen; "
-                        "(2) menor holgura total H, las más críticas; (3) menor duración d. Orden resultante: "
+                        "actividades se ejecutan. Criterio de prioridad: primero, las ya empezadas, que no se "
+                        "interrumpen; después, las de menor holgura total H, las más críticas; a igualdad de "
+                        "holgura, las de menor duración d. Orden resultante (números en los círculos): "
                         + orden_txt + ".")
             marcas = {a: (rank[a], "ok" if a in ps["se_programan"] else "no") for a in cand.index}
             notas = {}
@@ -2694,12 +2717,28 @@ class ProjectGraph:
                 pies.append(f"Periodo {per}: no cabe ninguna actividad con el máximo disponible ({f(lim)}): "
                             "el proyecto no es factible con estos recursos.")
                 continue
+            orden_c = list(cand.index)
+            saltos = [(a, b) for a in pos_ for b in ejec
+                      if orden_c.index(a) < orden_c.index(b) and not bool(cand.loc[b, "Empezadas"])]
+            salto_txt = ""
+            if saltos:
+                a, b = saltos[0]
+                salto_txt = (f" Obsérvese que {b} se ejecuta aunque va detrás de {a} en la prioridad: "
+                             f"{a} no cabe en los recursos que quedan, pero {b} sí.")
             pies.append(f"Periodo {per}: se recorren las actividades por orden de prioridad acumulando carga. "
                         f"Se ejecutan {', '.join(ejec)}; se posponen {', '.join(pos_)} porque, al añadirlas, la carga "
-                        f"acumulada superaría el máximo ({f(lim)}).")
+                        f"acumulada superaría el máximo ({f(lim)})." + salto_txt)
             codigos.append(fotograma(ps["proy_despues"], ps["despues"], per))
             pies.append(f"Periodo {per}: las actividades pospuestas ({', '.join(pos_)}) se desplazan un periodo, "
                         "con las que dependen de ellas; este es el diagrama de partida del siguiente periodo.")
+        return codigos, pies
+
+    def asignar_pasos_tikz_html(self, data, duration_label='duration', resource_label='resources',
+                                maximo=None, escala: float = 1.0) -> str:
+        """Visor paso a paso del algoritmo de asignación (:meth:`asignar`) en TikZ; los
+        fotogramas los da :meth:`asignar_pasos_tikz`. No modifica el proyecto."""
+        import base64, html as _h
+        codigos, pies = self.asignar_pasos_tikz(data, duration_label, resource_label, maximo, escala)
         fotos = []
         for svg, pie in zip(_svgs_de_tikz(codigos, "calc,arrows.meta,patterns"), pies):
             b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
