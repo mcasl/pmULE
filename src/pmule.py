@@ -4722,7 +4722,7 @@ class ProjectGraph:
         return M
 
     def plot_tikz_construccion(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
-                               textos: dict = None) -> list:
+                               textos: dict = None, comprobar_columnas: bool = False) -> list:
         """Fotogramas TikZ (uno por ``tikzpicture``) de la construcción del grafo PERT
         a partir del cuadro de prelaciones: a la izquierda el cuadro y a la derecha el
         grafo con la numeración de nodos y sin tiempos.
@@ -4734,13 +4734,25 @@ class ProjectGraph:
         (mismas sucesoras, o ninguna) ya están dibujadas, se resaltan esas columnas y el
         suceso en que se fusionan sus finales; y el grafo completo al final. Con
         ``ordenar=True`` el cuadro va en orden de precedencia. ``textos`` cambia los
-        rótulos (``{"completo": ..., "iniciales": ...}``)."""
+        rótulos (``{"completo": ..., "iniciales": ...}``).
+
+        Con ``comprobar_columnas=True`` se añade, tras el grafo completo, un fotograma por
+        columna del cuadro (en su orden): la columna se resalta, las celdas marcadas llevan el
+        nombre de su **fila** (las sucesoras de la actividad de la columna) y en el grafo se
+        resaltan la actividad (naranja) y sus sucesoras (azul, con las ficticias que las
+        enlazan), todo lo demás en gris claro. Así, tras construir el grafo por filas, se
+        comprueba por columnas que no hay errores. Son ``n`` fotogramas más, tantos como
+        actividades."""
         rot = {"completo": "Cuadro de prelaciones y grafo PERT con la numeración de nodos",
                "iniciales": "Actividades iniciales (sin predecesoras): {acts}",
                "actividad": "Actividad {act}: predecesoras {preds}",
                "ficticia": "se añade la actividad ficticia {fict}",
                "iguales": "Las columnas {cols} son iguales: sus actividades terminan en el mismo suceso ({nodo})",
-               "vacias": "Las columnas {cols} están vacías: sus actividades terminan en el suceso final ({nodo})"}
+               "vacias": "Las columnas {cols} están vacías: sus actividades terminan en el suceso final ({nodo})",
+               "columna": "Comprobación por columnas, {act}: sus sucesoras son {sucs} (filas marcadas); en el grafo "
+                          "deben partir del suceso {nodo}, donde termina {act}, directamente o por ficticias",
+               "columna_vacia": "Comprobación por columnas, {act}: la columna está vacía, {act} no tiene sucesoras; "
+                                "en el grafo debe terminar en el suceso final ({nodo})"}
         rot.update(textos or {})
         tex = self._tex_texto
         G = self.pert_graph
@@ -4824,14 +4836,22 @@ class ProjectGraph:
             return prev, pf
 
         def fotograma(hechas, actuales, ficticias_hechas, ficticias_actuales, texto,
-                      filas=None, columnas=(), nodo_resaltado=None, completo=False):
+                      filas=None, columnas=(), nodo_resaltado=None, completo=False,
+                      col_actual=None, sucesoras=(), ficticias_sucesoras=()):
             ea = {}
             previas, previas_f = _previas(actuales, ficticias_actuales)
             for u, v, d in G.edges(data=True):
                 clave = (f"{u}", f"{v}")
                 act = d.get("activity", "")
                 fict = (not act) or act.startswith("@")
-                if completo:
+                if col_actual is not None:           # comprobación por columnas: actividad y sucesoras
+                    if (not fict) and act == col_actual:
+                        ea[clave] = "actual"
+                    elif (clave in ficticias_sucesoras) if fict else (act in sucesoras):
+                        ea[clave] = "previa"
+                    else:
+                        ea[clave] = "gris"
+                elif completo:
                     ea[clave] = "hecho"
                 elif (clave in ficticias_actuales) if fict else (act in actuales):
                     ea[clave] = "actual"
@@ -4841,17 +4861,18 @@ class ProjectGraph:
                     ea[clave] = "hecho"
                 else:
                     ea[clave] = "oculto"
-            tocados = {x for k, e in ea.items() if e != "oculto" for x in k}
-            en = {nd: ("hecho" if nd in tocados else "oculto") for nd in pos}
+            comprobando = col_actual is not None
+            tocados = {x for k, e in ea.items() if e not in ("oculto", "gris") for x in k}
+            en = {nd: ("hecho" if nd in tocados else "gris" if comprobando else "oculto") for nd in pos}
             if nodo_resaltado is not None:
                 en[nodo_resaltado] = "actual"
             cuerpo = self._pert_fotograma(pos, {}, {}, escala, {}, {}, trazado=trazado,
                                           con_duracion=False, estilo_arcos=ea, estilo_nodos=en,
-                                          numeros=completo)
+                                          numeros=completo or comprobando)
             L = [r"\begin{tikzpicture}[>=stealth]", _COLORES_MATRIZ,
                  rf"\begin{{scope}}[xshift={margen * ancho:.2f}cm,yshift={yc_g - yc_m:.2f}cm,"
                  rf"x={ancho:.2f}cm,y=0.78cm,font=\small]"]
-            L += _cuerpo_matriz_tikz(datos, filas, columnas)
+            L += _cuerpo_matriz_tikz(datos, filas, columnas, etiqueta_fila=comprobando)
             L += [r"\end{scope}",
                   rf"\begin{{scope}}[xshift={Wm + hueco - xmin:.2f}cm]", cuerpo, r"\end{scope}",
                   rf"\node[anchor=north, font=\small, align=center, text width={ancho_total:.2f}cm] "
@@ -4893,6 +4914,25 @@ class ProjectGraph:
                 grp, nodo, vacia = fusion[a]
                 codigos.append(self._paso_fusion(fotograma, grp, nodo, vacia, hechas, fict_hechas, rot, lista, tex))
         codigos.append(fotograma(hechas, set(), fict_hechas, set(), tex(rot["completo"]), completo=True))
+        if comprobar_columnas:
+            # comprobación por columnas: las sucesoras de cada actividad (las filas marcadas de su columna)
+            # deben ser las actividades que parten de su suceso final, directamente o por ficticias
+            Gd = nx.DiGraph()
+            Gd.add_edges_from(ficticias)
+            for a in nombres:
+                sucs = [r for r in nombres if a in preds[r]]
+                va = arco[a][1] if a in arco else None
+                fsuc = set()
+                if va is not None and va in Gd:
+                    for r in sucs:
+                        if r in arco and arco[r][0] != va and arco[r][0] in Gd:
+                            for camino in nx.all_simple_paths(Gd, va, arco[r][0]):
+                                fsuc |= set(zip(camino[:-1], camino[1:]))
+                texto = (rot["columna"].format(act=a, sucs=lista(sucs), nodo=va) if sucs
+                         else rot["columna_vacia"].format(act=a, nodo=va))
+                codigos.append(fotograma(hechas, set(), fict_hechas, set(), tex(texto), columnas=(a,),
+                                         nodo_resaltado=va, col_actual=a, sucesoras=set(sucs),
+                                         ficticias_sucesoras=fsuc))
         return codigos
 
     @staticmethod
@@ -4903,7 +4943,8 @@ class ProjectGraph:
                          columnas=grupo, nodo_resaltado=nodo)
 
     def plot_tikz_construccion_roy_tabla(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
-                                         textos: dict = None, etiquetas: dict = None) -> list:
+                                         textos: dict = None, etiquetas: dict = None,
+                                         comprobar_columnas: bool = False) -> list:
         """Fotogramas TikZ (uno por ``tikzpicture``) de la construcción del grafo Roy, sin
         tiempos, a partir del cuadro de prelaciones: a la izquierda el cuadro y a la derecha
         el grafo.
@@ -4914,11 +4955,21 @@ class ProjectGraph:
         tras las actividades que no preceden a ninguna; y el grafo completo. Con
         ``ordenar=True`` el cuadro va en orden de precedencia. ``textos`` cambia los rótulos
         (``{"completo", "iniciales", "actividad", "fin"}``) y ``etiquetas`` los nombres de
-        ``start`` y ``finish``."""
+        ``start`` y ``finish``.
+
+        Con ``comprobar_columnas=True`` se añade, tras el grafo completo, un fotograma por
+        columna del cuadro: la columna se resalta, las celdas marcadas llevan el nombre de su
+        **fila** (las sucesoras de la actividad de la columna) y en el grafo se resaltan la
+        actividad (naranja), sus sucesoras (azul) y las flechas que las unen, con todo lo demás
+        en gris claro; si la actividad no tiene sucesoras, su flecha va al nodo Fin."""
         rot = {"completo": "Cuadro de prelaciones y grafo Roy",
                "iniciales": "Nodo {inicio} y actividades iniciales (sin predecesoras): {acts}",
                "actividad": "Actividad {act}: predecesoras {preds}",
-               "fin": "Nodo {fin}: lo siguen las actividades que no preceden a ninguna ({acts})"}
+               "fin": "Nodo {fin}: lo siguen las actividades que no preceden a ninguna ({acts})",
+               "columna": "Comprobación por columnas, {act}: sus sucesoras son {sucs} (filas marcadas); en el grafo "
+                          "las flechas que salen de {act} deben llegar a esas actividades",
+               "columna_vacia": "Comprobación por columnas, {act}: la columna está vacía, {act} no tiene sucesoras; "
+                                "en el grafo su única flecha llega al nodo {fin}"}
         rot.update(textos or {})
         et = {"start": "Inicio", "finish": "Fin"}
         et.update(etiquetas or {})
@@ -4976,7 +5027,11 @@ class ProjectGraph:
             xs_ = list(xs_)
             return xs_[0] if len(xs_) == 1 else ", ".join(xs_[:-1]) + " y " + xs_[-1]
 
-        def grafo(kk, actuales, completo):
+        NARANJA = dict(borde="orange!80!black", grosor="very thick", relleno="orange!20", barra="orange!80!black")
+        AZUL = dict(borde="blue!80!black", grosor="very thick", relleno="blue!15", barra="blue!70!black")
+        GRIS = dict(borde="gray!45", grosor="thick", relleno="white", color_texto="text=gray!55")
+
+        def grafo(kk, actuales, completo, col=None, sucs=()):
             L, A = [], []
             for u, v in G.edges():
                 u, v = f"{u}", f"{v}"
@@ -4984,6 +5039,9 @@ class ProjectGraph:
                     continue
                 actual = (paso[v] == kk) and not completo
                 estilo = ["->", "thick"] + (["orange!80!black", "ultra thick"] if actual else [])
+                if col is not None:                  # comprobación por columnas
+                    estilo = ["->", "thick"] + (["blue!80!black", "ultra thick"] if (u == col and v in sucs)
+                                                else ["gray!45"])
                 if trazado and (u, v) in trazado["rutas"]:
                     A.append(rf"  \draw[{', '.join(estilo)}] "
                              + self._ruta_tikz(u, v, pos, trazado["rutas"][(u, v)],
@@ -4997,18 +5055,20 @@ class ProjectGraph:
                 if paso[nodo] > kk:
                     L.append(rf"  \coordinate ({r}) at ({x:.2f}cm, {y:.2f}cm);")
                     continue
-                estilo = (dict(borde="orange!80!black", grosor="very thick", relleno="orange!20",
-                               barra="orange!80!black") if (nodo in actuales and not completo) else {})
+                estilo = (NARANJA if (nodo in actuales and not completo) else {})
+                if col is not None:
+                    estilo = NARANJA if nodo == col else AZUL if nodo in sucs else GRIS
                 L += self._roy_caja_tikz(r, x, y, tex(f"{et.get(nodo, nodo)}"), None, **estilo)
             return "\n".join(L + A)
 
-        def fotograma(kk, actuales, texto, filas=None, columnas=(), completo=False):
+        def fotograma(kk, actuales, texto, filas=None, columnas=(), completo=False, col=None, sucs=()):
             L = [r"\begin{tikzpicture}[>=stealth]", _COLORES_MATRIZ,
                  rf"\begin{{scope}}[xshift={margen * ancho:.2f}cm,yshift={yc_g - yc_m:.2f}cm,"
                  rf"x={ancho:.2f}cm,y=0.78cm,font=\small]"]
-            L += _cuerpo_matriz_tikz(datos, filas, columnas)
+            L += _cuerpo_matriz_tikz(datos, filas, columnas, etiqueta_fila=col is not None)
             L += [r"\end{scope}",
-                  rf"\begin{{scope}}[xshift={Wm + hueco - xmin:.2f}cm]", grafo(kk, actuales, completo), r"\end{scope}",
+                  rf"\begin{{scope}}[xshift={Wm + hueco - xmin:.2f}cm]", grafo(kk, actuales, completo, col, sucs),
+                  r"\end{scope}",
                   rf"\path (0,{ymin:.2f}) rectangle ({ancho_total:.2f},{ymax:.2f});",
                   rf"\node[anchor=north, font=\small, align=center, text width={ancho_total:.2f}cm] "
                   rf"at ({ancho_total / 2:.2f}cm, {y_texto:.2f}cm) {{{texto}}};",
@@ -5035,15 +5095,26 @@ class ProjectGraph:
                                  tex(rot["fin"].format(fin=et["finish"], acts=lista(finales))),
                                  filas={a: ("actual" if a in finales else None) for a in nombres}))
         codigos.append(fotograma(ultimo, set(), tex(rot["completo"]), completo=True))
+        if comprobar_columnas:
+            for a in nombres:
+                sucs = [f"{b}" for b in G.successors(a)]
+                reales = [b for b in sucs if b != "finish"]
+                texto = (rot["columna"].format(act=a, sucs=lista(reales)) if reales
+                         else rot["columna_vacia"].format(act=a, fin=et["finish"]))
+                codigos.append(fotograma(ultimo, set(), tex(texto), columnas=(a,), col=a, sucs=set(sucs)))
         return codigos
 
     def roy_construccion_html(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
                               textos: dict = None, etiquetas: dict = None) -> str:
         """Visor HTML con botones de la construcción del grafo Roy (véase
         :meth:`plot_tikz_construccion_roy_tabla`). El primer fotograma (paso 0) es el cuadro
-        con el grafo completo; a partir del paso 1 se construye desde el principio."""
-        codigos = self.plot_tikz_construccion_roy_tabla(escala, tabla, ordenar, textos, etiquetas)
-        return _html_fotogramas_tikz(codigos, resultado_primero=True)
+        con el grafo completo; a partir del paso 1 se construye desde el principio, fila a fila,
+        y al terminar el visor recorre las columnas del cuadro comprobando las sucesoras de
+        cada actividad en el grafo."""
+        codigos = self.plot_tikz_construccion_roy_tabla(escala, tabla, ordenar, textos, etiquetas,
+                                                        comprobar_columnas=True)
+        n_col = len(self._matriz_prelaciones(tabla).index)           # fotogramas de la comprobación
+        return _html_fotogramas_tikz(codigos, resultado_primero=True, indice_resultado=len(codigos) - 1 - n_col)
 
     def display_roy_construccion(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
                                  textos: dict = None, etiquetas: dict = None, visor: bool = True) -> None:
@@ -5463,9 +5534,12 @@ class ProjectGraph:
                                textos: dict = None) -> str:
         """Visor HTML con botones de la construcción del grafo PERT (véase
         :meth:`plot_tikz_construccion`). El primer fotograma (paso 0) es el cuadro con
-        el grafo completo; a partir del paso 1 se construye desde el principio."""
-        codigos = self.plot_tikz_construccion(escala, tabla, ordenar, textos)
-        return _html_fotogramas_tikz(codigos, resultado_primero=True)
+        el grafo completo; a partir del paso 1 se construye desde el principio, fila a fila,
+        y al terminar el visor recorre las columnas del cuadro comprobando las sucesoras de
+        cada actividad en el grafo."""
+        codigos = self.plot_tikz_construccion(escala, tabla, ordenar, textos, comprobar_columnas=True)
+        n_col = len(self._matriz_prelaciones(tabla).index)           # fotogramas de la comprobación
+        return _html_fotogramas_tikz(codigos, resultado_primero=True, indice_resultado=len(codigos) - 1 - n_col)
 
     def display_pert_construccion(self, escala: float = 1.0, tabla=None, ordenar: bool = False,
                                   textos: dict = None, visor: bool = True) -> None:
@@ -9930,7 +10004,7 @@ _COLORES_MATRIZ = (r"\definecolor{narosc}{RGB}{204,102,0}\definecolor{narcl}{RGB
 
 def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), valor: str = None,
                         valor_cero: str = None, resalte: str = None, rotulo: str = r"precedente $\to$\\ actividad $\downarrow$",
-                        celdas_color: str = None) -> list:
+                        celdas_color: str = None, etiqueta_fila: bool = False) -> list:
     """Líneas TikZ de una matriz booleana de enlace (sin ``tikzpicture``; con
     ``x`` = ancho de celda e ``y`` = 0,78 cm). Cuadrícula fina, celdas redondeadas en
     naranja claro (con la letra de la predecesora o una marca) y cabeceras en gris.
@@ -9941,7 +10015,8 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), val
     celdas vacías; ``resalte`` es el color (p. ej. ``"blue"``) con que se resalta la fila
     ``"actual"`` en vez del naranja; ``celdas_color``, el color de las celdas marcadas de la
     fila ``"actual"`` (la banda y el nombre de la fila siguen en naranja); ``rotulo`` es el
-    texto de la esquina."""
+    texto de la esquina; con ``etiqueta_fila=True`` las celdas marcadas llevan el nombre de su
+    fila (en vez del de su columna): al leer una columna se ven sus sucesoras."""
     filas = filas or {}
     columnas = {f"{c}" for c in columnas}
     nombres = [f"{n}" for n in data.index]
@@ -9989,7 +10064,8 @@ def _cuerpo_matriz_tikz(data: pd.DataFrame, filas: dict = None, columnas=(), val
                 if valor is not None:
                     L.append(rf"\node[{tinta},font=\bfseries] at ({cx},{cy}) {{{valor}}};")
                 elif modo == "letra":
-                    L.append(rf"\node[{tinta},font=\bfseries] at ({cx},{cy}) {{{tex(f'{col}')}}};")
+                    L.append(rf"\node[{tinta},font=\bfseries] at ({cx},{cy}) "
+                             rf"{{{tex(nombres[i] if etiqueta_fila else f'{col}')}}};")
                 else:
                     L.append(rf"\draw[{tinta},line width=1pt,line cap=round,line join=round] "
                              rf"({cx - 0.19},{cy - 0.01}) -- ({cx - 0.05},{cy - 0.14}) -- ({cx + 0.2},{cy + 0.15});")
@@ -10144,17 +10220,17 @@ def matriz_caminos_tikz(path_matrix: pd.DataFrame):
 
 
 def _html_fotogramas_tikz(codigos: list, librerias: str = "calc,arrows.meta",
-                          resultado_primero: bool = False) -> str:
+                          resultado_primero: bool = False, indice_resultado: int = -1) -> str:
     """Visor HTML con botones (:func:`_html_pasos`) de fotogramas TikZ compilados a
     SVG. Cada SVG va como imagen ``data:`` para que los identificadores de
     glifos de unos no se mezclen con los de otros. Con ``resultado_primero`` el
-    último fotograma (el resultado) se repite como primero (paso 0) y el contador
-    empieza en 0."""
+    fotograma del resultado (por defecto el último; ``indice_resultado`` indica otro)
+    se repite como primero (paso 0) y el contador empieza en 0."""
     import base64
     fotos = []
     svgs = _svgs_de_tikz(codigos, librerias)
     if resultado_primero:
-        svgs = [svgs[-1]] + list(svgs)
+        svgs = [svgs[indice_resultado]] + list(svgs)
     for svg in svgs:
         b64 = base64.b64encode(svg.encode("utf8")).decode("ascii")
         fotos.append('<img alt="paso" style="display:block;margin:0 auto;width:100%;max-width:1100px;height:auto" '

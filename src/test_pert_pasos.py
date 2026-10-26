@@ -312,6 +312,79 @@ def test_construccion_pert_ejercicio4():
     assert "{10}" in cods[-1] and "{10}" not in cods[3]   # números de nodo solo al final
 
 
+def _tabla_ejercicio4():
+    import pandas as pd
+    from pmule import PredecessorTable
+    d = pd.DataFrame([('A', '---', 3), ('B', '---', 2), ('C', 'B', 4), ('D', 'A', 4), ('E', 'A', 2),
+                      ('F', 'C,D', 5), ('G', 'C,D', 1), ('H', 'E', 3), ('I', 'F,G', 1),
+                      ('J', 'F,G', 2), ('K', 'F,G,H', 1)],
+                     columns=['activity', 'predecessor', 'duration']).set_index('activity')
+    return PredecessorTable.from_dataframe_of_strings(d, activity='activity', predecessor='predecessor')
+
+
+def test_construccion_comprobacion_por_columnas():
+    """Tras construir por filas, el visor recorre las columnas: la actividad de la columna y sus
+    sucesoras resaltadas en el grafo (lo demás en gris) y el nombre de la FILA dentro de la rejilla."""
+    t = _tabla_ejercicio4()
+    p = t.create_project()
+    base = p.plot_tikz_construccion(tabla=t)
+    con = p.plot_tikz_construccion(tabla=t, comprobar_columnas=True)
+    assert len(base) == 12 and len(con) == 12 + 11          # un fotograma más por actividad
+    assert con[:12] == base                                  # la construcción no cambia
+    col_a, col_k = con[12], con[-1]                          # columnas A y K
+    assert "Comprobación por columnas, A: sus sucesoras son D y E" in col_a
+    assert "K: la columna está vacía" in col_k and "suceso final" in col_k
+    assert "gray!" in col_a and "ultra thick" in col_a       # lo no afectado en gris; resaltes gruesos
+    assert "blue!70!black" in col_a                           # sucesoras en azul
+    assert "{10}" in col_a                                    # numeración de nodos visible
+    # la rejilla escribe el nombre de la fila: en la columna A las celdas marcadas son D y E
+    import pandas as pd
+    from pmule import _cuerpo_matriz_tikz
+    m = pd.DataFrame([[False, False], [True, False]], index=["A", "B"], columns=["A", "B"])
+    por_columna = "\n".join(_cuerpo_matriz_tikz(m))
+    por_fila = "\n".join(_cuerpo_matriz_tikz(m, etiqueta_fila=True))
+    assert "at (0.5,-1.5) {A}" in por_columna and "at (0.5,-1.5) {B}" in por_fila
+
+
+def test_construccion_html_resultado_es_el_grafo_completo():
+    """El paso 0 del visor es el grafo completo (no el último fotograma de la comprobación)."""
+    import base64, re
+    from unittest import mock
+    import pmule
+    t = _tabla_ejercicio4()
+    p = t.create_project()
+    n_cod = len(p.plot_tikz_construccion(tabla=t, comprobar_columnas=True))
+    falsos = lambda codigos, *a, **k: [f"<svg>{i}</svg>" for i in range(len(codigos))]
+    with mock.patch.object(pmule, "_svgs_de_tikz", falsos):
+        html = p.pert_construccion_html(tabla=t)
+    imgs = [base64.b64decode(b).decode() for b in re.findall(r'base64,([A-Za-z0-9+/=]+)"', html)]
+    assert len(imgs) == n_cod + 1
+    assert imgs[0] == "<svg>11</svg>"                          # el grafo completo (fotograma 12 de la construcción)
+    assert imgs[-1] == f"<svg>{n_cod - 1}</svg>"
+
+
+def test_construccion_roy_comprobacion_por_columnas():
+    import base64, re
+    from unittest import mock
+    import pmule
+    t = _tabla_ejercicio4()
+    p = t.create_project()
+    base = p.plot_tikz_construccion_roy_tabla(tabla=t)
+    con = p.plot_tikz_construccion_roy_tabla(tabla=t, comprobar_columnas=True)
+    assert len(base) == 12 and len(con) == 12 + 11
+    assert con[:12] == base                                   # la construcción no cambia
+    col_a, col_k = con[12], con[-1]
+    assert "Comprobación por columnas, A: sus sucesoras son D y E" in col_a
+    assert "K: la columna está vacía" in col_k and "nodo Fin" in col_k
+    assert "blue!80!black" in col_a and "gray!45" in col_a    # sucesoras en azul, el resto en gris claro
+    assert "orange!80!black" in col_a                          # la actividad de la columna, en naranja
+    falsos = lambda codigos, *a, **k: [f"<svg>{i}</svg>" for i in range(len(codigos))]
+    with mock.patch.object(pmule, "_svgs_de_tikz", falsos):
+        html = p.roy_construccion_html(tabla=t)
+    imgs = [base64.b64decode(b).decode() for b in re.findall(r'base64,([A-Za-z0-9+/=]+)"', html)]
+    assert len(imgs) == len(con) + 1 and imgs[0] == "<svg>11</svg>"      # paso 0 = grafo completo
+
+
 def test_zaderenko_tikz_ejercicio4():
     import pandas as pd
     from pmule import PredecessorTable
