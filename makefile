@@ -1,4 +1,4 @@
-.PHONY: sync dev lsp lab kernel clean test test-fast golden test-colecciones colecciones lecciones
+.PHONY: sync dev lsp lab kernel clean test test-fast golden test-colecciones colecciones lecciones rapido
 sync:
 	uv sync --frozen
 
@@ -30,6 +30,11 @@ test-fast: dev
 # Regenera los golden de los cuadernos (tras un cambio deliberado de comportamiento)
 golden: dev
 	cd src && ../.venv/bin/python -m tests_ejercicios.make_golden --all
+
+# Ejecución rápida de cuadernos sin LaTeX ni graphviz (segundos): comprueba que no fallan y muestra en texto
+# lo que vería el alumno. Uso: make rapido CUADERNOS="notebooks/colecciones/05_holguras/*.py" [OPCIONES=--solo-errores]
+rapido:
+	.venv/bin/python -m scripts.colecciones.ejecuta_rapido $(OPCIONES) $(CUADERNOS)
 
 # Colecciones de ejercicios cortos (scripts/colecciones): comprobación de todas las variantes (sin ejecutar cuadernos)
 test-colecciones: dev
