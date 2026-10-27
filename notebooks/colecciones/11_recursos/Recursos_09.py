@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -248,6 +252,87 @@ datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 
+# %%
+def semanas_txt(lista):
+    """«la semana 6», «las semanas 1, 2 y 5» o «ninguna semana»."""
+    lista = [str(int(x)) for x in lista]
+    if not lista:
+        return 'ninguna semana'
+    return ('la semana ' if len(lista) == 1 else 'las semanas ') + lista_y(lista)
+
+
+def explica_cuadrados(cargas):
+    """Σ c² agrupando las semanas de igual carga: «6·3² + 4·5² = 54 + 100 = 154»."""
+    c = pd.Series(cargas).astype(int)
+    cuenta = c.value_counts().sort_index()
+    terminos = [f'{n}·{v}²' if n > 1 else f'{v}²' for v, n in cuenta.items()]
+    parciales = [f'{n * v * v}' for v, n in cuenta.items()]
+    return f'Σ c² = {" + ".join(terminos)} = {" + ".join(parciales)} = **{int((c ** 2).sum())}**'
+
+
+def explica_nivelacion(cuadrados, calendario):
+    """Una línea por actividad recorrida: desplazamientos probados, suma mínima y elección."""
+    tabla = getattr(cuadrados, 'data', cuadrados)
+    lineas, elegidos = [], {}
+    for a, fila in tabla.iterrows():
+        v = fila.dropna()
+        k = int(v.index.max())
+        H = int(calendario.loc[a, 'H_total'])
+        minimo = v.min()
+        mejor = int(v.idxmin())
+        empates = [int(x) for x in v.index[v == minimo]]
+        if k == 0:
+            probado = 'solo puede probarse 0'
+        else:
+            probado = f'se prueban 0 a {k}'
+        if k < H:
+            probado += (f' (no {H}: los desplazamientos ya aplicados a actividades que comparten su holgura '
+                        f'le han dejado {plural(k, "semana")})')
+        empate = (f'; empatan {lista_y([str(x) for x in empates])} y se toma el menor' if len(empates) > 1 else '')
+        lineas.append(f'- {a} (holgura total {H}): {probado}; suma mínima {int(minimo)} con {mejor}{empate} → '
+                      + (f'se desplaza **{plural(mejor, "semana")}**' if mejor > 0 else 'no se desplaza'))
+        elegidos[a] = mejor
+    return '\n'.join(lineas), {a: d for a, d in elegidos.items() if d > 0}
+
+
+def tabla_asignacion(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """Semanas en que la demanda supera el límite: orden de prioridad, qué entra y qué se aplaza y por qué."""
+    pasos, finales, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    filas = []
+    for ps in pasos:
+        if ps['total'] <= ps['limite']:
+            continue
+        t, L = ps['periodo'], int(ps['limite'])
+        orden, aplazadas, acum = [], [], 0
+        for a, f in ps['candidatas'].iterrows():
+            r = int(f[t])
+            orden.append(f'{a} (en curso, {r})' if f['Empezadas'] else f'{a} (H={int(f["H_total"])}, d={int(f[duracion])}, {r})')
+            if a in ps['se_programan']:
+                acum += r
+            else:
+                aplazadas.append(f'{a}: {acum} + {r} = {acum + r} > {L}')
+        filas.append({'semana': t, 'límite': L, 'demanda': int(ps['total']),
+                      'orden de prioridad (holgura, duración, recurso)': ' › '.join(orden),
+                      'entran': lista_y(sorted(ps['se_programan'])) if ps['se_programan'] else '—',
+                      'se aplazan una semana (no caben)': '; '.join(aplazadas)})
+    return pd.DataFrame(filas).set_index('semana') if filas else Markdown('En ninguna semana la demanda supera el límite: no hay que aplazar nada.')
+
+
+def primera_critica_aplazada(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """(semana, actividad) de la primera actividad sin holgura que la asignación tiene que aplazar, o None."""
+    pasos, _, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    for ps in pasos:
+        for a in ps['candidatas'].index:
+            if a in ps['se_retrasan'] and float(ps['candidatas'].loc[a, 'H_total']) == 0:
+                return ps['periodo'], a
+    return None
+
+
+def esperas_asignacion(datos_asignados):
+    """{actividad: semanas de espera} a partir de las filas 💤 que añade la asignación."""
+    e = datos_asignados[datos_asignados.index.str.startswith('💤')]
+    return {i[1:]: int(f.duration) for i, f in e.iterrows()}
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -290,7 +375,16 @@ plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=limite_maximo_recurso
 cargas = gantt_inicial.data.loc['Total'].drop('H_total').astype(float)
 limite = pd.Series([limite_maximo_recursos[min(t - 1, len(limite_maximo_recursos) - 1)] for t in range(1, len(cargas) + 1)], index=cargas.index)
 exceso = cargas[cargas > limite]
-Markdown(f'El límite se supera en las semanas {", ".join(str(t) for t in exceso.index)}: hacen falta hasta {int(cargas.max())} operarios.')
+detalle = '; '.join(f'semana {int(t)}: {int(c)} > {int(limite[t])}' for t, c in exceso.items())
+if len(exceso):
+    resp = (f'no se respeta: la carga supera el límite en {semanas_txt(exceso.index)} ({detalle}); '
+            f'con todo en su inicio más temprano harían falta hasta {int(cargas.max())} operarios.')
+else:
+    pico = int(cargas.idxmax())
+    resp = (f'sí se respeta: la carga no supera el límite en ninguna semana. El pico, {int(cargas.max())} operarios en la semana {pico}, '
+            f'cae ya en el tramo con límite {int(limite[pico])}, y en las semanas con límite {int(limite.min())} la carga no pasa de '
+            f'{int(cargas[limite == limite.min()].max())}.')
+Markdown('**Respuesta:** ' + resp)
 
 # %% [markdown]
 # ## Apartado 2
@@ -299,14 +393,24 @@ Markdown(f'El límite se supera en las semanas {", ".join(str(t) for t in exceso
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# El algoritmo de Wiest-Levy recorre el calendario periodo a periodo: cuando la demanda supera el límite, aplaza las actividades con más holgura (y, si no basta, también críticas, lo que alarga el proyecto). Las filas 💤 marcan las esperas introducidas.
+# El algoritmo de asignación (Wiest-Levy en la librería) recorre el calendario semana a semana y aplaza lo que no cabe; si no basta con consumir holguras, aplaza también actividades críticas y el proyecto se alarga. Las filas 💤 del Gantt marcan las esperas introducidas.
+#
+# Regla del algoritmo: en cada semana se toman las actividades que el calendario vigente sitúa en ella y se ordenan así: primero las ya empezadas (no se interrumpen); después, menor holgura total (recalculada tras los aplazamientos anteriores) y, a igualdad, menor duración. Se admiten en ese orden mientras la suma de recursos no supere el límite; las que no caben se aplazan una semana (y con ellas sus sucesoras, si no tienen holgura). En la traza, *Total* es la demanda de esa semana antes de aplazar.
 
 # %% [markdown]
-# Prioridad para entrar en una semana: primero las actividades ya empezadas (no se interrumpen); entre las demás, menor holgura total y, a igualdad, menor duración. Traza semana a semana (qué se programa y qué se aplaza una semana cuando la carga supera el límite):
+# Traza semana a semana (qué se programa y qué se aplaza una semana):
 
 # %%
 _ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',
                            maximo=limite_maximo_recursos, report=True)
+
+# %% [markdown]
+# Por qué se aplaza cada actividad: en las semanas en que la demanda supera el límite, la tabla da el orden de prioridad (con su holgura, duración y operarios), las que entran y, para cada aplazada, la suma que no cabe.
+
+# %%
+#| tbl-cap: "Semanas con conflicto en la asignación"
+#| label: tbl-conflictos
+tabla_asignacion(proyecto, datos_proyecto, limite_maximo_recursos)
 
 # %%
 #| fig-cap: "Diagrama de Gantt tras la asignación"
@@ -325,9 +429,18 @@ plot_cargas(gantt_df=gantt_asignado, limite_maximo_recursos=limite_maximo_recurs
 # %%
 duracion_inicial = proyecto.duration(datos_proyecto['duration'])
 duracion_asignada = len(gantt_asignado.data.columns.drop('H_total'))
-esperas = datos_asignados[datos_asignados.index.str.startswith('💤')]
-Markdown(f'El proyecto pasa de {duracion_inicial} a {duracion_asignada} semanas. Esperas introducidas: '
-         f'{", ".join(f"{i[1:]} ({int(fila.duration)} sem.)" for i, fila in esperas.iterrows()) or "ninguna"}.')
+esperas = esperas_asignacion(datos_asignados)
+cargas_asig = gantt_asignado.data.loc['Total'].drop('H_total').astype(float)
+txt_esperas = lista_y([f"{a} {plural(e, 'semana')}" for a, e in esperas.items()]) if esperas else 'ninguna actividad'
+if not esperas:
+    resp = f'no hace falta desplazar ninguna actividad: el proyecto mantiene sus {duracion_inicial} semanas.'
+elif duracion_asignada > duracion_inicial:
+    resp = (f'se desplazan {txt_esperas}; el proyecto pasa de {duracion_inicial} a {duracion_asignada} semanas '
+            f'(se alarga {plural(duracion_asignada - duracion_inicial, "semana")}) y el pico de operarios queda en {int(cargas_asig.max())}.')
+else:
+    resp = (f'se desplazan {txt_esperas}, dentro de su holgura: el proyecto mantiene sus {duracion_inicial} semanas '
+            f'y el pico de operarios queda en {int(cargas_asig.max())}.')
+Markdown('**Respuesta:** ' + resp)
 
 # %% [markdown]
 # ## Apartado 3
@@ -338,6 +451,11 @@ display(Markdown(pregunta_3))
 # %%
 _ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',
                            maximo=[4], report=True)
+
+# %%
+#| tbl-cap: "Semanas con conflicto con el límite constante"
+#| label: tbl-conflictosFijo
+tabla_asignacion(proyecto, datos_proyecto, [4])
 
 # %%
 #| fig-cap: "Diagrama de Gantt con el límite constante"
@@ -351,7 +469,12 @@ pinta_tikz(dibujo)
 
 # %%
 duracion_fija = len(gantt_fijo.data.columns.drop('H_total'))
-Markdown(f'Con 4 operarios durante todo el proyecto la duración sería de {duracion_fija} semanas, frente a {duracion_asignada} con el refuerzo a partir de la semana 4.')
+esperas_fijo = esperas_asignacion(datos_fijo)
+txt_esperas_fijo = lista_y([f"{a} {plural(e, 'semana')}" for a, e in esperas_fijo.items()]) if esperas_fijo else 'ninguna'
+Markdown(f'Esperas con el límite constante: {txt_esperas_fijo}.\n\n'
+         f'**Respuesta:** con 4 operarios durante todo el proyecto la duración sería de {duracion_fija} semanas, frente a {duracion_asignada} con el refuerzo a 6 operarios a partir de la semana 5; '
+         + (f'{plural(duracion_fija - duracion_asignada, "semana")} más ({duracion_fija - duracion_inicial} más que sin límite).' if duracion_fija > duracion_asignada else
+            'la misma duración; en este proyecto el refuerzo no acorta el plazo.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -359,5 +482,8 @@ Markdown(f'Con 4 operarios durante todo el proyecto la duración sería de {dura
 # %%
 display(Markdown(pregunta_4))
 
-# %% [markdown]
-# La nivelación sólo usa las holguras: desplaza actividades no críticas sin tocar el plazo. La asignación impone una restricción dura; si en algún periodo ni siquiera aplazando todas las actividades con holgura cabe la demanda, tiene que aplazar actividades críticas y el proyecto se alarga.
+# %%
+critica = primera_critica_aplazada(proyecto, datos_proyecto, limite_maximo_recursos)
+motivo = (f'en la semana {critica[0]} la actividad {critica[1]}, sin holgura, no cabía y hubo que aplazarla' if critica else
+          'hubo que aplazar actividades más allá de su holgura')
+Markdown(f'''La nivelación sólo usa las holguras: desplaza actividades no críticas sin tocar el plazo, y si un desplazamiento alargara el proyecto no se prueba. La asignación impone una restricción dura (el límite de cada semana); si ni siquiera aplazando todas las actividades con holgura cabe la demanda, tiene que aplazar actividades críticas y el proyecto se alarga. **Respuesta:** {f'aquí la asignación ha alargado el proyecto de {duracion_inicial} a {duracion_asignada} semanas porque {motivo}' if duracion_asignada > duracion_inicial else ('aquí la asignación no ha necesitado alargar el proyecto: le ha bastado con consumir holguras' if esperas else 'aquí, con los límites del enunciado, no ha hecho falta aplazar nada')}; la nivelación, por construcción, nunca cambia la duración.''')

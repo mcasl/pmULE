@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -222,7 +226,7 @@ datos_enunciado
 #
 # - **S10 — Condiciones de trabajo en la cadena de ejecución.** El plan no puede apoyarse en condiciones de trabajo que la norma prohíbe: ni en una cadena de subcontratación más larga que la permitida, ni en jornadas al aire libre que ignoren los avisos por calor extremo. Una ventaja de coste o plazo obtenida así no es una opción de la tabla (cf. C7 y C5 de la lección 19). *(cf. Ley 32/2006 de subcontratación en la construcción, arts. 4 y 5; RD 486/1997, disposición adicional única (RDL 4/2023); ICB4, Perspectiva 3 «salud, seguridad y medio ambiente».)*
 # - **S1 — Jerarquía de respuesta a los impactos (pirámide de sostenibilidad).** Ante un impacto negativo del proyecto las estrategias se ordenan de menos a más deseable: compensar o contrarrestar el daño, restaurarlo, minimizarlo y evitarlo. Compensar cuando se podía minimizar o evitar es quedarse en el escalón más bajo; clasificar una propuesta en su escalón es una pregunta con respuesta única. *(cf. PMBOK 8, principio «integrar la sostenibilidad en todas las áreas del proyecto» (§3.7, figura 3-7).)*
-# - **Norma o dato de referencia — en las obras de construcción el contratista puede subcontratar con un primer subcontratista, este con un segundo y este con un tercero; el tercer subcontratista y los trabajadores autónomos no pueden subcontratar. Excepcionalmente (caso fortuito, especialización, fuerza mayor) la dirección facultativa puede aprobar un nivel más, que se anota en el Libro de Subcontratación. Las empresas que se dedican habitualmente a contratar o subcontratar obras deben tener al menos un 30 % de plantilla indefinida** *(Ley 32/2006, arts. 5.2, 5.3 y 4.4.)*
+# - **Norma o dato de referencia — en las obras de construcción el contratista puede subcontratar con un primer subcontratista, este con un segundo y este con un tercero; el tercer subcontratista, los trabajadores autónomos y las empresas cuya aportación a la obra consista básicamente en mano de obra no pueden subcontratar. Excepcionalmente (caso fortuito, especialización, fuerza mayor) la dirección facultativa puede aprobar un nivel más, que se anota en el Libro de Subcontratación. Las empresas que se dedican habitualmente a contratar o subcontratar obras deben tener al menos un 30 % de plantilla indefinida** *(Ley 32/2006, arts. 5.2 (letras d, e y f), 5.3 y 4.4.)*
 
 # %% [markdown]
 # Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).
@@ -242,6 +246,24 @@ for item in sorted(dir()):
 
 # %%
 plantilla, coste_propio, coste_ett, coste_cadena, penalidad = 7, 2.0, 2.6, 1.6, 12
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -295,7 +317,10 @@ exceso = (cargas - plantilla).clip(lower=0); exceso_niv = (cargas_niveladas - pl
 tabla = pd.DataFrame({'carga inicial': cargas, 'exceso inicial': exceso, 'carga nivelada': cargas_niveladas, 'exceso nivelado': exceso_niv})
 tabla.loc['Total'] = tabla.sum()
 display(tabla.astype(int).T)
-Markdown(f'''Pico de **{int(cargas.max())}** operarios con inicios más tempranos y **{int(cargas_niveladas.max())}** tras nivelar, frente a {plantilla} de plantilla; el exceso pasa de {int(exceso.sum())} a **{int(exceso_niv.sum())} operarios-semana** sin alargar el proyecto ({duracion} semanas).''')
+movidas = desplazamientos[desplazamientos['desplazamientos'] > 0]['desplazamientos']
+txt_mov = lista_y(f'{a} {plural(int(v), "semana")} (holgura total {int(calendario.loc[a, "H_total"])})' for a, v in movidas.items())
+sem_exc = [int(c) for c in exceso.index if exceso[c] > 0]; sem_exc_niv = [int(c) for c in exceso_niv.index if exceso_niv[c] > 0]
+Markdown(f'''La nivelación prueba, para cada actividad con holgura, los desplazamientos dentro de su holgura total y se queda con el que minimiza la suma de los cuadrados de las cargas semanales (Σc²): desplaza {txt_mov}, y Σc² baja de {int((cargas ** 2).sum())} a {int((cargas_niveladas ** 2).sum())} con la misma duración ({duracion} semanas) y los mismos {int(cargas.sum())} operarios-semana. El exceso de cada semana es máx(0, carga − {plantilla}).\n\n**Respuesta:** con inicios más tempranos el pico es de **{int(cargas.max())}** operarios y hay exceso en las semanas {lista_y(sem_exc)} ({suma_txt(exceso[exceso > 0])} operarios-semana); tras nivelar el pico es de **{int(cargas_niveladas.max())}** y quedan **{int(exceso_niv.sum())} operarios-semana** de exceso''' + (f''' (semanas {lista_y(sem_exc_niv)}: {suma_txt(exceso_niv[exceso_niv > 0])}).''' if sem_exc_niv else '.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -313,7 +338,13 @@ opciones = pd.Series({'cadena de subcontratas (ilegal)': exceso_total * coste_ca
                       'ETT para el exceso': exceso_total * coste_ett,
                       'sólo plantilla: retraso × penalidad': (duracion_limitada - duracion) * penalidad})
 display(opciones.round(1).to_frame('coste (k€)'))
-Markdown(f'''Con sólo la plantilla el proyecto dura **{duracion_limitada}** semanas ({duracion_limitada - duracion} de retraso, {(duracion_limitada - duracion) * penalidad} k€ de penalidad). La cadena «ahorra» {exceso_total * (coste_ett - coste_cadena):.1f} k€ frente a la ETT: ese es el precio de los cuatro escalones.''')
+def inicios(gantt_df):
+    d = gantt_df.data.drop(index='Total', errors='ignore').drop(columns='H_total', errors='ignore').apply(pd.to_numeric, errors='coerce')
+    return d.apply(lambda f: f[f > 0].first_valid_index(), axis=1)
+ini0, ini1 = inicios(gantt_inicial), inicios(gantt_asignado)
+retrasadas = [a for a in ini0.index if pd.notna(ini0[a]) and pd.notna(ini1.get(a)) and ini1[a] > ini0[a]]
+legal = opciones.drop('cadena de subcontratas (ilegal)')
+Markdown(f'''Costes: cadena = {exceso_total:.0f} × {coste_cadena} = {exceso_total * coste_cadena:.1f} k€; ETT = {exceso_total:.0f} × {coste_ett} = {exceso_total * coste_ett:.1f} k€; sólo plantilla: la asignación con límite de {plantilla} operarios (lección 11) retrasa ''' + (lista_y(f'{a} (de la semana {int(ini0[a])} a la {int(ini1[a])})' for a in retrasadas) if retrasadas else 'algunas actividades') + f''' y el proyecto dura **{duracion_limitada}** semanas: {duracion_limitada - duracion} de retraso × {penalidad} = {(duracion_limitada - duracion) * penalidad} k€ de penalidad.\n\n**Respuesta:** la opción más barata de la tabla es la cadena ({opciones.iloc[0]:.1f} k€), pero es ilegal (apartado 3); la más barata de las legales es **{legal.idxmin()}** ({legal.min():.1f} k€). El «ahorro» de la cadena frente a la ETT es {exceso_total:.0f} × ({coste_ett} − {coste_cadena}) = **{exceso_total * (coste_ett - coste_cadena):.1f} k€**: ese es el precio de los cuatro escalones.''')
 
 # %%
 #| fig-cap: "Gantt con asignación limitada a la plantilla"
@@ -327,7 +358,9 @@ pinta_tikz(dibujo_asig)
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma.** La Ley 32/2006 limita la cadena: contratista → primer subcontratista → segundo → tercero, y **el tercer subcontratista no puede subcontratar**; los autónomos tampoco (art. 5.2). La propuesta tiene cuatro escalones por debajo del contratista, el último de autónomos: **no puede ejecutarse**. Un nivel más sólo se admite excepcionalmente (caso fortuito, especialización, fuerza mayor), aprobado por la dirección facultativa antes y anotado en el Libro de Subcontratación (art. 5.3); «lo llevan ellos» no exime: el libro es del contratista. **S10.** El «ahorro» de 7.0 k€ sale de las condiciones de quien está al final de la cadena y de los riesgos de seguridad que la ley quiere evitar con el límite: no es una opción de la tabla. **S1.** La cadena no compensa ni minimiza: traslada el impacto a quien no está en la mesa. La respuesta no depende del apartado 2; el cálculo muestra que la opción legal (ETT tras nivelar) cuesta 18 k€ frente a 48 de retraso.
+# **Norma.** La Ley 32/2006 limita la cadena: contratista → primer subcontratista → segundo → tercero, y **el tercer subcontratista no puede subcontratar**; los autónomos tampoco, ni las empresas que sólo aportan mano de obra (art. 5.2, letras d, e y f). La propuesta tiene cuatro escalones por debajo del contratista, el último de autónomos: **no puede ejecutarse**. Un nivel más sólo se admite excepcionalmente (caso fortuito, especialización, fuerza mayor), aprobado por la dirección facultativa antes y anotado en el Libro de Subcontratación (art. 5.3); «lo llevan ellos» no exime: el libro es del contratista. **S10.** El «ahorro» de 7.0 k€ sale de las condiciones de quien está al final de la cadena y de los riesgos de seguridad que la ley quiere evitar con el límite: no es una opción de la tabla. **S1.** La cadena no compensa ni minimiza: traslada el impacto a quien no está en la mesa. La respuesta no depende del apartado 2; el cálculo muestra que, entre las opciones legales, la ETT tras nivelar (18.2 k€) es más barata que el retraso (48 k€).
+#
+# **Respuesta:** **no** puede ejecutarse. El último nivel que puede subcontratar es el **segundo subcontratista** (con un tercero, que ya no puede hacerlo); un nivel más sólo excepcionalmente, con aprobación previa de la dirección facultativa y anotación en el Libro de Subcontratación (art. 5.3).
 
 # %%
 preguntas_test = [

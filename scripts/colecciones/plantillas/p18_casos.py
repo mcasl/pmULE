@@ -41,11 +41,64 @@ UTIL = (
     "    T = float(L.max()); sigma = float(np.sqrt(V[L == T].max()))\n"
     "    z = (plazo - T) / sigma\n"
     "    retraso_esp = sigma * (norm.pdf(z) - z * norm.cdf(-z))      # E[máx(0, X − plazo)] con X ~ N(T, σ)\n"
-    "    return T, sigma, float(norm.cdf(z)), float(retraso_esp)\n")
+    "    return T, sigma, float(norm.cdf(z)), float(retraso_esp)\n"
+    "\n"
+    "def suma_caminos_criticos(p, d, unidad='semanas'):\n"
+    "    '''Cada camino crítico, en orden de ejecución, escrito como suma de duraciones.'''\n"
+    "    cal = p.calendar(d)\n"
+    "    T = float(p.duration(d))\n"
+    "    return '; '.join('–'.join(ordena_ruta(r, cal)) + ' = ' + ' + '.join(f'{float(d[a]):g}' for a in ordena_ruta(r, cal)) + f' = {T:g} {unidad}'\n"
+    "                     for r in p.critical_path(d).values())\n"
+    "\n"
+    "def pasos_ackoff(p, d, tope, cur, pasos):\n"
+    "    '''Paso a paso de Ackoff-Sasieni: caminos críticos, opciones que los cortan todos (con su CUR) y la elegida.'''\n"
+    "    from itertools import combinations\n"
+    "    R = p.path_matrix(dummies=False)\n"
+    "    d = d.astype(float).copy(); filas = []; acumulado = 0.0\n"
+    "    for paso, elegidas in sorted(pasos.items()):\n"
+    "        L = R @ d[R.columns]; T = float(L.max())\n"
+    "        cal = p.calendar(d)\n"
+    "        criticas = [ordena_ruta(list(R.columns[R.loc[r] == 1]), cal) for r in L.index if np.isclose(L[r], T)]\n"
+    "        conjuntos = [set(c) for c in criticas]\n"
+    "        margen = {x for x in R.columns if d[x] > tope[x] and np.isfinite(cur[x])}\n"
+    "        opciones = {x: float(cur[x]) for x in set.intersection(*conjuntos) & margen}\n"
+    "        if len(conjuntos) > 1:\n"
+    "            for a, b in combinations(sorted(set().union(*conjuntos) & margen), 2):\n"
+    "                if all(a in s or b in s for s in conjuntos) and a not in opciones and b not in opciones:\n"
+    "                    opciones[f'{a}+{b}'] = float(cur[a] + cur[b])\n"
+    "        coste = float(sum(cur[x] for x in elegidas)); acumulado += coste\n"
+    "        filas.append({'paso': paso + 1, 'duración antes': int(T), 'caminos críticos': '; '.join('–'.join(c) for c in criticas),\n"
+    "                      'opciones con margen (CUR, k€)': '; '.join(f'{k} ({v:g})' for k, v in sorted(opciones.items(), key=lambda kv: kv[1])),\n"
+    "                      'se acorta': ' + '.join(elegidas), 'coste del paso (k€)': coste, 'coste acumulado (k€)': acumulado,\n"
+    "                      'duración después': int(T) - 1})\n"
+    "        for x in elegidas:\n"
+    "            d[x] -= 1\n"
+    "    return pd.DataFrame(filas).set_index('paso')\n"
+    "\n"
+    "def explica_retraso_esperado(media, sigma, plazo, unidad='semanas'):\n"
+    "    '''E[máx(0, T − plazo)] con T ~ N(media, σ), sin tipificar: (μ − plazo)·P(T > plazo) + σ²·f(plazo).'''\n"
+    "    p_mas = 1 - norm.cdf(plazo, media, sigma); f = norm.pdf(plazo, media, sigma)\n"
+    "    hoja = lambda x: f'{x:g}'.replace('.', ',')\n"
+    "    return (f'E[máx(0, T − {plazo:g})] = (μ − plazo)·P(T > plazo) + σ²·f(plazo) = ({media:g} − {plazo:g})·{p_mas:.4f} + {sigma:.3f}²·{f:.4f} '\n"
+    "            f'= **{(media - plazo) * p_mas + sigma ** 2 * f:.2f} {unidad}**, donde f(plazo) es la densidad normal en el plazo: '\n"
+    "            f'`=DISTR.NORM.N({hoja(plazo)}; {hoja(media)}; {hoja(round(sigma, 3))}; FALSO)` = {f:.4f}')\n")
 
 
 def _silencio():
     return contextlib.redirect_stdout(io.StringIO())
+
+
+def _pl(n, singular, plural_=None):
+    """«1 semana», «3 semanas» (como ``plural`` de pmule, para el texto que escribe el generador)."""
+    v = float(n)
+    txt = f"{int(round(v))}" if v.is_integer() else f"{v:.1f}"
+    return f"{txt} {singular if v.is_integer() and abs(int(round(v))) == 1 else (plural_ or singular + 's')}"
+
+
+def _y(items):
+    """«A», «A y B», «A, B y C» (como ``lista_y``)."""
+    items = [str(x) for x in items]
+    return items[0] if len(items) == 1 else (", ".join(items[:-1]) + " y " + items[-1] if items else "ninguna")
 
 
 def _proy(preds, dur, nombres):
@@ -187,6 +240,7 @@ def _reforma_laboratorio(rng):
     T4, p4, dur4, dur5, cal4, sd4 = x["T4"], x["p4"], x["dur4"], x["dur5"], x["cal4"], x["sd4"]
     pr4 = _prob(p4, dur4, sd4, T0)
     pr5 = _prob(p4, dur5, sd4, T0)
+    pr6 = _prob(p4, dur5, sd4, T0 + 1)[2]
     hol_F2 = int(cal4.loc["F2", "H_total"])
     fin_F2 = int(cal4.loc["F2", "fin_mas_temprano"])
     semana_decision = int(cal4.loc["F2", "fin_mas_temprano"]) - 1
@@ -286,11 +340,26 @@ def _reforma_laboratorio(rng):
                        "    T = int(p.duration(df['duration']))\n"
                        "    filas.append({'situación': nombre, 'duración': T, f'retraso sobre {plazo}': T - plazo, 'camino crítico': camino_critico(p, df['duration'])})\n"
                        "pd.DataFrame(filas).set_index('situación')"))
-    celdas.append(md(f"El proveedor aporta {delta} semanas porque F era crítica: su retraso va entero al plazo. El inspector "
-                     f"aporta {x['TH'] - T0}: H tenía {hol_H} semana{'s' if hol_H != 1 else ''} de holgura, pero al pasar "
-                     "detrás de G deja de aprovecharla y se coloca en el camino crítico (A–C–F–G–H–I). Los efectos se suman "
-                     f"({delta} + {x['TH'] - T0} = {retraso}) porque los dos cambios caen sobre la misma ruta; no se "
-                     "sumarían si uno de ellos afectara a una ruta con holgura suficiente para absorberlo."))
+    celdas.append(code("Markdown('Camino crítico de cada situación, escrito como suma de duraciones (en orden de ejecución):\\n\\n' + '\\n'.join(\n"
+                       "    f'- {nombre}: {suma_caminos_criticos(p, df[\"duration\"])}' for nombre, df, p in\n"
+                       f"    (('plan original', df0, p0), ('sólo el retraso del mobiliario', dfF, pF), ('sólo la inspección tras G', dfH, pH), ('los dos cambios', df2, p2))))"))
+    aporta_H = x["TH"] - T0
+    suman = retraso == delta + aporta_H
+    celdas.append(md(f"El proveedor aporta {_pl(delta, 'semana')} porque F era crítica (holgura total 0): su retraso va entero "
+                     f"al plazo ({T0} + {delta} = {x['TF']}). El inspector aporta {_pl(aporta_H, 'semana')}: H tenía "
+                     f"{_pl(hol_H, 'semana')} de holgura (la ruta más larga que pasaba por ella, por D o E, sumaba "
+                     f"{T0} − {hol_H} = {T0 - hol_H}), pero al ir detrás de G pasa a la ruta "
+                     + "–".join(_camino(x['p0'], d).split("–")[:-1] + ["H", "I"])
+                     + (f", que es el camino crítico anterior más la semana de H ({T0} + {int(d['H'])} = {x['TH']})"
+                        if x["TH"] == T0 + int(d["H"]) else f", que dura {x['TH']}")
+                     + ": la holgura que tenía no le sirve, porque estaba en otra ruta. "
+                     + (f"Los efectos se suman tal cual ({delta} + {aporta_H} = {retraso}) porque los dos cambios caen sobre la "
+                        "misma ruta, la crítica; no se sumarían si uno de ellos afectara a una ruta con holgura suficiente para absorberlo."
+                        if suman else
+                        f"Los efectos no se suman tal cual ({delta} + {aporta_H} = {delta + aporta_H}, pero juntos dan {retraso}): "
+                        "no caen sobre la misma ruta.")
+                     + f"\n\n**Respuesta:** si no se hace nada el laboratorio está listo en la semana {x['T2']}, con "
+                     f"**{_pl(retraso, 'semana')} de retraso**: {delta} del proveedor y {aporta_H} del inspector."))
     celdas.append(code(f'#| fig-cap: "Plan con los dos cambios: {x["T2"]} semanas"\n#| label: fig-gantt2\n'
                        "_g, _d = p2.gantt(df2, 'duration', holguras=True, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))\n"
                        "pinta_tikz(_d)"))
@@ -324,9 +393,25 @@ def _reforma_laboratorio(rng):
             extra = f": supera la bolsa en {opc[r] - bolsa:.0f} k€ (modificación presupuestaria, un mes de espera)"
         lineas.append(f"- Recuperar **{r}** semana{'s' if r > 1 else ''} cuesta {opc[r]:.0f} k€ y deja {retraso - r} de alquiler "
                       f"({alq * (retraso - r)} k€): {total[r]:.0f} k€ en total{extra}.")
-    celdas.append(md(f"Para recuperar {r_opt} semana{'s' if r_opt != 1 else ''} el algoritmo acorta {actos_opt} (las más baratas "
-                     f"por semana); G, con CUR {int(cur['G'])}, sólo entra cuando las demás agotan su margen. Lo que se ve:\n\n"
+    celdas.append(md("Cada opción de *r* semanas son los *r* primeros pasos del algoritmo. Paso a paso (caminos críticos del "
+                     "momento, actividades o parejas que los cortan todos y aún tienen margen hasta su tope, con su CUR, y la elegida):"))
+    celdas.append(code('#| tbl-cap: "Ackoff-Sasieni paso a paso sobre el plan con los dos cambios"\n#| label: tbl-ackoffPasos\n'
+                       "_, pasos_todos, _, _ = p2.ackoff(durF, tope, cur, reduction=retraso, report=False)\n"
+                       "pasos_ackoff(p2, durF, tope, cur, pasos_todos)"))
+    _todas = [a for acts in _ackoff(x["p2"], x["dF"], x["topeF"], cur, retraso)[0].values() for a in acts]
+    _no_entran = [a for a in ("A", "C", "G", "I") if a not in _todas]
+    _orden_cur = sorted(("A", "C", "G", "I"), key=lambda a: cur[a])
+    celdas.append(md(f"Para recuperar {_pl(r_opt, 'semana')} el algoritmo acorta {actos_opt}: en cada paso elige la opción "
+                     f"más barata que corta todos los caminos críticos (CUR de menor a mayor: "
+                     + ", ".join(f"{a} {int(cur[a])}" for a in _orden_cur) + " k€/semana)"
+                     + (f"; {_y(_no_entran)} no {'entra' if len(_no_entran) == 1 else 'entran'} en ninguna opción: en todos los "
+                        f"pasos hay otra más barata que corta los mismos caminos críticos" if _no_entran else "")
+                     + ". El coste total para la universidad de cada opción es sobrecoste + alquiler × semanas de retraso que quedan:\n\n"
                      + "\n".join(lineas) + "\n\n"
+                     f"**Respuesta:** el coste total mínimo para la universidad es recuperar **{_pl(r_opt, 'semana')}** "
+                     f"({opc[r_opt]:.0f} + {alq} × {retraso - r_opt} = {total[r_opt]:.0f} k€). Respetan el tope de {bolsa} k€ "
+                     f"no acortar nada o recuperar hasta {_pl(r_opt, 'semana')}; la que más plazo recupera dentro del tope es también la de "
+                     f"{_pl(r_opt, 'semana')}, así que aquí las dos perspectivas coinciden; recuperar más exige la modificación presupuestaria.\n\n"
                      "Obsérvese el conflicto entre perspectivas: para el proyecto (Gerencia) lo barato es no gastar; para la "
                      "universidad el alquiler es un coste real aunque salga de otra partida; para la vicerrectora el plazo "
                      "tiene además un coste reputacional que no está en la tabla."))
@@ -343,6 +428,19 @@ def _reforma_laboratorio(rng):
                        "                  'retraso esperado (sem)': round(retraso_esp, 2), 'alquiler esperado (k€)': round(coste_semana * retraso_esp, 1),\n"
                        "                  'coste total esperado (k€)': round(sobre + coste_semana * retraso_esp, 1)})\n"
                        "pd.DataFrame(filas).set_index('semanas recuperadas')"))
+    celdas.append(code(f"_r = {r_opt}\n"
+                       "_dur = duraciones_opcion[0]\n"
+                       "_ruta = ordena_ruta(list(p2.critical_path(_dur).values())[0], p2.calendar(_dur))\n"
+                       "_T, _s, _, _ = resumen_prob(p2, duraciones_opcion[_r], sd, plazo)\n"
+                       "Markdown(f'''Sin reducciones el camino crítico es {\"–\".join(_ruta)} y su desviación típica, con las varianzas "
+                       "(σ²) de sus actividades: {explica_sigma_ruta(_ruta, sd ** 2)} semanas. Las reducciones acortan duraciones pero "
+                       "no cambian las varianzas, por eso σ cambia poco de una opción a otra (si aparecen varios caminos críticos se toma el de mayor varianza).\\n\\n"
+                       "Por ejemplo, para la opción de recuperar {plural(_r, \"semana\")} (duración media {_T:g}):\\n\\n"
+                       "- Probabilidad de cumplir: {explica_probabilidad(_T, _s, plazo)}.\\n"
+                       "- Retraso esperado: {explica_retraso_esperado(_T, _s, plazo)}.\\n"
+                       "- Coste total esperado = sobrecoste + {coste_semana} × retraso esperado = "
+                       "{float(tabla.loc[_r, \"sobrecoste (k€)\"]):g} + {coste_semana} × {resumen_prob(p2, duraciones_opcion[_r], sd, plazo)[3]:.2f} = "
+                       "**{float(tabla.loc[_r, \"sobrecoste (k€)\"]) + coste_semana * resumen_prob(p2, duraciones_opcion[_r], sd, plazo)[3]:.1f} k€**.''')"))
     celdas.append(md(f"La desviación típica del camino crítico es de {probs[0][1]:.1f} semanas, grande comparada con las "
                      f"diferencias que se están discutiendo. Dos consecuencias: la opción «recuperar {retraso} semanas» "
                      f"promete terminar en la semana {T0} *en media*, es decir, con un {probs[retraso][2]:.0%} de probabilidad, "
@@ -351,7 +449,12 @@ def _reforma_laboratorio(rng):
                      + f" ({esp[r_esp]:.1f} k€ frente a {esp[retraso]:.1f} de la de {retraso})"
                      + (", la misma que sin incertidumbre" if r_esp == r_opt else f", y no la de {r_opt} que salía antes")
                      + ". Con la incertidumbre delante, las reducciones de pago compran menos de lo que parecían, y las "
-                     "medidas que recortan plazo sin coste (apartado 4) ganan valor."))
+                     "medidas que recortan plazo sin coste (apartado 4) ganan valor.\n\n"
+                     + ("**Respuesta:** la elección no cambia" if r_esp == r_opt else "**Respuesta:** la elección cambia")
+                     + f": en coste esperado la mejor opción es recuperar {_pl(r_esp, 'semana')} ({esp[r_esp]:.1f} k€). Es también la "
+                     "más robusta en el sentido de que es la que menos cuesta en promedio cuando la duración real se desvía de la media; "
+                     f"ninguna opción de pago asegura el plazo: incluso recuperando las {retraso} semanas la probabilidad de terminar en la "
+                     f"semana {T0} es {probs[retraso][2]:.2f}, y con la opción elegida es {probs[r_esp][2]:.2f}."))
     celdas += apartado(4)
     celdas.append(md("Tres propuestas aparecen en los mensajes. Modeladas como cambios del cuadro de prelaciones:\n\n"
                      "- **Inspección en dos fases.** La parte eléctrica y de climatización (lo que H comprobaba originalmente) "
@@ -376,20 +479,65 @@ def _reforma_laboratorio(rng):
                        "T4, sigma4, prob4, _ = resumen_prob(p4, dur4, sd4, plazo)\n"
                        "Markdown(f'''Duración: **{int(p4.duration(dur4))} semanas** (P(≤ {plazo}) = {prob4:.2f}); camino crítico {camino_critico(p4, dur4)}. "
                        "F2 (el resto del mobiliario) termina en la semana {int(cal4.loc['F2', 'fin_mas_temprano'])} con holgura {int(cal4.loc['F2', 'H_total'])}.''')"))
-    celdas.append(md(f"Con las dos negociaciones el plan vuelve a {T4} semanas en media sin gastar un euro"
+    preds_par = list(x["preds4"]); preds_par[x["nombres4"].index("H")] = "D,E,G"
+    _, p_par = _proy(preds_par, dur4, x["nombres4"])
+    T_par = _T(p_par, dur4)
+    celdas.append(md("Para cuantificar cuánto recupera cada negociación, se aplica cada una por separado sobre el plan con los dos "
+                     "cambios (la inspección en dos fases devuelve H a su posición original, detrás de D y E; la entrega parcial "
+                     "parte F en F1 y F2):"))
+    celdas.append(code('#| tbl-cap: "Plazo que recupera cada negociación"\n#| label: tbl-negociaciones\n'
+                       "preds_parcial = list(preds4); preds_parcial[nombres4.index('H')] = 'D,E,G'      # sólo entrega parcial: H sigue tras G\n"
+                       "df_par, p_par = proyecto_de(preds_parcial, dur4, nombres4)\n"
+                       "_T2 = int(p2.duration(durF))\n"
+                       "filas = []\n"
+                       "for nombre, p, d in (('ninguna (los dos cambios)', p2, durF), ('sólo la inspección en dos fases', pF, durF),\n"
+                       "                     ('sólo la entrega parcial', p_par, dur4), ('las dos', p4, dur4)):\n"
+                       "    T = int(p.duration(d))\n"
+                       "    filas.append({'negociación': nombre, 'duración': T, 'semanas recuperadas': _T2 - T, f'retraso sobre {plazo} (−: margen)': T - plazo,\n"
+                       "                  'camino crítico (suma)': suma_caminos_criticos(p, d)})\n"
+                       "pd.DataFrame(filas).set_index('negociación')"))
+    T2 = x["T2"]
+    rec_ins, rec_par, rec_dos = T2 - x["TF"], T2 - T_par, T2 - T4
+    celdas.append(md(f"La inspección en dos fases sola recupera {_pl(rec_ins, 'semana')} y la entrega parcial sola "
+                     f"{_pl(rec_par, 'semana')}; juntas, {_pl(rec_dos, 'semana')}"
+                     + (f" ({rec_ins} + {rec_par} = {rec_ins + rec_par}: se suman porque cada una actúa sobre un tramo distinto del camino crítico)"
+                        if rec_dos == rec_ins + rec_par else
+                        f" ({rec_ins} + {rec_par} = {rec_ins + rec_par} ≠ {rec_dos}: no se suman, porque al aplicar una cambia el camino "
+                        "crítico y la otra actúa ya sobre una ruta distinta)")
+                     + ". "
+                     + (f"Con las dos negociaciones el plan vuelve a {T4} semanas en media sin gastar un euro"
+                        if T4 == T0 else
+                        f"Con las dos negociaciones el plan baja a {T4} semanas en media, {_pl(T0 - T4, 'semana')} antes del plazo, sin gastar un euro")
                      + (f", pero fíjese en que F2 queda crítica: cualquier semana más del proveedor vuelve a retrasar el proyecto."
                         if hol_F2 == 0 else
                         f"; F2 conserva {hol_F2} semana{'s' if hol_F2 != 1 else ''} de holgura, que es todo el margen que hay frente a un nuevo retraso del proveedor.")
                      + " Los riesgos y a quién preguntar: al inspector, si acepta la inspección en dos fases por escrito; al "
                      f"proveedor, qué garantía da de las {delta} semanas; al técnico, si instalar sobre las mesas sin campana ni "
                      "armarios es seguro y no obliga a desmontar después; y a Gerencia, si la bolsa puede reservarse para una "
-                     "reducción *contingente* (acortar I al final sólo si F2 se retrasa)."))
+                     "reducción *contingente* (acortar I al final sólo si F2 se retrasa). El solape formación–instalación no se "
+                     "modela: depende de una relación comienzo-comienzo que el técnico propone sólo como último recurso.\n\n"
+                     f"**Respuesta:** aceptando la inspección en dos fases y la entrega parcial se recuperan {_pl(rec_dos, 'semana')}"
+                     + (f": todo el retraso" if T4 == T0 else f": todo el retraso ({retraso}) y {_pl(T0 - T4, 'semana')} de margen" if T4 < T0 else
+                        f" de las {retraso} de retraso; quedan {_pl(T4 - T0, 'semana')}")
+                     + f"; P(terminar ≤ {T0}) = {pr4[2]:.2f}. Antes de contar con ellas hay que confirmarlas con el inspector y con el proveedor."))
     celdas += apartado(5)
+    celdas.append(code("dur5 = dur4.copy(); dur5['A'] -= 1                      # plan negociado + reducción de A (una semana)\n"
+                       "_, sigma4, _, _ = resumen_prob(p4, dur4, sd4, plazo)\n"
+                       "T5, sigma5, _, _ = resumen_prob(p4, dur5, sd4, plazo)\n"
+                       "Markdown(f'''Cálculos de apoyo para la decisión:\\n\\n"
+                       "- Plan negociado: {suma_caminos_criticos(p4, dur4)}; σ = {sigma4:.3f}; {explica_probabilidad(T4, sigma4, plazo)}.\\n"
+                       "- Plan negociado acortando además A una semana: {suma_caminos_criticos(p4, dur5)}; σ = {sigma5:.3f}; "
+                       "{explica_probabilidad(T5, sigma5, plazo)}; y {explica_probabilidad(T5, sigma5, plazo + 1)}.''')"))
     celdas.append(md("No hay una única respuesta correcta; sí hay respuestas mal justificadas. Una decisión defendible con los "
                      "números anteriores:\n\n"
                      f"1. Negociar hoy la inspección en dos fases y la entrega parcial del mobiliario (coste cero; recuperan "
-                     f"{retraso - (T4 - T0)} de las {retraso} semanas"
-                     + (" si el proveedor cumple con F2)." if hol_F2 == 0 else ").") + "\n"
+                     + (f"las {retraso} semanas de retraso" if T4 == T0 else
+                        f"las {retraso} semanas de retraso y dejan {_pl(T0 - T4, 'semana')} de margen" if T4 < T0 else
+                        f"{retraso - (T4 - T0)} de las {retraso} semanas")
+                     + (" si el proveedor cumple con F2)" if hol_F2 == 0 else ")")
+                     + (". La entrega parcial sola ya recupera lo mismo que las dos juntas: la inspección en dos fases no adelanta "
+                        "la fecha, pero da margen a la ruta de G y H, así que conviene pedirla sin depender de ella." if rec_par == rec_dos else ".")
+                     + "\n"
                      f"2. Contratar ya la reducción de A ({cA} k€): es la más barata, A está en curso y cada semana ganada "
                      f"ahora es margen contra la incertidumbre del proveedor. Con ello la duración media baja a {pr5[0]:.0f} y la "
                      f"probabilidad de terminar en la {T0} sube del {pr4[2]:.0%} al {pr5[2]:.0%}.\n"
@@ -398,8 +546,10 @@ def _reforma_laboratorio(rng):
                      + ("dentro de la bolsa; sin necesidad de modificación presupuestaria." if cA + cI <= bolsa else
                         f"que supera la bolsa de {bolsa} k€ en {cA + cI - bolsa} k€: habría que pedir a Gerencia la ampliación ya, por si acaso.")
                      + "\n"
-                     f"4. Prometer a la vicerrectora la semana {T0} con probabilidad alta y la {T0 + 1} como peor caso razonable, y "
-                     f"pedirle que no comprometa el alquiler externo hasta la semana {semana_decision}.\n\n"
+                     f"4. Prometer a la vicerrectora la semana {T0} (probabilidad {pr5[2]:.2f} con la reducción de A, y más si se "
+                     f"activa la de I) y la {T0 + 1} como peor caso razonable (P(T ≤ {T0 + 1}) = {pr6:.2f}), y "
+                     f"pedirle que no comprometa el alquiler externo hasta la semana {semana_decision}. Sobrecoste: {cA} k€ seguros "
+                     f"y {cI} k€ más si hace falta la reducción de I.\n\n"
                      "Mensajes (un ejemplo de tono y contenido):\n\n"
                      f"- *Vicerrectora:* «El retraso sin actuar sería de {retraso} semanas. Con dos cambios de secuencia ya acordados y "
                      f"una reducción de {cA} k€ recuperamos el plazo en media; mantengo una reserva de {cI} k€ para asegurar la semana "
@@ -462,10 +612,11 @@ def _programar(datos, prelaciones, calendario, limite, L):
 
 
 PROGRAMADOR = (
-    "def programar(limite, L):\n"
+    "def programar(limite, L, registro=None):\n"
     "    TQPlanificador en paralelo con límite por periodo: la semana s admite limite[s] operarios (L si no está en limite).\n"
     "    Recorre las semanas; en cada una, por orden de holgura total, entra cada actividad disponible (predecesoras terminadas)\n"
-    "    si cabe en el límite de TODAS las semanas que ocuparía; si no, espera. Devuelve los inicios y fines de cada actividad.TQ\n"
+    "    si cabe en el límite de TODAS las semanas que ocuparía; si no, espera. Devuelve los inicios y fines de cada actividad.\n"
+    "    Si se pasa una lista en registro, anota cada espera: la primera semana en la que la actividad no cabe y por qué.TQ\n"
     "    D = datos_proyecto['duration'].astype(int); R = datos_proyecto['resources'].astype(int)\n"
     "    preds = prelaciones.immediate_predecessor\n"
     "    orden = list(calendario['H_total'].sort_values(kind='stable').index)\n"
@@ -479,6 +630,11 @@ PROGRAMADOR = (
     "                inicio[a], fin[a] = t, t + int(D[a])\n"
     "                for s in semanas:\n"
     "                    carga[s] = carga.get(s, 0) + int(R[a])\n"
+    "            elif registro is not None:\n"
+    "                s = next(s for s in semanas if carga.get(s, 0) + int(R[a]) > int(limite.get(s, L)))\n"
+    "                registro.append({'semana en que podría empezar': t + 1, 'actividad': a, 'operarios': int(R[a]),\n"
+    "                                 'semanas que ocuparía': f'{t + 1}–{t + int(D[a])}', 'primera semana sin sitio': s,\n"
+    "                                 'carga ya asignada + operarios > límite': f'{carga.get(s, 0)} + {int(R[a])} = {carga.get(s, 0) + int(R[a])} > {int(limite.get(s, L))}'})\n"
     "        t += 1\n"
     "    return pd.Series(inicio).reindex(D.index), pd.Series(fin).reindex(D.index)\n"
     "\n"
@@ -574,7 +730,9 @@ def _recursos_compartidos(rng):
     en_ventana = [a for a in D.index if cal.loc[a, "inicio_mas_temprano"] < b_req and cal.loc[a, "fin_mas_temprano"] > a_req - 1]
     coste = {"negarse": pen2 * w, "prestar como se pide": pen * retraso, "prestar más tarde": pen2 * espera_alt,
              "subcontratar": s * q * w if sub_posible else np.inf}
-    mejor_empresa = min(coste, key=coste.get)
+    # a igual coste para la empresa se prefiere la opción que no retrasa a nadie (y, después, la que no retrasa al cliente)
+    preferencia = ["subcontratar", "prestar más tarde", "negarse", "prestar como se pide"]
+    mejor_empresa = min(coste, key=lambda k_: (round(coste[k_], 6), preferencia.index(k_)))
     agentes = ["jefa del proyecto Delta", "director de operaciones", "cliente", "jefe de obra", "recursos humanos"]
     plural = "operarios" if q > 1 else "operario"
 
@@ -643,41 +801,87 @@ def _recursos_compartidos(rng):
     celdas.append(code("picos = [int(t) for t in cargas.index[cargas == L]]\n"
                        "en_pico = {t: [a for a in datos_proyecto.index if calendario.loc[a, 'inicio_mas_temprano'] < t <= calendario.loc[a, 'fin_mas_temprano']] for t in picos}\n"
                        "criticas = list(calendario.index[calendario['H_total'] == 0])\n"
-                       "display(calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total', 'H_libre']])\n"
-                       "Markdown(f'''Duración {int(proyecto.duration(datos_proyecto[\"duration\"]))} semanas; críticas: {\", \".join(criticas)}. "
-                       "El máximo de {L} operarios se alcanza en las semanas {\", \".join(str(t) for t in picos)}; en ellas coinciden "
-                       "{\"; \".join(f\"semana {t}: {', '.join(acts)}\" for t, acts in en_pico.items())}.''')"))
-    celdas.append(md(f"El plan de inicios más tempranos satura la cuadrilla en las semanas {', '.join(map(str, picos))}. Prestar "
-                     f"operarios en una de esas semanas obliga a aplazar alguna actividad; que eso retrase el proyecto depende de "
-                     "si la actividad aplazada tiene holgura suficiente (y de si al aplazarla arrastra a otras hasta agotar la suya)."))
+                       "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total', 'H_libre']]"))
+    picos_todos = [int(t) for t in total.index[total == L]]
+    en_pico = {t: [a for a in D.index if cal.loc[a, "inicio_mas_temprano"] < t <= cal.loc[a, "fin_mas_temprano"]] for t in picos_todos}
+    celdas.append(md(f"**Respuesta:** el plan de inicios más tempranos llega al máximo de {L} operarios en "
+                     f"{'las semanas' if len(picos_todos) > 1 else 'la semana'} {_y(picos_todos)}"
+                     + ("; en todas coinciden " + _y(en_pico[picos_todos[0]]) if len({tuple(v) for v in en_pico.values()}) == 1 else
+                        " (" + "; ".join(f"semana {t}: {_y(v)}" for t, v in en_pico.items()) + ")")
+                     + f". Las actividades críticas (holgura total 0) son {_y(criticas)}. "
+                     f"La ventana que pide Delta ({a_req}–{b_req}) "
+                     + (f"incluye {'las semanas de pico' if len(picos) > 1 else 'la semana de pico'} {_y(picos)}"
+                        if set(picos) & set(range(a_req, b_req + 1)) else "no incluye ninguna semana de pico")
+                     + f". Prestar {q} {plural} en una semana en la que la carga supera {L - q} obliga a aplazar alguna actividad; "
+                     "que eso retrase el proyecto depende de si la actividad aplazada tiene holgura suficiente (y de si al aplazarla "
+                     "arrastra a otras hasta agotar la suya)."))
     celdas += apartado(2)
     celdas.append(code(f'#| fig-cap: "Programación con {L - q} operarios en las semanas {a_req}–{b_req} y {L} en las demás (fila Máximo); las filas 💤 son las esperas"\n#| label: fig-ganttPrestamo\n'
                        "T_prestamo, esperas, dibujo = simular_prestamo(ventana, q, L)\n"
                        "pinta_tikz(dibujo)"))
-    celdas.append(code("Markdown(f'''Con el préstamo el proyecto pasa de {plazo} a **{T_prestamo} semanas** ({T_prestamo - plazo} de retraso, "
-                       "{penalizacion * (T_prestamo - plazo)} k€ de penalización). Esperas introducidas por el algoritmo: "
-                       "{\", \".join(f\"{a} ({v} sem.)\" for a, v in esperas.items()) or \"ninguna\"}.''')"))
-    celdas.append(md(f"El planificador recorre las semanas; en cada una ordena las actividades disponibles por holgura total y "
-                     f"deja empezar las que caben en el límite de todas las semanas que ocuparían. En la ventana {a_req}–{b_req} caben "
-                     f"{L - q} operarios y coinciden {', '.join(en_ventana)}: espera{'n' if len(esperas_req) != 1 else ''} "
-                     f"{', '.join(f'{a} ({v} sem.)' for a, v in esperas_req.items())}, y el retraso de {retraso} semana"
-                     f"{'s' if retraso != 1 else ''} es lo que de esa espera no absorben las holguras."))
+    celdas.append(md(f"El planificador recorre las semanas; al principio de cada una ordena las actividades disponibles (predecesoras "
+                     "terminadas) por holgura total, de menor a mayor (en caso de empate, por orden alfabético), y deja empezar cada una "
+                     f"si cabe en el límite de todas las semanas que ocuparía ({L - q} dentro de la ventana {a_req}–{b_req}, {L} fuera). "
+                     "Cada vez que una actividad disponible no cabe, se anota la primera semana en la que se pasaría del límite:"))
+    celdas.append(code('#| tbl-cap: "Esperas con el préstamo pedido: por qué no cabe cada actividad"\n#| label: tbl-esperasPrestamo\n'
+                       "registro = []\n"
+                       "_ = programar({s: L - q for s in range(ventana[0], ventana[1] + 1)}, L, registro)\n"
+                       "pd.DataFrame(registro).set_index('semana en que podría empezar') if registro else Markdown('Ninguna actividad tiene que esperar.')"))
+    celdas.append(code("_ret = T_prestamo - plazo\n"
+                       "_lineas = [f'- {a} espera {plural(v, \"semana\")} y tenía holgura total {int(calendario.loc[a, \"H_total\"])}.' for a, v in esperas.items()]\n"
+                       "_criticas = [a for a, v in esperas.items() if calendario.loc[a, 'H_total'] == 0 and v == _ret]\n"
+                       "if _ret == 0:\n"
+                       "    _porque = 'las holguras absorben todas las esperas'\n"
+                       "elif _criticas:\n"
+                       "    _porque = lista_y(_criticas) + (' es crítica' if len(_criticas) == 1 else ' son críticas') + ': su espera pasa entera al plazo'\n"
+                       "else:\n"
+                       "    _porque = f'las esperas superan en {plural(_ret, \"semana\")} la holgura de las rutas que las contienen'\n"
+                       "_quien = (('espera ' if len(esperas) == 1 else 'esperan ') + lista_y(list(esperas))) if esperas else 'no espera ninguna actividad'\n"
+                       "Markdown('\\n'.join(_lineas) + f'\\n\\n**Respuesta:** con el préstamo en las semanas {ventana[0]}–{ventana[1]} {_quien}; '\n"
+                       "         f'el proyecto pasa de {plazo} a **{T_prestamo} semanas** ({_porque}): {plural(_ret, \"semana\")} de retraso y '\n"
+                       "         f'{penalizacion} × {_ret} = **{penalizacion * _ret} k€** de penalización.')"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Duración del proyecto según la ventana del préstamo"\n#| label: tbl-ventanas\n'
                        f"w = {w}\n"
                        "filas = []\n"
                        "for a in range(1, plazo - w + 2):\n"
                        "    T_a, esperas_a, _ = simular_prestamo((a, a + w - 1), q, L)\n"
+                       "    cmax = max(int(cargas[t]) for t in range(a, a + w))\n"
+                       "    hol = ', '.join(f'{x} ({v} sem.; holgura {int(calendario.loc[x, \"H_total\"])})' for x, v in esperas_a.items())\n"
+                       "    if not esperas_a:\n"
+                       "        motivo = f'carga máxima {cmax} ≤ {L - q}: no hay que aplazar nada'\n"
+                       "    elif T_a == plazo:\n"
+                       "        motivo = f'carga máxima {cmax} > {L - q}; esperan {hol}: lo absorbe la holgura'\n"
+                       "    else:\n"
+                       "        motivo = f'carga máxima {cmax} > {L - q}; esperan {hol}: no basta la holgura'\n"
                        "    filas.append({'semanas': f'{a}–{a + w - 1}', 'carga antes del préstamo': ', '.join(str(int(cargas[t])) for t in range(a, a + w)),\n"
-                       "                  'duración': T_a, 'retraso': T_a - plazo, 'esperas': ', '.join(f'{x} ({v})' for x, v in esperas_a.items()) or '—'})\n"
+                       "                  'duración': T_a, 'retraso': T_a - plazo, 'explicación': motivo})\n"
                        "ventanas = pd.DataFrame(filas).set_index('semanas')\n"
                        "ventanas"))
-    sin_retraso = [f"{a}–{a + w - 1}" for a, (dur, _) in tabla.items() if dur == T0]
-    celdas.append(md(f"Se puede prestar sin mover el plazo en las ventanas {', '.join(sin_retraso)}: o la carga de esas semanas "
-                     f"queda por debajo de {L - q} sin tocar nada, o lo que hay que aplazar tiene holgura de sobra. El jefe de "
-                     f"obra tiene razón: desde la semana {a_alt} el préstamo sale gratis en plazo. La ventana que pide Delta "
-                     f"({a_req}–{b_req}) cuesta {retraso} semana{'s' if retraso != 1 else ''} porque cae sobre el pico y lo que se "
-                     "aplaza acaba empujando a una actividad crítica."))
+    libres = [a for a, (dur, _) in tabla.items() if dur == T0]
+    con_retraso = [a for a, (dur, _) in tabla.items() if dur > T0]
+    def _ventanas(inicios):
+        if len(inicios) > 2 and inicios == list(range(inicios[0], inicios[-1] + 1)):
+            return f"todas las que empiezan entre la semana {inicios[0]} y la {inicios[-1]} ({inicios[0]}–{inicios[0] + w - 1} a {inicios[-1]}–{inicios[-1] + w - 1})"
+        return _y([f"{a}–{a + w - 1}" for a in inicios])
+    desde_alt = all(a in libres for a in tabla if a >= a_alt)
+    _, esperas_req = tabla[a_req]
+    crit_req = [a for a, v in esperas_req.items() if cal.loc[a, "H_total"] == 0]
+    celdas.append(md(f"Se puede prestar sin mover el plazo en {_ventanas(libres)}; retrasan el proyecto {_ventanas(con_retraso)}. "
+                     f"En las ventanas sin retraso, o la carga de esas semanas no pasa de {L - q} y no hay que aplazar nada, o lo que "
+                     "se aplaza tiene holgura suficiente (columna «explicación»). "
+                     f"La ventana que pide Delta ({a_req}–{b_req}) cuesta {_pl(retraso, 'semana')} porque su carga pasa de {L - q} "
+                     + (f"y obliga a aplazar {_y(crit_req)}, {'que es crítica' if len(crit_req) == 1 else 'que son críticas'}."
+                        if crit_req else
+                        "y " + _y([f"{a_} espera {_pl(v_, 'semana')} con holgura {int(cal.loc[a_, 'H_total'])}" for a_, v_ in esperas_req.items()])
+                        + ": lo que la espera excede a la holgura acaba empujando a las actividades críticas.")
+                     + "\n\n**Respuesta:** "
+                     + (f"el jefe de obra tiene razón: a partir de la semana {a_alt} todas las ventanas de {w} semanas dejan el plazo "
+                        f"en {T0} semanas, así que prestar desde entonces no cuesta nada a este proyecto (a Delta le cuesta esperar "
+                        f"{_pl(a_alt - a_req, 'semana')})."
+                        if desde_alt else
+                        f"el jefe de obra tiene razón sólo en parte: la ventana {a_alt}–{b_alt} no retrasa el proyecto, pero no todas "
+                        f"las posteriores están libres (retrasan {_ventanas([a for a in con_retraso if a > a_alt])}).")))
     celdas += apartado(4)
     celdas.append(code('#| tbl-cap: "Opciones y su coste (k€) para cada parte"\n#| label: tbl-opciones\n'
                        f"T_alt, _, _ = simular_prestamo(({a_alt}, {b_alt}), q, L)\n"
@@ -695,15 +899,42 @@ def _recursos_compartidos(rng):
     expl_sub = (f"subcontratar {q} {plural} para Delta cuesta {s * q * w:.1f} k€ y llega a tiempo (la ventana empieza en la semana "
                 f"{a_req}, hay una semana de preaviso)" if sub_posible else
                 f"subcontratar no llega a tiempo (la ventana empieza en la semana {a_req} y hace falta una de preaviso), así que no es una opción")
-    celdas.append(md(f"Para la empresa la opción más barata es **{mejor_empresa}** ({coste[mejor_empresa]:.1f} k€); {expl_sub}. "
-                     f"Para mi proyecto lo mejor es negarse o prestar en la ventana del jefe de obra (coste cero), pero la primera carga "
-                     f"a Delta con {pen2 * w} k€ y la segunda con {pen2 * espera_alt} k€ de espera. El director de operaciones pide la "
-                     "columna «empresa»: ahí está el conflicto entre la optimización local (cada jefe de proyecto defiende su plazo) y la "
-                     "global."))
+    etiqueta = {"negarse": "negarse", "prestar como se pide": f"prestar en {a_req}–{b_req}",
+                "prestar más tarde": f"prestar en {a_alt}–{b_alt}", "subcontratar": f"subcontratar {q} para Delta"}
+    minimos = [k_ for k_, v in coste.items() if np.isclose(v, coste[mejor_empresa])]
+    lineas_coste = [
+        f"- Negarse: Delta se retrasa las {w} semanas → {pen2} × {w} = **{pen2 * w} k€** (mi proyecto, 0).",
+        f"- Prestar en {a_req}–{b_req}: mi proyecto se retrasa {_pl(retraso, 'semana')} → {pen} × {retraso} = **{pen * retraso} k€** (Delta, 0).",
+        f"- Prestar en {a_alt}–{b_alt}: mi plazo no se mueve (apartado 3); Delta espera {a_alt} − {a_req} = {_pl(espera_alt, 'semana')} → "
+        f"{pen2} × {espera_alt} = **{pen2 * espera_alt} k€**.",
+        (f"- Subcontratar: {s:g} k€ por operario y semana × {q} × {w} semanas = **{s * q * w:.1f} k€** (mi proyecto, 0); llega a tiempo "
+         f"porque la ventana empieza en la semana {a_req} y RR. HH. puede tenerlos desde la semana 2." if sub_posible else
+         f"- Subcontratar: no es posible, porque la ventana empieza en la semana {a_req} y RR. HH. necesita una semana de preaviso "
+         "(los subcontratados llegarían, como pronto, en la semana 2)."),
+    ]
+    coincide = mejor_empresa in ("negarse", "prestar más tarde", "subcontratar")
+    celdas.append(md("Coste de cada opción (penalizaciones y subcontratación, en k€):\n\n" + "\n".join(lineas_coste) + "\n\n"
+                     "**Respuesta:** para la empresa la opción más barata es "
+                     + _y([f"**{etiqueta[k_]}**" for k_ in minimos])
+                     + f" ({coste[mejor_empresa]:.1f} k€{', empatadas' if len(minimos) > 1 else ''}). Para mi proyecto cuestan 0 negarse, "
+                     f"prestar en {a_alt}–{b_alt}" + (" y que se subcontrate para Delta" if sub_posible else "")
+                     + f"; la única que me cuesta es prestar como se pide ({pen * retraso} k€). "
+                     + ("Por tanto el óptimo de la empresa es también uno de los óptimos de mi proyecto, pero no el único: si yo eligiera "
+                        f"negarme, la empresa pagaría {pen2 * w - coste[mejor_empresa]:.1f} k€ más."
+                        if coincide and mejor_empresa != "negarse" else
+                        "Por tanto el óptimo de la empresa coincide con el de mi proyecto." if coincide else
+                        "Por tanto no coinciden: lo mejor para la empresa es justo lo único que le cuesta dinero a mi proyecto.")
+                     + " El director de operaciones pide la columna «empresa»: ahí está el conflicto entre la optimización local "
+                     "(cada jefe de proyecto defiende su plazo) y la global."))
     celdas += apartado(5)
     if mejor_empresa == "prestar más tarde":
-        decision = (f"prestar los {q} {plural} desde la semana {a_alt} (gratis para mi plazo) y proponer a Delta que absorba las "
-                    f"{espera_alt} semanas de espera, o que pida a RR. HH. la subcontratación para cubrir esas semanas si le sale más barato")
+        hibrido = s * q * espera_alt
+        decision = (f"prestar los {q} {plural} desde la semana {a_alt} (gratis para mi plazo) y proponer a Delta que absorba "
+                    f"{'la semana' if espera_alt == 1 else f'las {espera_alt} semanas'} de espera ({pen2} × {espera_alt} = {pen2 * espera_alt} k€)"
+                    + (f". Mejor aún: cubrir esa espera con {q} {plural} subcontratado{'s' if q > 1 else ''} ({s:g} × {q} × {espera_alt} = "
+                       f"{hibrido:.1f} k€ < {pen2 * espera_alt} k€) y pasar después a Delta los míos, en las semanas {a_alt}–{b_req}, "
+                       "que no retrasan mi proyecto; la empresa paga sólo la subcontratación"
+                       if sub_posible and hibrido < pen2 * espera_alt else ""))
     elif mejor_empresa == "subcontratar":
         decision = (f"no prestar en {a_req}–{b_req}, pedir hoy a RR. HH. la subcontratación de {q} {plural} para Delta "
                     f"({s * q * w:.1f} k€, mucho menos que cualquier penalización) y ofrecer además los míos desde la semana {a_alt} por si fallara")
@@ -720,6 +951,14 @@ def _recursos_compartidos(rng):
         msg_cliente = (f"Les comunicamos un posible retraso de {sem(retraso)} sobre la semana {T0} por una reasignación de recursos "
                        "decidida por la empresa; asumimos la penalización contractual y les confirmaremos la fecha en cuanto se concrete.")
         msg_rrhh = "Por ahora no hace falta subcontratar; os aviso si cambia."
+    elif mejor_empresa == "prestar más tarde" and sub_posible and s * q * espera_alt < pen2 * espera_alt:
+        sem_sub = f"la semana {a_req}" if espera_alt == 1 else f"las semanas {a_req}–{a_alt - 1}"
+        msg_jefa = (f"En {a_req}–{b_req} prestar {q} {plural} me cuesta {sem(retraso)} de plazo ({pen * retraso} k€). Te propongo "
+                    f"{q} subcontratado{'s' if q > 1 else ''} en {sem_sub} ({s * q * espera_alt:.1f} k€) y los míos desde la semana {a_alt}, "
+                    "que no retrasan mi entrega: tú no te retrasas y la empresa paga lo mínimo.")
+        msg_cliente = f"Mantenemos la entrega en la semana {T0}."
+        msg_rrhh = (f"Necesito {q} {plural} subcontratado{'s' if q > 1 else ''} para {sem_sub} (proyecto Delta); "
+                    "confirmad hoy para respetar el preaviso.")
     elif mejor_empresa == "prestar más tarde":
         msg_jefa = (f"En {a_req}–{b_req} prestar {q} {plural} me cuesta {sem(retraso)} de plazo ({pen * retraso} k€). Te los doy sin coste "
                     f"desde la semana {a_alt}: esperar {sem(espera_alt)} te cuesta {pen2 * espera_alt} k€, y sigue siendo lo más barato para la empresa.")
@@ -729,7 +968,7 @@ def _recursos_compartidos(rng):
         msg_jefa = (f"En {a_req}–{b_req} prestar {q} {plural} me cuesta {sem(retraso)} de plazo ({pen * retraso} k€). Lo más barato es que "
                     f"RR. HH. subcontrate {q} para ti ({s * q * w:.1f} k€); lo pido hoy. Si fallara, te presto los míos desde la semana {a_alt}.")
         msg_cliente = f"Mantenemos la entrega en la semana {T0}."
-        msg_rrhh = f"Necesito {q} {plural} subcontratados para las semanas {a_req}–{b_req}; confirmad hoy para respetar el preaviso."
+        msg_rrhh = f"Necesito {q} {plural} subcontratado{'s' if q > 1 else ''} para las semanas {a_req}–{b_req}; confirmad hoy para respetar el preaviso."
     else:
         msg_jefa = f"No puedo prestarlos en {a_req}–{b_req} sin retrasar mi entrega; lo elevamos al director de operaciones."
         msg_cliente = f"Mantenemos la entrega en la semana {T0}."
@@ -737,7 +976,7 @@ def _recursos_compartidos(rng):
     celdas.append(md(f"Una decisión defendible: {decision}. Mensajes:\n\n"
                      f"- *Jefa de Delta:* «{msg_jefa}»\n"
                      "- *Director de operaciones:* «Adjunto la tabla con el coste de cada opción para los dos proyectos y para la empresa; "
-                     f"la más barata en conjunto es {mejor_empresa} ({coste[mejor_empresa]:.1f} k€). Si decides otra, pido que la "
+                     f"la más barata en conjunto es {etiqueta[mejor_empresa]} ({coste[mejor_empresa]:.1f} k€). Si decides otra, pido que la "
                      "penalización resultante se registre como decisión de empresa.»\n"
                      f"- *Cliente:* «{msg_cliente}»\n"
                      f"- *Jefe de obra:* «Tenías razón con la ventana {a_alt}–{b_alt}; va en la propuesta como alternativa. Prepara el "
@@ -874,7 +1113,15 @@ def _comite_valor_ganado(rng):
                        "    PV, EV, AC = float(detalle['PV_i'].sum()), float(detalle['EV_i'].sum()), float(detalle['AC'].sum())\n"
                        "    return detalle, pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV': EV - AC, 'SV': EV - PV, 'CPI': EV / AC, 'SPI': EV / PV})\n"
                        "def semaforo(indice):\n"
-                       "    return 'verde' if indice >= 0.95 else ('ámbar' if indice >= 0.85 else 'rojo')"))
+                       "    return 'verde' if indice >= 0.95 else ('ámbar' if indice >= 0.85 else 'rojo')\n"
+                       "def explica_indicadores(detalle, ind):\n"
+                       "    # PV, EV y AC como suma de las actividades con valor; CV, SV, CPI y SPI con los números sustituidos\n"
+                       "    suma = lambda col: ' + '.join(f'{a}({v:.1f})' for a, v in detalle[col].items() if v > 0)\n"
+                       "    return (f'- PV = {suma(\"PV_i\")} = **{ind.PV:.1f} k€**\\n'\n"
+                       "            f'- EV = {suma(\"EV_i\")} = **{ind.EV:.1f} k€**\\n'\n"
+                       "            f'- AC = {suma(\"AC\")} = **{ind.AC:.1f} k€**\\n'\n"
+                       "            f'- CV = EV − AC = {ind.EV:.1f} − {ind.AC:.1f} = **{ind.CV:.1f} k€**; SV = EV − PV = {ind.EV:.1f} − {ind.PV:.1f} = **{ind.SV:.1f} k€**\\n'\n"
+                       "            f'- CPI = EV / AC = {ind.EV:.1f} / {ind.AC:.1f} = **{ind.CPI:.3f}**; SPI = EV / PV = {ind.EV:.1f} / {ind.PV:.1f} = **{ind.SPI:.3f}**')"))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la planificación", label="fig-pert")
     celdas += apartado(1)
     params = ("params=dict(period_width=1, row_height=0.7, activity_relative_height=0.6, **GANTT_PARAMS,\n"
@@ -893,8 +1140,13 @@ def _comite_valor_ganado(rng):
                        "detalle_rep, ind_rep = indicadores(seguimiento)\n"
                        "display(detalle_rep[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']])\n"
                        "ind_rep.round(3).to_frame('informe del contratista').T"))
-    celdas.append(code("Markdown(f'''Semáforo con el informe: plazo **{semaforo(ind_rep[\"SPI\"])}** (SPI = {ind_rep[\"SPI\"]:.2f}), "
-                       "coste **{semaforo(ind_rep[\"CPI\"])}** (CPI = {ind_rep[\"CPI\"]:.2f}). Tal como lo cuenta el contratista, el proyecto va bien.''')"))
+    celdas.append(code("Markdown('Notación: PV, valor planificado (lo que debía estar hecho, a precio de presupuesto); EV, valor ganado '\n"
+                       "         '(lo hecho, a precio de presupuesto); AC, coste real; CV y SV, variaciones de coste y de plazo; CPI y SPI, '\n"
+                       "         f'índices de rendimiento del coste y del plazo. Con el informe del contratista, al final de la semana {semana_control}:\\n\\n'\n"
+                       "         + explica_indicadores(detalle_rep, ind_rep) +\n"
+                       "         '\\n\\nCriterio del semáforo (adoptado aquí): verde si el índice es ≥ 0.95, ámbar si está entre 0.85 y 0.95 y rojo si es < 0.85.\\n\\n'\n"
+                       "         f'**Respuesta:** semáforo de plazo **{semaforo(ind_rep.SPI)}** (SPI = {ind_rep.SPI:.2f}) y coste **{semaforo(ind_rep.CPI)}** '\n"
+                       "         f'(CPI = {ind_rep.CPI:.2f}). Tal como lo cuenta el contratista, el proyecto va bien.')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Lo mismo con la estimación del jefe de equipo para la actividad discutida"\n#| label: tbl-detalleReal\n'
                        f"seguimiento_real = seguimiento.copy(); seguimiento_real.loc[actividad_discutida, 'performed'] = {real}\n"
@@ -903,13 +1155,17 @@ def _comite_valor_ganado(rng):
                        "comparacion['diferencia'] = comparacion.iloc[:, 1] - comparacion.iloc[:, 0]\n"
                        "comparacion.round(3)"))
     celdas.append(code("BAC_X = float(datos_proyecto.loc[actividad_discutida, 'BAC'])\n"
-                       f"Markdown(f'''Sólo cambia EV, en {{ind_rep[\"EV\"] - ind_real[\"EV\"]:.1f}} k€ (= {{BAC_X:.0f}} × ({rep} − {real}) %), "
-                       "pero como PV y AC no se mueven, los dos índices caen a la vez: SPI = {ind_real[\"SPI\"]:.2f} y CPI = {ind_real[\"CPI\"]:.2f}; "
-                       "semáforo de plazo **{semaforo(ind_real[\"SPI\"])}** y de coste **{semaforo(ind_real[\"CPI\"])}**.''')"))
-    celdas.append(md(f"Un único porcentaje mueve tanto los índices porque {X} es una actividad grande ({int(BAC[X])} k€ de BAC, "
-                     f"el {BAC[X] / BAC_total:.0%} del presupuesto) y porque a mitad de proyecto el valor ganado acumulado es pequeño: "
-                     f"{sobrepago:.0f} k€ de valor «declarado y no hecho» pesan mucho sobre {e['EV_real']:.0f} k€ realmente ganados. El valor "
-                     "ganado es tan bueno como la medida del avance físico que lo alimenta."))
+                       f"Markdown(f'De los tres datos de partida sólo cambia EV, que baja {{ind_rep.EV - ind_real.EV:.1f}} k€ (= {{BAC_X:.0f}} × ({rep} − {real}) %); '\n"
+                       "         'PV y AC no se mueven, así que cambian los cuatro indicadores que dependen de EV:\\n\\n'\n"
+                       "         + explica_indicadores(detalle_real, ind_real) +\n"
+                       "         f'\\n\\n**Respuesta:** CV y SV bajan {ind_rep.EV - ind_real.EV:.1f} k€ cada una; el CPI pasa de {ind_rep.CPI:.3f} a {ind_real.CPI:.3f} '\n"
+                       "         f'y el SPI de {ind_rep.SPI:.3f} a {ind_real.SPI:.3f}; semáforo de plazo **{semaforo(ind_real.SPI)}** y de coste **{semaforo(ind_real.CPI)}**.')"))
+    celdas.append(md(f"Un único porcentaje mueve tanto los índices porque CPI y SPI son cocientes con EV en el numerador: si EV baja "
+                     f"{sobrepago:.1f} k€ con PV y AC fijos, el CPI baja {sobrepago:.1f} / {AC_t:.1f} = {sobrepago / AC_t:.3f} y el SPI "
+                     f"{sobrepago:.1f} / {PV_t:.1f} = {sobrepago / PV_t:.3f}. Esos {sobrepago:.1f} k€ (BAC de {X}, {int(BAC[X])} k€, el "
+                     f"{BAC[X] / BAC_total:.0%} del presupuesto, por {rep - real} puntos de avance) son el {sobrepago / e['EV_rep']:.0%} "
+                     f"del valor ganado declarado ({e['EV_rep']:.1f} k€), que a mitad de proyecto aún es pequeño. El valor ganado es tan bueno "
+                     "como la medida del avance físico que lo alimenta."))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Previsiones de coste y plazo con las dos versiones"\n#| label: tbl-previsiones\n'
                        "duracion_plan = int(proyecto.duration(datos_proyecto['duration']))\n"
@@ -919,23 +1175,42 @@ def _comite_valor_ganado(rng):
                        "                              'penalización ≈ (T/SPI − T) × pen': max(0.0, duracion_plan / ind['SPI'] - plazo) * penalizacion}\n"
                        "                     for nombre, ind in (('informe del contratista', ind_rep), ('estimación del jefe de equipo', ind_real))})\n"
                        "prev.round(2)"))
+    celdas.append(code("def explica_prevision(ind):\n"
+                       "    eac = BAC_total / ind.CPI; t = duracion_plan / ind.SPI\n"
+                       "    return (f'EAC = {BAC_total:.0f} / {ind.CPI:.3f} = **{eac:.1f} k€**; VAC = {BAC_total:.0f} − {eac:.1f} = **{BAC_total - eac:.1f} k€**; '\n"
+                       "            f'TCPI = ({BAC_total:.0f} − {ind.EV:.1f}) / ({BAC_total:.0f} − {ind.AC:.1f}) = **{(BAC_total - ind.EV) / (BAC_total - ind.AC):.3f}**; '\n"
+                       "            f'duración ≈ {duracion_plan} / {ind.SPI:.3f} = **{t:.1f} semanas**; penalización ≈ máx(0, {t:.1f} − {plazo}) × {penalizacion} = '\n"
+                       "            f'**{max(0.0, t - plazo) * penalizacion:.1f} k€**')\n"
+                       "Markdown('EAC (estimación del coste final), VAC (variación al final), TCPI (índice de rendimiento que haría falta en lo que '\n"
+                       "         'queda para acabar con el presupuesto BAC):\\n\\n'\n"
+                       "         f'- Informe del contratista: {explica_prevision(ind_rep)}.\\n- Estimación del jefe de equipo: {explica_prevision(ind_real)}.')"))
     celdas.append(code("semanas_trabajadas = int(seguimiento.loc[actividad_discutida, 'actual_duration'])\n"
                        "d_plan = int(datos_proyecto.loc[actividad_discutida, 'duration'])\n"
                        f"semanas_ganadas = {real} / 100 * d_plan\n"
                        "retraso_directo = semanas_trabajadas - semanas_ganadas                 # el resto, al ritmo planificado\n"
                        f"retraso_ritmo = semanas_trabajadas / ({real} / 100) - d_plan           # el resto, al ritmo actual\n"
                        f"Markdown(f'''Estimación directa: {{actividad_discutida}} lleva {{semanas_trabajadas}} semanas y está al {real} %, es decir, ha ganado "
-                       "{semanas_ganadas:.1f} semanas de las {d_plan}: lleva **{retraso_directo:.1f} semanas de retraso** aunque el resto se haga al ritmo "
-                       "planificado, y {retraso_ritmo:.1f} si se mantiene el ritmo actual. Al ser crítica (holgura 0), ese retraso va entero al plazo "
-                       "si no se corrige: entre {retraso_directo * penalizacion:.0f} y {retraso_ritmo * penalizacion:.0f} k€ de penalización.''')"))
-    celdas.append(md(f"Con el informe, el proyecto termina en {T_rep:.1f} semanas y cuesta {EAC_rep:.0f} k€; con la estimación del jefe "
-                     f"de equipo, {T_real:.1f} semanas y {EAC_real:.0f} k€ (VAC {BAC_total - EAC_real:.0f}). La estimación directa por el "
+                       f"{real / 100:.2f} × {{d_plan}} = {{semanas_ganadas:.1f}} semanas de las {{d_plan}} planificadas:\\n\\n"
+                       "- si el resto se hace al ritmo planificado, retraso = semanas trabajadas − semanas ganadas = {semanas_trabajadas} − {semanas_ganadas:.1f} = "
+                       "**{retraso_directo:.1f} semanas**;\\n"
+                       f"- si se mantiene el ritmo actual, duración = {{semanas_trabajadas}} / {real / 100:.2f} = {{semanas_trabajadas / ({real} / 100):.1f}} semanas, "
+                       "retraso = {semanas_trabajadas / (" + str(real) + " / 100):.1f} − {d_plan} = **{retraso_ritmo:.1f} semanas**.\\n\\n"
+                       "Al ser crítica (holgura 0), ese retraso va entero al plazo si no se corrige: entre {retraso_directo:.1f} × {penalizacion} = "
+                       "{retraso_directo * penalizacion:.0f} y {retraso_ritmo:.1f} × {penalizacion} = {retraso_ritmo * penalizacion:.0f} k€ de penalización.''')"))
+    celdas.append(md(f"La estimación directa por el "
                      f"avance de {X} ({retraso_X:.1f} semanas de retraso como mínimo, {retraso_ritmo:.1f} si no cambia el ritmo) es más "
-                     "fiable que T/SPI, que mezcla actividades críticas y no críticas y tiende a 1 al final del proyecto aunque se termine "
-                     f"tarde. Para el comité: {sem_rojo(e['SPI_real'])} en plazo si se cree al jefe de equipo, y no se puede dar verde con "
-                     "una discrepancia así sin resolver."))
+                     "fiable que T/SPI: el SPI mezcla actividades críticas y no críticas (un adelanto en una con holgura compensa un retraso "
+                     "en una crítica) y, al medirse en dinero, tiende a 1 al final del proyecto aunque se termine tarde.\n\n"
+                     f"**Respuesta:** con el informe, EAC = {EAC_rep:.1f} k€ y fin en la semana {T_rep:.1f}; con el jefe de equipo, "
+                     f"EAC = {EAC_real:.1f} k€ (VAC = {BAC_total - EAC_real:.1f} k€) y fin en la semana {T_real:.1f}. Por el ritmo de {X}, "
+                     f"el retraso es de {retraso_X:.1f} a {retraso_ritmo:.1f} semanas, con {retraso_X * pen:.0f} a {retraso_ritmo * pen:.0f} k€ "
+                     f"de penalización ({pen} k€/semana). Para el comité: {sem_rojo(e['SPI_real'])} en plazo si se cree al jefe de equipo, "
+                     "y no se puede dar verde con una discrepancia así sin resolver."))
     celdas += apartado(4)
-    celdas.append(md(f"Certificar el {rep} % de {X} supone pagar {certificado:.1f} k€ por esa actividad, de los que {sobrepago:.1f} k€ "
+    celdas.append(md(f"**Respuesta:** certificar este mes el {real} % de {X} ({int(BAC[X])} × {real / 100:.2f} = "
+                     f"{float(BAC[X]) * real / 100:.1f} k€), no el {rep} % que pide el contratista.\n\n"
+                     f"Certificar el {rep} % de {X} supone pagar {int(BAC[X])} × {rep / 100:.2f} = {certificado:.1f} k€ por esa actividad, "
+                     f"de los que {int(BAC[X])} × ({rep} − {real}) % = {sobrepago:.1f} k€ "
                      f"corresponderían a trabajo no ejecutado según el jefe de equipo. El criterio defendible frente a Dirección "
                      f"financiera: certificar lo verificado ({real} %, {float(BAC[X]) * real / 100:.1f} k€) y dejar documentada la "
                      "discrepancia con una medición conjunta en obra esta misma semana; si la medición da la razón al contratista se "
@@ -945,18 +1220,18 @@ def _comite_valor_ganado(rng):
     celdas += apartado(5)
     celdas.append(md("Decisión: informar al comité con las dos versiones, el semáforo de la peor y la fecha de la medición conjunta; "
                      f"certificar el {real} % de {X}; exigir al contratista un plan de recuperación de {X}"
-                     + (f" (y revisar la planificación de {', '.join(sucesoras)}, que depende{'n' if len(sucesoras) > 1 else ''} de ella)" if sucesoras else "")
-                     + f"; avisar al cliente por escrito de un riesgo de retraso de al menos {retraso_X:.0f} semanas. Mensajes:\n\n"
+                     + (f" (y revisar la planificación de {_y(sucesoras)}, que depende{'n' if len(sucesoras) > 1 else ''} de ella)" if sucesoras else "")
+                     + f"; avisar al cliente por escrito de un riesgo de retraso de al menos {retraso_X:.1f} semanas. Mensajes:\n\n"
                      f"- *Contratista:* «Certificaremos esta semana el {real} % de {X}, que es lo verificado en obra; el resto en cuanto "
                      "lo comprobemos juntos el jueves. Necesito el viernes un plan de recuperación con hitos semanales medibles.»\n"
                      "- *Jefe de equipo:* «Gracias por avisar. Prepara la medición conjunta del jueves con las unidades de obra que "
                      f"sustentan tu {real} %; a partir de ahora validas tú cada porcentaje antes de la certificación.»\n"
                      f"- *Comité:* «Plazo: {sem_rojo(e['SPI_real'])} (SPI {e['SPI_real']:.2f} con el avance verificado; el "
                      f"informe del contratista daría verde). Coste: {sem_rojo(e['CPI_real'])} (EAC {EAC_real:.0f} k€ frente a "
-                     f"{BAC_total:.0f}). Fin previsto: semana {T + retraso_X:.0f} como pronto si no se corrige {X}. El jueves hay medición conjunta.»\n"
+                     f"{BAC_total:.0f}). Fin previsto: semana {T + retraso_X:.1f} como pronto si no se corrige {X} ({T} + {retraso_X:.1f}). El jueves hay medición conjunta.»\n"
                      f"- *Dirección financiera:* «Criterio: se certifica el avance verificado por la propiedad. Esta certificación retiene "
                      f"{sobrepago:.1f} k€ con acta de discrepancia; no hay base para intereses de demora.»\n"
-                     f"- *Cliente:* «Les informamos de un riesgo de retraso de al menos {retraso_X:.0f} semanas en el hito, detectado en el "
+                     f"- *Cliente:* «Les informamos de un riesgo de retraso de al menos {retraso_X:.1f} semanas en el hito, detectado en el "
                      f"control de la semana {t}; el plan de recuperación se les enviará el lunes.»"))
     celdas += apartado(6)
     celdas.append(md("- **Quién mide.** El avance lo declara quien cobra por él: conflicto de interés evidente. La medición debe hacerla "
@@ -1046,6 +1321,11 @@ def _oferta_comercial(rng):
         res2 = info["proyecto"].monte_carlo({act: ("pert", int(a[act]), int(m[act]), int(b2[act])) for act in a.index},
                                             n_samples=N_MC, seed=SEMILLA_MC)
     tau2 = res2.tau_samples
+    var2 = ((b2 - a) / 6) ** 2
+    with _silencio():
+        sigma2, _ = info["proyecto"].standard_deviation(m_media2, var2.to_dict())
+    p_pert2, q90_pert2 = float(norm.cdf(T, T_prod, sigma2)), float(norm.ppf(0.9, T_prod, sigma2))
+    p_mc2, q90_mc2 = float((tau2 <= T).mean()), float(np.quantile(tau2, 0.9))
     agentes = ["director comercial", "jefe de producción", "cliente", "asesoría jurídica", "dirección financiera"]
 
     celdas = [md("# Enunciado"),
@@ -1101,16 +1381,20 @@ def _oferta_comercial(rng):
                        "calendario = proyecto.calendar(datos_proyecto['duration'])"))
     celdas += apartado(1)
     celdas.append(code('#| tbl-cap: "Media y varianza PERT de cada actividad; calendario"\n#| label: tbl-pert\n'
-                       "display(datos_proyecto[['optimista', 'mas_probable', 'pesimista', 'duration', 'varianza']].round(3))\n"
+                       "display(detalle_estimaciones(datos_proyecto, 'optimista', 'mas_probable', 'pesimista'))\n"
                        "calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]"))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias y el camino crítico", label="fig-pert")
     celdas.append(code("T_media = float(proyecto.duration(datos_proyecto['duration']))\n"
                        "sigma, varianzas_caminos = proyecto.standard_deviation(datos_proyecto['duration'], datos_proyecto['varianza'].to_dict())\n"
-                       "display(varianzas_caminos)\n"
-                       "p_pert = norm.cdf((plazo_comercial - T_media) / sigma)\n"
-                       "plazo90_pert = T_media + norm.ppf(0.9) * sigma\n"
-                       "Markdown(f'''Duración esperada {T_media:.1f} semanas, camino crítico {camino_critico(proyecto, datos_proyecto[\"duration\"])}, σ = {sigma:.2f}. "
-                       "P(T ≤ {T_media:.0f}) = {p_pert:.2f} (la media se cumple la mitad de las veces); plazo al 90 %: {T_media:.1f} + 1.28 × {sigma:.2f} = **{plazo90_pert:.1f} semanas**.''')"))
+                       "p_pert = norm.cdf(plazo_comercial, T_media, sigma)\n"
+                       "plazo90_pert = norm.ppf(0.9, T_media, sigma)\n"
+                       "_ruta = ordena_ruta(list(proyecto.critical_path(datos_proyecto['duration']).values())[0], calendario)\n"
+                       "Markdown(f'Duración esperada: {suma_caminos_criticos(proyecto, datos_proyecto[\"duration\"])}. Desviación típica del camino '\n"
+                       "         f'crítico (raíz de la suma de las varianzas de sus actividades): {explica_sigma_ruta(_ruta, datos_proyecto[\"varianza\"])} semanas.\\n\\n'\n"
+                       "         f'Con T ~ N({T_media:g}; {sigma:.3f}):\\n\\n- {explica_probabilidad(T_media, sigma, plazo_comercial)}: la media se cumple '\n"
+                       "         f'la mitad de las veces.\\n- Plazo al 90 %: {explica_percentil(T_media, sigma, 0.9, \"semanas\")}.\\n\\n'\n"
+                       "         f'**Respuesta:** duración esperada {T_media:g} semanas, σ = {sigma:.2f} semanas, P(T ≤ {plazo_comercial}) = {p_pert:.2f} '\n"
+                       "         f'y plazo al 90 % de {plazo90_pert:.1f} semanas.')"))
     celdas += apartado(2)
     celdas.append(code(f"resultado = proyecto.monte_carlo({{act: ('pert', int(fila['optimista']), int(fila['mas_probable']), int(fila['pesimista'])) for act, fila in datos_proyecto.iterrows()}},\n"
                        f"                                 n_samples={N_MC}, seed={SEMILLA_MC})\n"
@@ -1128,13 +1412,21 @@ def _oferta_comercial(rng):
                        "xs = np.linspace(tau.min(), tau.max(), 200); ax.plot(xs, norm.pdf(xs, T_media, sigma), label=f'normal PERT N({T_media:.1f}, {sigma:.2f})')\n"
                        "ax.axvline(plazo90_pert, ls='--', color='C1'); ax.axvline(plazo90_mc, ls='--', color='C0'); ax.axvline(T_media, color='k', lw=0.8)\n"
                        "ax.set_xlabel('duración (semanas)'); ax.legend();"))
-    celdas.append(md(f"La media PERT ({T}) subestima la duración y la normal del camino crítico subestima la cola derecha: en las "
+    celdas.append(md(f"En Monte Carlo cada réplica sortea la duración de cada actividad con su distribución PERT y calcula la duración "
+                     f"del proyecto (la ruta más larga de esa réplica); P(T ≤ {T}) es la proporción de las {N_MC} réplicas que terminan "
+                     f"en {T} semanas o menos ({int((tau <= T).sum())} / {N_MC} = {e['p_mc']:.2f}), el plazo al 90 % es el percentil 90 de "
+                     "las duraciones simuladas y el índice de criticidad de una actividad es el porcentaje de réplicas en las que está "
+                     "en la ruta más larga.\n\n"
+                     f"La media PERT ({T}) subestima la duración y la normal del camino crítico subestima la cola derecha: en las "
                      f"réplicas hay otras rutas (la segunda dura {info['segunda']:.0f} en media) que en bastantes escenarios se "
                      f"convierten en la más larga. Es el *sesgo de fusión* (merge bias): el máximo de varias variables aleatorias tiene "
                      f"media mayor que el mayor de sus medias. Por eso P(T ≤ {T}) baja del 0.50 al {e['p_mc']:.2f} y el plazo al 90 % "
                      f"sube de {q90_pert:.1f} a {q90_mc:.1f}. La actividad no crítica con más criticidad es **{e['vigilar']}** "
                      f"({e['crit'][e['vigilar']]:.0%} de las réplicas en la ruta más larga, holgura {int(cal.loc[e['vigilar'], 'H_total'])}): "
-                     "el análisis determinista la da por holgada y conviene vigilarla como si fuera crítica."))
+                     "el análisis determinista la da por holgada y conviene vigilarla como si fuera crítica.\n\n"
+                     f"**Respuesta:** por Monte Carlo, P(T ≤ {T}) = {e['p_mc']:.2f} (PERT: 0.50) y plazo al 90 % = {q90_mc:.1f} semanas "
+                     f"(PERT: {q90_pert:.1f}); no coinciden por el sesgo de fusión, que el método PERT ignora al mirar sólo el camino "
+                     f"crítico. La actividad no crítica que hay que vigilar es {e['vigilar']}."))
     celdas += apartado(3)
     celdas.append(code(f"datos_prod = datos_proyecto.copy(); datos_prod.loc[{X!r}, 'pesimista'] += 2\n"
                        "datos_prod['duration'] = (datos_prod['optimista'] + 4 * datos_prod['mas_probable'] + datos_prod['pesimista']) / 6\n"
@@ -1147,8 +1439,13 @@ def _oferta_comercial(rng):
                        f"              'pesimista de {X} + 2': [T_prod, sigma_prod, norm.cdf((plazo_comercial - T_prod) / sigma_prod), T_prod + norm.ppf(0.9) * sigma_prod,\n"
                        "                                        float((tau_prod <= plazo_comercial).mean()), float(np.quantile(tau_prod, 0.9))]},\n"
                        "             index=['media PERT', 'σ PERT', f'P(T ≤ {plazo_comercial}) PERT', 'plazo 90 % PERT', f'P(T ≤ {plazo_comercial}) MC', 'plazo 90 % MC']).round(2)"))
-    celdas.append(md(f"Añadir dos semanas a la estimación pesimista de {X} sube su media en {2 / 6:.2f} semanas y su varianza; la "
-                     f"duración esperada pasa a {T_prod:.2f} y el plazo al 90 % por Monte Carlo a {np.quantile(tau2, 0.9):.1f}. "
+    celdas.append(md(f"Añadir dos semanas a la estimación pesimista de {X} sube su media en 2/6 = {2 / 6:.2f} semanas "
+                     f"(({int(a[X])} + 4·{int(m[X])} + {int(b2[X])})/6 = {(a[X] + 4 * m[X] + b2[X]) / 6:.2f}) y su varianza de "
+                     f"{e['var'][X]:.3f} a (({int(b2[X])} − {int(a[X])})/6)² = {((b2[X] - a[X]) / 6) ** 2:.3f}.\n\n"
+                     f"**Respuesta:** la duración esperada pasa de {T} a {T_prod:.2f} semanas (+{T_prod - T:.2f}); P(T ≤ {T}) pasa de "
+                     f"0.50 a {p_pert2:.2f} con PERT y de {e['p_mc']:.2f} a {p_mc2:.2f} con Monte Carlo; el plazo al 90 % sube de "
+                     f"{q90_pert:.2f} a {q90_pert2:.2f} con PERT ({q90_pert2 - q90_pert:+.2f}) y de {q90_mc:.2f} a {q90_mc2:.2f} con Monte "
+                     f"Carlo ({q90_mc2 - q90_mc:+.2f} semanas). "
                      "El efecto es moderado pero va en la misma dirección: cuanto más incierta la actividad crítica, más colchón hace falta "
                      "para la misma probabilidad. Y es información que el equipo de producción tenía y la oferta no."))
     celdas += apartado(4)
@@ -1164,9 +1461,21 @@ def _oferta_comercial(rng):
                        "plazos = pd.DataFrame(filas).set_index('plazo ofertado')\n"
                        "display(plazos.round(2))\n"
                        "D_opt = int(plazos['coste esperado total'].idxmin()); D_legal = int(np.ceil(plazo90_mc))\n"
-                       "Markdown(f'''El plazo que minimiza el coste esperado es **{D_opt} semanas** (P(cumplir) = {plazos.loc[D_opt, \"P(cumplir)\"]:.2f}); "
-                       "el que exige asesoría jurídica (90 %) es **{D_legal}** semanas, con coste esperado {plazos.loc[D_legal, \"coste esperado total\"]:.1f} k€ "
-                       "frente a {plazos.loc[D_opt, \"coste esperado total\"]:.1f}: cumplir la condición cuesta {plazos.loc[D_legal, \"coste esperado total\"] - plazos.loc[D_opt, \"coste esperado total\"]:.1f} k€ esperados.''')"))
+                       "_f = plazos.loc[D_opt]\n"
+                       "_cumple = _f['P(cumplir)'] >= 0.9\n"
+                       "Markdown(f'Para un plazo ofertado D, con las {len(tau)} réplicas τ de la duración (descuento comercial, penalización esperada y bonificación esperada): coste esperado = {descuento} × máx(0, D − '\n"
+                       "         f'{plazo_competidor}) + {penalizacion} × media(máx(0, τ − D)) − {bonificacion} × media(máx(0, D − τ)). Para D = {D_opt}:\\n\\n'\n"
+                       "         f'- descuento = {descuento} × máx(0, {D_opt} − {plazo_competidor}) = {_f[\"descuento comercial\"]:.2f} k€\\n'\n"
+                       "         f'- penalización esperada = {penalizacion} × {_f[\"penalización esperada\"] / penalizacion:.3f} = {_f[\"penalización esperada\"]:.2f} k€\\n'\n"
+                       "         f'- bonificación esperada = {bonificacion} × {_f[\"bonificación esperada\"] / bonificacion:.3f} = {_f[\"bonificación esperada\"]:.2f} k€\\n'\n"
+                       "         f'- coste esperado = {_f[\"descuento comercial\"]:.2f} + {_f[\"penalización esperada\"]:.2f} − {_f[\"bonificación esperada\"]:.2f} = **{_f[\"coste esperado total\"]:.2f} k€**\\n\\n'\n"
+                       "         f'**Respuesta:** el plazo que minimiza el coste esperado es **{D_opt} semanas** (P(cumplir) = {_f[\"P(cumplir)\"]:.2f}), que '\n"
+                       "         + ('sí cumple la condición de asesoría jurídica (≥ 0.90).' if _cumple else\n"
+                       "            f'no cumple la condición de asesoría jurídica (0.90). El primer plazo que la cumple es **{D_legal} semanas** '\n"
+                       "            f'(percentil 90 de las réplicas, {plazo90_mc:.2f}, redondeado hacia arriba; P(cumplir) = {plazos.loc[D_legal, \"P(cumplir)\"]:.2f}), '\n"
+                       "            f'con coste esperado {plazos.loc[D_legal, \"coste esperado total\"]:.2f} k€: cumplirla cuesta '\n"
+                       "            f'{plazos.loc[D_legal, \"coste esperado total\"]:.2f} − {_f[\"coste esperado total\"]:.2f} = '\n"
+                       "            f'**{plazos.loc[D_legal, \"coste esperado total\"] - _f[\"coste esperado total\"]:.2f} k€** esperados.'))"))
     celdas.append(md(f"Prometer {T} semanas (lo que pide el director comercial) tiene un coste esperado de {costes[T]:.1f} k€ y se "
                      f"cumple el {float((tau <= T).mean()):.0%} de las veces; el óptimo económico es {D_opt} ({costes[D_opt]:.1f} k€, "
                      f"P = {p_opt:.2f}) y el plazo «jurídico» {D_legal} ({costes[D_legal]:.1f} k€). La penalización esperada decrece con "
@@ -1251,6 +1560,30 @@ def _comite_inversion(rng):
         inter = vivo * i; fa[tt] += -C + t_imp * inter; vivo -= C - inter
     TIR_acc = _tir(fa.tolist())
     umbral_ce = VAN / I0
+    from scipy.optimize import brentq
+    u = brentq(lambda v: van_con(p, precio=v), p["precio"] * 0.2, p["precio"] * 2) / p["precio"]   # precio umbral / precio
+    f_min = (u - 1 + 2 * x) / x                    # fracción contratada a −x para que el peor caso tenga VAN ≥ 0
+    x40 = 1 - (u - 0.6 * (1 - 2 * x)) / 0.4        # descuento máximo con el 40 % contratado
+    x100 = 1 - u                                   # descuento máximo con todo el volumen contratado
+    if f_min <= 1:
+        cobertura_txt = (f"Para lograrlo habría que contratar al menos el {f_min:.0%} del volumen con el mismo descuento del {x:.0%} "
+                         f"(despejando f en f·(1 − {x:g}) + (1 − f)·(1 − {2 * x:g}) ≥ {u:.3f})"
+                         + (f", o el 40 % con un descuento de como mucho el {x40:.1%}" if x40 > 0 else "") + ".")
+        cobertura_corta = f"al menos el {f_min:.0%} del volumen a −{x:.0%}" + (f", o el 40 % a −{x40:.1%} como mucho" if x40 > 0 else "")
+        msg_cli = (f"El 40 % a −{x:.0%} cubre poco riesgo para lo que cuesta; proponemos el {min(1.0, np.ceil(f_min * 20) / 20):.0%} del volumen con el mismo descuento"
+                   + (f", o el 40 % con un descuento del {np.floor(x40 * 200) / 200:.1%}" if x40 > 0 else "") + ".")
+    else:
+        cobertura_txt = (f"Pero ampliar el porcentaje contratado no basta, ni siquiera al 100 %: con un descuento del {x:.0%} el precio "
+                         f"del contrato ya queda por debajo del umbral (−{x100:.1%}). Con todo el volumen haría falta un descuento de "
+                         f"como mucho el {x100:.1%}, que deja el VAN en cero también si el mercado aguanta"
+                         + (f", y con el 40 % un descuento de como mucho el {x40:.1%}." if x40 > 0 else
+                            f"; y con sólo el 40 % el precio fijo tendría que ser un {-x40:.0%} mayor que el previsto. "
+                            "Este contrato no sirve para cubrir el riesgo de precio: el problema es que el proyecto sólo aguanta "
+                            f"una caída del precio del {x100:.1%}."))
+        cobertura_corta = (f"el contrato ofrecido no cubre el riesgo: a −{x:.0%} el precio fijo queda por debajo del umbral (−{x100:.1%}), "
+                           "así que hay que buscar otra cobertura o rebajar el riesgo de precio")
+        msg_cli = (f"Pero a −{x:.0%} el precio fijo queda por debajo del que el proyecto necesita para no perder dinero "
+                   f"(−{x100:.1%}): así no nos sirve como cobertura. Sólo tendría sentido con un descuento claramente menor.")
     agentes = ["director comercial", "director de producción", "dirección financiera", "cliente clave", "consejero delegado"]
 
     celdas = [md("# Enunciado"),
@@ -1308,13 +1641,21 @@ def _comite_inversion(rng):
                        "    dcirc = circ.diff().fillna(circ[0]); dcirc[n] -= circ[n]\n"
                        "    return (BAI - imp + amort - dcirc - pd.Series([I0] + [0] * n) + pd.Series([0] * n + [VR])).tolist()\n"
                        "VAN, TIR = van(flujos, k), tir(flujos)\n"
-                       "display(tabla_descuento(flujos, k).round(2))\n"
+                       "td = tabla_descuento(flujos, k)\n"
+                       "display(td.round(2))\n"
+                       "def explica_payback(col):\n"
+                       "    t = int((td[col] >= 0).idxmax()); prev = float(td.loc[t - 1, col]); f = float(td.loc[t, col] - td.loc[t - 1, col])\n"
+                       "    return f'{t - 1} + {-prev:.1f} / {f:.1f} = {t - 1 + (-prev) / f:.2f} años'\n"
+                       "display(Markdown('VAN = Σ FCLₜ·(1 + k)⁻ᵗ = ' + ' + '.join(f'({v:.1f})' for v in td['valor actual']) + f' = **{VAN:.1f} k€**. '\n"
+                       "                 f'La TIR es la tasa que anula el VAN: con k = {TIR:.4f}, VAN = {van(flujos, TIR):.2f} ≈ 0. '\n"
+                       "                 'Recuperación (año en que el acumulado se hace positivo, interpolando dentro del año: años completos + lo que falta / flujo del año): '\n"
+                       "                 f'simple {explica_payback(\"acumulado\")}; descontada {explica_payback(\"acumulado descontado\")}.'))\n"
                        "Markdown(f'''VAN = {VAN:.1f} k€ al {k:.0%} ({VAN / I0:.1%} de la inversión; la regla pide el 10 %: {\"pasa\" if VAN >= 0.1 * I0 else \"no pasa\"}); "
                        "TIR = {TIR:.2%}; recuperación simple {payback(flujos):.2f} años, descontada {payback(flujos, k):.2f}.''')"))
-    celdas.append(md(f"El caso base es {'claramente' if VAN >= 0.15 * I0 else 'moderadamente'} rentable: VAN {VAN:.0f} k€ "
-                     f"({umbral_ce:.0%} de la inversión; {'supera' if umbral_ce >= 0.10 else 'no llega a'} el 10 % de la regla), TIR "
-                     f"{TIR:.1%} frente al {k:.0%} exigido. El consejero delegado pide además que no haya una probabilidad apreciable de "
-                     "VAN negativo, y eso es lo que los mensajes ponen en duda."))
+    celdas.append(md(f"**Respuesta:** el caso base es {'claramente' if VAN >= 0.15 * I0 else 'moderadamente'} rentable: VAN {VAN:.1f} k€, "
+                     f"que es {VAN:.1f} / {I0:.0f} = {umbral_ce:.1%} de la inversión, así que {'pasa' if umbral_ce >= 0.10 else 'no pasa'} "
+                     f"la primera parte de la regla (VAN ≥ 10 % de la inversión); TIR {TIR:.1%} frente al {k:.0%} exigido. El consejero "
+                     "delegado pide además que no haya una probabilidad apreciable de VAN negativo, y eso es lo que los mensajes ponen en duda."))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Escenarios de cada mensaje"\n#| label: tbl-escenarios\n'
                        f"x, y, z = {x}, {y}, {z}\n"
@@ -1332,13 +1673,16 @@ def _comite_inversion(rng):
                        "umbrales['variación admisible'] = umbrales['umbral (VAN = 0)'] / umbrales['caso base'] - 1\n"
                        "display(umbrales.round(3))\n"
                        "mas_sensible = umbrales['variación admisible'].abs().idxmin()\n"
-                       "Markdown(f'La variable más sensible es **{mas_sensible}**: una variación del {umbrales.loc[mas_sensible, \"variación admisible\"]:+.1%} anula el VAN.')"))
+                       "Markdown(f'**Respuesta:** la variable más sensible es **{mas_sensible}**: una variación del {umbrales.loc[mas_sensible, \"variación admisible\"]:+.1%} anula el VAN.')"))
     lineas = "\n".join(f"- {nombre}: VAN {v:.0f} k€ ({v / I0:+.0%} de la inversión)." for nombre, v in esc.items())
     celdas.append(md("Cada mensaje por separado:\n\n" + lineas + "\n\n"
                      f"El mensaje del director comercial tiene dos caras: su volumen convierte el proyecto en muy bueno, pero su "
                      f"escenario de precio lo hunde; el coste variable de producción {'lo deja en pérdidas' if esc[f'coste variable +{z:.0%}'] < 0 else 'se come buena parte del VAN'}. "
-                     "El proyecto es más sensible al precio que al volumen (el volumen arrastra costes variables; el precio va "
-                     "directo al margen), y el coste variable actúa como un precio negativo."))
+                     f"El proyecto es más sensible al precio que al volumen: un 1 % de precio cambia los ingresos de cada unidad en "
+                     f"{p['precio'] / 100:.3g} y todo eso va al margen, mientras que un 1 % de volumen sólo añade el margen de contribución de "
+                     f"esas unidades (precio − coste variable = {p['precio']:g} − {p['coste_variable']:g} = {p['precio'] - p['coste_variable']:g} por "
+                     "unidad); el coste variable actúa como un precio negativo. Por eso la variación admisible del precio (umbrales) es "
+                     "la más pequeña."))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "VAN esperado sin y con el contrato del cliente clave"\n#| label: tbl-contrato\n'
                        f"pi = {pi}\n"
@@ -1351,22 +1695,29 @@ def _comite_inversion(rng):
                        "contrato['VAN esperado'] = (1 - pi) * contrato['mercado estable'] + pi * contrato['cae el precio']\n"
                        "contrato['peor caso'] = contrato['cae el precio']\n"
                        "display(contrato.round(1))\n"
-                       "Markdown(f'''Con probabilidad {pi:.0%} de caída del precio: VAN esperado **{contrato.loc[\"sin contrato\", \"VAN esperado\"]:.1f}** k€ sin contrato y "
+                       "display(Markdown(f'Precio medio con el contrato = 0.4·(1 − {x:g})·p + 0.6·p_mercado: {0.4 * (1 - x) + 0.6:.3f}·p si el mercado aguanta y '\n"
+                       "                 f'{0.4 * (1 - x) + 0.6 * (1 - 2 * x):.3f}·p si cae un {2 * x:.0%}. VAN esperado = (1 − π)·VAN(estable) + π·VAN(cae):\\n\\n'\n"
+                       "                 + '\\n'.join(f'- {nombre}: {1 - pi:g} × {fila[\"mercado estable\"]:.1f} + {pi:g} × ({fila[\"cae el precio\"]:.1f}) = **{fila[\"VAN esperado\"]:.1f} k€**'\n"
+                       "                             for nombre, fila in contrato.iterrows())))\n"
+                       "Markdown(f'''**Respuesta:** con probabilidad {pi:.0%} de caída del precio, VAN esperado **{contrato.loc[\"sin contrato\", \"VAN esperado\"]:.1f}** k€ sin contrato y "
                        "**{contrato.loc[\"con contrato\", \"VAN esperado\"]:.1f}** con él. El contrato cuesta {van_sin[\"mercado estable\"] - van_con[\"mercado estable\"]:.1f} k€ de VAN "
                        "si el mercado aguanta y ahorra {van_con[\"cae el precio\"] - van_sin[\"cae el precio\"]:.1f} si cae.''')"))
     mejor = "con contrato" if e_con > e_sin else "sin contrato"
     v_bajo = esc[f"precio −{2 * x:.0%}"]
-    celdas.append(md(f"El contrato es un seguro: se paga una prima cierta ({VAN - v_contrato_base:.0f} k€ de VAN si el mercado "
-                     f"aguanta) a cambio de recortar la pérdida en el escenario malo ({v_contrato_bajo - v_bajo:.0f} k€ "
-                     f"menos de pérdida). En valor esperado sale mejor **{mejor}** ({max(e_con, e_sin):.0f} frente a {min(e_con, e_sin):.0f} k€)"
-                     + (": como casi todo seguro, la prima vale más que la pérdida esperada que evita (el VAN es casi lineal en el precio y "
-                        f"la caída tiene probabilidad {pi:.0%} < 50 %)" if mejor == "sin contrato" else
-                        ": el escudo fiscal hace que la pérdida evitada valga más que la prima")
+    prima, ahorro = VAN - v_contrato_base, v_contrato_bajo - v_bajo
+    celdas.append(md(f"El contrato es un seguro: se paga una prima ({prima:.1f} k€ de VAN si el mercado aguanta) a cambio de recortar "
+                     f"la pérdida en el escenario malo ({ahorro:.1f} k€ menos de pérdida). En valor esperado, la prima cuesta "
+                     f"{1 - pi:g} × {prima:.1f} = {(1 - pi) * prima:.1f} k€ y el ahorro vale {pi:g} × {ahorro:.1f} = {pi * ahorro:.1f} k€, "
+                     f"así que sale mejor **{mejor}** ({max(e_con, e_sin):.1f} frente a {min(e_con, e_sin):.1f} k€)"
+                     + (f": como en casi todo seguro, la prima esperada supera a la pérdida esperada que evita (la caída tiene "
+                        f"probabilidad {pi:.0%} < 50 % y prima y ahorro son de tamaño parecido)" if mejor == "sin contrato" else
+                        ": el ahorro esperado en el escenario malo supera a la prima esperada")
                      + f". Pero la regla del consejero mira también al peor caso: "
                      + ("con el contrato el peor caso sigue siendo negativo" if v_contrato_bajo < 0 else "con el contrato el peor caso deja de ser negativo")
                      + f" ({v_contrato_bajo:.0f} k€ frente a {v_bajo:.0f} sin él). "
-                     + ("El 40 % que ofrece el cliente no basta para cubrir el riesgo de precio: cubre menos de la mitad del volumen. Una "
-                        "contraoferta razonable es ampliar el porcentaje contratado o acortar el descuento."
+                     + (f"El 40 % que ofrece el cliente no basta para cubrir el riesgo de precio. El VAN es nulo con un precio un {x100:.1%} "
+                        f"menor que el previsto (precio umbral del apartado 2); el peor caso sólo deja de ser negativo si el precio medio "
+                        f"no baja de ese umbral. {cobertura_txt}"
                         if v_contrato_bajo < 0 else
                         "El 40 % contratado basta para que el proyecto no destruya valor ni en el escenario malo: es lo que la regla pide.")))
     celdas += apartado(4)
@@ -1390,24 +1741,34 @@ def _comite_inversion(rng):
                        "fa = flujo_accionista(cuadro, prestamo)\n"
                        "display(pd.DataFrame({'FCL proyecto': flujos, 'flujo del accionista': fa.tolist()}, index=pd.Index(range(n + 1), name='año')).round(1).T)\n"
                        "TIR_acc = tir(fa.tolist())\n"
+                       "display(Markdown(f'Cuota constante C = P·i / (1 − (1 + i)⁻ⁿ) = {prestamo:.1f} × {i:g} / (1 − {1 + i:g}^−{n_p}) = **{cuadro.cuota.iloc[0]:.2f} k€**. '\n"
+                       "                 f'Flujo del accionista: en el año 0, FCL + préstamo = {flujos[0]:.1f} + {prestamo:.1f} = {fa[0]:.1f}; en el año 1, '\n"
+                       "                 f'FCL − cuota + {t_imp:g} × intereses = {flujos[1]:.1f} − {cuadro.cuota.iloc[0]:.2f} + {t_imp:g} × {cuadro.intereses.iloc[0]:.2f} = {fa[1]:.1f} '\n"
+                       "                 '(los intereses se deducen del impuesto: es el ahorro fiscal); igual en los demás años del préstamo.'))\n"
                        "Markdown(f'''TIR del proyecto {TIR:.2%}; TIR del accionista con el préstamo {TIR_acc:.2%}. Coste de la deuda después de impuestos "
                        "{i * (1 - t_imp):.2%}, {\"menor\" if i * (1 - t_imp) < TIR else \"mayor\"} que la TIR del proyecto: el apalancamiento {\"amplifica la rentabilidad del accionista\" if i * (1 - t_imp) < TIR else \"la reduce\"}.''')"))
-    celdas.append(md(f"La TIR del accionista ({TIR_acc:.1%}) es mayor que la del proyecto ({TIR:.1%}) porque la deuda cuesta "
-                     f"{i * (1 - t_imp):.1%} neto, menos de lo que rinde el proyecto: el accionista pone el {1 - alfa:.0%} del capital y "
-                     "se queda con la diferencia. Pero el apalancamiento amplifica en los dos sentidos: en el escenario de caída del "
+    celdas.append(md((f"La TIR del accionista ({TIR_acc:.1%}) es mayor que la del proyecto ({TIR:.1%}) porque la deuda cuesta "
+                      f"{i:.0%} × (1 − {t_imp:g}) = {i * (1 - t_imp):.2%} neto, menos de lo que rinde el proyecto: el accionista pone sólo el "
+                      f"{1 - alfa:.0%} de la inversión y se queda con la diferencia. "
+                      if TIR_acc > TIR else
+                      f"La TIR del accionista ({TIR_acc:.1%}) no supera a la del proyecto ({TIR:.1%}): la deuda cuesta {i * (1 - t_imp):.2%} "
+                      "neto, más de lo que rinde el proyecto. ")
+                     + "Pero el apalancamiento amplifica en los dos sentidos: en el escenario de caída del "
                      "precio las cuotas se pagan igual y la pérdida del accionista es proporcionalmente mayor. Dirección financiera "
                      "tiene razón: la decisión de invertir se toma sobre el flujo de caja libre (sin deuda) y la de financiar, después; "
-                     "una TIR del accionista alta no convierte en bueno un proyecto malo."))
+                     "una TIR del accionista alta no convierte en bueno un proyecto malo.\n\n"
+                     f"**Respuesta:** TIR del proyecto {TIR:.2%} y del accionista {TIR_acc:.2%}; sí, Dirección financiera tiene razón: el "
+                     "proyecto se juzga sin deuda."))
     celdas += apartado(5)
     pasa_esperado = max(e_sin, e_con) >= 0.10 * I0
     if not pasa_esperado:
         recomendacion = ("no aprobar tal como está y volver al comité con tres cosas: la probabilidad de caída del precio documentada "
-                         "(no una opinión), una cobertura que cubra la mayor parte del volumen (contraoferta al cliente clave) y el coste "
-                         "variable revisado con producción")
+                         "(no una opinión), una cobertura que de verdad proteja el peor caso (contraoferta al cliente clave: "
+                         + cobertura_corta + ") y el coste variable revisado con producción")
         corta = "no aprobar tal como está"
     elif v_contrato_bajo < 0:
         recomendacion = ("aprobar condicionado a cerrar una cobertura de precio mayor que la ofrecida (contraoferta al cliente clave: "
-                         "más volumen contratado o menos descuento) y a revisar el coste variable con producción")
+                         + cobertura_corta + ") y a revisar el coste variable con producción")
         corta = "aprobar condicionado a una cobertura mayor"
     else:
         recomendacion = ("aprobar con el contrato del cliente clave, que elimina el VAN negativo del peor caso, y revisar el coste "
@@ -1427,8 +1788,7 @@ def _comite_inversion(rng):
                      "sobre el FCL sin deuda. Si se aprueba, el préstamo mejora la rentabilidad del capital, con el riesgo que conlleva.»\n"
                      + (f"- *Cliente clave:* «Aceptamos el contrato del 40 % a −{x:.0%}: nos da la estabilidad de precio que el comité exige.»\n"
                         if corta == "aprobar con el contrato" else
-                        f"- *Cliente clave:* «Valoramos el contrato. El 40 % a −{x:.0%} cubre poco riesgo para lo que cuesta; "
-                        "proponemos un 60 % con el mismo descuento, o el 40 % con un descuento menor.»\n")
+                        (f"- *Cliente clave:* «Valoramos el contrato. " + msg_cli + "»\n"))
                      + f"- *Consejero delegado:* «VAN base {VAN:.0f} k€ ({umbral_ce:.0%} de la inversión); VAN esperado {e_sin:.0f} sin cobertura y "
                      f"{e_con:.0f} con el contrato ofrecido; peor caso {v_bajo:.0f} sin cubrir y {v_contrato_bajo:.0f} con él. Recomiendo {corta}.»"))
     celdas += apartado(6)
@@ -1568,6 +1928,7 @@ def _contingencia_planta(rng):
         "¿Qué ha cambiado respecto a un análisis determinista con el camino crítico? Señale al menos tres decisiones que habría "
         "tomado mal sin recursos, sin incertidumbre o sin VAN."]))
     celdas.append(md("# Resolución"))
+    celdas.append(code(UTIL))
     celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()\n"
@@ -1595,15 +1956,24 @@ def _contingencia_planta(rng):
     celdas.append(code("duracion_libre = proyecto.duration(datos_proyecto['duration'])\n"
                        "cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], [L])\n"
                        "display(cadena['arcos'].rename(columns={'motivo': 'motivo (precedencia o recurso)'}))\n"
-                       "esperas = res0.traza[res0.traza.decision == 'espera']\n"
-                       "Markdown(f'Sin límite {duracion_libre} meses; con {L} operarios {res0.duracion}. Cadena crítica con recursos: '\n"
-                       "         f'{\", \".join(sorted(cadena[\"actividades\"]))}. Esperan: {\", \".join(sorted(set(esperas.actividad)))}.')"))
+                       "_esp = res0.esperas[res0.esperas > 0]\n"
+                       "_cadena = sorted(cadena['actividades'], key=lambda a: (res0.inicios[a], a))\n"
+                       "Markdown(f'**Respuesta:** sin límite de operarios el proyecto dura {suma_caminos_criticos(proyecto, datos_proyecto[\"duration\"], \"meses\")}; '\n"
+                       "         f'con {L} operarios dura **{res0.duracion} meses** ({res0.duracion - duracion_libre:g} más). La cadena crítica con recursos '\n"
+                       "         f'(las actividades que fijan esa duración, encadenadas por precedencias o porque una espera a que otra libere '\n"
+                       "         f'operarios: arcos «recurso» de la tabla) es {\"–\".join(_cadena)}. Esperan por falta de operarios: '\n"
+                       "         + lista_y([f'{a} ({plural(int(v), \"mes\", \"meses\")})' for a, v in _esp.items()]) + '.')"))
     celdas += apartado(2)
     celdas.append(code(EVALUAR_OPCION))
     celdas.append(code("ceros = pd.Series(0.0, index=datos_proyecto.index)\n"
                        "A = evaluar(L, ceros)\n"
-                       "Markdown(f'Sin hacer nada: P(entregar en el mes {plazo}) = {A[\"P(τ≤plazo)\"]:.3f}; duración media {A[\"τ medio\"]:.2f} meses; '\n"
-                       "         f'VAN esperado neto {A[\"VAN medio\"]:.1f} k€; P(VAN<0) = {A[\"P(VAN<0)\"]:.3f}.')"))
+                       "Markdown(f'En cada una de las 3000 réplicas se sortean las duraciones (triangulares, redondeadas a meses enteros), se '\n"
+                       "         f'replanifica con {L} operarios y se obtiene la duración τ. El VAN de la réplica descuenta, a la tasa mensual '\n"
+                       "         f'equivalente (1 + k_m)¹² = 1 + {k:g}, los costes (el BAC de cada actividad repartido uniformemente en su duración) y '\n"
+                       "         f'el flujo de {F:g} k€/mes durante {N} meses desde el mes τ; al VAN se le resta la penalización, {penalizacion:g} × máx(0, τ − {plazo}) '\n"
+                       "         f'(sin descontar, como aproximación). Contando las réplicas:\\n\\n'\n"
+                       "         f'**Respuesta:** si no se hace nada, P(τ ≤ {plazo}) = **{A[\"P(τ≤plazo)\"]:.3f}** (duración media {A[\"τ medio\"]:.2f} meses), '\n"
+                       "         f'VAN esperado neto de penalización = **{A[\"VAN medio\"]:.1f} k€** y P(VAN < 0) = **{A[\"P(VAN<0)\"]:.3f}**.')"))
     celdas += apartado(3)
     celdas.append(md("Las reducciones de C y D se calculan con `crashing_recursos`: en cada paso se programa con el límite, "
                      "se halla la cadena crítica con recursos, se prueban como candidatos sus actividades reducibles (sueltas, "
@@ -1620,28 +1990,85 @@ def _contingencia_planta(rng):
                        "opciones = {'A: no hacer nada': (L, ceros), 'B: un operario más': (L + 1, ceros),\n"
                        "            'C: acelerar dos meses': (L, red_c), 'D: operario más y acelerar': (L + 1, red_d)}\n"
                        "tabla = pd.DataFrame({n: evaluar(Lo, r) for n, (Lo, r) in opciones.items()}).T\n"
-                       "tabla"))
+                       "tabla.rename(columns={'VAN medio': 'VAN esperado neto (k€)', 'P(VAN<0)': 'P(VAN < 0)', 'P(τ≤plazo)': f'P(τ ≤ {plazo})',\n"
+                       "                      'τ medio': 'duración media (meses)', 'coste reducción': 'coste de la aceleración (k€)'}).astype(float).round(3)"))
     celdas.append(code("display(pd.DataFrame({'C: reducciones': red_c[red_c > 0], 'D: reducciones': red_d[red_d > 0]}).fillna(0).astype(int).T)\n"
-                       "Markdown('Las reducciones se calculan con `crashing_recursos`: se acorta lo que de verdad acorta el proyecto con el límite de operarios, no lo más barato.')"))
+                       "def _coste(red):\n"
+                       "    r = red[red > 0]\n"
+                       "    return ' + '.join(f'{ucr[a]:g}·{int(v)}' for a, v in r.items()) + f' = {float((ucr[r.index] * r).sum()):g} k€'\n"
+                       "def _difiere(cr):\n"
+                       "    f = cr.pasos[cr.pasos['ackoff_sin_recursos'].astype(str) != cr.pasos['actividades'].astype(str)]\n"
+                       "    return '; '.join(f'en el paso {i} Ackoff sin recursos habría acortado {r.ackoff_sin_recursos}, pero con el límite de operarios '\n"
+                       "                     f'eso no acorta el proyecto replanificado y se acorta {r.actividades}' for i, r in f.iterrows())\n"
+                       "_dc, _dd = _difiere(cr_c), _difiere(cr_d)\n"
+                       "Markdown(f'Coste de la aceleración (Σ CUR × meses recortados): C, {_coste(red_c)}; D, {_coste(red_d)}. '\n"
+                       "         + (f'Opción C: {_dc}. ' if _dc else 'Opción C: cada paso acorta lo mismo que Ackoff sin recursos. ')\n"
+                       "         + (f'Opción D: {_dd}. ' if _dd else 'Opción D: cada paso acorta lo mismo que Ackoff sin recursos. ')\n"
+                       "         + 'El coste de la aceleración se suma al BAC de las actividades acortadas y el del operario extra '\n"
+                       "         f'({coste_operario:g} k€/mes × τ, sin descontar) se resta del VAN, junto con la penalización.\\n\\n'\n"
+                       "         '**Respuesta:** la tabla de opciones anterior da, para cada una, el VAN esperado neto, P(VAN < 0), la probabilidad de cumplir '\n"
+                       "         f'el plazo, la duración media y el coste de la aceleración; se comparan en el apartado siguiente.')"))
     celdas += apartado(4)
     celdas.append(code("mejor = tabla['VAN medio'].idxmax()\n"
-                       "ok_cliente = tabla[tabla['P(τ≤plazo)'] >= 0.7].index.tolist()\n"
-                       "suma = (tabla.loc['B: un operario más', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio']\n"
-                       "        + tabla.loc['C: acelerar dos meses', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio'])\n"
-                       "real = tabla.loc['D: operario más y acelerar', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio']\n"
-                       "Markdown(f'Mayor VAN esperado: {mejor} ({tabla.loc[mejor, \"VAN medio\"]:.1f} k€). Opciones con P(cumplir) ≥ 70 %: {ok_cliente or \"ninguna\"}. '\n"
-                       "         f'Respecto a A, B y C por separado suponen {suma:+.1f} k€ en total y juntas (D) {real:+.1f} k€: los efectos no se suman, '\n"
-                       "         'porque las dos medidas atacan el mismo cuello de botella (esperas por operarios y duración de la cadena crítica).')"))
+                       "cliente = tabla['P(τ≤plazo)'].idxmax()\n"
+                       "A0 = tabla.loc['A: no hacer nada']\n"
+                       "dB = tabla.loc['B: un operario más', 'VAN medio'] - A0['VAN medio']\n"
+                       "dC = tabla.loc['C: acelerar dos meses', 'VAN medio'] - A0['VAN medio']\n"
+                       "dD = tabla.loc['D: operario más y acelerar', 'VAN medio'] - A0['VAN medio']\n"
+                       "pB = tabla.loc['B: un operario más', 'P(τ≤plazo)'] - A0['P(τ≤plazo)']\n"
+                       "pC = tabla.loc['C: acelerar dos meses', 'P(τ≤plazo)'] - A0['P(τ≤plazo)']\n"
+                       "pD = tabla.loc['D: operario más y acelerar', 'P(τ≤plazo)'] - A0['P(τ≤plazo)']\n"
+                       "mejores_A = [n for n in tabla.index if tabla.loc[n, 'VAN medio'] > A0['VAN medio']]\n"
+                       "if np.isclose(dD, dB + dC, atol=0.5):\n"
+                       "    _suma = 'aproximadamente sí: los efectos casi se suman'\n"
+                       "elif dD < dB + dC:\n"
+                       "    _suma = ('no: juntas valen menos que la suma por separado, porque las dos medidas atacan el mismo problema (la '\n"
+                       "             'duración con recursos): una vez que el operario extra elimina esperas, acelerar recorta menos meses útiles, '\n"
+                       "             'y el coste de cada medida sí se paga entero')\n"
+                       "else:\n"
+                       "    _suma = ('no: juntas valen más que la suma por separado, porque con un operario más las actividades aceleradas '\n"
+                       "             'ya no se quedan esperando por operarios y el recorte llega de verdad al final del proyecto')\n"
+                       "Markdown(f'Cambio de cada opción respecto a A (no hacer nada): VAN esperado neto B {dB:+.1f}, C {dC:+.1f}, D {dD:+.1f} k€; '\n"
+                       "         f'probabilidad de cumplir el plazo B {pB:+.3f}, C {pC:+.3f}, D {pD:+.3f}.\\n\\n'\n"
+                       "         f'**Respuesta:**\\n\\n'\n"
+                       "         f'- Al director financiero: **{mejor}**, la de mayor VAN esperado neto ({tabla.loc[mejor, \"VAN medio\"]:.1f} k€ frente a '\n"
+                       "         f'{A0[\"VAN medio\"]:.1f} sin hacer nada; P(VAN < 0) = {tabla.loc[mejor, \"P(VAN<0)\"]:.3f}). Superan a no hacer nada: {lista_y(mejores_A)}.\\n'\n"
+                       "         f'- Al cliente, que pregunta por la probabilidad de cumplir: con la opción recomendada es {tabla.loc[mejor, \"P(τ≤plazo)\"]:.2f}; '\n"
+                       "         f'la más alta la da {cliente} ({tabla.loc[cliente, \"P(τ≤plazo)\"]:.2f})'\n"
+                       "         + (', que es la misma.' if cliente == mejor else f', pero cuesta {tabla.loc[mejor, \"VAN medio\"] - tabla.loc[cliente, \"VAN medio\"]:.1f} k€ de VAN esperado.') + '\\n'\n"
+                       "         f'- ¿Se suman B y C en D? B + C = ({dB:+.1f}) + ({dC:+.1f}) = {dB + dC:+.1f} k€ frente a D = {dD:+.1f} k€: {_suma}.')"))
     celdas += apartado(5)
-    celdas.append(md("**Cliente:** con la cuadrilla actual la probabilidad de cumplir es baja; la opción recomendada la sube a la cifra de la tabla. "
-                     "**Director financiero:** el VAN esperado neto de penalización y de coste es el de la tabla, con la probabilidad de VAN negativo indicada. "
-                     "**Jefe de obra:** se contrata un operario sólo si la tabla lo respalda; las esperas se concentran en la cadena crítica con recursos. "
-                     "**Contratista:** se aceleran únicamente las actividades que de verdad acortan el proyecto con el límite de operarios."))
+    celdas.append(code("_A, _M = tabla.loc['A: no hacer nada'], tabla.loc[mejor]\n"
+                       "_red = {'C: acelerar dos meses': red_c, 'D: operario más y acelerar': red_d}.get(mejor)\n"
+                       "_acel = lista_y([f'{a} ({plural(int(v), \"mes\", \"meses\")})' for a, v in _red[_red > 0].items()]) if _red is not None else ''\n"
+                       "_operario = mejor.startswith(('B', 'D'))\n"
+                       "Markdown(f'- *Cliente:* «Con la cuadrilla actual la probabilidad de entregar en el mes {plazo} es de {_A[\"P(τ≤plazo)\"]:.0%} '\n"
+                       "         f'(duración media {_A[\"τ medio\"]:.1f} meses). Con las medidas que vamos a tomar sube al {_M[\"P(τ≤plazo)\"]:.0%}, con una '\n"
+                       "         f'duración media de {_M[\"τ medio\"]:.1f} meses. Les informaremos cada mes de cómo evoluciona.»\\n'\n"
+                       "         f'- *Director financiero:* «Propongo {mejor[3:]}: VAN esperado neto de penalizaciones y costes {_M[\"VAN medio\"]:.1f} k€, '\n"
+                       "         f'frente a {_A[\"VAN medio\"]:.1f} sin hacer nada; probabilidad de VAN negativo {_M[\"P(VAN<0)\"]:.1%} (sin hacer nada, '\n"
+                       "         f'{_A[\"P(VAN<0)\"]:.1%}). Adjunto la tabla de las cuatro opciones.»\\n'\n"
+                       "         + (f'- *Jefe de obra:* «Contratamos el operario adicional ({coste_operario:g} k€/mes): la simulación lo respalda.»\\n' if _operario else\n"
+                       "            f'- *Jefe de obra:* «De momento no contratamos el operario adicional: con {coste_operario:g} k€/mes, en la simulación no compensa '\n"
+                       "            f'(opción B: {tabla.loc[\"B: un operario más\", \"VAN medio\"]:.1f} k€ frente a {_M[\"VAN medio\"]:.1f}). Vigilemos las esperas de la cadena crítica.»\\n')\n"
+                       "         + (f'- *Contratista:* «Necesitamos acortar {_acel}, con un coste de {_M[\"coste reducción\"]:g} k€ a los CUR de la tabla.»' if _red is not None else\n"
+                       "            '- *Contratista:* «Por ahora no aceleramos: con el límite de operarios, recortar duraciones no compensa su coste. Les avisaremos si cambia.»'))"))
     celdas += apartado(6)
-    celdas.append(md("Con el camino crítico y duraciones esperadas se habría dicho que el plazo se cumple (sin límite de recursos y sin incertidumbre); "
-                     "se habría acelerado la actividad más barata aunque no acorte el proyecto; y se habría juzgado cada medida por separado "
-                     "sin ver que se solapan. Los recursos fijan la duración real, la incertidumbre convierte la fecha en una probabilidad y el VAN "
-                     "obliga a comparar el coste de cada medida con lo que vale cobrar antes."))
+    celdas.append(code("_ack = [str(x) for x in cr_c.pasos['ackoff_sin_recursos']]; _real = [str(x) for x in cr_c.pasos['actividades']]\n"
+                       "_l = [f'- **Sin recursos** se habría dicho que el proyecto dura {duracion_libre:g} meses y que el plazo del mes {plazo} se '\n"
+                       "      f'cumple; con {L} operarios dura {res0.duracion}, y sin hacer nada sólo se cumple el {A[\"P(τ≤plazo)\"]:.0%} de las veces.']\n"
+                       "if _ack != _real:\n"
+                       "    _l.append(f'- **Sin recursos**, Ackoff habría acortado {lista_y(_ack)}; con el límite de operarios lo que de verdad acorta es '\n"
+                       "              f'{lista_y(_real)}: se habría pagado una reducción que no adelanta la entrega.')\n"
+                       "else:\n"
+                       "    _l.append(f'- Aquí Ackoff sin recursos y la reducción con recursos eligen lo mismo ({lista_y(_real)}), pero sólo la segunda '\n"
+                       "              'comprueba que el recorte llega al final con el límite de operarios.')\n"
+                       "_l.append(f'- **Sin incertidumbre** se habría prometido una fecha, no una probabilidad: la duración media simulada sin hacer nada '\n"
+                       "          f'es {A[\"τ medio\"]:.2f} meses (con duraciones esperadas, {res0.duracion}) y P(τ ≤ {plazo}) = {A[\"P(τ≤plazo)\"]:.2f}.')\n"
+                       "_l.append(f'- **Sin VAN** se habría elegido la opción que más acorta ({tabla[\"τ medio\"].idxmin()}) y no la que más valor crea '\n"
+                       "          f'({mejor})' + ('.' if np.isclose(dD, dB + dC, atol=0.5) else\n"
+                       "                         f'; y juzgando cada medida por separado no se ve que B + C ({dB + dC:+.1f} k€) no es D ({dD:+.1f} k€).'))\n"
+                       "Markdown('\\n'.join(_l))"))
     return celdas, f"límite de {L} operarios, plazo mes {plazo}, penalización {pen:.0f} k€/mes y VAN"
 
 

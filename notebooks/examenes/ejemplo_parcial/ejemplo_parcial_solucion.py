@@ -34,6 +34,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -42,7 +43,8 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas, explica_camino_critico, explica_probabilidad,
+                   explica_intervalo, explica_percentil, explica_sigma_ruta, ordena_ruta, plural, lista_y)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -259,7 +261,10 @@ proyecto.display_calendario(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Cálculo paso a paso de fechas y holguras"
 #| label: tbl-holgurasPaso-p1
-detalle_holguras(calendario, prelaciones)
+display(detalle_holguras(calendario, prelaciones))
+display(Markdown(f"**Respuesta:** el proyecto dura {duracion_proyecto:g} semanas; camino crítico "
+                 + lista_y([' – '.join(ordena_ruta(r, calendario)) for r in proyecto.critical_path(datos_proyecto['duration']).values()])
+                 + ". Las holguras total, libre e independiente de cada actividad son las tres últimas columnas del calendario."))
 
 # %% [markdown]
 # ## Apartado 2
@@ -268,7 +273,9 @@ detalle_holguras(calendario, prelaciones)
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# No. La holgura total de F y la de H son la *misma* holgura: la de la cadena en la que están. F tiene holgura libre cero, así que cualquier retraso suyo mueve el inicio de H y le consume holgura. Si F gasta las 12 semanas, H se queda sin ninguna; si además H se retrasa, el proyecto se alarga.
+# **No.** La holgura total de F y la de H (12 semanas cada una, véase el calendario) son la *misma* holgura: la de la cadena
+# B – F – H en la que están. F tiene holgura libre cero, así que cualquier retraso suyo mueve el inicio de H y le consume
+# holgura. Si F gasta las 12 semanas, H se queda sin ninguna; si además H se retrasa, el proyecto se alarga.
 
 # %% [markdown]
 # ## Apartado 3
@@ -295,7 +302,9 @@ Markdown(f'Duración del proyecto: {duracion_proyecto} semanas en la planificaci
 display(Markdown(pregunta_4))
 
 # %%
-Markdown(f'''La holgura libre de {X} es {int(calendario.loc[X, "H_libre"])}: es lo que puede retrasarse sin mover a {Y}. La holgura independiente de {Y} es {int(calendario.loc[Y, "H_independiente"])}: lo que puede retrasarse {Y} aunque {X} acabe lo más tarde posible. Las {h} semanas son un recurso compartido de la cadena: cualquier reparto x + y ≤ {h} entre {X} y {Y} respeta el plazo; lo que no es posible es que cada una disponga de {h} por su cuenta.''')
+Markdown(f'''La holgura que mide cuánto puede retrasarse una actividad sin quitar margen a sus sucesoras es la **holgura libre**; la que puede usar aunque sus predecesoras acaben lo más tarde posible, la **holgura independiente**. La holgura libre de {X} es {int(calendario.loc[X, "H_libre"])}: es lo que puede retrasarse sin mover a {Y}. La holgura independiente de {Y} es {int(calendario.loc[Y, "H_independiente"])}: lo que puede retrasarse {Y} aunque {X} acabe lo más tarde posible. (La holgura libre de {Y}, {int(calendario.loc[Y, "H_libre"])}, solo está disponible si {X} no se retrasa.)
+
+**Respuesta:** las {h} semanas son un recurso compartido de la cadena: cualquier reparto x + y ≤ {h} entre {X} y {Y} respeta el plazo (por ejemplo, {h // 2} y {h - h // 2}, o lo que necesite cada una, si se acuerda antes); lo que no es posible es que cada una disponga de {h} por su cuenta.''')
 
 # %% [markdown]
 # # Problema 2
@@ -389,9 +398,9 @@ resultados_pert['activities'].T
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])
 rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])
-for nombre, acts in rutas_criticas.items():
-    print(f'{nombre}: {" - ".join(acts)}')
-Markdown(f'La duración media del proyecto es {duracion_media} semanas y tiene {len(rutas_criticas)} ruta(s) crítica(s).')
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas'))
+Markdown(f'**Respuesta:** la duración media del proyecto es {duracion_media} semanas y tiene '
+         f'{plural(len(rutas_criticas), "ruta crítica", "rutas críticas")}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -421,7 +430,13 @@ detalle_varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'var
 pd.concat([detalle_medias, detalle_varianzas.drop(columns='actividades')], axis=1)
 
 # %%
-Markdown(f'La varianza del proyecto es {desviacion_proyecto**2:.3f} y su desviación típica {desviacion_proyecto:.3f} semanas.')
+_cal2 = proyecto.calendar(datos_proyecto['duration'])
+_var_crit = {r: float(datos_proyecto.loc[acts, 'variance'].sum()) for r, acts in rutas_criticas.items()}
+_r_max = max(_var_crit, key=_var_crit.get)
+Markdown(f'Las rutas críticas tienen varianzas ' + lista_y([f'{r}: {v:.2f}' for r, v in _var_crit.items()])
+         + f'; se usa la de mayor varianza, {_r_max} ({" – ".join(ordena_ruta(rutas_criticas[_r_max], _cal2))}): '
+         + explica_sigma_ruta(ordena_ruta(rutas_criticas[_r_max], _cal2), datos_proyecto['variance']) + '.\n\n'
+         f'**Respuesta:** la varianza del proyecto es {desviacion_proyecto**2:.3f} y su desviación típica {desviacion_proyecto:.3f} semanas.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -430,7 +445,7 @@ Markdown(f'La varianza del proyecto es {desviacion_proyecto**2:.3f} y su desviac
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# Con $T \sim N(\mu, \sigma)$: $P(T \le t) = \Phi\left(\frac{t - \mu}{\sigma}\right)$.
+# Con $T \sim N(\mu, \sigma)$, $P(T \le t)$ se obtiene con la función de distribución normal de la hoja de cálculo o la calculadora.
 
 # %%
 plazo = 34
@@ -438,7 +453,8 @@ z = (plazo - duracion_media) / desviacion_proyecto
 probabilidad_plazo = norm.cdf(z)
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media, desviacion_proyecto, hasta=plazo)
-Markdown(f'z = ({plazo} − {duracion_media}) / {desviacion_proyecto:.3f} = {z:.3f}, luego P(T ≤ {plazo}) = Φ({z:.3f}) = {probabilidad_plazo:.4f} ({probabilidad_plazo*100:.1f} %).')
+Markdown(explica_probabilidad(duracion_media, desviacion_proyecto, plazo) + '.\n\n'
+         f'**Respuesta:** la probabilidad de terminar en {plazo} semanas o menos es {probabilidad_plazo:.4f} ({probabilidad_plazo*100:.1f} %).')
 
 # %% [markdown]
 # ## Apartado 4
@@ -452,8 +468,8 @@ p_b = norm.cdf((t_b - duracion_media) / desviacion_proyecto)
 p_a = norm.cdf((t_a - duracion_media) / desviacion_proyecto)
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media, desviacion_proyecto, entre=(t_a, t_b))
-Markdown(f'P({t_a} < T ≤ {t_b}) = Φ({(t_b - duracion_media) / desviacion_proyecto:.3f}) − Φ({(t_a - duracion_media) / desviacion_proyecto:.3f}) '
-         f'= {p_b:.4f} − {p_a:.4f} = {p_b - p_a:.4f} ({(p_b - p_a)*100:.1f} %).')
+Markdown(explica_intervalo(duracion_media, desviacion_proyecto, t_a, t_b) + '.\n\n'
+         f'**Respuesta:** la probabilidad de terminar entre las semanas {t_a} y {t_b} es {p_b - p_a:.4f} ({(p_b - p_a)*100:.1f} %).')
 
 # %% [markdown]
 # ## Apartado 5
@@ -462,7 +478,7 @@ Markdown(f'P({t_a} < T ≤ {t_b}) = Φ({(t_b - duracion_media) / desviacion_proy
 display(Markdown(pregunta_5))
 
 # %% [markdown]
-# Se busca $t$ tal que $P(T \le t) = p$, es decir, $t = \mu + z_p\,\sigma$ con $z_p = \Phi^{-1}(p)$.
+# Se busca $t$ tal que $P(T \le t) = p$, con la inversa de la distribución normal (hoja de cálculo o calculadora).
 
 # %%
 probabilidad_objetivo = 0.9
@@ -470,7 +486,8 @@ z_p = norm.ppf(probabilidad_objetivo)
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media, desviacion_proyecto, percentil=probabilidad_objetivo)
 duracion_comprometida = duracion_media + z_p * desviacion_proyecto
-Markdown(f'z = {z_p:.3f}; t = {duracion_media} + {z_p:.3f} × {desviacion_proyecto:.3f} = {duracion_comprometida:.2f} semanas. '
+Markdown(explica_percentil(duracion_media, desviacion_proyecto, probabilidad_objetivo, 'semanas') + '.\n\n'
+         f'**Respuesta:** {duracion_comprometida:.2f} semanas. '
          f'Como el calendario se mide en semanas enteras, se comprometerían {int(np.ceil(duracion_comprometida))} semanas.')
 
 # %% [markdown]
@@ -480,7 +497,9 @@ Markdown(f'z = {z_p:.3f}; t = {duracion_media} + {z_p:.3f} × {desviacion_proyec
 display(Markdown(pregunta_6))
 
 # %%
-Markdown(f'''La duración media es la mediana de la normal, así que P(T ≤ {duracion_media}) = 0.5: sólo la mitad de las veces se terminaría en la duración media o antes. Para garantizarla con un 90% haría falta que la media del proyecto fuera {duracion_media} − {z_p:.3f} × {desviacion_proyecto:.3f} = {duracion_media - z_p * desviacion_proyecto:.2f} semanas, es decir, reducir el proyecto (acortando actividades críticas) o reducir su varianza. Sin tocar el proyecto no es posible.''')
+Markdown(f'''La duración media es la mediana de la normal, así que P(T ≤ {duracion_media}) = 0.5: sólo la mitad de las veces se terminaría en la duración media o antes. Con la misma desviación típica, el percentil 90 está {duracion_comprometida - duracion_media:.2f} semanas por encima de la media (apartado 5: {duracion_comprometida:.2f} − {duracion_media}); para garantizar {duracion_media} semanas con un 90% haría falta que la media del proyecto fuera {duracion_media} − {duracion_comprometida - duracion_media:.2f} = {duracion_media - z_p * desviacion_proyecto:.2f} semanas, es decir, reducir el proyecto (acortando actividades críticas) o reducir su varianza.
+
+**Respuesta:** P(T ≤ {duracion_media}) = 0.5; sin modificar el proyecto no puede garantizarse esa duración con un 90%.''')
 
 # %% [markdown]
 # # Problema 3
@@ -606,8 +625,17 @@ for semana, seguimiento in seguimientos.items():
     EV = float((datos_vg['BAC'] * datos_vg['performed'] / 100).sum())
     AC = float(datos_vg['AC'].sum())
     filas[semana] = {'PV': PV, 'EV': EV, 'AC': AC}
+    _det = detalle_valor_ganado(datos_vg, proyecto.calendar(datos_proyecto['duration']), semana)
+    assert np.isclose(_det['PV_i'].sum(), PV) and np.isclose(_det['EV_i'].sum(), EV)
+    display(Markdown(f"**Semana {semana}.** PV: parte del BAC de cada actividad que el plan (fechas más tempranas) preveía "
+                     f"tener hecha en la semana {semana}; EV = BAC × % realizado; AC: coste real anotado."))
+    display(_det.drop(columns=['PV_i', 'EV_i']))
+    display(Markdown(f"PV = {' + '.join(format(v, '.1f') for v in _det['PV_i'] if v > 0)} = **{PV:.1f}**; "
+                     f"EV = {' + '.join(format(v, '.1f') for v in _det['EV_i'] if v > 0)} = **{EV:.1f}**; "
+                     f"AC = {' + '.join(format(v, 'g') for v in datos_vg['AC'] if v > 0)} = **{AC:.1f}** k€."))
 indicadores = pd.DataFrame(filas).T
 indicadores.index.name = 'semana'
+display(Markdown("**Respuesta:** resumen de los tres puntos de control (k€):"))
 indicadores.round(1)
 
 # %% [markdown]
@@ -621,6 +649,10 @@ indicadores['CV'] = indicadores['EV'] - indicadores['AC']
 indicadores['SV'] = indicadores['EV'] - indicadores['PV']
 indicadores['CPI'] = indicadores['EV'] / indicadores['AC']
 indicadores['SPI'] = indicadores['EV'] / indicadores['PV']
+display(Markdown("CV = EV − AC (variación del coste), SV = EV − PV (variación del plazo), CPI = EV / AC y SPI = EV / PV:\n\n"
+                 + "\n".join(f"- Semana {s}: CV = {r.EV:.1f} − {r.AC:.1f} = {r.CV:.1f}; SV = {r.EV:.1f} − {r.PV:.1f} = {r.SV:.1f}; "
+                              f"CPI = {r.EV:.1f} / {r.AC:.1f} = {r.CPI:.3f}; SPI = {r.EV:.1f} / {r.PV:.1f} = {r.SPI:.3f}"
+                              for s, r in indicadores.iterrows())))
 indicadores.round(3)
 
 # %%
@@ -638,7 +670,15 @@ display(Markdown(pregunta_3))
 # %%
 indicadores['EAC'] = BAC_total / indicadores['CPI']
 indicadores['VAC'] = BAC_total - indicadores['EAC']
-indicadores[['CPI', 'EAC', 'VAC']].round({'CPI': 3, 'EAC': 1, 'VAC': 1})
+display(indicadores[['CPI', 'EAC', 'VAC']].round({'CPI': 3, 'EAC': 1, 'VAC': 1}))
+_eac = indicadores['EAC']
+Markdown("EAC = BAC / CPI, con BAC = " + " + ".join(format(v, 'g') for v in datos_proyecto['BAC']) + f" = {BAC_total:g} k€:\n\n"
+         + "\n".join(f"- Semana {s}: EAC = {BAC_total:g} / {r.CPI:.3f} = {r.EAC:.1f} k€ (VAC = {r.VAC:.1f})" for s, r in indicadores.iterrows())
+         + f"\n\n**Tendencia:** la previsión de coste final "
+         + ("crece en cada punto de control" if _eac.is_monotonic_increasing else
+            "decrece en cada punto de control" if _eac.is_monotonic_decreasing else "oscila")
+         + f" ({' → '.join(format(v, '.0f') for v in _eac)} k€): el sobrecoste previsto "
+         + ("aumenta: el rendimiento del coste empeora con el tiempo." if _eac.iloc[-1] > _eac.iloc[0] else "disminuye."))
 
 # %% [markdown]
 # ## Apartado 4
@@ -650,4 +690,10 @@ display(Markdown(pregunta_4))
 cpi = indicadores['CPI']; spi = indicadores['SPI']
 tend_c = 'mejora' if cpi.iloc[-1] > cpi.iloc[0] else 'empeora'
 tend_s = 'mejora' if spi.iloc[-1] > spi.iloc[0] else 'empeora'
-Markdown(f'''Entre el primer y el último punto de control el CPI {tend_c} ({cpi.iloc[0]:.2f} → {cpi.iloc[-1]:.2f}) y el SPI {tend_s} ({spi.iloc[0]:.2f} → {spi.iloc[-1]:.2f}). La previsión de coste final pasa de {indicadores["EAC"].iloc[0]:.0f} a {indicadores["EAC"].iloc[-1]:.0f} k€ frente a un presupuesto de {BAC_total:.0f}. Conviene recordar que el SPI tiende a 1 al final del proyecto aunque haya retraso, así que su mejora en los últimos puntos puede ser aparente; para el plazo es preferible la programación ganada. Tras el último control procede revisar las actividades pendientes: acelerar las críticas (si el sobrecoste compensa la penalización o los costes indirectos) y revisar las causas del sobrecoste en las ya ejecutadas para que no se repitan.''')
+_pend = [a for a in seguimiento_3.index if seguimiento_3.loc[a, 'performed'] < 100]
+_spi_ult = ('; entre los dos últimos puntos el SPI sube algo '
+            f'({spi.iloc[-2]:.2f} → {spi.iloc[-1]:.2f}), pero conviene recordar que el SPI tiende a 1 al final del proyecto aunque haya retraso, '
+            'así que esa mejora puede ser aparente; para el plazo es preferible la programación ganada') if spi.iloc[-1] > spi.iloc[-2] else ''
+Markdown(f'''Entre el primer y el último punto de control el CPI {tend_c} ({cpi.iloc[0]:.2f} → {cpi.iloc[-1]:.2f}) y el SPI {tend_s} ({spi.iloc[0]:.2f} → {spi.iloc[-1]:.2f}){_spi_ult}. La previsión de coste final pasa de {indicadores["EAC"].iloc[0]:.0f} a {indicadores["EAC"].iloc[-1]:.0f} k€ frente a un presupuesto de {BAC_total:.0f}.
+
+**Respuesta:** el proyecto se está {'deteriorando' if tend_c == 'empeora' else 'recuperando'} en coste{' y sigue retrasado (SPI < 1)' if spi.iloc[-1] < 1 else ''}. Tras el último control procede revisar las actividades pendientes ({lista_y(_pend)}): acelerar las críticas (si el sobrecoste compensa la penalización o los costes indirectos) y revisar las causas del sobrecoste en las ya ejecutadas para que no se repitan.''')

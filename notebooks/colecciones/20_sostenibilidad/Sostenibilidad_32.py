@@ -1,6 +1,6 @@
 # ---
 # title: Sostenibilidad 32
-# subtitle: "1,350 m³: B emite 149 t menos y retrasa 2 semana(s); recuperarlas cuesta 6 k€; al precio sombra de 150 €/t gana B comprimido"
+# subtitle: "1,350 m³: B emite 149 t menos y retrasa 2 semanas; recuperarlas cuesta 6 k€; al precio sombra de 150 €/t gana B comprimido"
 # coleccion: 20_sostenibilidad
 # variante: hormigon-bajo-carbono
 # nivel: 3
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -256,6 +260,24 @@ for item in sorted(dir()):
 
 # %%
 coste_semana, precio_sombra = 8, 150
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -291,9 +313,12 @@ h['emisiones (t CO₂)'] = M * h['emisiones (t CO₂/m³)']
 h['duración del proyecto (semanas)'] = [duracion, duracion_B]
 h['retraso (semanas)'] = [0, retraso]
 h['coste indirecto del retraso (k€)'] = h['retraso (semanas)'] * coste_semana
-display(h.iloc[:, 3:].round(1))
-camino_B = ' / '.join('–'.join(r) for r in proyecto.critical_path(duraciones_B).values())
-Markdown(f'''{M:,.0f} m³ de hormigón: B cuesta {h.iloc[1, 3] - h.iloc[0, 3]:.1f} k€ más y emite **{h.iloc[0, 4] - h.iloc[1, 4]:.0f} t menos**. Con B el proyecto dura {duracion_B} semanas (ruta crítica {camino_B}): **{retraso}** semana(s) de retraso, {retraso * coste_semana} k€ de coste indirecto.''')
+display(h.iloc[:, 3:].round(2))
+pA, pB = hormigones.iloc[0, 0], hormigones.iloc[1, 0]; fA, fB = hormigones.iloc[0, 1], hormigones.iloc[1, 1]
+criticas_h = [a for a in hormigonado if calendario.loc[a, 'H_total'] == 0]
+display(Markdown(f'''Volumen de hormigón: M = {suma_txt(datos_proyecto.loc[hormigonado, 'hormigon_m3'])} m³ (actividades {lista_y(hormigonado)}).\n\n- A: coste = {miles(M)} × {pA} / 1000 = {h.iloc[0, 3]:.2f} k€; emisiones = {miles(M)} × {fA} = {h.iloc[0, 4]:.1f} t.\n- B: coste = {miles(M)} × {pB} / 1000 = {h.iloc[1, 3]:.2f} k€; emisiones = {miles(M)} × {fB} = {h.iloc[1, 4]:.1f} t.\n\nCon B cada hormigonado dura una semana más. De ellas, {lista_y(criticas_h) if criticas_h else 'ninguna'} ''' + ('es crítica' if len(criticas_h) == 1 else 'son críticas') + ' con el hormigón A; la duración con B se recalcula con todas las semanas añadidas:'))
+display(explica_camino_critico(proyecto, duraciones_B, 'semanas'))
+Markdown(f'''**Respuesta:** B cuesta {h.iloc[1, 3] - h.iloc[0, 3]:.2f} k€ más en material y emite **{h.iloc[0, 4] - h.iloc[1, 4]:.1f} t menos**. El proyecto dura {duracion} semanas con A y {duracion_B} con B: **{plural(retraso, 'semana')}** de retraso, que al coste indirecto valen {retraso} × {coste_semana} = **{retraso * coste_semana} k€**.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -328,9 +353,12 @@ opciones = pd.DataFrame({'A': [h.iloc[0, 3], 0.0, 0.0, h.iloc[0, 4]],
 opciones.loc['coste monetario (k€)'] = opciones.iloc[:3].sum()
 opciones.loc['carbono al precio sombra (k€)'] = opciones.loc['emisiones (t CO₂)'] * precio_sombra / 1000
 opciones.loc['coste total (k€)'] = opciones.loc['coste monetario (k€)'] + opciones.loc['carbono al precio sombra (k€)']
-display(opciones.round(1))
+display(opciones.round(2))
 mejor = opciones.loc['coste total (k€)'].idxmin(); mas_barata = opciones.loc['coste monetario (k€)'].idxmin()
-Markdown(f'''Recuperar las {retraso} semana(s) cuesta **{coste_compresion:.0f} k€** (pasos: ''' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_c.items())) + f'''). En dinero gana **{mas_barata}**; al precio sombra de {precio_sombra} €/t gana **{mejor}** ({opciones.loc['coste total (k€)', mejor]:.1f} k€ frente a {opciones.loc['coste total (k€)', 'A']:.1f} de A).''')
+acts_c = [a for _, paso in sorted(pasos_c.items()) for a in paso]
+dif_dinero = opciones.loc['coste monetario (k€)', 'B comprimido'] - opciones.loc['coste monetario (k€)', 'A']
+dif_t = opciones.loc['emisiones (t CO₂)', 'A'] - opciones.loc['emisiones (t CO₂)', 'B comprimido']
+Markdown(f'''Ackoff-Sasieni sobre las duraciones con B (los hormigonados no bajan de su mínimo + 1) recupera las {plural(retraso, 'semana')} así: {pasos_txt(pasos_c)}; coste de la compresión = {suma_acts(acts_c, datos_proyecto['ucr'])} k€.\n\nCoste total de cada opción = hormigón + coste indirecto del retraso + compresión + emisiones × {precio_sombra} / 1000:\n\n''' + '\n'.join(f'- {c}: {opciones.loc["hormigón (k€)", c]:.2f} + {opciones.loc["coste indirecto del retraso (k€)", c]:.0f} + {opciones.loc["compresión (k€)", c]:.0f} + {opciones.loc["emisiones (t CO₂)", c]:.1f} × {precio_sombra} / 1000 = **{opciones.loc["coste total (k€)", c]:.2f} k€**' for c in opciones.columns) + f'''\n\nB comprimido cuesta {dif_dinero:.2f} k€ más que A en dinero y evita {dif_t:.1f} t: {miles(dif_dinero * 1000)} € / {dif_t:.1f} t = {dif_dinero * 1000 / dif_t:.0f} € por tonelada evitada, ''' + (f'''menos que el precio sombra de {precio_sombra} €/t.''' if dif_dinero * 1000 / dif_t < precio_sombra else f'''más que el precio sombra de {precio_sombra} €/t.''') + f'''\n\n**Respuesta:** recuperar el retraso cuesta {coste_compresion:.0f} k€. En dinero gana **{mas_barata}** ({opciones.loc['coste monetario (k€)', mas_barata]:.2f} k€); al precio sombra gana **{mejor}** ({opciones.loc['coste total (k€)', mejor]:.2f} k€ frente a {opciones.loc['coste total (k€)', 'A']:.2f} de A y {opciones.loc['coste total (k€)', 'B con retraso']:.2f} de B con retraso).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -339,7 +367,9 @@ Markdown(f'''Recuperar las {retraso} semana(s) cuesta **{coste_compresion:.0f} k
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **S15.** Los dos hormigones cumplen las prestaciones del pliego (resistencia característica y clase de exposición); el pliego, como dice el director, no fija el cemento, y «nunca hemos trabajado con CEM III» no es una prestación: B **no puede rechazarse por costumbre**. Lo que sí hay que calcular es su efecto en el cronograma (2 semana(s)), y se ha calculado. **S2.** Con el precio sombra la opción correcta es la de menor coste total: **B comprimido** (187.6 k€ frente a 193.1 de A); en dinero A es más barata (128.2 frente a 145.1 de B comprimido), y esa diferencia es exactamente lo que la política de la organización decide pagar por 149 t. **S6.** Las emisiones de fabricación del cemento son **alcance 3** del proyecto (material comprado): ser «del cementero» no las saca del inventario, igual que el acero importado. **S1.** Sustituir el cemento **minimiza** (149 t menos con la misma estructura); **evitar** sería rediseñar para necesitar menos hormigón; A más créditos sería compensar.
+# **S15.** Los dos hormigones cumplen las prestaciones del pliego (resistencia característica y clase de exposición); el pliego, como dice el director, no fija el cemento, y «nunca hemos trabajado con CEM III» no es una prestación: B **no puede rechazarse por costumbre**. Lo que sí hay que calcular es su efecto en el cronograma (2 semanas), y se ha calculado. **S2.** Con el precio sombra la opción correcta es la de menor coste total: **B comprimido** (187.58 k€ frente a 193.05 de A); en dinero A es más barata (128.25 frente a 145.05 de B comprimido), y esa diferencia es exactamente lo que la política de la organización decide pagar por 148.5 t. **S6.** Las emisiones de fabricación del cemento son **alcance 3** del proyecto (material comprado): ser «del cementero» no las saca del inventario, igual que el acero importado. **S1.** Sustituir el cemento **minimiza** (148.5 t menos con la misma estructura); **evitar** sería rediseñar para necesitar menos hormigón; A más créditos sería compensar.
+#
+# **Respuesta:** B **no** puede rechazarse por costumbre (cumple las prestaciones); al precio sombra la opción correcta es **B comprimido**; las emisiones del cemento son **alcance 3** del proyecto; B **minimiza**, A no reduce nada (con créditos sería compensar) y evitar exige rediseñar.
 
 # %%
 preguntas_test = [

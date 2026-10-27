@@ -5,7 +5,7 @@
 # Uso (desde la raíz del repositorio, en el Mac):
 #   scripts/test_cluster.sh                 # toda la suite (src/)
 #   scripts/test_cluster.sh test_core.py    # solo esos ficheros (relativos a src/)
-# Variables: PMULE_TROZO=8  (tests de tests_ejercicios por tarea), PMULE_MEM=4G
+# Variables: PMULE_TROZO=8  (tests de tests_ejercicios por tarea), PMULE_MEM=4G, PMULE_PARTITION=gvisResearch
 #
 # Pasos: conexión → rsync de ida (directorio ~/pmule_test, independiente del de
 # render_cluster.sh, así que pueden convivir) → recoge los tests con pytest en
@@ -65,7 +65,7 @@ rsync -az --include='[0-9][0-9][0-9].txt' --exclude='*' "$dir/" "$HOST:$REMOTO/$
 echo "→ sbatch: $total test(s) en $n tarea(s)"
 t0=$(date +%s)
 estado=0
-ssh "$HOST" "cd ~/$REMOTO && sbatch --wait --parsable${PMULE_MEM:+ --mem=$PMULE_MEM} --array=1-$n repo/scripts/cluster/test_array.sbatch $tareas" || estado=1
+ssh "$HOST" "cd ~/$REMOTO && sbatch --wait --parsable${PMULE_PARTITION:+ --partition=$PMULE_PARTITION}${PMULE_MEM:+ --mem=$PMULE_MEM} --array=1-$n repo/scripts/cluster/test_array.sbatch $tareas" || estado=1
 echo "→ Tiempo en el clúster: $(( $(date +%s) - t0 )) s"
 
 ok="$(ssh "$HOST" "ls ~/$REMOTO/out/*.ok 2>/dev/null | wc -l" | tr -d ' ')"

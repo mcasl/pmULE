@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -262,7 +266,21 @@ display(Markdown(pregunta_1))
 sin_carbono = pd.DataFrame({col: ciclo_de_vida(col, 0) for col in datos.columns})
 display(sin_carbono.round(1))
 dif0 = sin_carbono.loc['coste del ciclo de vida', 'A (estándar)'] - sin_carbono.loc['coste del ciclo de vida', 'B (eficiente)']
-Markdown(f'''Factor de anualidad {anualidad:.3f} ({N} años al {k:.0%}). Sin el carbono, B es ''' + ('**más barata**' if dif0 > 0 else '**más cara**') + f''' que A en el ciclo de vida: {abs(dif0):.1f} k€ de diferencia, aunque cueste {datos.iloc[0, 1] - datos.iloc[0, 0]:.0f} k€ más al comprarla.''')
+def lineas_lcc(tabla, con_carbono):
+    lineas = []
+    for col in datos.columns:
+        I, c, m, fin = datos[col]; t = tabla[col]
+        txt = (f'- **{col}**: energía = {c:g} MWh × {precio_energia} k€/MWh × {anualidad:.3f} = {t["energía (VA)"]:.1f}; '
+               f'mantenimiento = {m:g} × {anualidad:.3f} = {t["mantenimiento (VA)"]:.1f}; '
+               f'retirada = {fin:g} / {1 + k:g}^{N} = {t["retirada (VA)"]:.1f}; ')
+        if con_carbono:
+            txt += f'carbono = {c:g} × {factor} t/MWh × {precio_sombra} €/t / 1000 × {anualidad:.3f} = {t["carbono (VA)"]:.1f}; '
+        partes = [I, t['energía (VA)'], t['mantenimiento (VA)'], t['retirada (VA)']] + ([t['carbono (VA)']] if con_carbono else [])
+        txt += 'ciclo de vida = ' + ' + '.join(f'{x:.1f}' for x in partes) + f' = **{t["coste del ciclo de vida"]:.1f} k€**'
+        lineas.append(txt)
+    return '\n'.join(lineas)
+barata0 = 'B (eficiente)' if dif0 > 0 else 'A (estándar)'
+Markdown(f'''Los costes que se repiten cada año (energía, mantenimiento) se llevan a valor actual con el factor de anualidad a = (1 − (1 + k)^−N) / k = (1 − {1 + k:g}^−{N}) / {k:g} = **{anualidad:.3f}**; la retirada, que ocurre una vez en el año {N}, se descuenta con 1 / (1 + k)^N (precio de la energía: {precio_energia} €/kWh = {precio_energia} k€/MWh).\n\n''' + lineas_lcc(sin_carbono, False) + f'''\n\n**Respuesta:** sin el carbono la más barata en el ciclo de vida es **{barata0}**, por **{abs(dif0):.1f} k€** ''' + f'''(A: {sin_carbono.loc['coste del ciclo de vida', 'A (estándar)']:.1f} k€; B: {sin_carbono.loc['coste del ciclo de vida', 'B (eficiente)']:.1f} k€), aunque B cueste {datos.iloc[0, 1] - datos.iloc[0, 0]:.0f} k€ más al comprarla.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -279,7 +297,8 @@ dif = con_carbono.loc['coste del ciclo de vida', 'A (estándar)'] - con_carbono.
 emisiones = datos.loc['consumo eléctrico (MWh/año)'] * factor * N
 delta_c = (datos.iloc[1, 0] - datos.iloc[1, 1]) * factor / 1000 * anualidad
 p_equilibrio = -dif0 / delta_c
-Markdown(f'''Con el carbono a {precio_sombra} €/t, B es más barata en **{dif:.1f} k€**. Emisiones en {N} años: A {emisiones.iloc[0]:.0f} t, B {emisiones.iloc[1]:.0f} t. Las dos alternativas se igualan con un precio del carbono de **{p_equilibrio:.0f} €/t**''' + (' (negativo: B gana incluso sin carbono).' if p_equilibrio < 0 else '; por encima gana B.'))
+cA, cB = datos.iloc[1, 0], datos.iloc[1, 1]
+Markdown(lineas_lcc(con_carbono, True) + f'''\n\nEmisiones en los {N} años = consumo × factor × N: A {cA:g} × {factor} × {N} = **{emisiones.iloc[0]:.0f} t**; B {cB:g} × {factor} × {N} = **{emisiones.iloc[1]:.0f} t**.\n\nPrecio de equilibrio: cada €/t de precio del carbono encarece A más que B en (consumo A − consumo B) × factor × a / 1000 = ({cA:g} − {cB:g}) × {factor} × {anualidad:.3f} / 1000 = {delta_c:.4f} k€; para igualar los costes del ciclo de vida sin carbono hace falta p* = (LCC sin carbono de B − LCC sin carbono de A) / {delta_c:.4f} = {-dif0:.1f} / {delta_c:.4f} = **{p_equilibrio:.0f} €/t**''' + ('. Es negativo: B ya es más barata sin carbono y lo es con cualquier precio positivo; no hay un precio de equilibrio con sentido.' if p_equilibrio < 0 else '; con un precio mayor gana B, y con uno menor, A.') + f'''\n\n**Respuesta:** con el carbono a {precio_sombra} €/t, B es más barata en **{dif:.1f} k€** ''' + f'''(A: {con_carbono.loc['coste del ciclo de vida', 'A (estándar)']:.1f} k€; B: {con_carbono.loc['coste del ciclo de vida', 'B (eficiente)']:.1f} k€); emite {emisiones.iloc[0] - emisiones.iloc[1]:.0f} t menos en la vida útil.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -289,6 +308,8 @@ display(Markdown(pregunta_3))
 
 # %% [markdown]
 # **S3.** El criterio es el coste del ciclo de vida, no el precio de adquisición: la LCSP (art. 148) lo define con los mismos sumandos del apartado 1 y permite añadir las externalidades con precio. Sin el carbono A es más barata por 6.3 k€, pero **S2** obliga a contar la externalidad al precio que la organización ha fijado, y con 250 €/t B gana por 20.5 k€ (el precio de equilibrio es 59 €/t): la respuesta es **B**. **S4.** «El consumo no es de este proyecto» confunde el ciclo de vida del proceso con el de los entregables: quien decide el equipo decide la factura de energía de 12 años, y la decisión se toma ahora. Que el coste lo pague otro presupuesto (mantenimiento) no lo saca del cálculo; lo saca de la vista.
+#
+# **Respuesta:** se elige **B** por el coste del ciclo de vida con el carbono al precio sombra (S3 y S2); decir que el consumo «no es de este proyecto» no es correcto (S4).
 
 # %%
 preguntas_test = [
@@ -327,4 +348,4 @@ display(Markdown(pregunta_4))
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados, incluidos los que no están en la mesa (la comunidad, los trabajadores de la cadena, quien opere o desmantele lo construido, las generaciones siguientes) y qué pierde o gana cada uno con las cifras del bloque A; (2) formular al menos dos alternativas además de la propuesta, situándolas en la pirámide (compensar, restaurar, minimizar, evitar); (3) someter cada alternativa a tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería ante el inspector, el cliente o la prensa?) y ciclo de vida (¿quién paga el impacto y cuándo?)—; (4) decidir y redactar la comunicación con las cifras. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
 # %% [markdown]
-# Al director de compras: la tabla del apartado 2; B cuesta 90 k€ más hoy y 20 k€ menos en 12 años al precio sombra (-6 k€ sin él). Al órgano de contratación: que el pliego fije el coste del ciclo de vida como criterio de adjudicación con los parámetros publicados (vida útil, tasa, precio de la energía, factor de emisión y precio del carbono), que es lo que la ley permite y la política de la organización exige. Prueba del ciclo de vida: ¿quién paga los 76 MWh al año de diferencia durante 12 años?
+# Al director de compras: la tabla del apartado 2; B cuesta 90 k€ más hoy y 20 k€ menos en 12 años al precio sombra (sin él, 6 k€ más). Al órgano de contratación: que el pliego fije el coste del ciclo de vida como criterio de adjudicación con los parámetros publicados (vida útil, tasa, precio de la energía, factor de emisión y precio del carbono), que es lo que la ley permite y la política de la organización exige. Prueba del ciclo de vida: ¿quién paga los 76 MWh al año de diferencia durante 12 años?

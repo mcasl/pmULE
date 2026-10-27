@@ -1,6 +1,6 @@
 # ---
 # title: Sostenibilidad 03
-# subtitle: "demolición mecánica con contenedor único: 1 semana(s) y 10 k€ frente a 12.4 k€ más de gestión y el 93% valorizable a vertedero; art. 30 Ley 7/2022"
+# subtitle: "demolición mecánica con contenedor único: 1 semana y 10 k€ frente a 12.4 k€ más de gestión y el 93% valorizable a vertedero; art. 30 Ley 7/2022"
 # coleccion: 20_sostenibilidad
 # variante: residuos-de-obra
 # nivel: 2
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -232,7 +236,7 @@ datos_enunciado
 # Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).
 
 # %%
-pregunta_1 = "1. (A) Calcule la duración del proyecto con la demolición selectiva y con la mecánica (I 1 semana(s) más corta). ¿Cuántas semanas ahorra la propuesta y cuánto valen al coste semanal del equipo?  "
+pregunta_1 = "1. (A) Calcule la duración del proyecto con la demolición selectiva y con la mecánica (I 1 semana más corta). ¿Cuántas semanas ahorra la propuesta y cuánto valen al coste semanal del equipo?  "
 pregunta_2 = "2. (A) Calcule el coste de gestión de los residuos en las dos opciones (tarifas más impuesto al vertido) y la fracción del residuo que se valoriza en cada una. ¿Cuál es el resultado económico neto de la propuesta?  "
 pregunta_3 = "3. (B) Según el criterio y la norma de referencia, ¿puede ejecutarse la propuesta del jefe de obra? ¿Qué fracciones hay que separar y en qué escalón de la jerarquía de residuos queda cada opción?  "
 pregunta_4 = "4. (C) ¿Qué propone al jefe de obra y qué comunica a la dirección facultativa? Aplique la rúbrica.  "
@@ -249,6 +253,24 @@ demolicion, semanas_menos, coste_semana = 'I', 1, 10
 fracciones = ['hormigon', 'ceramica', 'madera', 'metal', 'yeso', 'plastico']
 tarifa_separado = {'hormigon': 6, 'ceramica': 8, 'madera': 25, 'metal': -120, 'yeso': 45, 'plastico': 60}
 tarifa_mixto, impuesto_mixto, impuesto_inerte = 38, 10, 1.5
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -274,8 +296,7 @@ duraciones_mecanica = datos_proyecto['duration'].copy()
 duraciones_mecanica[demolicion] -= semanas_menos
 duracion_mecanica = int(proyecto.duration(duraciones_mecanica))
 ahorro_semanas = duracion - duracion_mecanica
-camino = ' / '.join('–'.join(r) for r in proyecto.critical_path(duraciones_mecanica).values())
-Markdown(f'''Con demolición selectiva: **{duracion}** semanas; con demolición mecánica: **{duracion_mecanica}** (ruta crítica {camino}). La propuesta ahorra **{ahorro_semanas}** semana(s), que al coste del equipo valen **{ahorro_semanas * coste_semana} k€**.''')
+Markdown(f'''Con demolición selectiva el proyecto dura **{duracion}** semanas (camino crítico {criticas_txt(proyecto, datos_proyecto['duration'])}); {demolicion} es crítica, de modo que acortarla acorta el proyecto mientras siga siéndolo. Con demolición mecánica ({demolicion} pasa de {datos_proyecto.loc[demolicion, 'duration']} a {plural(duraciones_mecanica[demolicion], 'semana')}) dura **{duracion_mecanica}** (camino crítico {criticas_txt(proyecto, duraciones_mecanica)})''' + ('.' if ahorro_semanas == semanas_menos else f''': sólo se ganan {plural(ahorro_semanas, 'semana')} de las {semanas_menos}, porque otra ruta pasa a ser crítica.''') + f'''\n\n**Respuesta:** la propuesta ahorra **{plural(ahorro_semanas, 'semana')}** ({duracion} − {duracion_mecanica}), que al coste del equipo valen {ahorro_semanas} × {coste_semana} = **{ahorro_semanas * coste_semana} k€**.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -296,12 +317,12 @@ tabla = pd.DataFrame({'toneladas': toneladas,
                       'mixto: tarifa + impuesto (€/t)': tarifa_mixto + impuesto_por_fraccion,
                       'mixto: coste (€)': toneladas * (tarifa_mixto + impuesto_por_fraccion)})
 tabla.loc['Total'] = tabla.sum(); tabla.loc['Total', ['separado: tarifa (€/t)', 'mixto: tarifa + impuesto (€/t)']] = None
-display(tabla.round(1))
+display(tabla.rename(index={'hormigon': 'hormigón', 'ceramica': 'cerámica', 'plastico': 'plástico'}).round(1))
 coste_separado = float(tabla.loc['Total', 'separado: coste (€)']) / 1000
 coste_mixto = float(tabla.loc['Total', 'mixto: coste (€)']) / 1000
 valorizado = float(toneladas[['hormigon', 'ceramica', 'madera', 'metal']].sum()) / float(toneladas.sum())
 neto = ahorro_semanas * coste_semana - (coste_mixto - coste_separado)
-Markdown(f'''La parte inerte (hormigón y cerámica) es el {fraccion_inerte:.0%} del contenedor''' + (f''': supera el 75 % y paga {impuesto_inerte} €/t; el resto, {impuesto_mixto} €/t. ''' if fraccion_inerte > 0.75 else f''': no supera el 75 % y todo el contenedor paga {impuesto_mixto} €/t. ''') + f'''Gestión separada: **{coste_separado:.1f} k€** (el metal se cobra; las fracciones recicladas no pagan impuesto); mezclado a vertedero: **{coste_mixto:.1f} k€**. Se valoriza el **{valorizado:.0%}** del residuo frente al 0 % en vertedero. Resultado neto de la propuesta: {ahorro_semanas * coste_semana} − {coste_mixto - coste_separado:.1f} = **{neto:.1f} k€**''' + (' (pierde dinero además de incumplir).' if neto < 0 else ' a favor de la propuesta, antes de la sanción.'))
+Markdown(f'''La parte inerte (hormigón y cerámica) es el {fraccion_inerte:.0%} del contenedor''' + (f''': supera el 75 % y paga {impuesto_inerte} €/t; el resto, {impuesto_mixto} €/t. ''' if fraccion_inerte > 0.75 else f''': no supera el 75 % y todo el contenedor paga {impuesto_mixto} €/t. ''') + f'''Cada fila de la tabla es toneladas × tarifa. Gestión separada: **{coste_separado:.1f} k€** (el metal se cobra; las fracciones recicladas no pagan impuesto); mezclado a vertedero: **{coste_mixto:.1f} k€**.\n\nFracción valorizada con la separación (hormigón y cerámica a reciclado de áridos, madera y metal a valorización): ({suma_txt(toneladas[['hormigon', 'ceramica', 'madera', 'metal']])}) / {toneladas.sum():.0f} = **{valorizado:.0%}**; con el contenedor único a vertedero, **0 %**.\n\nResultado neto de la propuesta = ahorro de plazo − sobrecoste de gestión = {ahorro_semanas * coste_semana} − ({coste_mixto:.1f} − {coste_separado:.1f}) = {ahorro_semanas * coste_semana} − {coste_mixto - coste_separado:.1f} = **{neto:.1f} k€**''' + (': la propuesta **pierde dinero** además de incumplir la norma.' if neto < 0 else ': la propuesta ganaría ese dinero, pero, como se ve en el apartado 3, no puede ejecutarse.') + f'''\n\n**Respuesta:** gestión separada {coste_separado:.1f} k€ con el {valorizado:.0%} valorizado; contenedor único {coste_mixto:.1f} k€ con el 0 % valorizado; resultado neto de la propuesta, {neto:.1f} k€.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -310,7 +331,9 @@ Markdown(f'''La parte inerte (hormigón y cerámica) es el {fraccion_inerte:.0%}
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma.** Desde el 1 de julio de 2022 los residuos no peligrosos de la obra se clasifican en al menos seis fracciones, preferentemente en la propia obra (Ley 7/2022, art. 30.2), y desde el 1 de enero de 2024 la demolición se hace preferiblemente de forma selectiva, garantizando la retirada de esas fracciones previo estudio de sus cantidades (art. 30.3): la demolición mecánica con contenedor único a vertedero **no puede ejecutarse**, con independencia de lo que ahorre, porque incumple la clasificación del 30.2 aunque se discuta el alcance del 30.3. Hay que separar las seis fracciones que aparecen en la tabla: hormigón y cerámica (minerales), madera, metal, yeso y plástico. **S8.** El contenedor único a vertedero es **eliminación**, el último escalón de la jerarquía, cuando el 93% del residuo tiene reciclado o valorización disponibles; el plan del proyecto está en los escalones de reciclado y valorización. **S1.** Y en la pirámide del PMBOK 8 la propuesta ni siquiera compensa: traslada el impacto. La respuesta B no depende del apartado 2 (que sólo muestra que, además, es mal negocio).
+# **Norma.** Desde el 1 de julio de 2022 los residuos no peligrosos de la obra se clasifican en al menos seis fracciones, preferentemente en la propia obra (Ley 7/2022, art. 30.2), y desde el 1 de enero de 2024 la demolición se hace preferiblemente de forma selectiva, garantizando la retirada de esas fracciones previo estudio de sus cantidades (art. 30.3): la demolición mecánica con contenedor único a vertedero **no puede ejecutarse**, con independencia de lo que ahorre, porque incumple la clasificación del 30.2 aunque se discuta el alcance del 30.3. Las seis fracciones de la ley son madera, minerales, metales, vidrio, plástico y yeso; esta obra genera cinco de ellas y hay que separarlas: minerales (hormigón y cerámica), madera, metal, yeso y plástico (no genera vidrio). **S8.** El contenedor único a vertedero es **eliminación**, el último escalón de la jerarquía, cuando el 93% del residuo tiene reciclado o valorización disponibles; el plan del proyecto está en los escalones de reciclado y valorización. **S1.** Y en la pirámide del PMBOK 8 la propuesta ni siquiera compensa: traslada el impacto. La respuesta B no depende del apartado 2, que sólo muestra que, además, es mal negocio.
+#
+# **Respuesta:** **no** puede ejecutarse; hay que separar en la obra las fracciones que se generan (minerales, madera, metal, yeso y plástico); el plan del proyecto está en reciclado y valorización, y el contenedor único a vertedero en eliminación.
 
 # %%
 preguntas_test = [
@@ -349,4 +372,4 @@ display(Markdown(pregunta_4))
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados, incluidos los que no están en la mesa (la comunidad, los trabajadores de la cadena, quien opere o desmantele lo construido, las generaciones siguientes) y qué pierde o gana cada uno con las cifras del bloque A; (2) formular al menos dos alternativas además de la propuesta, situándolas en la pirámide (compensar, restaurar, minimizar, evitar); (3) someter cada alternativa a tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería ante el inspector, el cliente o la prensa?) y ciclo de vida (¿quién paga el impacto y cuándo?)—; (4) decidir y redactar la comunicación con las cifras. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
 # %% [markdown]
-# Al jefe de obra: la opción no está en la tabla (legalidad); si el acopio por fracciones «ocupa media obra», el problema es de espacio y se resuelve con contenedores por fracción retirados con más frecuencia o con separación en planta de un gestor autorizado para ello, no con un vertedero. Si de verdad hacen falta las 1 semana(s), se buscan en otra actividad crítica con Ackoff (lección 10), no en la norma. A la dirección facultativa: el plan de gestión de residuos se cumple como está, con las cifras del apartado 2 (93% valorizado, 1.9 k€). Prueba de publicidad: ¿firmaría el certificado final de obra con el estudio de gestión de residuos incumplido?
+# Al jefe de obra: la opción no está en la tabla (legalidad); si el acopio por fracciones «ocupa media obra», el problema es de espacio y se resuelve con contenedores por fracción retirados con más frecuencia o con separación en planta de un gestor autorizado para ello, no con un vertedero. Si de verdad hace falta ganar 1 semana, se buscan en otra actividad crítica con Ackoff (lección 10), no en la norma. A la dirección facultativa: el plan de gestión de residuos se cumple como está, con las cifras del apartado 2 (93% valorizado, 1.9 k€). Prueba de publicidad: ¿firmaría el certificado final de obra con el estudio de gestión de residuos incumplido?

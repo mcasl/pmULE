@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -299,6 +303,11 @@ def tabla_alimentacion(plan):
     filas = {}
     for nombre, fila in plan.alimentacion.iterrows():
         ms = [int(x) for x in str(fila['margenes']).split(' + ')]
+        acts = str(fila['cadena_alimentacion']).split(' - ')
+        if len(acts) == len(ms):
+            marg = '; '.join(f"{a}: {int(plan.segura[a])} − {int(plan.agresiva[a])} = {m}" for a, m in zip(acts, ms))
+        else:
+            marg = ' + '.join(map(str, ms))
         if plan.metodo_alimentacion == 'cortar_pegar':
             calc = f"0,5·({' + '.join(map(str, ms))}) = {0.5 * sum(ms):g} → {int(fila['requerido'])}"
         else:
@@ -307,6 +316,7 @@ def tabla_alimentacion(plan):
         fin_p = int(plan.inicio_temprano[fila['desde']] + plan.agresiva[fila['desde']])
         filas[nombre] = {'arco': f"{fila['desde']} → {fila['antes_de']}",
                          'cadena de alimentación': fila['cadena_alimentacion'],
+                         'márgenes = segura − agresiva': marg,
                          'colchón requerido': calc,
                          'holgura disponible = inicio de la cadena − fin más temprano': f"{entrada} − {fin_p} = {int(fila['disponible'])}",
                          'colchón adoptado = mín(requerido, disponible)': int(fila['adoptado'])}
@@ -348,6 +358,8 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
+        partes_c = ([f"{min(r, d):g} ({a})" for a, r, d in zip(curso.index, curso['restante'], curso['agresiva'])]
+                    + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()])
         hecho = float(inf['avance'])
         largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
                   for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
@@ -355,23 +367,49 @@ def resumen_informes(plan, informes):
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
-                                  + (f" ({'; '.join(largas)})" if largas else '')),
+            'cadena completada = (T − restante)/T': ((f"({T} − ({' + '.join(partes_c)}))/{T} = ({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                                      if len(partes_c) > 1 else
+                                                      f"({T} − {partes_c[0]})/{T} = {pa:.1f} %" if partes_c else f"{T}/{T} = {pa:.1f} %")
+                                                     + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
-            'zona': inf['zona']}
+            'zona': zona_txt(pc, inf['limite_verde'], inf['limite_roja'], inf['zona'])}
     return pd.DataFrame(columnas)
+
+
+def zona_txt(pc, lv, lr, zona):
+    """Comparación del consumo con los dos límites que decide la zona."""
+    if zona == 'verde':
+        return f'{pc:.1f} % < {lv:.1f} % (límite verde) → verde'
+    nota = ' (justo en la frontera: cuenta como la zona superior)' if min(abs(pc - lv), abs(pc - lr)) < 1e-6 else ''
+    if zona == 'roja':
+        return f'{pc:.1f} % ≥ {lr:.1f} % (límite rojo) → roja' + nota
+    return f'{lv:.1f} % ≤ {pc:.1f} % < {lr:.1f} % → amarilla' + nota
+
+
+def tabla_rutas(proyecto, R, valores):
+    """Rutas con sus actividades en orden de ejecución y su duración como suma término a término."""
+    filas, cal = {}, proyecto.calendar(valores)
+    for i, r in enumerate(R.index, 1):
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        total = int(sum(int(valores[a]) for a in acts))
+        filas[f'ruta {i}'] = {'actividades': ' - '.join(acts),
+                              'duración = suma': ' + '.join(f'{a}({int(valores[a])})' for a in acts) + f' = {total}'}
+    return pd.DataFrame(filas).T
+
+
+def margenes_txt(plan, acts):
+    """«4 + 2 + 3 = 9» con los márgenes de las actividades dadas."""
+    ms = [int(plan.margen[a]) for a in acts]
+    return f"{' + '.join(map(str, ms))} = {sum(ms)}" if len(ms) > 1 else f'{sum(ms)}'
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo PERT con las estimaciones agresivas y la cadena crítica"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
@@ -406,6 +444,10 @@ resumen = resumen_informes(plan, seguimientos)
 #| label: tbl-consumo
 resumen.loc[['fin previsto = día + restante de la cadena', 'colchón consumido']]
 
+# %%
+Markdown('**Respuesta:** ' + '; '.join(f"día {s['dia']}: fin previsto el día {s['fin_previsto']:g}, colchón consumido {plural(s['consumo'], 'día')} "
+                                      f"({s['pct_consumo']:.1f} % de {CP})" for s in seguimientos) + '.')
+
 # %% [markdown]
 # ## Apartado 2
 
@@ -413,12 +455,12 @@ resumen.loc[['fin previsto = día + restante de la cadena', 'colchón consumido'
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Lo completado de la cadena es su duración menos lo que le queda: cuenta entera cada actividad terminada (por su duración agresiva, aunque haya tardado más o menos) y, de la que está en curso, su duración agresiva menos lo que le queda (cero si le queda más que eso).
+# Lo completado de la cadena es su duración $T$ menos lo que le queda: cuenta entera cada actividad terminada (por su duración agresiva, aunque haya tardado más o menos) y, de la que está en curso, su duración agresiva menos lo que le queda (cero si le queda más que eso); por eso el restante de la que está en curso se recorta a su duración agresiva.
 
 # %%
 #| tbl-cap: "Cadena completada y BPI"
 #| label: tbl-bpi
-resumen.loc[['cadena completada', 'BPI = % colchón restante / % cadena restante']]
+resumen.loc[['cadena completada = (T − restante)/T', 'BPI = % colchón restante / % cadena restante']]
 
 # %% [markdown]
 # ## Apartado 3
@@ -432,6 +474,9 @@ display(Markdown(pregunta_3))
 resumen.loc[['límite verde = 10 + 0,6·avance', 'límite rojo = 30 + 0,6·avance', 'zona']]
 
 # %%
+Markdown('**Respuesta:** ' + '; '.join(f"día {s['dia']}, zona {s['zona']}" for s in seguimientos) + '.')
+
+# %%
 #| fig-cap: "Gráfico de fiebre con los tres informes"
 #| label: fig-fiebre
 pinta_tikz(grafico_fiebre_tikz(seguimientos))
@@ -443,10 +488,19 @@ pinta_tikz(grafico_fiebre_tikz(seguimientos))
 display(Markdown(pregunta_4))
 
 # %%
-acciones = {'verde': 'no hace falta actuar: el colchón se consume a un ritmo menor que el avance de la cadena',
+acciones = {'verde': 'no hace falta actuar: el consumo del colchón está por debajo del límite verde para ese avance',
             'amarilla': 'preparar un plan de recuperación (refuerzos, solapes, reasignar a quien termine), sin ejecutarlo todavía',
             'roja': 'ejecutar el plan de recuperación: si no, la fecha comprometida está en peligro'}
-Markdown('\n'.join(f"- Día {s['dia']} (zona {s['zona']}, BPI {s['bpi']:.2f}): {acciones[s['zona']]}." for s in seguimientos))
+def matiz(s):
+    if s['zona'] != 'verde' and s['bpi'] >= 1:
+        return (f" El BPI ({s['bpi']:.2f} ≥ 1) dice que aún queda proporcionalmente más colchón ({100 - s['pct_consumo']:.1f} %) que cadena "
+                f"({100 - s['pct_avance']:.1f} %), pero el gráfico de fiebre es más exigente: con el {s['pct_avance']:.1f} % de cadena completada sólo admite sin alarma "
+                f"un consumo de 10 + 0,6·{s['pct_avance']:.1f} = {s['limite_verde']:.1f} %, menor que el avance, para guardar reserva por si lo que queda de cadena también se retrasa.")
+    if s['zona'] == 'verde' and s['bpi'] < 1:
+        return (f" Aunque el BPI ({s['bpi']:.2f}) es menor que 1, al principio de la cadena el gráfico de fiebre tolera ese consumo; "
+                "conviene vigilar la tendencia en el siguiente informe.")
+    return ''
+Markdown('\n'.join(f"- Día {s['dia']} (zona {s['zona']}, BPI {s['bpi']:.2f}): {acciones[s['zona']]}.{matiz(s)}" for s in seguimientos))
 
 # %% [markdown]
 # Con estimaciones agresivas, la mitad de las actividades terminarán después de su duración prevista: controlar el cumplimiento de cada fecha de fin generaría alarmas continuas y presiones para volver a inflar las estimaciones. Lo que importa es si queda colchón suficiente para lo que queda de cadena, y para eso hace falta la **duración restante** de lo que está en curso: con ella se calcula el fin previsto, el consumo del colchón y el BPI, una única señal que todo el equipo entiende.

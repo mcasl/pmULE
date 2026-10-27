@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -229,6 +233,28 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 plazo = 20
 
+# %%
+def tabla_rutas(R, medias, varianzas=None, calendario=None, dec=0, dec_var=3, nombre='media'):
+    """Media (y varianza) de cada ruta con la suma término a término; actividades en orden de ejecución."""
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        m = float(sum(float(medias[a]) for a in acts))
+        fila = {'actividades': ' – '.join(acts),
+                f'{nombre} = suma': ' + '.join(f'{a}({float(medias[a]):.{dec}f})' for a in acts) + f' = {m:.{dec}f}',
+                nombre: m}
+        if varianzas is not None:
+            v = float(sum(float(varianzas[a]) for a in acts))
+            fila['varianza = suma'] = ' + '.join(f'{a}({float(varianzas[a]):.{dec_var}f})' for a in acts) + f' = {v:.{dec_var}f}'
+            fila['varianza'] = v
+            fila['σ = √varianza'] = v ** 0.5
+        filas[r] = fila
+    t = pd.DataFrame(filas).T
+    for c in (nombre, 'varianza', 'σ = √varianza'):
+        if c in t:
+            t[c] = t[c].astype(float)
+    return t
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -247,15 +273,17 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Media y varianza de cada ruta"
 #| label: tbl-rutas
 R = proyecto.path_matrix(dummies=False)
-medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')
-varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'varianza', 3)
-pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)
+calendario = proyecto.calendar(datos_proyecto['duration'])
+rutas = tabla_rutas(R, datos_proyecto['duration'], datos_proyecto['variance'], calendario)
+limpia_tabla(rutas, decimales=3)
 
 # %%
 ruta1 = R.index[R['B'] == 1][0]; ruta2 = R.index[R['E'] == 1][0]
-mu1, mu2 = float(medias.loc[ruta1, 'media']), float(medias.loc[ruta2, 'media'])
-v1, v2 = float(varianzas.loc[ruta1, 'varianza']), float(varianzas.loc[ruta2, 'varianza'])
-Markdown(f'En media la ruta crítica es {ruta1 if mu1 >= mu2 else ruta2} ({max(mu1, mu2):.0f} semanas frente a {min(mu1, mu2):.0f}).')
+mu1, mu2 = float(rutas.loc[ruta1, 'media']), float(rutas.loc[ruta2, 'media'])
+v1, v2 = float(rutas.loc[ruta1, 'varianza']), float(rutas.loc[ruta2, 'varianza'])
+txt1, txt2 = rutas.loc[ruta1, 'actividades'], rutas.loc[ruta2, 'actividades']
+Markdown(f'**Respuesta:** en media la ruta crítica es {txt1 if mu1 >= mu2 else txt2} ({max(mu1, mu2):g} semanas frente a {min(mu1, mu2):g} '
+         f'de {txt2 if mu1 >= mu2 else txt1}).')
 
 # %% [markdown]
 # ## Apartado 2
@@ -268,9 +296,14 @@ display(Markdown(pregunta_2))
 
 # %%
 mu_dif, var_dif = mu2 - mu1, v1 + v2
+signo = lambda x: f'{x:g}'.replace('-', '−')
 sigma_dif = np.sqrt(var_dif)
-p_ruta2_critica = 1 - norm.cdf((0 - mu_dif) / sigma_dif)
-Markdown(f'''L₂ − L₁ ~ N({mu2:.0f} − {mu1:.0f} = {mu_dif:.0f}, {v1:.3f} + {v2:.3f} = {var_dif:.3f}), σ = {sigma_dif:.3f}. P(L₂ > L₁) = P(Z > (0 − ({mu_dif:.0f})) / {sigma_dif:.3f}) = 1 − Φ({-mu_dif / sigma_dif:.3f}) = {p_ruta2_critica:.4f}: la ruta «no crítica» resulta ser la más larga el {p_ruta2_critica * 100:.1f} % de las veces.''')
+p_ruta2_critica = 1 - norm.cdf(0, mu_dif, sigma_dif)
+Markdown(f'''Con L₁ = duración de {txt1} y L₂ = duración de {txt2}: media de L₂ − L₁ = {mu2:g} − {mu1:g} = {signo(mu_dif)}; '''
+         f'''varianza = {v1:.3f} + {v2:.3f} = {var_dif:.3f}; σ = √{var_dif:.3f} = {sigma_dif:.3f}.\n\n'''
+         f'''La segunda ruta es más larga si L₂ − L₁ > 0: {explica_probabilidad(mu_dif, sigma_dif, 0, mayor=True, nombre="L₂ − L₁")}.\n\n'''
+         f'''**Respuesta:** L₂ − L₁ tiene media {signo(mu_dif)} y varianza {var_dif:.3f}; la ruta «no crítica» {txt2} resulta la más larga '''
+         f'''(y por tanto la crítica) con probabilidad {p_ruta2_critica:.4f}, el {p_ruta2_critica:.1%} de las veces.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -281,15 +314,22 @@ display(Markdown(pregunta_3))
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])
 sigma_pert = np.sqrt(v1 if mu1 >= mu2 else v2)
-p_pert = norm.cdf((plazo - duracion_media) / sigma_pert)
+p_pert = norm.cdf(plazo, duracion_media, sigma_pert)
 dA, dH = float(datos_proyecto.loc['A', 'duration']), float(datos_proyecto.loc['H', 'duration'])
 limite = plazo - dA - dH   # lo que puede durar cada cadena intermedia
-p1 = norm.cdf((limite - (mu1 - dA - dH)) / np.sqrt(v1))
-p2 = norm.cdf((limite - (mu2 - dA - dH)) / np.sqrt(v2))
+p1 = norm.cdf(limite, mu1 - dA - dH, np.sqrt(v1))
+p2 = norm.cdf(limite, mu2 - dA - dH, np.sqrt(v2))
 p_exacta = p1 * p2
-Markdown(f'''(a) PERT: z = ({plazo} − {duracion_media}) / {sigma_pert:.3f} = {(plazo - duracion_media) / sigma_pert:.3f}, P = {p_pert:.4f}.
-
-(b) Exacta: cada cadena intermedia debe durar como mucho {plazo} − {dA:.0f} − {dH:.0f} = {limite:.0f}; P(cadena 1 ≤ {limite:.0f}) = {p1:.4f}, P(cadena 2 ≤ {limite:.0f}) = {p2:.4f}, y por independencia P(T ≤ {plazo}) = {p1:.4f} × {p2:.4f} = {p_exacta:.4f}.''')
+cad1, cad2 = ' – '.join(['B', 'C', 'D']), ' – '.join(['E', 'F'])
+Markdown(f'''(a) PERT, con la ruta crítica en media, T ~ N({duracion_media}; √{v1 if mu1 >= mu2 else v2:.3f} = {sigma_pert:.3f}): '''
+         f'''{explica_probabilidad(duracion_media, sigma_pert, plazo)}.\n\n'''
+         f'''(b) Exacta: A y H son fijas, así que el proyecto termina a tiempo si cada cadena intermedia dura como mucho '''
+         f'''{plazo} − {dA:g} − {dH:g} = {limite:g} semanas. La cadena {cad1} (Y₁) tiene media {mu1 - dA - dH:g} y σ = {np.sqrt(v1):.3f}; '''
+         f'''la cadena {cad2} (Y₂), media {mu2 - dA - dH:g} y σ = {np.sqrt(v2):.3f}:\n\n'''
+         f'''- {explica_probabilidad(mu1 - dA - dH, np.sqrt(v1), limite, nombre="Y₁")}\n'''
+         f'''- {explica_probabilidad(mu2 - dA - dH, np.sqrt(v2), limite, nombre="Y₂")}\n\n'''
+         f'''Como las dos cadenas son independientes, P(T ≤ {plazo}) = P(Y₁ ≤ {limite:g}) · P(Y₂ ≤ {limite:g}) = {p1:.4f} × {p2:.4f} = **{p_exacta:.4f}**.\n\n'''
+         f'''**Respuesta:** (a) {p_pert:.4f} con el método PERT; (b) {p_exacta:.4f} de forma exacta.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -298,4 +338,7 @@ Markdown(f'''(a) PERT: z = ({plazo} − {duracion_media}) / {sigma_pert:.3f} = {
 display(Markdown(pregunta_4))
 
 # %%
-Markdown(f'''PERT da {p_pert:.4f} y el cálculo exacto {p_exacta:.4f}: PERT es optimista. Es general: el máximo de varias rutas es siempre mayor o igual que la ruta crítica sola, luego P(máx ≤ t) ≤ P(ruta crítica ≤ t). El error es grande cuando hay rutas casi críticas con varianza apreciable, como aquí.''')
+Markdown(f'''**Respuesta:** es mayor la del método PERT ({p_pert:.4f} frente a {p_exacta:.4f}, {p_pert - p_exacta:.4f} más): PERT es optimista. '''
+         'Ese sentido del error es general: la duración del proyecto es el máximo de todas las rutas, que en cada escenario es mayor o igual '
+         'que la duración de la ruta crítica sola, luego P(máx ≤ t) ≤ P(ruta crítica ≤ t). El error crece cuando hay rutas casi críticas '
+         f'''con varianza apreciable, como aquí: {txt2} dura sólo {plural(mu1 - mu2, "semana")} menos en media y tiene más varianza ({v2:.3f} frente a {v1:.3f}).''')

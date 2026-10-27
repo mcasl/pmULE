@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -263,11 +267,400 @@ proyecto = prelaciones.create_project()
 c = calendario_entregado.copy()
 d = datos_proyecto['duration']
 
+# %%
+_COLS_CAL = {'inicio_mas_temprano': 'ES', 'fin_mas_temprano': 'EF', 'inicio_mas_tardio': 'LS',
+             'fin_mas_tardio': 'LF', 'H_total': 'H total', 'H_libre': 'H libre', 'H_independiente': 'H independiente',
+             'duracion': 'duración'}
+
+
+def _sucesoras(prelaciones):
+    pred = prelaciones.immediate_predecessor
+    return {a: sorted(s for s, ps in pred.items() if a in ps) for a in pred}
+
+
+def _v(cal, a, col):
+    return int(cal.loc[a, col])
+
+
+def _verbo(n, singular, plural_):
+    return singular if n == 1 else plural_
+
+
+def _min_es_suc(cal, suc, a):
+    """(mín ES de las sucesoras, expresión «mín(E: 12, G: 12)», «9 (ES de G)» o «19 (fin del proyecto)»)."""
+    if not suc[a]:
+        fin = int(cal['fin_mas_temprano'].max())
+        return fin, f'{fin} (fin del proyecto)'
+    es = {s: _v(cal, s, 'inicio_mas_temprano') for s in suc[a]}
+    m = min(es.values())
+    if len(es) == 1:
+        return m, f'{m} (ES de {suc[a][0]})'
+    return m, 'mín(' + ', '.join(f'{s}: {v}' for s, v in es.items()) + ')'
+
+
+def respuesta_rutas(tabla_rutas, unidad='semana'):
+    """Respuesta al «¿cuántas rutas críticas?» a partir de la tabla de explica_rutas."""
+    dur = tabla_rutas['duración'].astype(float)
+    T = int(round(dur.max()))
+    criticas = tabla_rutas.loc[tabla_rutas['crítica'] == 'sí', 'ruta'].tolist()
+    resto = tabla_rutas[tabla_rutas['crítica'] == 'no']
+    acts = []
+    for r in criticas:
+        for a in r.split(' – '):
+            if a not in acts:
+                acts.append(a)
+    n = len(criticas)
+    txt = (f"**Respuesta:** el proyecto tiene **{plural(n, 'ruta crítica', 'rutas críticas')}**, "
+           f"{lista_y('**' + r + '**' for r in criticas)}, "
+           + (f"que suma {plural(T, unidad)}" if n == 1 else f"que suman {'ambas' if n == 2 else 'todas'} {plural(T, unidad)}")
+           + f", la duración del proyecto. Actividades críticas (holgura total nula): {lista_y(sorted(acts))}.")
+    if len(resto) == 1:
+        segunda = int(round(float(resto['duración'].iloc[0])))
+        txt += (f" La otra ruta, {resto['ruta'].iloc[0]}, suma {segunda} y queda a "
+                f"{plural(T - segunda, unidad)} de ser crítica.")
+    elif len(resto):
+        d2 = resto['duración'].astype(float)
+        segunda = int(round(d2.max()))
+        sig = resto.loc[np.isclose(d2, d2.max()), 'ruta'].tolist()
+        txt += (f" Las otras {plural(len(resto), 'ruta suma', 'rutas suman')} menos; "
+                + (f"la más larga de ellas, {sig[0]} ({segunda}), queda" if len(sig) == 1
+                   else f"las más largas de ellas, {lista_y(sig)} ({segunda}), quedan")
+                + f" a {plural(T - segunda, unidad)} de ser crítica{'s' if len(sig) > 1 else ''}.")
+    else:
+        txt += ' Todas las rutas del grafo son críticas.'
+    return Markdown(txt)
+
+
+def respuesta_retrasables(calendario, prelaciones, unidad='semana'):
+    """Qué actividades pueden retrasarse sin afectar a nadie, cuáles solo arrastrando a sus
+    sucesoras y cuáles no admiten retraso, con las holguras sustituidas."""
+    cal, suc = calendario, _sucesoras(prelaciones)
+    criticas = [a for a in cal.index if _v(cal, a, 'H_total') == 0]
+    libres = [a for a in cal.index if _v(cal, a, 'H_libre') > 0]
+    arrastran = [a for a in cal.index if _v(cal, a, 'H_total') > _v(cal, a, 'H_libre')]
+    L = ['**Respuesta:**', '']
+    L.append(f"- **No admiten ningún retraso** sin alargar el plazo las críticas (holgura total 0): {lista_y(criticas)}.")
+    L.append('- **Pueden retrasarse sin afectar ni al plazo ni al inicio más temprano de ninguna otra actividad** '
+             'las de holgura libre positiva, como mucho su holgura libre (H libre = mín ES de las sucesoras − EF): '
+             + ('; '.join(f"**{a}**, hasta {plural(_v(cal, a, 'H_libre'), unidad)} "
+                          f"(H libre = {_min_es_suc(cal, suc, a)[1]} − {_v(cal, a, 'fin_mas_temprano')} = {_v(cal, a, 'H_libre')})"
+                          for a in libres) if libres else 'ninguna') + '.')
+    L.append('- **Pueden retrasarse sin afectar al plazo pero obligando a retrasar a alguna sucesora** las de holgura '
+             'total mayor que la libre: ' + (lista_y(f'**{a}**' for a in arrastran) if arrastran else 'ninguna') + '.')
+    for a in arrastran:
+        ht, hl, ef = _v(cal, a, 'H_total'), _v(cal, a, 'H_libre'), _v(cal, a, 'fin_mas_temprano')
+        mueve = []
+        for s in suc[a]:
+            es = _v(cal, s, 'inicio_mas_temprano')
+            if es < ef + ht:
+                t = es - ef
+                mueve.append(f'cualquier retraso suyo mueve a {s} (ES de {s} = {es} = EF de {a})' if t == 0 else
+                             f'un retraso de más de {plural(t, unidad)} mueve a {s} (ES de {s} = {es} = EF de {a} + {t})')
+        L.append(f"    - {a}: H total = {ht} > H libre = {hl}. Puede retrasarse hasta {plural(ht, unidad)} sin alargar el plazo"
+                 + (f' (y hasta {plural(hl, unidad)} sin mover a nadie)' if hl else '') + ', pero ' + '; '.join(mueve) + '.')
+    return Markdown('\n'.join(L))
+
+
+def analiza_retraso(proyecto, prelaciones, calendario, duraciones, X, h, unidad='semana'):
+    """Retrasa X h unidades (alarga su duración) y devuelve (tabla antes/después de las actividades
+    que cambian, texto de la respuesta, duraciones con el retraso)."""
+    cal0, suc, pred = calendario, _sucesoras(prelaciones), prelaciones.immediate_predecessor
+    d1 = duraciones.copy()
+    d1[X] += h
+    cal1 = proyecto.calendar(d1)
+    cols = list(_COLS_CAL)[:6]
+    cambian = [a for a in cal0.index if any(_v(cal0, a, c) != _v(cal1, a, c) for c in cols)]
+    tabla = pd.concat({'antes': cal0.loc[cambian, cols].astype(int).rename(columns=_COLS_CAL),
+                       'después': cal1.loc[cambian, cols].astype(int).rename(columns=_COLS_CAL)}, axis=1)
+    tabla.index.name = 'actividad'
+    us = plural(2, unidad).split(' ', 1)[1]
+    T0, T1 = int(proyecto.duration(duraciones)), int(proyecto.duration(d1))
+    finales = [a for a in cal1.index if not suc[a]]
+    fines = ', '.join(f"{a}: {_v(cal1, a, 'fin_mas_temprano')}" for a in finales)
+    L = [f"**Respuesta.** **El plazo no cambia**: el fin del proyecto es el mayor fin más temprano de las actividades "
+         f"finales, máx({fines}) = **{T1}** {us}, igual que antes ({T0})."]
+    hl = _v(cal0, X, 'H_libre')
+    tx = (f"- **{X}** acaba en {_v(cal1, X, 'fin_mas_temprano')} en lugar de {_v(cal0, X, 'fin_mas_temprano')} "
+          f"y su holgura total pasa de {h} a {_v(cal1, X, 'H_total')}: la ha consumido entera. ")
+    if hl == 0:
+        tx += 'Como su holgura libre era 0, todo el retraso empuja a sus sucesoras.'
+    else:
+        tx += (f"De las {plural(h, unidad)} de retraso, {hl} {_verbo(hl, 'cabe', 'caben')} en su holgura libre "
+               f"y {h - hl} {_verbo(h - hl, 'empuja', 'empujan')} a sus sucesoras.")
+    L.append(tx)
+    movidas = [a for a in cambian if a != X and _v(cal1, a, 'inicio_mas_temprano') != _v(cal0, a, 'inicio_mas_temprano')]
+
+    def cadena(a):
+        camino = [a]
+        while camino[-1] != X:
+            b = camino[-1]
+            es_b = _v(cal1, b, 'inicio_mas_temprano')
+            p = [p for p in sorted(pred[b]) if (p == X or p in movidas) and _v(cal1, p, 'fin_mas_temprano') == es_b][0]
+            camino.append(p)
+        return ' → '.join(reversed(camino))
+
+    def cambios(a, columnas):
+        return ', '.join(f'{_COLS_CAL[c]} {_v(cal0, a, c)} → {_v(cal1, a, c)}' for c in columnas
+                         if _v(cal0, a, c) != _v(cal1, a, c))
+
+    if movidas:
+        partes = []
+        for a in movidas:
+            p = f"{a} ({cambios(a, ['inicio_mas_temprano', 'H_total', 'H_libre'])}"
+            p += ')' if a in suc[X] else f'; le llega en cadena: {cadena(a)})'
+            partes.append(p)
+        L.append(f"- **Se retrasa{'n' if len(movidas) > 1 else ''}** (cambia su inicio más temprano): " + '; '.join(partes) + '.')
+    quietas = [s for s in suc[X] if s not in movidas]
+    for s in quietas:
+        es, ef_x = _v(cal1, s, 'inicio_mas_temprano'), _v(cal1, X, 'fin_mas_temprano')
+        fija = [p for p in sorted(pred[s]) if p != X and _v(cal1, p, 'fin_mas_temprano') == es][0]
+        L.append(f"- {s}, sucesora de {X}, no se mueve: su inicio más temprano ({es}) lo fija {fija}, que acaba en {es}, "
+                 + (f"y {X} acaba ahora en {ef_x}, antes." if ef_x < es else
+                    f"y {X} acaba ahora justo entonces, en {ef_x}: por eso {s} no se retrasa, pero {X} ya no tiene ningún margen."))
+    pierden = [a for a in cambian if a != X and a not in movidas and _v(cal1, a, 'H_total') < _v(cal0, a, 'H_total')]
+    if pierden:
+        L.append(f"- **{_verbo(len(pierden), 'Pierde', 'Pierden')} holgura sin moverse** "
+                 + '; '.join(f"{a} ({cambios(a, ['inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'H_libre'])})" for a in pierden) + ': '
+                 f"{_verbo(len(pierden), 'va', 'van')} antes de {X} en la misma cadena y, como {X} dura ahora más, "
+                 f"su fin más tardío se adelanta.")
+    ganan = [a for a in cambian if a != X and a not in movidas and a not in pierden]
+    if ganan:
+        L.append(f"- **{_verbo(len(ganan), 'Gana', 'Ganan')} holgura libre** "
+                 + '; '.join(f"{a} ({cambios(a, ['H_libre'])})" for a in ganan) + ': alguna de sus sucesoras empieza ahora más tarde.')
+    nuevas = [a for a in cal0.index if _v(cal0, a, 'H_total') > 0 and _v(cal1, a, 'H_total') == 0]
+    conservan = [a for a in cambian if _v(cal1, a, 'H_total') > 0]
+    tx = (f"- **{_verbo(len(nuevas), 'Pasa', 'Pasan')} a ser crítica{'s' if len(nuevas) > 1 else ''}** (holgura total 0): "
+          f"{lista_y(nuevas)}.")
+    if conservan:
+        tx += (f" {_verbo(len(conservan), 'Conserva', 'Conservan')} parte de su holgura: "
+               + lista_y(f"{a} (H total {_v(cal1, a, 'H_total')})" for a in conservan) + '.')
+    L.append(tx)
+    r0 = {frozenset(r) for r in proyecto.critical_path(duraciones).values()}
+    r1 = [r for r in proyecto.critical_path(d1).values()]
+    rn = [' – '.join(ordena_ruta(r, cal1)) for r in r1 if frozenset(r) not in r0]
+    L.append(f"- **{_verbo(len(rn), 'Aparece', 'Aparecen')} {plural(len(rn), 'ruta crítica nueva', 'rutas críticas nuevas')}** "
+             f"({lista_y(rn)}): el proyecto pasa de {plural(len(r0), 'ruta crítica', 'rutas críticas')} a {len(r1)}:")
+    return tabla, L[0] + '\n\n' + '\n'.join(L[1:]), d1
+
+
+def respuesta_independiente(calendario, prelaciones, V, unidad='semana'):
+    """Retraso disponible para V si sus predecesoras acaban en su fecha más tardía (holgura independiente)."""
+    cal, suc = calendario, _sucesoras(prelaciones)
+    ps = sorted(prelaciones.immediate_predecessor[V])
+    lf = {p: _v(cal, p, 'fin_mas_tardio') for p in ps}
+    inicio = max(lf.values())
+    fin, fin_txt = _min_es_suc(cal, suc, V)
+    if fin_txt.startswith('mín'):
+        fin_txt += f' = {fin}'
+    d, ef, es = _v(cal, V, 'duracion'), _v(cal, V, 'fin_mas_temprano'), _v(cal, V, 'inicio_mas_temprano')
+    hi, hl = _v(cal, V, 'H_independiente'), _v(cal, V, 'H_libre')
+    margen = fin - inicio - d
+    lf_txt = (f'máx(' + ', '.join(f'LF de {p}: {v}' for p, v in lf.items()) + f') = {inicio}') if len(lf) > 1 else f'LF de {ps[0]} = {inicio}'
+    txt = (f"Si {_verbo(len(ps), 'la predecesora', 'las predecesoras')} de {V} ({lista_y(ps)}) {_verbo(len(ps), 'acaba', 'acaban')} en su fecha más tardía, {V} no puede empezar hasta "
+           f"{lf_txt}. Para no mover el inicio más temprano de ninguna sucesora debe acabar, como tarde, en {fin_txt}. "
+           f"Le queda {fin} − {inicio} − {d} = {margen}")
+    if margen < 0:
+        txt = txt[:-len(str(margen))] + f"−{-margen} < 0: ningún margen, y la holgura independiente es máx(0, −{-margen}) = 0."
+    else:
+        txt += f", que es su holgura independiente."
+    txt += (f" Su holgura libre, {fin} − {ef} = {hl}, supone en cambio que las predecesoras acaban lo antes posible "
+            f"(entonces {V} empieza en {es} y acaba en {ef}).")
+    txt += ((f"\n\n**Respuesta:** {V} puede retrasarse **{plural(hi, unidad)}** sin afectar a nadie aunque sus predecesoras "
+             f"agoten su holgura" if hi else f"\n\n**Respuesta:** {V} **no puede retrasarse nada** (0 {plural(2, unidad).split()[1]}) sin "
+             f"afectar a alguna sucesora si sus predecesoras agotan su holgura")
+            + f": es su holgura independiente ({hi}), menor que su holgura libre ({hl}).")
+    return Markdown(txt)
+
+
+def respuesta_compartida(calendario, prelaciones, X, Y, h, unidad='semana'):
+    """Razonamiento previo (solo con el calendario original) de si caben los dos retrasos."""
+    cal, suc = calendario, _sucesoras(prelaciones)
+    ef_x, es_y, ht_y = _v(cal, X, 'fin_mas_temprano'), _v(cal, Y, 'inicio_mas_temprano'), _v(cal, Y, 'H_total')
+    g = es_y - ef_x
+    empuje = max(0, h - g)
+    queda = ht_y - empuje
+    alarga = max(0, h - queda)
+    txt = (f"**Respuesta:** {'no' if alarga else 'sí'}. {X} {'e' if Y.startswith('I') else 'y'} {Y} tienen la misma holgura "
+           f"total ({h}) porque es la holgura de la cadena en la que están. {X} tiene holgura libre 0 "
+           f"(H libre = {_min_es_suc(cal, suc, X)[1]} − {ef_x} = {_v(cal, X, 'H_libre')})")
+    if g == 0:
+        txt += (f" y {Y} empieza en cuanto acaba {X} (ES de {Y} = {es_y} = EF de {X}): cada {unidad} de retraso de {X} "
+                f"retrasa el inicio de {Y} y le quita una {unidad} de holgura.")
+    else:
+        txt += (f"; {Y} empieza {plural(g, unidad)} después de que acabe {X} (ES de {Y} = {es_y} = EF de {X} + {g}): "
+                f"solo el retraso de {X} que pase de {plural(g, unidad)} retrasa a {Y}.")
+    txt += (f" Si {X} gasta {'su' if h == 1 else 'sus'} {plural(h, unidad)}, {Y} empieza {plural(empuje, unidad)} más tarde y le "
+            f"{_verbo(queda, 'queda', 'quedan')} {ht_y} − {empuje} = {plural(queda, unidad)} de holgura total")
+    if alarga:
+        txt += (f"; si además {Y} se retrasa {plural(h, unidad)}, el proyecto se alarga {h} − {queda} = {plural(alarga, unidad)}.")
+    else:
+        txt += f", suficientes para su retraso de {plural(h, unidad)}."
+    return Markdown(txt)
+
+
+def respuesta_reparto(proyecto, calendario, duraciones, X, Y, h, unidad='semana'):
+    """Holgura libre de X, independiente de Y y repartos (x, y) que respetan el plazo."""
+    cal = calendario
+    hl_x, hi_y = _v(cal, X, 'H_libre'), _v(cal, Y, 'H_independiente')
+    T = int(proyecto.duration(duraciones))
+    ymax = {}
+    for x in range(h + 1):
+        d = duraciones.copy()
+        d[X] += x
+        ymax[x] = _v(proyecto.calendar(d), Y, 'H_total') if int(proyecto.duration(d)) == T else None
+    conj = 'e' if Y.startswith('I') else 'y'
+    txt = (f"La holgura **libre** de {X} ({hl_x}) es lo que {X} puede retrasarse sin mover el inicio de {Y} ni quitarle "
+           f"margen; la holgura **independiente** de {Y} ({hi_y}) es lo que {Y} puede retrasarse aunque {X} agote su "
+           f"holgura y acabe lo más tarde posible.")
+    if hl_x == 0 and hi_y == 0:
+        txt += ' Las dos son 0: ninguna de las dos puede retrasarse sin gastar holgura que también necesita la otra.'
+    if all(v is not None and x + v == h for x, v in ymax.items()):
+        reparto = (f"si {X} se retrasa x y {Y} se retrasa y, el plazo se respeta mientras x + y ≤ {h}"
+                   + (f" (por ejemplo, {(h + 1) // 2} para {X} {conj} {h // 2} para {Y}, o más para la que tenga más riesgo de retrasarse)"
+                      if h > 1 else f": la única {unidad} se concede a una de las dos, la que más la necesite"))
+    else:
+        reparto = (f"con {X} retrasada x, a {Y} le queda de holgura total: "
+                   + ', '.join(f'x = {x} → {v}' for x, v in ymax.items() if v is not None))
+    txt += (f"\n\n**Respuesta:** la holgura libre (de {X}) y la independiente (de {Y}). Las {plural(h, unidad)} son un "
+            f"recurso compartido de la cadena: {reparto}; lo que no cabe es que cada una disponga de {plural(h, unidad)} "
+            f"por su cuenta.") if h > 1 else (f"\n\n**Respuesta:** la holgura libre (de {X}) y la independiente (de {Y}). "
+            f"Hay una sola {unidad} de holgura compartida: {reparto}.")
+    return Markdown(txt)
+
+
+def respuesta_vigilancia(orden, n=4):
+    """Las n actividades a vigilar según la ordenación, explicando los desempates."""
+    crit = [a for a in orden.index if int(orden.loc[a, 'H_total']) == 0]
+    elegidas = list(orden.index[:n])
+    nc = len(crit)
+    dur = lambda a: int(orden.loc[a, 'duracion'])
+    if nc > n:
+        txt = (f"Hay {nc} actividades críticas (holgura total 0), más de las {n} que se pueden vigilar; entre ellas se "
+               f"desempata por duración (una actividad larga tiene más ocasiones de retrasarse): "
+               + ', '.join(f'{a} ({dur(a)})' for a in crit) + '.')
+        ult = dur(elegidas[-1])
+        emp = [a for a in crit if dur(a) == ult]
+        if any(a not in elegidas for a in emp):
+            txt += (f" {lista_y(emp)} empatan con {plural(ult, 'semana')}: la última plaza puede ser para cualquiera "
+                    f"de ellas (la tabla pone primero {elegidas[-1]}).")
+    elif nc == n:
+        txt = f"Las {n} críticas ({lista_y(crit)}) ocupan justo las {n} plazas."
+    else:
+        resto = [a for a in orden.index if a not in crit]
+        txt = (f"Las {nc} críticas ({lista_y(crit)}) van primero; las {n - nc} plazas restantes son para las no críticas "
+               f"de menor holgura total (a igualdad, menor holgura libre): "
+               + ', '.join(f"{a} (H total {int(orden.loc[a, 'H_total'])}, H libre {int(orden.loc[a, 'H_libre'])})" for a in resto[:n - nc + 1])
+               + '.')
+        ult = elegidas[-1]
+        clave = lambda a: (int(orden.loc[a, 'H_total']), int(orden.loc[a, 'H_libre']))
+        emp = [a for a in resto if clave(a) == clave(ult)]
+        if any(a not in elegidas for a in emp):
+            txt += (f" {lista_y(emp)} empatan en las dos holguras: se desempata por duración (la más larga primero).")
+    txt += f"\n\n**Respuesta:** las cuatro actividades a vigilar son **{lista_y(elegidas)}**."
+    return Markdown(txt)
+
+
+def respuesta_sin_margen(calendario, prelaciones, unidad='semana'):
+    """No críticas con holgura libre nula: a quién mueven y por qué no son críticas."""
+    cal, suc = calendario, _sucesoras(prelaciones)
+    sin = [a for a in cal.index if _v(cal, a, 'H_total') > 0 and _v(cal, a, 'H_libre') == 0]
+    L = []
+    for a in sin:
+        ef = _v(cal, a, 'fin_mas_temprano')
+        pegadas = [s for s in suc[a] if _v(cal, s, 'inicio_mas_temprano') == ef]
+        L.append(f"- **{a}**: H libre = {_min_es_suc(cal, suc, a)[1]} − {ef} = 0, pero H total = LS − ES = "
+                 f"{_v(cal, a, 'inicio_mas_tardio')} − {_v(cal, a, 'inicio_mas_temprano')} = {_v(cal, a, 'H_total')}. "
+                 f"Cualquier retraso suyo mueve a {lista_y(pegadas)} (empieza{'n' if len(pegadas) > 1 else ''} en {ef}, "
+                 f"cuando acaba {a}), que lo absorbe{'n' if len(pegadas) > 1 else ''} con su holgura total ("
+                 + ', '.join(f"{s}: {_v(cal, s, 'H_total')}" for s in pegadas) + ').')
+    L.append(f"\n**Respuesta:** {lista_y(sin)} no {'admite' if len(sin) == 1 else 'admiten'} ni una {unidad} de retraso "
+             f"sin mover a una sucesora (holgura libre 0), pero no {'es crítica' if len(sin) == 1 else 'son críticas'} porque "
+             f"su holgura total es positiva: mientras el retraso no la supere, el plazo no cambia. Crítica significa que "
+             f"el plazo depende de la actividad (holgura total 0), no que su retraso mueva a otra actividad.")
+    return Markdown('\n'.join(L))
+
+
+def respuesta_mas_libre(calendario, prelaciones, unidad='semana'):
+    """Actividad (o actividades) con mayor holgura libre."""
+    cal, suc = calendario, _sucesoras(prelaciones)
+    m = int(cal['H_libre'].max())
+    quien = [a for a in cal.index if _v(cal, a, 'H_libre') == m]
+    txt = (f"**Respuesta:** {lista_y(quien)}, hasta **{plural(m, unidad)}**: {'es la' if len(quien) == 1 else 'son las'} "
+           f"de mayor holgura libre (" + '; '.join(f"{a}: H libre = {_min_es_suc(cal, suc, a)[1]} − {_v(cal, a, 'fin_mas_temprano')} = {m}" for a in quien)
+           + "). Ese retraso no mueve el inicio más temprano de ninguna otra actividad ni el plazo.")
+    for a in quien:
+        hi = _v(cal, a, 'H_independiente')
+        if hi < m:
+            txt += (f" Eso supone que las predecesoras de {a} acaban lo antes posible; si acabaran lo más tarde posible, "
+                    f"solo le quedaría su holgura independiente ({hi}).")
+    return Markdown(txt)
+
+
+def respuesta_comprobaciones(c, d, prelaciones):
+    """Relaciones que no cumple el calendario entregado, con los números."""
+    L = []
+    for a in c.index:
+        ES, EF, LS, LF = (int(c.loc[a, k]) for k in ['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio'])
+        Ht, Hl, da = int(c.loc[a, 'H_total']), int(c.loc[a, 'H_libre']), int(d[a])
+        if EF != ES + da:
+            L.append(f"- {a}: ES + d = {ES} + {da} = {ES + da} ≠ EF = {EF}")
+        if LF != LS + da:
+            L.append(f"- {a}: LS + d = {LS} + {da} = {LS + da} ≠ LF = {LF}")
+        if Ht != LS - ES:
+            L.append(f"- {a}: LS − ES = {LS} − {ES} = {LS - ES} ≠ H total = {Ht}")
+        if not 0 <= Hl <= Ht:
+            L.append(f"- {a}: H libre = {Hl} > H total = {Ht}")
+        ps = sorted(prelaciones.immediate_predecessor[a])
+        es_ok = max((int(c.loc[p, 'fin_mas_temprano']) for p in ps), default=0)
+        if ES != es_ok:
+            L.append(f"- {a}: máx EF de las predecesoras = {es_ok} ≠ ES = {ES}")
+    malas = sorted({l.split(':')[0][2:] for l in L})
+    return Markdown(f"**Respuesta:** los errores están en {lista_y(malas)}. Relaciones que fallan:\n\n" + '\n'.join(L))
+
+
+def respuesta_errores(c, calendario, prelaciones, e1, e2):
+    """Qué se ha calculado mal en cada actividad errónea y cuál es el valor correcto."""
+    cal, suc = calendario, _sucesoras(prelaciones)
+    hl_ok = _v(cal, e1, 'H_libre')
+    t1 = (f"- **{e1}**: la holgura libre entregada ({int(c.loc[e1, 'H_libre'])}) es mayor que la total "
+          f"({int(c.loc[e1, 'H_total'])}), lo que es imposible: la libre es la parte de la total que no afecta a las "
+          f"sucesoras (H libre ≤ H total). Bien calculada, H libre = mín ES de las sucesoras − EF = "
+          f"{_min_es_suc(cal, suc, e1)[1]} − {_v(cal, e1, 'fin_mas_temprano')} = **{hl_ok}**.")
+    LS, LF, ES, EF = (int(c.loc[e2, k]) for k in ['inicio_mas_tardio', 'fin_mas_tardio', 'inicio_mas_temprano', 'fin_mas_temprano'])
+    d, Ht = _v(cal, e2, 'duracion'), int(c.loc[e2, 'H_total'])
+    t2 = (f"- **{e2}**: el inicio más tardío entregado ({LS}) no cumple LS = LF − d ({LF} − {d} = {LF - d}) ni "
+          f"H total = LS − ES ({LS} − {ES} = {LS - ES}, pero la tabla dice {Ht}). En cambio LF, EF y H total sí son "
+          f"coherentes entre sí (LF − EF = {LF} − {EF} = {LF - EF} = H total), así que el dato erróneo es LS: debe ser "
+          f"LF − d = **{LF - d}**"
+          + (f" ({e2} es crítica: su inicio más tardío coincide con el más temprano)." if Ht == 0 else '.'))
+    return Markdown(t1 + '\n' + t2)
+
+
+def respuesta_total_vs_libre(calendario, prelaciones, X, unidad='día'):
+    """Por qué la holgura total de X es mayor que la libre, con las fechas de sus sucesoras."""
+    cal, suc = calendario, _sucesoras(prelaciones)
+    ef, ht, hl = _v(cal, X, 'fin_mas_temprano'), _v(cal, X, 'H_total'), _v(cal, X, 'H_libre')
+    ls = {s: _v(cal, s, 'inicio_mas_tardio') for s in suc[X]}
+    lf = min(ls.values())
+    ls_txt = (f'mín(' + ', '.join(f'{s}: {v}' for s, v in ls.items()) + ')') if len(ls) > 1 else f'{lf} (LS de {suc[X][0]})'
+    txt = (f"{X} acaba lo más pronto en {ef}. La holgura libre se mide contra el inicio **más temprano** de sus sucesoras: "
+           f"H libre = {_min_es_suc(cal, suc, X)[1]} − {ef} = {hl}. La holgura total, contra su inicio **más tardío** "
+           f"(el fin más tardío de {X} es el mínimo LS de sus sucesoras): H total = LF − EF = {ls_txt} − {ef} = {ht}.")
+    txt += (f"\n\n**Respuesta:** {X} puede retrasarse hasta {plural(ht, unidad)} sin alargar el proyecto, pero "
+            + (f"cualquier retraso suyo" if hl == 0 else f"pasados {plural(hl, unidad)}, el retraso")
+            + f" retrasa el inicio más temprano de {lista_y(s for s in suc[X] if _v(cal, s, 'inicio_mas_temprano') < ef + ht)}, "
+            f"que se come así parte de su propia holgura: la diferencia, {ht} − {hl} = {plural(ht - hl, unidad)}, es "
+            f"holgura que {X} comparte con sus sucesoras.")
+    return Markdown(txt)
+
 # %% [markdown]
 # ## Apartado 1
 
 # %%
 display(Markdown(pregunta_1))
+
+# %% [markdown]
+# Comprobamos, fila a fila, las relaciones del enunciado en el calendario entregado; la tabla muestra solo las filas en las que alguna falla («NO»):
 
 # %%
 comprobaciones = pd.DataFrame({
@@ -276,7 +669,11 @@ comprobaciones = pd.DataFrame({
     'H_total = LS − ES': c['H_total'] == c['inicio_mas_tardio'] - c['inicio_mas_temprano'],
     'H_libre ≤ H_total': c['H_libre'] <= c['H_total'],
     'ES = máx EF pred.': [c.loc[a, 'inicio_mas_temprano'] == max((c.loc[p, 'fin_mas_temprano'] for p in prelaciones.immediate_predecessor[a]), default=0) for a in c.index]})
-comprobaciones[~comprobaciones.all(axis=1)]
+comprobaciones = comprobaciones.replace({True: 'sí', False: '**NO**'}).rename_axis('actividad')
+comprobaciones[(comprobaciones != 'sí').any(axis=1)]
+
+# %%
+respuesta_comprobaciones(c, d, prelaciones)
 
 # %% [markdown]
 # ## Apartado 2
@@ -284,9 +681,9 @@ comprobaciones[~comprobaciones.all(axis=1)]
 # %%
 display(Markdown(pregunta_2))
 
-# %% [markdown]
-# - En B la holgura libre es mayor que la total, lo que es imposible: la holgura libre es una parte de la total (la que no afecta a las sucesoras).
-# - En C el inicio más tardío no cuadra con el fin más tardío menos la duración (ni con H_total = LS − ES): se ha copiado mal o se ha calculado el tardío sin restar la duración.
+# %%
+calendario = proyecto.calendar(d)
+respuesta_errores(c, calendario, prelaciones, 'B', 'C')
 
 # %% [markdown]
 # ## Apartado 3
@@ -300,6 +697,16 @@ display(Markdown(pregunta_3))
 calendario = proyecto.calendar(d)
 proyecto.display_calendario(d)
 
+# %% [markdown]
+# Filas en las que el calendario entregado y el correcto difieren:
+
 # %%
+#| tbl-cap: "Entregado frente a correcto"
+#| label: tbl-diferencias
 difieren = (calendario[c.columns] != c).any(axis=1)
-pd.concat({'entregado': c[difieren], 'correcto': calendario.loc[difieren, c.columns]}, axis=1)
+pd.concat({'entregado': c[difieren].rename(columns=_COLS_CAL), 'correcto': calendario.loc[difieren, c.columns].astype(int).rename(columns=_COLS_CAL)}, axis=1).rename_axis('actividad')
+
+# %%
+Markdown('**Respuesta:** el calendario correcto solo difiere del entregado en ' + lista_y(
+    f'{a} (' + ', '.join(f'{_COLS_CAL[k]} {int(c.loc[a, k])} → {int(calendario.loc[a, k])}' for k in c.columns if int(c.loc[a, k]) != int(calendario.loc[a, k])) + ')'
+    for a in c.index[difieren]) + '; el resto de fechas y holguras eran correctas.')

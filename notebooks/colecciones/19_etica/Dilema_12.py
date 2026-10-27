@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -247,6 +251,63 @@ proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
 
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
+
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
@@ -271,8 +332,14 @@ H = int(calendario.loc[X, 'H_total'])
 d = datos_proyecto['duration'].copy(); d[X] = d[X] + semanas_parada
 duracion_con_parada = int(proyecto.duration(d))
 retraso = duracion_con_parada - duracion
-penalidad = penalidad_por_mil_y_dia * precio_contrato / 1000 * 7 * retraso
-Markdown(f'''{X} tiene holgura total {H}; parada {semanas_parada} semanas, el proyecto pasa de {duracion} a **{duracion_con_parada}** semanas (retraso {retraso} = máx(0, {semanas_parada} − {H})). Penalidad: {penalidad_por_mil_y_dia} € por cada 1 000 € × {precio_contrato} k€ = {penalidad_por_mil_y_dia * precio_contrato / 1000:.2f} k€ por día × 7 × {retraso} días = **{penalidad:.1f} k€**.''')
+pen_dia_keur = penalidad_por_mil_y_dia * precio_contrato / 1000
+penalidad = pen_dia_keur * 7 * retraso
+Markdown(f'''- Holgura total de {X}: LS − ES = {int(calendario.loc[X, 'inicio_mas_tardio'])} − {int(calendario.loc[X, 'inicio_mas_temprano'])} = **{H}**.
+- Parar {X} {plural(semanas_parada, 'semana')} equivale a alargarla otras tantas: el proyecto pasa de {duracion} a **{duracion_con_parada}** semanas; retraso = máx(0, {semanas_parada} − {H}) = **{plural(retraso, 'semana')}** = {7 * retraso} días naturales.
+- Penalidad diaria: {penalidad_por_mil_y_dia:.2f} € por cada 1 000 € de precio; el precio es {precio_contrato} k€ = {precio_contrato} × 1 000 €, luego {penalidad_por_mil_y_dia:.2f} × {precio_contrato} = {1000 * pen_dia_keur:.0f} € = {pen_dia_keur:.2f} k€ por día.
+- Penalidad total: {pen_dia_keur:.2f} × {7 * retraso} días = **{penalidad:.2f} k€**.
+
+**Respuesta.** {X} tiene holgura total {H}; si se para {semanas_parada} semanas el proyecto se retrasa {plural(retraso, 'semana')} ({duracion_con_parada} en lugar de {duracion}) y la penalidad legal es de {penalidad:.2f} k€.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -282,7 +349,11 @@ display(Markdown(pregunta_2))
 
 # %%
 neto_empresa = ahorro_otro_proyecto - penalidad
-Markdown(f'''El otro proyecto ahorra {ahorro_otro_proyecto} k€ y este pierde {penalidad:.1f} k€: neto para la empresa **{neto_empresa:+.1f} k€** ({'conviene' if neto_empresa > 0 else 'no conviene'} ceder, en cifras). Sin retrasar el proyecto, B podría cederse como mucho **{H}** semana(s), las de su holgura total.''')
+cesion = (f'ceder hasta {plural(H, "semana")} (su holgura total) no retrasa el proyecto ni cuesta penalidad' if H > 0
+          else f'{X} es crítica (holgura total 0): cualquier semana de parada retrasa el proyecto')
+Markdown(f'''Neto para la empresa = ahorro en el otro proyecto − penalidad en este = {ahorro_otro_proyecto} − {penalidad:.2f} = **{neto_empresa:+.2f} k€**.
+
+**Respuesta.** {'En cifras, a la empresa le conviene ceder: gana ' + f'{neto_empresa:.2f}' + ' k€ netos.' if neto_empresa > 0 else 'En cifras, a la empresa no le conviene ceder: pierde ' + f'{-neto_empresa:.2f}' + ' k€ netos.'} Sin retrasar el proyecto, {X} {('puede cederse como mucho **' + plural(H, 'semana') + '**') if H > 0 else 'no puede cederse **ninguna semana**'}: {cesion}.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -290,8 +361,12 @@ Markdown(f'''El otro proyecto ahorra {ahorro_otro_proyecto} k€ y este pierde {
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C1.** Decir al cliente que el retraso lo causa el proveedor de material, sabiendo que lo causa una decisión propia, es una afirmación falsa; además, en un contrato público, la causa del retraso determina si procede la penalidad o una prórroga (la causa imputable al contratista no da derecho a prórroga), de modo que la mentira tiene consecuencias jurídicas. **C5.** Desviar los operarios sin decirlo traslada al cliente un coste (el retraso) para beneficio de otro cliente de la empresa, sin su conocimiento. La respuesta de B **no depende** del apartado 2: que a la empresa le convenga ceder dice qué debería negociar con el cliente, no que pueda ocultárselo ni mentirle sobre la causa. Lo que sí depende de la cifra es la decisión de negocio: ceder hasta 1 semanas es gratis en plazo; más, cuesta la penalidad.
+# %%
+Markdown(f'''**Criterio C1 (afirmación falsa).** Decir al cliente que el retraso es «del proveedor de material», sabiendo que lo causa la decisión de llevarse los operarios de {X}, es comunicar como cierta una causa falsa. En un contrato público la causa importa además jurídicamente: un retraso imputable al contratista lleva penalidad ({penalidad:.2f} k€ aquí) y uno no imputable puede justificar una prórroga; mentir sobre la causa es intentar librarse de la penalidad.
+
+**Criterio C5 (beneficio propio a costa de otro).** Desviar los operarios sin decirlo traslada a este cliente un coste (el retraso de {plural(retraso, 'semana')}) en beneficio de otro cliente de la empresa ({ahorro_otro_proyecto} k€ de ahorro allí), sin que lo haya aceptado.
+
+**Respuesta.** La causa falsa incumple **C1**; desviar los operarios ocultándolo, **C5**. La respuesta **no depende** de qué proyecto convenga más a la empresa (apartado 2: {neto_empresa:+.2f} k€): esa cifra dice qué conviene negociar con el cliente, no autoriza a ocultárselo ni a mentir sobre la causa. Lo que sí depende de las cifras es la decisión de negocio: {cesion}; cada semana de retraso cuesta {pen_dia_keur * 7:.2f} k€ de penalidad.''')
 
 # %%
 preguntas_test = [
@@ -329,5 +404,14 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Al director de operaciones: la tabla de opciones (ceder 1 semanas gratis; ceder 3 con 4.2 k€ de penalidad y un retraso de 2 semanas que hay que comunicar; reforzar B con subcontrata) y la condición de que el cliente conozca la causa real. Al cliente, si se cede más de la holgura: aviso por escrito del retraso previsto, su causa y, si se quiere, una propuesta (compensación, recuperación en otra actividad). Prueba de publicidad: la versión «del proveedor» no resiste una llamada del cliente al proveedor.
+# %%
+rubrica_caso(
+    [('Cliente (administración pública)', f'recibe la obra {plural(retraso, "semana")} tarde y, con la versión falsa, sin saber por qué ni poder reclamar la penalidad de {penalidad:.2f} k€'),
+     ('Cliente del otro proyecto', f'se beneficia de {ahorro_otro_proyecto} k€ de penalización evitada'),
+     ('Empresa', f'neto {neto_empresa:+.2f} k€ si cede {semanas_parada} semanas; con la mentira, riesgo de que se descubra y de perder futuras licitaciones'),
+     ('Proveedor de material', 'se le atribuye un retraso que no ha causado')],
+    [('Ceder y atribuir el retraso al proveedor (propuesta)', 'no: elude la penalidad con una causa falsa', 'no: no resiste una llamada del cliente al proveedor', 'no'),
+     ((f'Ceder sólo {plural(H, "semana")} (la holgura total), sin retraso' if H > 0 else f'No ceder {X} (es crítica) y buscar los operarios en una actividad con holgura'), 'sí', 'sí', 'sí'),
+     (f'Ceder {semanas_parada} semanas, avisar al cliente del retraso y asumir la penalidad', 'sí', 'sí', 'sí'),
+     (f'Reforzar {X} con una subcontrata para no retrasar', 'sí', 'sí', 'sí')],
+    f'''al director de operaciones, la tabla de opciones ({cesion}; ceder {semanas_parada} con {penalidad:.2f} k€ de penalidad y {plural(retraso, 'semana')} de retraso que hay que comunicar; reforzar {X}) y la condición de que el cliente conozca la causa real. Al cliente, si se cede más que la holgura: aviso por escrito del retraso previsto y de su causa y, si se quiere, una propuesta (compensación o recuperación en otra actividad).''')

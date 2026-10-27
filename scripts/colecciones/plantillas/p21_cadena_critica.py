@@ -76,6 +76,11 @@ def tabla_alimentacion(plan):
     filas = {}
     for nombre, fila in plan.alimentacion.iterrows():
         ms = [int(x) for x in str(fila['margenes']).split(' + ')]
+        acts = str(fila['cadena_alimentacion']).split(' - ')
+        if len(acts) == len(ms):
+            marg = '; '.join(f"{a}: {int(plan.segura[a])} − {int(plan.agresiva[a])} = {m}" for a, m in zip(acts, ms))
+        else:
+            marg = ' + '.join(map(str, ms))
         if plan.metodo_alimentacion == 'cortar_pegar':
             calc = f"0,5·({' + '.join(map(str, ms))}) = {0.5 * sum(ms):g} → {int(fila['requerido'])}"
         else:
@@ -84,6 +89,7 @@ def tabla_alimentacion(plan):
         fin_p = int(plan.inicio_temprano[fila['desde']] + plan.agresiva[fila['desde']])
         filas[nombre] = {'arco': f"{fila['desde']} → {fila['antes_de']}",
                          'cadena de alimentación': fila['cadena_alimentacion'],
+                         'márgenes = segura − agresiva': marg,
                          'colchón requerido': calc,
                          'holgura disponible = inicio de la cadena − fin más temprano': f"{entrada} − {fin_p} = {int(fila['disponible'])}",
                          'colchón adoptado = mín(requerido, disponible)': int(fila['adoptado'])}
@@ -125,6 +131,8 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
+        partes_c = ([f"{min(r, d):g} ({a})" for a, r, d in zip(curso.index, curso['restante'], curso['agresiva'])]
+                    + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()])
         hecho = float(inf['avance'])
         largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
                   for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
@@ -132,13 +140,42 @@ def resumen_informes(plan, informes):
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
-                                  + (f" ({'; '.join(largas)})" if largas else '')),
+            'cadena completada = (T − restante)/T': ((f"({T} − ({' + '.join(partes_c)}))/{T} = ({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                                      if len(partes_c) > 1 else
+                                                      f"({T} − {partes_c[0]})/{T} = {pa:.1f} %" if partes_c else f"{T}/{T} = {pa:.1f} %")
+                                                     + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
-            'zona': inf['zona']}
+            'zona': zona_txt(pc, inf['limite_verde'], inf['limite_roja'], inf['zona'])}
     return pd.DataFrame(columnas)
+
+
+def zona_txt(pc, lv, lr, zona):
+    """Comparación del consumo con los dos límites que decide la zona."""
+    if zona == 'verde':
+        return f'{pc:.1f} % < {lv:.1f} % (límite verde) → verde'
+    nota = ' (justo en la frontera: cuenta como la zona superior)' if min(abs(pc - lv), abs(pc - lr)) < 1e-6 else ''
+    if zona == 'roja':
+        return f'{pc:.1f} % ≥ {lr:.1f} % (límite rojo) → roja' + nota
+    return f'{lv:.1f} % ≤ {pc:.1f} % < {lr:.1f} % → amarilla' + nota
+
+
+def tabla_rutas(proyecto, R, valores):
+    """Rutas con sus actividades en orden de ejecución y su duración como suma término a término."""
+    filas, cal = {}, proyecto.calendar(valores)
+    for i, r in enumerate(R.index, 1):
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        total = int(sum(int(valores[a]) for a in acts))
+        filas[f'ruta {i}'] = {'actividades': ' - '.join(acts),
+                              'duración = suma': ' + '.join(f'{a}({int(valores[a])})' for a in acts) + f' = {total}'}
+    return pd.DataFrame(filas).T
+
+
+def margenes_txt(plan, acts):
+    """«4 + 2 + 3 = 9» con los márgenes de las actividades dadas."""
+    ms = [int(plan.margen[a]) for a in acts]
+    return f"{' + '.join(map(str, ms))} = {sum(ms)}" if len(ms) > 1 else f'{sum(ms)}'
 '''.strip("\n")
 
 ARRANQUE = ("datos_proyecto = datos_enunciado.copy()\n"
@@ -264,19 +301,14 @@ def multitarea(duraciones, bloque=None, cambio=0):
     return pd.Series(fin).reindex(list(duraciones)), pd.DataFrame(turnos, columns=['tarea', 'inicio', 'días'])
 
 
-def dibuja_turnos(turnos, tareas, titulo, ax):
-    """Diagrama de barras de los turnos (los cambios, en gris)."""
-    colores = dict(zip(tareas, ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple', 'tab:brown']))
-    for i, tarea in enumerate(tareas):
-        tramos = [(r.inicio, r.días) for r in turnos.itertuples() if r.tarea == tarea]
-        ax.broken_barh(tramos, (i - 0.35, 0.7), color=colores[tarea])
-    cambios = [(r.inicio, r.días) for r in turnos.itertuples() if r.tarea == 'cambio']
+def tramos_turnos(turnos, tareas):
+    """Tramos de trabajo de cada tarea (y de los cambios, en gris) para el Gantt de pmule."""
+    colores = dict(zip(tareas, ['blue!25', 'orange!35', 'green!30', 'violet!25', 'brown!30']))
+    tramos = {t: [(r.inicio, r.días, r.días, colores[t]) for r in turnos.itertuples() if r.tarea == t] for t in tareas}
+    cambios = [(r.inicio, r.días, '', 'black!15') for r in turnos.itertuples() if r.tarea == 'cambio']
     if cambios:
-        ax.broken_barh(cambios, (len(tareas) - 0.35, 0.7), color='lightgrey')
-    ax.set_yticks(range(len(tareas) + (1 if cambios else 0)))
-    ax.set_yticklabels(list(tareas) + (['cambios'] if cambios else []))
-    ax.set_xlim(0, float((turnos['inicio'] + turnos['días']).max()) + 0.5)
-    ax.invert_yaxis(); ax.set_title(titulo, fontsize=10); ax.grid(axis='x', alpha=0.3)
+        tramos['cambios'] = cambios
+    return tramos
 
 
 def sin_decimales(tabla):
@@ -353,10 +385,19 @@ def _multitarea(rng):
                        "comparacion.loc['media'] = comparacion.mean()\n"
                        "sin_decimales(comparacion.astype(float).round(2))"))
     celdas.append(code("retrasadas = [t for t in tareas if comparacion.loc[t, 'retraso'] > 0]\n"
-                       "Markdown(f'El último trabajo termina igual (día {fin_multi.max()}: el trabajo total es el mismo), pero '\n"
-                       "         f'{\", \".join(retrasadas)} terminan más tarde: el tiempo medio pasa de {fin_seguidas.mean():.2f} a {fin_multi.mean():.2f} días '\n"
-                       "         f'(+{fin_multi.mean() - fin_seguidas.mean():.2f}). Cada proyecto recibe su resultado más tarde y, si la tarea es crítica, '\n"
-                       "         'el proyecto entero se retrasa.')"))
+                       "adelantadas = [t for t in tareas if comparacion.loc[t, 'retraso'] < 0]\n"
+                       "def efecto(t):\n"
+                       "    r = int(comparacion.loc[t, 'retraso'])\n"
+                       "    return (f'adelanto de {plural(-r, \"día\")}' if r < 0 else plural(r, 'día')) + f' ({t})'\n"
+                       "Markdown(f'Cada tarea termina al acabar su último turno. El último trabajo termina igual (día {fin_multi.max()}: el trabajo total es el mismo), pero '\n"
+                       "         f'{lista_y(retrasadas)} {\"termina\" if len(retrasadas) == 1 else \"terminan\"} más tarde'\n"
+                       "         + (f' (y {lista_y(adelantadas)} antes, porque con la rotación se empieza antes a trabajar en {\"ella\" if len(adelantadas) == 1 else \"ellas\"})' if adelantadas else '')\n"
+                       "         + f', y el tiempo medio pasa de {fin_seguidas.mean():.2f} a '\n"
+                       "         f'({\" + \".join(str(v) for v in fin_multi)})/{len(tareas)} = {fin_multi.mean():.2f} días. Cada proyecto recibe su resultado más tarde y, '\n"
+                       "         'si la tarea es crítica, el proyecto entero se retrasa.\\n\\n'\n"
+                       "         f'**Respuesta:** con multitarea las tareas terminan los días {lista_y([f\"{fin_multi[t]} ({t})\" for t in tareas])}; '\n"
+                       "         f'retrasos: {lista_y([efecto(t) for t in tareas])}; '\n"
+                       "         f'el tiempo medio aumenta {fin_multi.mean() - fin_seguidas.mean():.2f} días.')"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Con pérdida en cada cambio de tarea"\n#| label: tbl-cambio\n'
                        "fin_seguidas_c, turnos_seguidas_c = multitarea(duraciones, None, cambio)\n"
@@ -368,19 +409,33 @@ def _multitarea(rng):
                        "tabla_c.loc['cambios de tarea'] = n_cambios\n"
                        "tabla_c.loc['días perdidos'] = n_cambios * cambio\n"
                        "sin_decimales(tabla_c.astype(float).round(2))"))
+    celdas.append(code("def con_cambios(j):\n"
+                       "    partes = []\n"
+                       "    for i, x in enumerate(tareas[:j + 1]):\n"
+                       "        partes += ([str(cambio)] if i else []) + [str(duraciones[x])]\n"
+                       "    return ' + '.join(partes)\n"
+                       "total = sum(duraciones.values())\n"
+                       "nc = int(n_cambios['con multitarea'])\n"
+                       "Markdown(f'Sin multitarea hay {plural(len(tareas) - 1, \"cambio\")} (uno antes de cada tarea, salvo la primera): '\n"
+                       "         + '; '.join(f'{t} termina el día ' + (f'{con_cambios(j)} = ' if j else '') + f'{fin_seguidas_c[t]}' for j, t in enumerate(tareas))\n"
+                       "         + f'. Media: ({\" + \".join(str(v) for v in fin_seguidas_c)})/{len(tareas)} = {fin_seguidas_c.mean():.2f} días.\\n\\n'\n"
+                       "         f'Con multitarea se cambia de tarea en cada turno mientras queda más de una tarea pendiente: {plural(nc, \"cambio\")}. '\n"
+                       "         f'El último trabajo termina cuando se han hecho los {total} días de trabajo y se han perdido los de los cambios: '\n"
+                       "         f'{total} + {nc}·{cambio} = {total + nc * cambio}. Media: ({\" + \".join(str(v) for v in fin_multi_c)})/{len(tareas)} = {fin_multi_c.mean():.2f} días.')"))
     celdas.append(code('#| fig-cap: "Turnos de trabajo: sin multitarea y con multitarea (con pérdida en cada cambio)"\n#| label: fig-turnos\n'
-                       "from matplotlib import pyplot as plt\n"
-                       "fig, axs = plt.subplots(2, 1, figsize=(7, 4.6), sharex=True)\n"
-                       "dibuja_turnos(turnos_seguidas_c, tareas, 'Sin multitarea', axs[0])\n"
-                       "dibuja_turnos(turnos_multi_c, tareas, f'Multitarea en turnos de {bloque} días', axs[1])\n"
-                       "axs[1].set_xlabel('días'); plt.tight_layout(); plt.show()"))
-    celdas.append(code("Markdown(f'Con la pérdida por cambio, la multitarea ya no sólo retrasa las tareas intermedias: el último trabajo pasa del día '\n"
+                       "H = int(max((turnos_seguidas_c['inicio'] + turnos_seguidas_c['días']).max(), (turnos_multi_c['inicio'] + turnos_multi_c['días']).max()))\n"
+                       "display(Markdown('**Sin multitarea** (cada tramo lleva sus días de trabajo):'))\n"
+                       "pinta_tikz(gantt_tramos_tikz(tramos_turnos(turnos_seguidas_c, tareas), horizonte=H))\n"
+                       "display(Markdown(f'**Multitarea en turnos de {bloque} días** (en gris, los días perdidos en cada cambio):'))\n"
+                       "pinta_tikz(gantt_tramos_tikz(tramos_turnos(turnos_multi_c, tareas), horizonte=H))"))
+    celdas.append(code("Markdown(f'**Respuesta:** con la pérdida por cambio, la multitarea ya no sólo retrasa las tareas intermedias: el último trabajo pasa del día '\n"
                        "         f'{fin_seguidas_c.max()} al {fin_multi_c.max()} ({n_cambios[\"con multitarea\"]} cambios frente a {n_cambios[\"sin multitarea\"]}), '\n"
                        "         'es decir, la persona produce menos. Es el efecto que Goldratt atribuye a la multitarea mal entendida.')"))
     celdas += apartado(4)
     celdas.append(code("orden_spt = sorted(tareas, key=lambda t: (duraciones[t], t))\n"
                        "fin_spt, _ = multitarea({t: duraciones[t] for t in orden_spt})\n"
-                       "Markdown(f'Ordenando de la más corta a la más larga ({\" → \".join(orden_spt)}) el tiempo medio de terminación es '\n"
+                       "Markdown(f'**Respuesta:** ordenando de la más corta a la más larga ({\" → \".join(orden_spt)}) las tareas terminan los días '\n"
+                       "         f'{\", \".join(str(v) for v in fin_spt)} y el tiempo medio de terminación es ({\" + \".join(str(v) for v in fin_spt)})/{len(tareas)} = '\n"
                        "         f'{fin_spt.mean():.2f} días, el mínimo posible sin multitarea (frente a {fin_seguidas.mean():.2f} en el orden del cuadro): '\n"
                        "         'es la regla de la duración más corta primero: si dos tareas seguidas están en orden larga–corta, intercambiarlas '\n"
                        "         'adelanta la corta lo que dura la larga y retrasa la larga sólo lo que dura la corta.')"))
@@ -426,17 +481,19 @@ def _colchon_proyecto(rng):
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las estimaciones seguras y su camino crítico", label="fig-pert")
     celdas.append(_cal(cap="Calendario del cronograma tradicional (estimaciones seguras)"))
     celdas.append(code('#| tbl-cap: "Duración de cada ruta con las estimaciones seguras"\n#| label: tbl-rutasSeguras\n'
-                       "rutas_seguras = detalle_rutas(R, datos_proyecto['segura'][R.columns])\n"
+                       "rutas_seguras = tabla_rutas(proyecto, R, datos_proyecto['segura'][R.columns])\n"
                        "rutas_seguras"))
-    celdas.append(code("T_tradicional = int(rutas_seguras['duración'].max())\n"
-                       "ruta_tradicional = rutas_seguras['duración'].astype(float).idxmax()\n"
-                       "Markdown(f'El cronograma tradicional dura **{T_tradicional} días**; ruta crítica: {rutas_seguras.loc[ruta_tradicional, \"actividades\"]}.')"))
+    celdas.append(code("duracion_rutas = rutas_seguras['duración = suma'].str.split(' = ').str[-1].astype(int)\n"
+                       "T_tradicional = int(duracion_rutas.max())\n"
+                       "ruta_tradicional = duracion_rutas.idxmax()\n"
+                       "Markdown(f'**Respuesta:** el cronograma tradicional dura **{T_tradicional} días** (la ruta más larga con las estimaciones seguras); '\n"
+                       "         f'ruta crítica: {rutas_seguras.loc[ruta_tradicional, \"actividades\"]}.')"))
     celdas += apartado(2)
     celdas.append(md("La cadena crítica es la secuencia más larga de actividades dependientes con las estimaciones "
                      "agresivas. Sin recursos compartidos, es la ruta crítica calculada con esas estimaciones."))
     celdas += fig_grafo(durations="datos_proyecto['agresiva']", cap="Grafo PERT con las estimaciones agresivas: su camino crítico es la cadena crítica", label="fig-pertAgresiva")
     celdas.append(code('#| tbl-cap: "Duración de cada ruta con las estimaciones agresivas"\n#| label: tbl-rutasAgresivas\n'
-                       "rutas_agresivas = detalle_rutas(R, datos_proyecto['agresiva'][R.columns])\n"
+                       "rutas_agresivas = tabla_rutas(proyecto, R, datos_proyecto['agresiva'][R.columns])\n"
                        "rutas_agresivas"))
     celdas.append(code("plan = proyecto.plan_cadena_critica(datos_proyecto, agresiva='agresiva', segura='segura', metodo='cortar_pegar')\n"
                        "cadena = plan.cadena\n"
@@ -445,7 +502,9 @@ def _colchon_proyecto(rng):
     celdas.append(code('#| tbl-cap: "Margen retirado de las actividades de la cadena"\n#| label: tbl-margenes\n'
                        "tabla_margenes(datos_proyecto, cadena)"))
     celdas.append(code("margen_cadena = int(plan.margen[cadena].sum())\n"
-                       "Markdown(f'El margen retirado de la cadena suma {\" + \".join(str(int(plan.margen[a])) for a in cadena)} = **{margen_cadena} días**.')"))
+                       "Markdown(f'El margen retirado de la cadena suma {\" + \".join(str(int(plan.margen[a])) for a in cadena)} = **{margen_cadena} días**.\\n\\n'\n"
+                       "         f'**Respuesta:** cadena crítica {\" - \".join(cadena)}, de {plan.duracion_cadena} días; márgenes retirados: '\n"
+                       "         f'{lista_y([plural(int(plan.margen[a]), \"día\") + f\" ({a})\" for a in cadena])}.')"))
     if distinta:
         celdas.append(md("La cadena crítica no coincide con la ruta crítica del cronograma tradicional: al retirar los "
                          "márgenes, que no son proporcionales a las duraciones, puede pasar a ser más larga otra ruta. "
@@ -454,9 +513,9 @@ def _colchon_proyecto(rng):
     celdas.append(code('#| tbl-cap: "Colchón del proyecto por los dos métodos"\n#| label: tbl-colchon\n'
                        "detalle_colchon(plan.margen[cadena], 'colchón del proyecto')"))
     celdas.append(code("CP = plan.colchon_proyecto\n"
-                       "Markdown(f'Con cortar y pegar el colchón es de {CP} días y la fecha comprometida, {plan.duracion_cadena} + {CP} = '\n"
+                       "Markdown(f'**Respuesta:** con cortar y pegar el colchón es de {CP} días y la fecha comprometida, {plan.duracion_cadena} + {CP} = '\n"
                        "         f'**{plan.compromiso} días**, frente a los {T_tradicional} del cronograma tradicional: '\n"
-                       "         f'**{T_tradicional - plan.compromiso} días menos**. Con la raíz de la suma de cuadrados el colchón sería de '\n"
+                       "         f'{T_tradicional} − {plan.compromiso} = **{T_tradicional - plan.compromiso} días menos**. Con la raíz de la suma de cuadrados el colchón sería de '\n"
                        "         f'{ceil(plan.calculo_colchon_proyecto[\"raiz\"] - 1e-9)} días.')"))
     celdas += apartado(4)
     celdas.append(code("Markdown(f'''Los márgenes individuales no se suman: es muy improbable que todas las actividades de la cadena consuman a la vez "
@@ -464,7 +523,7 @@ def _colchon_proyecto(rng):
                        "la raíz de la suma de cuadrados ({plan.calculo_colchon_proyecto[\"raiz\"]:.2f} días frente a {margen_cadena}). Concentrar el margen al "
                        "final protege la fecha de entrega con menos días que repartido por las actividades, donde además se perdería por el síndrome del "
                        "estudiante y la ley de Parkinson.\n\n"
-                       "La estimación agresiva es la mediana: se espera que la mitad de las actividades la superen. Penalizarlo llevaría a los "
+                       "La estimación agresiva es la mediana: se espera que la mitad de las actividades la superen. Penalizar a quien la supera llevaría a los "
                        "responsables a volver a inflar sus estimaciones, y el margen oculto reaparecería. Lo que se controla es el consumo del "
                        "colchón del proyecto, no el cumplimiento de cada duración.''')"))
     celdas += _autoevaluacion(_p_colchon(plan), f"Cadena crítica — colchón del proyecto (cadena de {plan.duracion_cadena} días)")
@@ -514,21 +573,23 @@ def _dimensionado(rng):
                        "detalle_colchon(margenes, 'colchón del proyecto')"))
     celdas.append(code("CP_cp = ceil(0.5 * margenes.sum() - 1e-9)\n"
                        "CP_rz = ceil(sqrt((margenes ** 2).sum()) - 1e-9)\n"
-                       "Markdown(f'Cortar y pegar: **{CP_cp} días**; raíz de la suma de cuadrados: **{CP_rz} días**.')"))
+                       "Markdown(f'**Respuesta:** cortar y pegar, **{CP_cp} días**; raíz de la suma de cuadrados, **{CP_rz} días**.')"))
     celdas += apartado(3)
     celdas.append(md("Con duraciones normales, la de la cadena es normal con media la suma de las medias (la duración "
                      "agresiva de la cadena, $T$) y varianza la suma de las varianzas, $\\sigma_C^2 = \\sum_i "
-                     "(m_i/1{,}2816)^2$. La probabilidad de cumplir $T + CP$ es $\\Phi(CP/\\sigma_C)$."))
+                     "(m_i/1{,}2816)^2$. La probabilidad de cumplir $T + CP$ es $P(T_C \\le T + CP)$ con $T_C \\sim N(T, \\sigma_C)$, "
+                     "que se obtiene con la hoja de cálculo: `=DISTR.NORM.N(T + CP; T; σ_C; VERDADERO)`."))
     celdas.append(code("sigma = margenes / 1.2816\n"
                        "sigma_cadena = float(np.sqrt((sigma ** 2).sum()))\n"
                        "display(pd.DataFrame({'σ = margen/1,2816': sigma.round(3), 'σ²': (sigma ** 2).round(3)}).T)\n"
                        "Markdown(f'σ de la cadena = √{(sigma ** 2).sum():.3f} = **{sigma_cadena:.3f} días** '\n"
                        "         f'(que es la raíz de la suma de cuadrados de los márgenes dividida por 1,2816: {sqrt((margenes ** 2).sum()):.3f}/1,2816).')"))
-    celdas.append(code('#| tbl-cap: "Probabilidad de terminar la cadena en T + CP"\n#| label: tbl-probabilidad\n'
-                       "pd.DataFrame({'colchón': [CP_cp, CP_rz], 'fecha T + CP': [T + CP_cp, T + CP_rz],\n"
-                       "              'z = CP/σ': [f'{CP_cp}/{sigma_cadena:.3f} = {CP_cp / sigma_cadena:.3f}', f'{CP_rz}/{sigma_cadena:.3f} = {CP_rz / sigma_cadena:.3f}'],\n"
-                       "              'P = Φ(z)': [round(norm.cdf(CP_cp / sigma_cadena), 4), round(norm.cdf(CP_rz / sigma_cadena), 4)]},\n"
-                       "             index=['cortar y pegar', 'raíz']).T"))
+    celdas.append(code("p_cp = norm.cdf(T + CP_cp, T, sigma_cadena)\n"
+                       "p_rz = norm.cdf(T + CP_rz, T, sigma_cadena)\n"
+                       "Markdown(f'- Cortar y pegar: fecha {T} + {CP_cp} = {T + CP_cp}; ' + explica_probabilidad(T, sigma_cadena, T + CP_cp, nombre='T_C') + '\\n'\n"
+                       "         f'- Raíz de la suma de cuadrados: fecha {T} + {CP_rz} = {T + CP_rz}; ' + explica_probabilidad(T, sigma_cadena, T + CP_rz, nombre='T_C') + '\\n\\n'\n"
+                       "         f'**Respuesta:** la cadena termina en {T + CP_cp} días o menos con probabilidad {p_cp:.4f} con el colchón de cortar y pegar, '\n"
+                       "         f'y en {T + CP_rz} días o menos con probabilidad {p_rz:.4f} con el de la raíz.')"))
     celdas.append(md("Sin redondear, el colchón de la raíz es exactamente $1{,}2816\\,\\sigma_C$: da la probabilidad 0,90 "
                      "que se buscaba en cada actividad, ahora para la cadena completa (el redondeo al día superior la sube "
                      "algo). El de cortar y pegar no tiene un nivel de confianza fijo: depende del número de actividades. "
@@ -538,11 +599,15 @@ def _dimensionado(rng):
                        "m = float(margenes.mean())\n"
                        "n = np.arange(1, 13)\n"
                        "tabla_n = pd.DataFrame({'cortar y pegar = n·m/2': n * m / 2, 'raíz = √n·m': np.sqrt(n) * m,\n"
-                       "                        'P con cortar y pegar = Φ(1,2816·√n/2)': norm.cdf(1.2816 * np.sqrt(n) / 2),\n"
-                       "                        'P con raíz': norm.cdf(1.2816) + 0 * n}, index=pd.Index(n, name='n'))\n"
-                       "tabla_n.round(3).T"))
-    celdas.append(code("Markdown(f'Con m = {m:.2f} días, cortar y pegar crece linealmente (n·m/2) y la raíz como √n·m. Son iguales cuando '\n"
-                       "         'n/2 = √n, es decir, n = 4: con más de cuatro actividades cortar y pegar da un colchón mayor, y su probabilidad '\n"
+                       "                        'σ_C = √n·m/1,2816': np.sqrt(n) * m / 1.2816,\n"
+                       "                        'P con cortar y pegar': norm.cdf(n * m / 2, 0, np.sqrt(n) * m / 1.2816),\n"
+                       "                        'P con raíz': norm.cdf(np.sqrt(n) * m, 0, np.sqrt(n) * m / 1.2816)}, index=pd.Index(n, name='n'))\n"
+                       "tabla_n.map(lambda v: f'{v:.3f}').T"))
+    celdas.append(md("Cada probabilidad es la de que la cadena no supere su duración más el colchón: "
+                     "`=DISTR.NORM.N(T + colchón; T; σ_C; VERDADERO)`, que es lo mismo que `=DISTR.NORM.N(colchón; 0; σ_C; VERDADERO)`. "
+                     "Con la raíz el colchón es siempre 1,2816·σ_C, y la probabilidad, 0,90."))
+    celdas.append(code("Markdown(f'**Respuesta:** con m = {m:.2f} días, cortar y pegar crece linealmente (n·m/2) y la raíz como √n·m. Son iguales cuando '\n"
+                       "         'n/2 = √n, es decir, n = 4: con más de cuatro actividades (a partir de n = 5) cortar y pegar da un colchón mayor, y su probabilidad '\n"
                        "         'de cumplir se acerca a 1 (sobreprotege las cadenas largas, a costa de alargar el compromiso); con menos de cuatro da un '\n"
                        "         f'colchón menor que la raíz y protege menos del 90 % (con n = 2, P = {norm.cdf(1.2816 * np.sqrt(2) / 2):.2f}). '\n"
                        "         f'Esta cadena tiene {len(cadena)} actividades: cortar y pegar le asigna {CP_cp - CP_rz} días más que la raíz.')"))
@@ -592,9 +657,12 @@ def _alimentacion(rng):
     celdas.append(code("plan = proyecto.plan_cadena_critica(datos_proyecto, agresiva='agresiva', segura='segura', metodo='cortar_pegar')\n"
                        "cadena = plan.cadena\n"
                        "Markdown(f'Cadena crítica: **{\" - \".join(cadena)}** ({plan.duracion_cadena} días).')"))
+    celdas.append(code('#| tbl-cap: "Margen retirado de las actividades de la cadena"\n#| label: tbl-margenes\n'
+                       "tabla_margenes(datos_proyecto, cadena)"))
     celdas.append(code('#| tbl-cap: "Colchón del proyecto"\n#| label: tbl-colchon\n'
                        "detalle_colchon(plan.margen[cadena], 'colchón del proyecto').loc[['cortar y pegar = 0,5·Σ márgenes']]"))
-    celdas.append(code("Markdown(f'Colchón del proyecto: **{plan.colchon_proyecto} días**; fecha comprometida {plan.duracion_cadena} + {plan.colchon_proyecto} = **{plan.compromiso} días**.')"))
+    celdas.append(code("Markdown(f'**Respuesta:** cadena crítica {\" - \".join(cadena)}, de {\" + \".join(str(int(plan.agresiva[a])) for a in cadena)} = {plan.duracion_cadena} días; '\n"
+                       "         f'colchón del proyecto **{plan.colchon_proyecto} días**; fecha comprometida {plan.duracion_cadena} + {plan.colchon_proyecto} = **{plan.compromiso} días**.')"))
     celdas += apartado(2)
     celdas.append(md("Un colchón de alimentación protege a la cadena crítica de los retrasos de un camino que desemboca en "
                      "ella: se coloca en el arco por el que ese camino entra en la cadena. Se dimensiona con los márgenes "
@@ -603,10 +671,12 @@ def _alimentacion(rng):
                      "alimentación, en su fecha más temprana, del inicio de la actividad de la cadena."))
     celdas.append(code('#| tbl-cap: "Colchones de alimentación"\n#| label: tbl-alimentacion\n'
                        "tabla_alimentacion(plan)"))
-    if len(no_cabe):
-        celdas.append(code("no_cabe = plan.alimentacion[plan.alimentacion['requerido'] > plan.alimentacion['disponible']]\n"
-                           "Markdown('; '.join(f'{n} no cabe: requiere {int(f.requerido)} días y sólo hay {int(f.disponible)} de holgura, así que se reduce a {int(f.adoptado)}' "
-                           "for n, f in no_cabe.iterrows()) + '.')"))
+    celdas.append(code("no_cabe = plan.alimentacion[plan.alimentacion['requerido'] > plan.alimentacion['disponible']]\n"
+                       "Markdown('**Respuesta:** ' + '; '.join(\n"
+                       "    f'{n}, en el arco {f.desde} → {f.antes_de} (cadena de alimentación {f.cadena_alimentacion}): requiere {plural(int(f.requerido), \"día\")} y '\n"
+                       "    + (f'cabe en la holgura de {int(f.disponible)}' if f.requerido <= f.disponible else\n"
+                       "       f'sólo hay {int(f.disponible)} de holgura: no cabe y se reduce a {plural(int(f.adoptado), \"día\")}')\n"
+                       "    for n, f in plan.alimentacion.iterrows()) + '.')"))
     celdas += apartado(3)
     celdas.append(md("La cadena crítica se programa en sus inicios más tempranos. Las actividades de alimentación se "
                      "programan hacia atrás, de la última a la primera: cada una termina cuando empieza la primera de sus "
@@ -617,6 +687,9 @@ def _alimentacion(rng):
                        "plan.tabla()[['agresiva', 'cadena', 'inicio', 'fin']].assign(**{'inicio más temprano': plan.inicio_temprano}).T"))
     celdas.append(code('#| fig-cap: "Diagrama de Gantt del plan de cadena crítica: cadena en rojo, alimentación en verde, colchones en naranja"\n#| label: fig-ganttCCPM\n'
                        f"pinta_tikz(plan.gantt_tikz(params={GANTT_CCPM}))"))
+    celdas.append(code("alim = [a for a in plan.orden if a not in cadena]\n"
+                       "Markdown('**Respuesta:** inicios de las actividades de alimentación: ' + lista_y([f'{a} el día {int(plan.inicios[a])} (inicio más temprano: {int(plan.inicio_temprano[a])})' for a in alim]) + '; '\n"
+                       "         + 'las de la cadena empiezan en su inicio más temprano: ' + lista_y([f'{a} el día {int(plan.inicios[a])}' for a in cadena]) + '.')"))
     celdas += apartado(4)
     celdas.append(md("Programar la alimentación lo más tarde posible evita comprometer recursos y dinero antes de tiempo "
                      "(el gasto se retrasa, el trabajo en curso es menor y se pueden incorporar cambios con menos "
@@ -626,7 +699,7 @@ def _alimentacion(rng):
                      "consume colchón del proyecto. Por eso se vigila el consumo de cada colchón de alimentación."))
     if len(no_cabe):
         celdas.append(code("exceso = int((no_cabe['requerido'] - no_cabe['disponible']).max())\n"
-                           "Markdown(f'Si el colchón que no cabe se mantuviera completo habría que retrasar la cadena crítica {exceso} día(s): '\n"
+                           "Markdown(f'Si el colchón que no cabe se mantuviera completo habría que retrasar la cadena crítica {plural(exceso, \"día\")}: '\n"
                            "         f'la fecha comprometida pasaría de {plan.compromiso} a {plan.compromiso + exceso}. Reducirlo a la holgura '\n"
                            "         'mantiene el compromiso, pero deja ese camino peor protegido: su cadena de alimentación debe empezar el primer '\n"
                            "         'día posible y conviene vigilarla de cerca.')"))
@@ -665,15 +738,32 @@ def solapes(calendario, datos):
     return pd.DataFrame(filas, columns=['equipo', 'actividades', 'intervalos', 'días de solape']).rename(index=lambda i: i + 1)
 
 
-def esperas_por_recurso(asignacion):
-    """Actividades que esperan a un equipo: desde cuándo están listas, cuándo empiezan y quién las bloquea."""
+def esperas_por_recurso(asignacion, calendario, datos):
+    """Actividades que esperan a un equipo: desde cuándo están listas, cuándo empiezan, quién las bloquea y
+    por qué (la que ocupa el equipo ya estaba en curso o entró antes por la regla de prioridad)."""
     t = asignacion.traza
     esp = t[t['decision'] == 'espera']
+    ls = calendario['inicio_mas_tardio']
     filas = {}
     for a, g in esp.groupby('actividad'):
-        filas[a] = {'lista desde el día': int(g['periodo'].min()) - 1, 'empieza el día': int(asignacion.inicios[a]),
-                    'espera (días)': int(asignacion.inicios[a]) - int(g['periodo'].min()) + 1,
-                    'equipo que la bloquea': ', '.join(sorted(set(g['bloqueada_por'])))}
+        lista, empieza = int(g['periodo'].min()) - 1, int(asignacion.inicios[a])
+        equipo = ', '.join(sorted(set(g['bloqueada_por'])))
+        ocupan = sorted((b for b in datos.index[datos['recurso'] == datos.loc[a, 'recurso']]
+                         if b != a and int(asignacion.inicios[b]) < empieza and int(asignacion.fines[b]) > lista),
+                        key=lambda b: int(asignacion.inicios[b]))
+        motivos = []
+        for b in ocupan:
+            ib, fb = int(asignacion.inicios[b]), int(asignacion.fines[b])
+            if ib < lista:
+                motivos.append(f'{b} [{ib}, {fb}) ya estaba en curso')
+            else:
+                regla = f'inicio más tardío {int(ls[b])} frente a {int(ls[a])}'
+                if int(ls[b]) == int(ls[a]):
+                    da, db = int(datos.loc[a, 'duration']), int(datos.loc[b, 'duration'])
+                    regla += f'; a igualdad, duración {db} frente a {da}' if da != db else '; a igualdad de duración, orden alfabético'
+                motivos.append(f'{b} [{ib}, {fb}) entró antes por prioridad ({regla})')
+        filas[a] = {'lista desde el día': lista, 'empieza el día': empieza, 'espera (días)': empieza - lista,
+                    'equipo': equipo, 'ocupado por': '; '.join(motivos)}
     return pd.DataFrame(filas).T
 '''.strip("\n")
 
@@ -695,14 +785,16 @@ def _nivelacion_celdas(ap_conflictos, ap_nivelacion):
                   "         'pero el cronograma no es realizable: un equipo no puede hacer dos actividades a la vez.')"))
     if ap_nivelacion != ap_conflictos:
         c += apartado(ap_nivelacion)
-    c.append(md("Se programa día a día con un equipo de cada tipo (límite 1). La prioridad usa el inicio más tardío del "
-                "calendario anterior. La tabla recoge las actividades que tienen que esperar a su equipo."))
+    c.append(md("Se programa día a día con un equipo de cada tipo (límite 1). Cuando varias actividades del mismo equipo "
+                "pueden empezar, entra la de menor inicio más tardío del calendario anterior (a igualdad, la más corta y, "
+                "después, por orden alfabético); una vez empezada, no se interrumpe. La tabla recoge las actividades que "
+                "tienen que esperar a su equipo y qué actividad lo ocupa."))
     c.append(code("demanda = pd.DataFrame({e: (datos_proyecto['recurso'] == e).astype(int) for e in equipos})\n"
                   "demanda['duration'] = datos_proyecto['agresiva']\n"
                   "asignacion = proyecto.asignar_multi(demanda, 'duration', equipos, [1] * len(equipos), dibujar=False)\n"
                   "Markdown(f'Duración con los equipos: **{asignacion.duracion} días** (sin ellos, {T_libre}).')"))
     c.append(code('#| tbl-cap: "Esperas por falta de equipo"\n#| label: tbl-esperas\n'
-                  "esperas_por_recurso(asignacion)"))
+                  "esperas_por_recurso(asignacion, calendario, datos_proyecto)"))
     c.append(code("plan = proyecto.plan_cadena_critica(datos_proyecto, agresiva='agresiva', segura='segura', recurso='recurso', metodo=METODO)\n"
                   "pd.DataFrame({'orden en que atiende a sus actividades': {e: ' → '.join(plan.secuencias[e]) for e in equipos}})"))
     c.append(code('#| tbl-cap: "Enlaces de recurso que se añaden a la red"\n#| label: tbl-enlaces\n'
@@ -713,6 +805,10 @@ def _nivelacion_celdas(ap_conflictos, ap_nivelacion):
     c.append(code("red = plan.red_nivelada()\n"
                   "proyecto_nivelado = PredecessorTable.from_dataframe_of_strings(red, activity='activity', predecessor='predecessor').create_project()\n"
                   "red[['predecessor']].T"))
+    c.append(code("Markdown(f'**Respuesta:** ' + '; '.join(f'el equipo {e} atiende {\" → \".join(plan.secuencias[e])}' for e in equipos) + '. '\n"
+                  "         f'Con los enlaces de recurso, la ruta más larga de la red nivelada es {\" - \".join(plan.cadena)}: '\n"
+                  "         f'{\" + \".join(str(int(plan.agresiva[a])) for a in plan.cadena)} = **{plan.duracion_cadena} días**, la duración del proyecto con los equipos '\n"
+                  "         f'(sin ellos, {T_libre}).')"))
     c += fig_grafo(durations="red['agresiva']", obj="proyecto_nivelado",
                    cap="Red nivelada (prelaciones y enlaces de recurso) con las estimaciones agresivas: su camino crítico es la cadena crítica",
                    label="fig-pertNivelado")
@@ -767,20 +863,24 @@ def _con_recursos(rng):
                        "         'pero que existe porque el mismo equipo no puede hacer dos cosas a la vez. Por eso la cadena crítica se busca '\n"
                        "         'después de resolver los conflictos de recursos.')"))
     celdas += apartado(4)
+    celdas.append(code('#| tbl-cap: "Margen retirado de las actividades de la cadena"\n#| label: tbl-margenes\n'
+                       "tabla_margenes(datos_proyecto, plan.cadena)"))
     celdas.append(code('#| tbl-cap: "Colchón del proyecto"\n#| label: tbl-colchon\n'
                        "detalle_colchon(plan.margen[plan.cadena], 'colchón del proyecto').loc[['cortar y pegar = 0,5·Σ márgenes']]"))
-    celdas.append(code("Markdown(f'Colchón del proyecto: **{plan.colchon_proyecto} días**; fecha comprometida {plan.duracion_cadena} + '\n"
+    celdas.append(code("Markdown(f'**Respuesta:** colchón del proyecto **{plan.colchon_proyecto} días**; fecha comprometida {plan.duracion_cadena} + '\n"
                        "         f'{plan.colchon_proyecto} = **{plan.compromiso} días**.')"))
     celdas.append(code('#| tbl-cap: "Colchones de recursos (avisos)"\n#| label: tbl-avisos\n'
                        "plan.colchones_recursos.rename(columns={'antes_de': 'antes de', 'recursos': 'equipo al que se avisa', "
-                       "'despues_de': 'mientras termina', 'inicio_previsto': 'inicio previsto'}).rename(index=lambda i: i + 1)"))
+                       "'despues_de': 'mientras termina', 'inicio_previsto': 'inicio previsto de la actividad'}).rename(index=lambda i: i + 1)"))
+    celdas.append(code("Markdown('**Respuesta:** hay que avisar ' + lista_y([f'al equipo {f.recursos} antes de {f.antes_de} (que empieza el día {int(f.inicio_previsto)}), mientras termina {f.despues_de}' "
+                       "for f in plan.colchones_recursos.itertuples()]) + '.')"))
     celdas.append(md("Un colchón de recursos no es tiempo en el cronograma: es un **aviso** al equipo que va a entrar en la "
                      "cadena crítica, unos días antes de que termine la actividad anterior, para que esté libre y "
                      "preparado en cuanto reciba el testigo. Se pone antes de cada actividad de la cadena que usa un equipo "
                      "que no usaba su predecesora en la cadena; si la cadena sigue con el mismo equipo, no hace falta."))
     celdas += _autoevaluacion(_p_recursos(plan, info), f"Cadena crítica — cadena con recursos (cadena de {plan.duracion_cadena} días)")
     sub = (f"{n_rec} equipo{'s' if n_rec > 1 else ''}; la cadena pasa por {int((plan.enlaces_cadena['motivo'] == 'recurso').sum())} "
-           f"enlace(s) de recurso; {plan.duracion_cadena} frente a {int(info['T'])} días sin recursos")
+           f"{'enlace' if int((plan.enlaces_cadena['motivo'] == 'recurso').sum()) == 1 else 'enlaces'} de recurso; {plan.duracion_cadena} frente a {int(info['T'])} días sin recursos")
     return _con_contexto(celdas, rng), sub
 
 
@@ -820,12 +920,14 @@ def _plan_completo(rng):
                        "plan.enlaces_cadena.rename(index=lambda i: i + 1)"))
     celdas.append(code("Markdown(f'Cadena crítica: **{\" - \".join(plan.cadena)}**, {plan.duracion_cadena} días.')"))
     celdas += apartado(2)
+    celdas.append(code('#| tbl-cap: "Margen retirado de las actividades de la cadena"\n#| label: tbl-margenes\n'
+                       "tabla_margenes(datos_proyecto, plan.cadena)"))
     celdas.append(code('#| tbl-cap: "Colchón del proyecto"\n#| label: tbl-colchon\n'
                        f"detalle_colchon(plan.margen[plan.cadena], 'colchón del proyecto').loc[[{fila_metodo!r}]]"))
     celdas.append(code('#| tbl-cap: "Colchones de alimentación"\n#| label: tbl-alimentacion\n'
                        "tabla_alimentacion(plan)"))
-    celdas.append(code("Markdown(f'Colchón del proyecto: **{plan.colchon_proyecto} días**. Colchones de alimentación: '\n"
-                       "         + '; '.join(f'{n} = {int(f.adoptado)} día(s) antes de {f.antes_de}' for n, f in plan.alimentacion.iterrows()) + '.')"))
+    celdas.append(code("Markdown(f'**Respuesta:** colchón del proyecto, **{plan.colchon_proyecto} días**. Colchones de alimentación: '\n"
+                       "         + '; '.join(f'{n} = {plural(int(f.adoptado), \"día\")} antes de {f.antes_de}' + (f' (requería {int(f.requerido)}, reducido a la holgura disponible)' if f.requerido > f.disponible else '') for n, f in plan.alimentacion.iterrows()) + '.')"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Programación lo más tarde posible de las actividades de alimentación"\n#| label: tbl-alap\n'
                        "detalle_alap(plan)"))
@@ -833,20 +935,24 @@ def _plan_completo(rng):
                        "plan.tabla().T"))
     celdas.append(code('#| fig-cap: "Gantt del plan de cadena crítica: cadena en rojo, alimentación en verde, colchones en naranja; enlaces de recurso discontinuos"\n#| label: fig-ganttCCPM\n'
                        f"pinta_tikz(plan.gantt_tikz(params={GANTT_CCPM}))"))
-    celdas.append(code("Markdown(f'Fecha comprometida: {plan.duracion_cadena} + {plan.colchon_proyecto} = **{plan.compromiso} días**.')"))
+    celdas.append(code("Markdown(f'**Respuesta:** la cadena empieza el día 0 y las actividades de alimentación ' + lista_y([f'{a} el día {int(plan.inicios[a])}' for a in plan.orden if a not in plan.cadena]) + '; '\n"
+                       "         f'fecha comprometida: {plan.duracion_cadena} + {plan.colchon_proyecto} = **{plan.compromiso} días**.')"))
     celdas += apartado(4)
     celdas.append(code("datos_proyecto['duration'] = datos_proyecto['segura']\n"
                        "calendario_tradicional = proyecto_nivelado.calendar(datos_proyecto.loc[red.index, 'segura'])\n"
                        "ruta_tradicional = [a for a in calendario_tradicional.sort_values('inicio_mas_temprano').index if calendario_tradicional.loc[a, 'H_total'] == 0]\n"
-                       "Markdown(f'Con las estimaciones seguras en la red nivelada el proyecto dura **{plan.duracion_tradicional} días** '\n"
-                       "         f'(ruta crítica {\" - \".join(ruta_tradicional)}). El plan de cadena crítica compromete {plan.compromiso}: '\n"
-                       "         f'**{plan.duracion_tradicional - plan.compromiso} días menos**. El margen que el cronograma tradicional reparte entre las '\n"
-                       "         f'actividades ({int(plan.margen.sum())} días en total) se sustituye por {plan.colchon_proyecto} días de colchón del proyecto '\n"
+                       "display(Markdown('Cronograma tradicional: estimaciones seguras en la red nivelada (prelaciones y enlaces de recurso). '\n"
+                       "                 + explica_camino_critico(proyecto_nivelado, datos_proyecto.loc[red.index, 'segura'], 'días').data))\n"
+                       "Markdown(f'**Respuesta:** el plan de cadena crítica compromete {plan.compromiso} días: '\n"
+                       "         f'{plan.duracion_tradicional} − {plan.compromiso} = **{plan.duracion_tradicional - plan.compromiso} días menos**. El margen que el cronograma tradicional reparte entre las '\n"
+                       "         f'actividades ({\" + \".join(str(int(plan.margen[a])) for a in sorted(plan.margen.index))} = {int(plan.margen.sum())} días en total) se sustituye por {plan.colchon_proyecto} días de colchón del proyecto '\n"
                        "         f'y {int(plan.alimentacion[\"adoptado\"].sum())} de colchones de alimentación, situados donde protegen la entrega.')"))
     celdas += apartado(5)
     celdas.append(code('#| tbl-cap: "Colchones de recursos (avisos)"\n#| label: tbl-avisos\n'
                        "plan.colchones_recursos.rename(columns={'antes_de': 'antes de', 'recursos': 'equipo al que se avisa', "
-                       "'despues_de': 'mientras termina', 'inicio_previsto': 'inicio previsto'}).rename(index=lambda i: i + 1)"))
+                       "'despues_de': 'mientras termina', 'inicio_previsto': 'inicio previsto de la actividad'}).rename(index=lambda i: i + 1)"))
+    celdas.append(code("Markdown('**Respuesta:** hay que avisar ' + lista_y([f'al equipo {f.recursos} antes de {f.antes_de} (que empieza el día {int(f.inicio_previsto)}), mientras termina {f.despues_de}' "
+                       "for f in plan.colchones_recursos.itertuples()]) + '.')"))
     celdas.append(md("El colchón de recursos es un aviso, no una espera: el equipo se compromete a estar libre cuando termine "
                      "la actividad anterior de la cadena (que, por la regla del corredor de relevos, puede terminar antes de "
                      "lo previsto). Añadir tiempo alargaría la cadena sin protegerla; lo que se protege es la disponibilidad "
@@ -973,22 +1079,35 @@ def _seguimiento(rng):
                        "resumen = resumen_informes(plan, seguimientos)"))
     celdas.append(code('#| tbl-cap: "Fecha prevista de fin y colchón consumido"\n#| label: tbl-consumo\n'
                        "resumen.loc[['fin previsto = día + restante de la cadena', 'colchón consumido']]"))
+    celdas.append(code("Markdown('**Respuesta:** ' + '; '.join(f\"día {s['dia']}: fin previsto el día {s['fin_previsto']:g}, colchón consumido {plural(s['consumo'], 'día')} \"\n"
+                       "                                      f\"({s['pct_consumo']:.1f} % de {CP})\" for s in seguimientos) + '.')"))
     celdas += apartado(2)
-    celdas.append(md("Lo completado de la cadena es su duración menos lo que le queda: cuenta entera cada actividad "
+    celdas.append(md("Lo completado de la cadena es su duración $T$ menos lo que le queda: cuenta entera cada actividad "
                      "terminada (por su duración agresiva, aunque haya tardado más o menos) y, de la que está en curso, "
-                     "su duración agresiva menos lo que le queda (cero si le queda más que eso)."))
+                     "su duración agresiva menos lo que le queda (cero si le queda más que eso); por eso el restante de la "
+                     "que está en curso se recorta a su duración agresiva."))
     celdas.append(code('#| tbl-cap: "Cadena completada y BPI"\n#| label: tbl-bpi\n'
-                       "resumen.loc[['cadena completada', 'BPI = % colchón restante / % cadena restante']]"))
+                       "resumen.loc[['cadena completada = (T − restante)/T', 'BPI = % colchón restante / % cadena restante']]"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Límites de las zonas para el avance de cada informe y zona"\n#| label: tbl-zonas\n'
                        "resumen.loc[['límite verde = 10 + 0,6·avance', 'límite rojo = 30 + 0,6·avance', 'zona']]"))
+    celdas.append(code("Markdown('**Respuesta:** ' + '; '.join(f\"día {s['dia']}, zona {s['zona']}\" for s in seguimientos) + '.')"))
     celdas.append(code('#| fig-cap: "Gráfico de fiebre con los tres informes"\n#| label: fig-fiebre\n'
                        "pinta_tikz(grafico_fiebre_tikz(seguimientos))"))
     celdas += apartado(4)
-    celdas.append(code("acciones = {'verde': 'no hace falta actuar: el colchón se consume a un ritmo menor que el avance de la cadena',\n"
+    celdas.append(code("acciones = {'verde': 'no hace falta actuar: el consumo del colchón está por debajo del límite verde para ese avance',\n"
                        "            'amarilla': 'preparar un plan de recuperación (refuerzos, solapes, reasignar a quien termine), sin ejecutarlo todavía',\n"
                        "            'roja': 'ejecutar el plan de recuperación: si no, la fecha comprometida está en peligro'}\n"
-                       "Markdown('\\n'.join(f\"- Día {s['dia']} (zona {s['zona']}, BPI {s['bpi']:.2f}): {acciones[s['zona']]}.\" for s in seguimientos))"))
+                       "def matiz(s):\n"
+                       "    if s['zona'] != 'verde' and s['bpi'] >= 1:\n"
+                       "        return (f\" El BPI ({s['bpi']:.2f} ≥ 1) dice que aún queda proporcionalmente más colchón ({100 - s['pct_consumo']:.1f} %) que cadena \"\n"
+                       "                f\"({100 - s['pct_avance']:.1f} %), pero el gráfico de fiebre es más exigente: con el {s['pct_avance']:.1f} % de cadena completada sólo admite sin alarma \"\n"
+                       "                f\"un consumo de 10 + 0,6·{s['pct_avance']:.1f} = {s['limite_verde']:.1f} %, menor que el avance, para guardar reserva por si lo que queda de cadena también se retrasa.\")\n"
+                       "    if s['zona'] == 'verde' and s['bpi'] < 1:\n"
+                       "        return (f\" Aunque el BPI ({s['bpi']:.2f}) es menor que 1, al principio de la cadena el gráfico de fiebre tolera ese consumo; \"\n"
+                       "                \"conviene vigilar la tendencia en el siguiente informe.\")\n"
+                       "    return ''\n"
+                       "Markdown('\\n'.join(f\"- Día {s['dia']} (zona {s['zona']}, BPI {s['bpi']:.2f}): {acciones[s['zona']]}.{matiz(s)}\" for s in seguimientos))"))
     celdas.append(md("Con estimaciones agresivas, la mitad de las actividades terminarán después de su duración prevista: "
                      "controlar el cumplimiento de cada fecha de fin generaría alarmas continuas y presiones para volver a "
                      "inflar las estimaciones. Lo que importa es si queda colchón suficiente para lo que queda de cadena, y "
@@ -1042,22 +1161,34 @@ def _monte_carlo(rng):
                         (" (sin los enlaces de recurso)" if rec else " y la cadena crítica"), label="fig-pert")
     celdas.append(code("plan = proyecto.plan_cadena_critica(datos_proyecto, agresiva='agresiva', segura='segura', recurso=RECURSO)\n"
                        "cadena, T, CP = plan.cadena, plan.duracion_cadena, plan.colchon_proyecto\n"
+                       "display(Markdown(f'La cadena crítica es la secuencia más larga con las estimaciones agresivas'\n"
+                       "                 + (' en la red nivelada (prelaciones más enlaces de recurso)' if RECURSO else '') + f': {\" - \".join(cadena)}, '\n"
+                       "                 f'{\" + \".join(str(int(plan.agresiva[a])) for a in cadena)} = **{T} días**. La tabla indica si cada enlace entre sus actividades es de precedencia o de recurso.'))\n"
                        "plan.enlaces_cadena.rename(index=lambda i: i + 1)"))
+    celdas.append(code('#| tbl-cap: "Margen retirado de las actividades de la cadena"\n#| label: tbl-margenes\n'
+                       "tabla_margenes(datos_proyecto, cadena)"))
     celdas.append(code('#| tbl-cap: "Colchón del proyecto"\n#| label: tbl-colchon\n'
                        "detalle_colchon(plan.margen[cadena], 'colchón del proyecto')"))
     celdas.append(code('#| tbl-cap: "Colchones de alimentación"\n#| label: tbl-alimentacion\n'
                        "tabla_alimentacion(plan)"))
     celdas.append(code('#| fig-cap: "Gantt del plan de cadena crítica"\n#| label: fig-ganttCCPM\n'
                        f"pinta_tikz(plan.gantt_tikz(params={GANTT_CCPM}))"))
-    celdas.append(code("Markdown(f'Cadena {\" - \".join(cadena)} de {T} días; colchón del proyecto {CP}; compromiso **{plan.compromiso} días**. '\n"
-                       "         f'Cronograma tradicional (estimaciones seguras): **{plan.duracion_tradicional} días**.')"))
+    celdas.append(code("red_trad = plan.red_nivelada()\n"
+                       "proyecto_trad = PredecessorTable.from_dataframe_of_strings(red_trad, activity='activity', predecessor='predecessor').create_project()\n"
+                       "display(Markdown('Cronograma tradicional: estimaciones seguras' + (' en la red nivelada' if RECURSO else '') + '. '\n"
+                       "                 + explica_camino_critico(proyecto_trad, datos_proyecto.loc[red_trad.index, 'segura'], 'días').data))\n"
+                       "Markdown(f'**Respuesta:** cadena {\" - \".join(cadena)} de {T} días; colchón del proyecto {CP} días (cortar y pegar); colchones de alimentación '\n"
+                       "         + lista_y([f'{n} = {plural(int(f.adoptado), \"día\")} antes de {f.antes_de}' for n, f in plan.alimentacion.iterrows()]) + '; '\n"
+                       "         f'compromiso {T} + {CP} = **{plan.compromiso} días**. Cronograma tradicional: **{plan.duracion_tradicional} días**.')"))
     celdas += apartado(2)
     celdas.append(md("En cada réplica la duración de cada actividad es $a\\,e^{\\sigma Z}$, con $a$ la estimación "
                      "agresiva, $Z$ normal tipificada y $\\sigma = \\ln(s/a)/1{,}2816$, de modo que su mediana es $a$ y su "
                      "percentil 90 es $s$, la estimación segura. Con ellas se recorre la red (nivelada) hacia delante."))
     celdas.append(code("T_sim = plan.simular(N, semilla=semilla, regimen='relevos')\n"
                        "fechas = {'duración de la cadena': T, 'fecha comprometida': plan.compromiso, 'cronograma tradicional': plan.duracion_tradicional}\n"
-                       "sin_decimales(pd.DataFrame({'días': fechas, 'P(duración ≤ días)': {k: round(float((T_sim <= v).mean()), 4) for k, v in fechas.items()}}).T)"))
+                       "sin_decimales(pd.DataFrame({'días': fechas, 'réplicas con duración ≤ días': {k: int((T_sim <= v).sum()) for k, v in fechas.items()},\n"
+                       "                            'P(duración ≤ días) = réplicas/N': {k: f'{int((T_sim <= v).sum())}/{N} = {float((T_sim <= v).mean()):.4f}' for k, v in fechas.items()}}).T)"))
+    celdas.append(code("Markdown('**Respuesta:** ' + '; '.join(f'P(duración ≤ {v}) = {float((T_sim <= v).mean()):.4f} ({k})' for k, v in fechas.items()) + '.')"))
     celdas.append(code('#| fig-cap: "Distribución simulada de la duración del proyecto"\n#| label: fig-histograma\n'
                        "from matplotlib import pyplot as plt\n"
                        "fig, ax = plt.subplots(figsize=(7, 3.6))\n"
@@ -1071,7 +1202,8 @@ def _monte_carlo(rng):
                        "pd.DataFrame({f'P{int(100 * p)}': {'duración': round(v, 2), 'colchón = ⌈percentil − T⌉': f'⌈{v:.2f} − {T}⌉ = {ceil(v - T - 1e-9)}'}\n"
                        "              for p, v in percentiles.items()})"))
     celdas.append(code("CP_rz = ceil(plan.calculo_colchon_proyecto['raiz'] - 1e-9)\n"
-                       "Markdown(f\"Para el 90 % harían falta {ceil(percentiles[0.9] - T - 1e-9)} días de colchón y para el 95 %, {ceil(percentiles[0.95] - T - 1e-9)}. \"\n"
+                       "Markdown(f\"El colchón necesario para un nivel p es el percentil p de la duración simulada menos la duración de la cadena, redondeado al día superior. \"\n"
+                       "         f\"**Respuesta:** para el 90 % harían falta {ceil(percentiles[0.9] - T - 1e-9)} días de colchón y para el 95 %, {ceil(percentiles[0.95] - T - 1e-9)}. \"\n"
                        "         f\"Cortar y pegar da {CP} (probabilidad {float((T_sim <= T + CP).mean()):.3f}) y la raíz de la suma de cuadrados {CP_rz} \"\n"
                        "         f\"(probabilidad {float((T_sim <= T + CP_rz).mean()):.3f}).\")"))
     celdas += apartado(4)
@@ -1083,7 +1215,7 @@ def _monte_carlo(rng):
                        "pd.DataFrame({'cadena aislada': [float(np.median(T_cadena)), float((T_cadena <= plan.compromiso).mean())],\n"
                        "              'proyecto completo': [float(np.median(T_sim)), float((T_sim <= plan.compromiso).mean())]},\n"
                        "             index=['mediana', 'P(≤ fecha comprometida)']).round(3)"))
-    celdas.append(code("Markdown(f\"La cadena aislada cumpliría la fecha comprometida con probabilidad {float((T_cadena <= plan.compromiso).mean()):.3f}; \"\n"
+    celdas.append(code("Markdown(f\"**Respuesta:** la cadena aislada cumpliría la fecha comprometida con probabilidad {float((T_cadena <= plan.compromiso).mean()):.3f}; \"\n"
                        "         f\"el proyecto completo, con {float((T_sim <= plan.compromiso).mean()):.3f}. La diferencia es el **sesgo de convergencia**: \"\n"
                        "         \"en los puntos donde una cadena de alimentación desemboca en la cadena crítica manda la que llega más tarde, y a veces \"\n"
                        "         \"el retraso de la alimentación supera su colchón y pasa a la cadena. Los colchones de alimentación existen para que esa \"\n"
@@ -1136,13 +1268,20 @@ def _parkinson(rng):
     celdas.append(code("ruta_tradicional = [a for a in calendario.sort_values('inicio_mas_temprano').index if calendario.loc[a, 'H_total'] == 0]\n"
                        "T_tradicional = int(calendario['fin_mas_temprano'].max())\n"
                        "k = len(ruta_tradicional)\n"
-                       "Markdown(f'El cronograma tradicional dura **{T_tradicional} días**; ruta crítica {\" - \".join(ruta_tradicional)} ({k} actividades).')"))
+                       "Markdown(f'**Respuesta:** el cronograma tradicional dura {\" + \".join(str(int(datos_proyecto.loc[a, \"segura\"])) for a in ruta_tradicional)} = **{T_tradicional} días**; '\n"
+                       "         f'ruta crítica {\" - \".join(ruta_tradicional)}, con **{k} actividades**.')"))
     celdas += apartado(2)
     celdas.append(code("plan = proyecto.plan_cadena_critica(datos_proyecto, agresiva='agresiva', segura='segura')\n"
                        "cadena, T, CP = plan.cadena, plan.duracion_cadena, plan.colchon_proyecto\n"
+                       "display(Markdown(f'Cadena crítica (ruta más larga con las estimaciones agresivas): {\" - \".join(cadena)}, '\n"
+                       "                 f'{\" + \".join(str(int(plan.agresiva[a])) for a in cadena)} = {T} días. Márgenes retirados y colchón del proyecto:'))\n"
+                       "display(tabla_margenes(datos_proyecto, cadena))\n"
                        "display(detalle_colchon(plan.margen[cadena], 'colchón del proyecto').loc[['cortar y pegar = 0,5·Σ márgenes']])\n"
+                       "display(Markdown('Colchones de alimentación:'))\n"
                        "display(tabla_alimentacion(plan))\n"
-                       "Markdown(f'Cadena {\" - \".join(cadena)} ({T} días), colchón del proyecto {CP} días: compromiso **{plan.compromiso} días**.')"))
+                       "Markdown(f'**Respuesta:** cadena {\" - \".join(cadena)} ({T} días), colchón del proyecto {CP} días; colchones de alimentación '\n"
+                       "         + lista_y([f'{n} = {plural(int(f.adoptado), \"día\")} antes de {f.antes_de}' + (f' (requería {int(f.requerido)}; se reduce a la holgura disponible)' if f.requerido > f.disponible else '') for n, f in plan.alimentacion.iterrows()])\n"
+                       "         + f'; fecha comprometida {T} + {CP} = **{plan.compromiso} días**.')"))
     celdas.append(code('#| fig-cap: "Gantt del plan de cadena crítica"\n#| label: fig-ganttCCPM\n'
                        f"pinta_tikz(plan.gantt_tikz(params={GANTT_CCPM}))"))
     celdas += apartado(3)
@@ -1158,6 +1297,11 @@ def _parkinson(rng):
                        "                                           'duración media': float(T_rel.mean()), 'percentil 90': float(np.percentile(T_rel, 90))},\n"
                        "              'relevos con la fecha tradicional': {'fecha prometida': T_tradicional, 'P(cumplir)': float((T_rel <= T_tradicional).mean()),\n"
                        "                                                   'duración media': float(T_rel.mean()), 'percentil 90': float(np.percentile(T_rel, 90))}}).astype(float).round(3).pipe(sin_decimales)"))
+    celdas.append(code("Markdown(f'Cada probabilidad es la proporción de las {N} réplicas que terminan en la fecha prometida o antes. '\n"
+                       "         f'**Respuesta:** el cronograma tradicional cumple su fecha ({T_tradicional}) con probabilidad {float((T_trad <= T_tradicional).mean()):.3f} '\n"
+                       "         f'({int((T_trad <= T_tradicional).sum())} de {N} réplicas) y el plan de cadena crítica la suya ({plan.compromiso}) con probabilidad '\n"
+                       "         f'{float((T_rel <= plan.compromiso).mean()):.3f} ({int((T_rel <= plan.compromiso).sum())} de {N}); duraciones medias: {T_trad.mean():.2f} días '\n"
+                       "         f'con el régimen tradicional y {T_rel.mean():.2f} con relevos ({T_trad.mean() - T_rel.mean():.2f} días menos).')"))
     celdas.append(code('#| fig-cap: "Duración simulada del proyecto en los dos regímenes"\n#| label: fig-regimenes\n'
                        "from matplotlib import pyplot as plt\n"
                        "fig, ax = plt.subplots(figsize=(7, 3.6))\n"
@@ -1167,7 +1311,7 @@ def _parkinson(rng):
                        "ax.axvline(T_tradicional, color='tab:blue', linestyle='--'); ax.axvline(plan.compromiso, color='tab:orange', linestyle='--')\n"
                        "ax.set_xlabel('duración (días)'); ax.set_ylabel('densidad'); ax.legend(); plt.show()"))
     celdas += apartado(4)
-    celdas.append(code("Markdown(f'''La probabilidad de que ninguna de las {k} actividades de la ruta crítica supere su estimación segura es \n"
+    celdas.append(code("Markdown(f'''**Respuesta:** la probabilidad de que ninguna de las {k} actividades de la ruta crítica supere su estimación segura es \n"
                        "0,9^{k} = **{0.9 ** k:.3f}**. Con la ley de Parkinson y las fechas fijas, cualquier exceso de una actividad crítica retrasa el proyecto "
                        "y ningún adelanto lo compensa, así que la probabilidad de cumplir no puede ser mayor que esa (la simulada es "
                        "{float((T_trad <= T_tradicional).mean()):.3f}: también fallan las no críticas que se pasan de su holgura).\n\n"
@@ -1297,26 +1441,22 @@ def en_curso_a_la_vez(inicios, fines):
     return m
 
 
-def gantt_tramos_tikz(filas, horizonte):
-    """Diagrama de barras por tramos (TikZ): filas = [(etiqueta, [(inicio, días, tipo, texto), ...]), ...]."""
-    u = min(0.34, 15.0 / max(horizonte, 1))
-    n = len(filas)
-    paso = 5 if horizonte <= 60 else 10
-    L = [rf'\begin{{tikzpicture}}[x={u:.4f}cm, y=-0.62cm, font=\small]']
-    for x in range(0, horizonte + 1, paso):
-        L.append(rf'\draw[black!15] ({x},-0.55) -- ({x},{n - 0.45});')
-        L.append(rf'\node[font=\scriptsize, black!60] at ({x},-0.85) {{{x}}};')
-    for i, (etiqueta, tramos) in enumerate(filas):
-        L.append(rf'\node[anchor=east, font=\small\bfseries] at (-0.6,{i}) {{{etiqueta}}};')
-        for s, d, tipo, texto in tramos:
-            if d <= 0:
-                continue
-            borde = ', dashed' if tipo in ('DB', 'CB') else ''
-            L.append(rf'\draw[fill={COLORES_TRAMO[tipo]}, draw=black!55{borde}] ({s},{i - 0.32}) rectangle ({s + d},{i + 0.32});')
-            if texto != '':
-                L.append(rf'\node[font=\scriptsize] at ({s + d / 2:.2f},{i}) {{{texto}}};')
-    L.append(r'\end{tikzpicture}')
-    return '\n'.join(L)
+def momento_max_abiertos(inicios, fines):
+    """Primer día en que hay más proyectos abiertos a la vez y cuáles son (intervalos [inicio, fin))."""
+    mejor, dia = -1, 0
+    for t in sorted(set(int(s) for s in inicios)):
+        n = sum(1 for p in inicios.index if int(inicios[p]) <= t < int(fines[p]))
+        if n > mejor:
+            mejor, dia = n, t
+    return dia, [p for p in inicios.index if int(inicios[p]) <= dia < int(fines[p])]
+
+
+def gantt_tambor(filas, horizonte):
+    """Gantt de pmule por tramos: filas = [(etiqueta, [(inicio, días, tipo, texto), ...]), ...]; los colchones
+    del tambor (DB) y de capacidad (CB), con borde discontinuo."""
+    return gantt_tramos_tikz({et: [(s, d, t, COLORES_TRAMO[tipo], 'dashed' if tipo in ('DB', 'CB') else '')
+                                   for s, d, tipo, t in tramos if d > 0] for et, tramos in filas},
+                             horizonte=horizonte)
 
 
 def filas_sin_escalonar(datos, fin_tambor, tramos):
@@ -1439,12 +1579,13 @@ def _tambor(rng):
                        "tabla_sin_escalonar(datos, fin_multi)"))
     celdas.append(code('#| fig-cap: "Todos los proyectos lanzados el día 0 con multitarea en el tambor (tareas del tambor en rojo)"\n#| label: fig-multi\n'
                        "fin_proy_multi = fin_multi + datos['despues']\n"
-                       "pinta_tikz(gantt_tramos_tikz(filas_sin_escalonar(datos, fin_multi, tramos_multi), int((fin_proy_multi).max())))"))
+                       "pinta_tikz(gantt_tambor(filas_sin_escalonar(datos, fin_multi, tramos_multi), int((fin_proy_multi).max())))"))
     celdas.append(code("compromiso_libre = datos[['antes', 'tambor', 'despues', 'CP']].sum(axis=1)\n"
                        "fuera = [p for p in datos.index if fin_proy_multi[p] > compromiso_libre[p]]\n"
-                       "Markdown(f'Con multitarea, {len(fuera)} de los {len(datos)} proyectos ({\", \".join(fuera)}) terminan después de la fecha '\n"
-                       "         'que se les comprometería con el tambor libre: ni siquiera su colchón del proyecto absorbe la espera.' if fuera else\n"
-                       "         'Todos los proyectos cumplirían la fecha calculada con el tambor libre, pero consumiendo su colchón.')"))
+                       "Markdown(f'**Respuesta:** con multitarea los proyectos terminan los días {lista_y([f\"{int(fin_proy_multi[p])} ({p})\" for p in datos.index])}. '\n"
+                       "         + ((f'Los {len(datos)} proyectos' if len(fuera) == len(datos) else f'{len(fuera)} de los {len(datos)} proyectos ({lista_y(fuera)})') + f' {\"termina\" if len(fuera) == 1 else \"terminan\"} después de la fecha '\n"
+                       "            'que se les comprometería con el tambor libre: ni siquiera su colchón del proyecto absorbe la espera en el tambor.' if fuera else\n"
+                       "            'Todos los proyectos terminan dentro de la fecha calculada con el tambor libre, aunque la espera en el tambor consume parte de su colchón del proyecto.'))"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Fin de cada proyecto sin multitarea en el tambor (todos lanzados el día 0)"\n#| label: tbl-finSecuencial\n'
                        "fin_sec, tramos_sec = tambor_sin_escalonar(datos, None)\n"
@@ -1455,10 +1596,12 @@ def _tambor(rng):
                        "ult_s, ult_m = int(fin_proy_sec.max()), int(fin_proy_multi.max())\n"
                        "frase = (f'el último proyecto termina el día {ult_s} frente al {ult_m}' if ult_s != ult_m else\n"
                        "         f'el último proyecto termina el mismo día ({ult_s}), porque el tambor hace el mismo trabajo')\n"
-                       "Markdown(f'Sin multitarea terminan antes {\", \".join(antes_)} '\n"
-                       "         f'(media de los fines: {fin_proy_sec.mean():.2f} frente a {fin_proy_multi.mean():.2f} días) y ' + frase + ': repartir el '\n"
-                       "         'tambor no adelanta a nadie y retrasa a casi todos, porque cada tarea del tambor termina en su último turno y está '\n"
-                       "         'en la cadena crítica de su proyecto.')"))
+                       "despues_ = [p for p in datos.index if fin_proy_sec[p] > fin_proy_multi[p]]\n"
+                       "efecto = ('repartir el tambor no adelanta a ningún proyecto' if not despues_ else f'repartir el tambor sólo adelanta a {lista_y(despues_)}') + f' y retrasa a {lista_y(antes_)}'\n"
+                       "Markdown(f'**Respuesta:** sin multitarea los proyectos terminan los días {lista_y([f\"{int(fin_proy_sec[p])} ({p})\" for p in datos.index])}. '\n"
+                       "         f'Terminan antes que con multitarea {lista_y(antes_)} '\n"
+                       "         f'(media de los fines: ({\" + \".join(str(int(v)) for v in fin_proy_sec)})/{len(datos)} = {fin_proy_sec.mean():.2f} frente a {fin_proy_multi.mean():.2f} días) y ' + frase + ': '\n"
+                       "         + efecto + ', porque cada tarea del tambor termina en su último turno y está en la cadena crítica de su proyecto.')"))
     celdas += apartado(3)
     celdas.append(md("El tambor marca el ritmo de la organización: sus tareas se programan primero, en el orden de "
                      "prioridad y sin interrupción, dejando tras cada una el colchón de capacidad. Después cada proyecto "
@@ -1468,8 +1611,8 @@ def _tambor(rng):
                        "esc = escalonar(datos, colchon_tambor, fraccion)\n"
                        "tabla_escalonado(esc, colchon_tambor, fraccion)"))
     celdas.append(code('#| fig-cap: "Programa escalonado: parte antes y después en verde, colchón del tambor y colchón del proyecto en naranja, tarea del tambor en rojo y colchones de capacidad en gris"\n#| label: fig-escalonado\n'
-                       "pinta_tikz(gantt_tramos_tikz(filas_escalonado(esc, colchon_tambor), int(esc['compromiso'].max())))"))
-    celdas.append(code("Markdown('Lanzamientos: ' + '; '.join(f'{p} el día {int(f.lanzamiento)}, compromiso el día {int(f.compromiso)}' for p, f in esc.iterrows()) + '.')"))
+                       "pinta_tikz(gantt_tambor(filas_escalonado(esc, colchon_tambor), int(esc['compromiso'].max())))"))
+    celdas.append(code("Markdown('**Respuesta:** lanzamientos: ' + '; '.join(f'{p} el día {int(f.lanzamiento)}, compromiso el día {int(f.compromiso)}' for p, f in esc.iterrows()) + '.')"))
     celdas += apartado(4)
     celdas.append(code('#| tbl-cap: "Comparación de los tres regímenes"\n#| label: tbl-regimenes\n'
                        "ceros = pd.Series(0, index=datos.index)\n"
@@ -1480,12 +1623,18 @@ def _tambor(rng):
                        "                                'máximo de proyectos abiertos a la vez': en_curso_a_la_vez(l, f),\n"
                        "                                'último fin': int(f.max())} for r, (l, f) in regimenes.items()})\n"
                        "sin_decimales(comparacion.astype(float))"))
+    celdas.append(code("lineas = []\n"
+                       "for r, (l, f) in regimenes.items():\n"
+                       "    dia_m, abiertos = momento_max_abiertos(l, f)\n"
+                       "    lineas.append(f'- {r}: duración media ({\" + \".join(f\"({int(f[p])} − {int(l[p])})\" for p in datos.index)})/{len(datos)} = '\n"
+                       "                  f'{float((f - l).mean()):.2f} días; el día {dia_m} están abiertos {lista_y(abiertos)} ({len(abiertos)}).')\n"
+                       "Markdown('Cálculo de la duración media y del máximo de proyectos abiertos (un proyecto está abierto desde su lanzamiento hasta su fin):\\n\\n' + '\\n'.join(lineas))"))
     celdas.append(code("dur = comparacion.loc['duración media (fin − lanzamiento)']\n"
                        "ultimo = comparacion.loc['último fin']\n"
                        "frase_ultimo = (f'El último proyecto termina el día {int(ultimo.iloc[2])}, '\n"
                        "                + (f'{int(ultimo.iloc[2] - ultimo.iloc[1])} días después que sin escalonar: es el precio de los colchones de capacidad y del tambor, la reserva que hace fiables las fechas comprometidas. '\n"
                        "                   if ultimo.iloc[2] > ultimo.iloc[1] else 'no más tarde que sin escalonar. '))\n"
-                       "Markdown(f'Con todos los proyectos lanzados a la vez hay {len(datos)} abiertos desde el día 0; escalonados, como máximo '\n"
+                       "Markdown(f'**Respuesta:** con todos los proyectos lanzados a la vez hay {len(datos)} abiertos desde el día 0; escalonados, como máximo '\n"
                        "         f\"{int(comparacion.loc['máximo de proyectos abiertos a la vez'].iloc[2])}. Cada proyecto pasa abierto, de media, {dur.iloc[2]:.2f} días frente a {dur.iloc[1]:.2f} sin multitarea \"\n"
                        "         f'y {dur.iloc[0]:.2f} con multitarea: inmoviliza menos tiempo a su equipo y menos dinero, y su fecha no depende de cómo se '\n"
                        "         'reparta el tambor. ' + frase_ultimo)"))
@@ -1501,7 +1650,7 @@ def _tambor(rng):
                        "s_n = max(nuevo['antes'] + colchon_tambor, libre)\n"
                        "lanz_n = s_n - colchon_tambor - nuevo['antes']\n"
                        "fin_n = s_n + nuevo['tambor'] + nuevo['despues']\n"
-                       "Markdown(f\"El tambor queda libre, tras la última tarea y su colchón de capacidad, el día {libre}. \"\n"
+                       "Markdown(f\"**Respuesta:** el tambor queda libre, tras la última tarea y su colchón de capacidad, el día {libre}. \"\n"
                        "         f\"Inicio de {nuevo['nombre']} en el tambor: máx({nuevo['antes']} + {colchon_tambor}; {libre}) = **{s_n}**; \"\n"
                        "         f\"lanzamiento: {s_n} − {colchon_tambor} − {nuevo['antes']} = **día {lanz_n}**; fin previsto {s_n} + {nuevo['tambor']} + \"\n"
                        "         f\"{nuevo['despues']} = {fin_n}; fecha comprometida {fin_n} + {nuevo['CP']} = **día {fin_n + nuevo['CP']}**. \"\n"
@@ -1567,6 +1716,24 @@ def fin_solo_cadena(plan, dia, terminadas, en_curso):
         else:
             fin[a] = max([dia] + [fin[p] for p in plan.predecesoras[a] if p in fin]) + int(plan.agresiva[a])
     return fin[plan.cadena[-1]]
+
+
+def detalle_solo_cadena(plan, dia, terminadas, en_curso):
+    """Recorrido de la cadena sola desde el informe (sin los retrasos de la alimentación), con los números."""
+    fin, pasos = {}, []
+    for a in plan.cadena:
+        d = int(plan.agresiva[a])
+        if a in terminadas:
+            fin[a] = terminadas[a]
+        elif a in en_curso:
+            fin[a] = dia + en_curso[a]
+            pasos.append(f'{a} (en curso) {dia} + {en_curso[a]} = {fin[a]}')
+        else:
+            prev = [p for p in plan.predecesoras[a] if p in fin]
+            ini = max([dia] + [fin[p] for p in prev])
+            fin[a] = ini + d
+            pasos.append(f'{a} {ini} + {d} = {fin[a]}')
+    return '; '.join(pasos)
 
 
 def colchones_que_protegen(plan, actividad):
@@ -1705,17 +1872,20 @@ def _consumo_alimentacion(rng):
                        "consumo_ca = tabla_consumo_alimentacion(plan, fin_previsto)\n"
                        "sin_decimales(consumo_ca)"))
     celdas.append(code("desbordados = consumo_ca[consumo_ca['pasa a la cadena'] > 0]\n"
-                       "Markdown('; '.join(f'{n} ({f[\"arco\"]}) se desborda: consume {f[\"consumido = máx(0, fin previsto − inicio del colchón)\"].split(\" = \")[-1]} días de {f[\"colchón (días)\"]} '\n"
-                       "                   f'y pasan {f[\"pasa a la cadena\"]} día(s) a la cadena crítica' for n, f in desbordados.iterrows()) + '.')"))
+                       "Markdown('**Respuesta:** ' + '; '.join(f'{n} ({f[\"arco\"]}) consume {f[\"consumido = máx(0, fin previsto − inicio del colchón)\"].split(\" = \")[-1]} de {f[\"colchón (días)\"]} días ({f[\"% consumido\"]:g} %)' for n, f in consumo_ca.iterrows()) + '. '\n"
+                       "         + '; '.join(f'{n} ({f[\"arco\"]}) se desborda: consume {f[\"consumido = máx(0, fin previsto − inicio del colchón)\"].split(\" = \")[-1]} días de {f[\"colchón (días)\"]} '\n"
+                       "                   f'y pasan {plural(int(f[\"pasa a la cadena\"]), \"día\")} a la cadena crítica' for n, f in desbordados.iterrows()) + '.')"))
     celdas += apartado(3)
     celdas.append(code("s = plan.seguimiento(dia, terminadas, en_curso)\n"
                        "solo = fin_solo_cadena(plan, dia, terminadas, en_curso)\n"
-                       "Markdown(f\"Fin previsto del proyecto: **día {s['fin_previsto']:g}** (el máximo de los fines previstos); colchón consumido \"\n"
-                       "         f\"{s['fin_previsto']:g} − {T} = {s['consumo']:g} día(s), {s['consumo']:g}/{CP} = **{s['pct_consumo']:.1f} %**. Si las cadenas \"\n"
-                       "         f\"de alimentación no la retrasaran, la cadena terminaría el día {solo}: {solo - T} día(s) de consumo se deben a la propia \"\n"
-                       "         f\"cadena y {s['fin_previsto'] - solo:g} al colchón de alimentación desbordado.\")"))
+                       "Markdown(f\"Fin previsto del proyecto: **día {s['fin_previsto']:g}** (el mayor de los fines previstos del apartado 1, el de {max(fin_previsto, key=fin_previsto.get)}); colchón consumido \"\n"
+                       "         f\"{s['fin_previsto']:g} − {T} = {plural(s['consumo'], 'día')}, {s['consumo']:g}/{CP} = **{s['pct_consumo']:.1f} %**. Si las cadenas \"\n"
+                       "         f\"de alimentación no la retrasaran (cada actividad de la cadena empezaría al terminar su predecesora en la cadena: \"\n"
+                       "         f\"{detalle_solo_cadena(plan, dia, terminadas, en_curso)}), la cadena terminaría el día {solo}.\\n\\n\"\n"
+                       "         f\"**Respuesta:** del consumo de {plural(s['consumo'], 'día')}, {solo} − {T} = {plural(solo - T, 'día')} se {'debe' if solo - T == 1 else 'deben'} a la propia cadena y \"\n"
+                       "         f\"{s['fin_previsto']:g} − {solo} = {plural(s['fin_previsto'] - solo, 'día')} al colchón de alimentación desbordado.\")"))
     celdas.append(code('#| tbl-cap: "Cadena completada, BPI y zona"\n#| label: tbl-zona\n'
-                       "resumen_informes(plan, [s]).loc[['cadena completada', 'BPI = % colchón restante / % cadena restante', 'límite verde = 10 + 0,6·avance', 'límite rojo = 30 + 0,6·avance', 'zona']]"))
+                       "resumen_informes(plan, [s]).loc[['cadena completada = (T − restante)/T', 'BPI = % colchón restante / % cadena restante', 'límite verde = 10 + 0,6·avance', 'límite rojo = 30 + 0,6·avance', 'zona']]"))
     celdas.append(code('#| fig-cap: "Gráfico de fiebre del informe"\n#| label: fig-fiebre\n'
                        "pinta_tikz(grafico_fiebre_tikz([s]))"))
     celdas += apartado(4)
@@ -1730,7 +1900,7 @@ def _consumo_alimentacion(rng):
                        "prioridad['prioridad'] = range(1, len(prioridad) + 1)\n"
                        "sin_decimales(prioridad)"))
     celdas.append(code("primera = prioridad.index[0]\n"
-                       "Markdown(f'El técnico debe reforzar **{primera}**, cuyo colchón ({prioridad.loc[primera, \"colchón que la protege\"]}) está '\n"
+                       "Markdown(f'**Respuesta:** el técnico debe reforzar **{primera}**, cuyo colchón ({prioridad.loc[primera, \"colchón que la protege\"]}) está '\n"
                        "         f'consumido en un {prioridad.loc[primera, \"% consumido\"]:.1f} %: es la que más amenaza la fecha comprometida. '\n"
                        "         'Las holguras del calendario no sirven para decidirlo: en el plan de cadena crítica las actividades de alimentación '\n"
                        "         'están programadas lo más tarde posible y su margen no es una holgura, sino su colchón; y la cadena crítica no tiene '\n"
@@ -1819,19 +1989,32 @@ def _tendencia(rng):
                        "y = 100 * (informes['fin_previsto'] - T) / CP\n"
                        "bpi = (100 - y) / (100 - x)\n"
                        "lim_verde, lim_roja = 10 + 0.6 * x, 30 + 0.6 * x\n"
-                       "zona = ['verde' if yy < lv else ('roja' if yy >= lr else 'amarilla') for yy, lv, lr in zip(y, lim_verde, lim_roja)]\n"
+                       "zona = ['verde' if yy < lv - 1e-9 else ('roja' if yy >= lr - 1e-9 else 'amarilla') for yy, lv, lr in zip(y, lim_verde, lim_roja)]\n"
+                       "def compara(y_, lv, lr, z):\n"
+                       "    return {'verde': f'{y_:.1f} % < {lv:.1f} % → verde', 'roja': f'{y_:.1f} % ≥ {lr:.1f} % → roja',\n"
+                       "            'amarilla': f'{lv:.1f} % ≤ {y_:.1f} % < {lr:.1f} % → amarilla'}[z] + (' (justo en la frontera: cuenta como la zona superior)' if min(abs(y_ - lv), abs(y_ - lr)) < 1e-6 else '')\n"
                        "pd.DataFrame({f'día {d}': {\n"
-                       "    'colchón consumido': f\"({informes.loc[d, 'fin_previsto']} − {T})/{CP} = {y[d]:.1f} %\",\n"
-                       "    'cadena completada': f\"{informes.loc[d, 'completado']}/{T} = {x[d]:.1f} %\",\n"
-                       "    'BPI': f'(100 − {y[d]:.1f})/(100 − {x[d]:.1f}) = {bpi[d]:.2f}',\n"
-                       "    'límites verde / rojo': f'{lim_verde[d]:.1f} % / {lim_roja[d]:.1f} %',\n"
-                       "    'zona': z} for d, z in zip(informes.index, zona)})"))
+                       "    'colchón consumido = (fin previsto − T)/CP': f\"({informes.loc[d, 'fin_previsto']} − {T})/{CP} = {y[d]:.1f} %\",\n"
+                       "    'cadena completada = completado/T': f\"{informes.loc[d, 'completado']}/{T} = {x[d]:.1f} %\",\n"
+                       "    'BPI = (100 − consumo)/(100 − avance)': f'(100 − {y[d]:.1f})/(100 − {x[d]:.1f}) = {bpi[d]:.2f}',\n"
+                       "    'límite verde = 10 + 0,6·avance': f'10 + 0,6·{x[d]:.1f} = {lim_verde[d]:.1f} %',\n"
+                       "    'límite rojo = 30 + 0,6·avance': f'30 + 0,6·{x[d]:.1f} = {lim_roja[d]:.1f} %',\n"
+                       "    'zona': compara(y[d], lim_verde[d], lim_roja[d], z)} for d, z in zip(informes.index, zona)})"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Velocidad de consumo entre informes consecutivos"\n#| label: tbl-velocidad\n'
                        "dias = list(informes.index)\n"
                        "v = {f'{d1} → {d2}': (y[d2] - y[d1]) / (x[d2] - x[d1]) for d1, d2 in zip(dias, dias[1:])}\n"
                        "pd.DataFrame({k: {'velocidad = Δ consumo / Δ avance': f'({y[d2]:.1f} − {y[d1]:.1f})/({x[d2]:.1f} − {x[d1]:.1f}) = {v[k]:.2f}'}\n"
                        "              for (k, (d1, d2)) in zip(v, zip(dias, dias[1:]))})"))
+    celdas.append(code("def lee(vel):\n"
+                       "    if vel < 0:\n"
+                       "        return 'negativa: el proyecto recupera colchón'\n"
+                       "    if vel <= 0.6:\n"
+                       "        return 'no mayor que 0,6: el punto no se acerca a la frontera superior'\n"
+                       "    if vel <= 1:\n"
+                       "        return 'mayor que 0,6 y no mayor que 1: el punto se acerca a la frontera superior'\n"
+                       "    return 'mayor que 1: el colchón se consume más deprisa de lo que avanza la cadena'\n"
+                       "Markdown('**Respuesta:** ' + '; '.join(f'tramo {k}, velocidad {vel:.2f}, {lee(vel)}' for k, vel in v.items()) + '.')"))
     celdas.append(md("Las dos fronteras suben 0,6 puntos de consumo por cada punto de avance. Con una velocidad mayor que "
                      "0,6 el punto del gráfico se acerca a la frontera superior: el proyecto empeora respecto a las "
                      "zonas aunque siga en la misma. Con una velocidad mayor que 1 el colchón se consume, en porcentaje, "
@@ -1849,7 +2032,7 @@ def _tendencia(rng):
                        "texto += (f'La recta de la tendencia, y = {y[dn]:.1f} + {vn:.2f}·(x − {x[dn]:.1f}), corta la frontera roja, y = 30 + 0,6·x, en '\n"
                        "          f'x = (30 − {y[dn]:.1f} + {vn:.2f}·{x[dn]:.1f})/({vn:.2f} − 0,6) = **{x_roja:.1f} %** de cadena completada'\n"
                        "          + (': entraría en la zona roja antes de terminar.' if x_roja < 100 else ', después del final: no llegaría a entrar en la zona roja.'))\n"
-                       "Markdown(texto)"))
+                       "Markdown('**Respuesta:** ' + texto[0].lower() + texto[1:])"))
     celdas.append(code('#| fig-cap: "Gráfico de fiebre con los informes y la tendencia del último tramo (discontinua)"\n#| label: fig-fiebre\n'
                        "puntos = [(x[d], y[d], f'día {d}') for d in dias]\n"
                        "dibujo = grafico_fiebre_tikz(puntos + [(100.0, y100, 'tendencia')], unir=False)\n"
@@ -2008,11 +2191,18 @@ def _spi(rng):
     celdas.append(code('#| fig-cap: "Gantt del plan de cadena crítica (línea base del valor ganado)"\n#| label: fig-ganttCCPM\n'
                        f"pinta_tikz(plan.gantt_tikz(params={GANTT_CCPM}))"))
     celdas += apartado(1)
+    celdas.append(md("Con la línea base del plan de cadena crítica, el **valor planificado** (PV) de una actividad el día del "
+                     "informe es su presupuesto por la fracción de su duración agresiva que el plan prevé hecha ese día: "
+                     "días previstos = mín(máx(día − inicio en el plan, 0), duración). El **valor ganado** (EV) es su "
+                     "presupuesto por su avance físico: 100 % si ha terminado, días trabajados/(trabajados + restantes) si "
+                     "está en curso y 0 % si no ha empezado. PV y EV del proyecto son las sumas de los de las actividades."))
     celdas.append(code('#| tbl-cap: "Valor planificado y valor ganado de cada actividad (miles de euros)"\n#| label: tbl-pvev\n'
                        "tabla_vg = detalle_pv_ev(plan, datos_proyecto, dia, terminadas, trabajados, en_curso)\n"
                        "tabla_vg.drop(columns=['PV_i', 'EV_i'])"))
     celdas.append(code("PV, EV, SPI = indices(tabla_vg)\n"
-                       "Markdown(f'PV = {PV:.2f}; EV = {EV:.2f}; SV = EV − PV = {EV - PV:+.2f} miles de euros; **SPI = {EV:.2f}/{PV:.2f} = {SPI:.3f}**. '\n"
+                       "suma = lambda col: ' + '.join(f'{v:.2f} ({a})' for a, v in tabla_vg[col].items() if v > 0) or '0'\n"
+                       "Markdown(f'PV = {suma(\"PV_i\")} = {PV:.2f}; EV = {suma(\"EV_i\")} = {EV:.2f} miles de euros (sólo se suman las actividades con valor no nulo).\\n\\n'\n"
+                       "         f'**Respuesta:** SV = EV − PV = {EV:.2f} − {PV:.2f} = {EV - PV:+.2f} miles de euros; **SPI = {EV:.2f}/{PV:.2f} = {SPI:.3f}**. '\n"
                        "         + ('Según el valor ganado el proyecto va adelantado: se ha hecho más trabajo del previsto a estas alturas.' if SPI >= 1 else\n"
                        "            f'Según el valor ganado el proyecto va retrasado: se ha hecho sólo el {100 * SPI:.1f} % del trabajo previsto a estas alturas.'))"))
     celdas += apartado(2)
@@ -2022,30 +2212,39 @@ def _spi(rng):
                        "resumen"))
     celdas.append(code('#| fig-cap: "Gráfico de fiebre del informe"\n#| label: fig-fiebre\n'
                        "pinta_tikz(grafico_fiebre_tikz([s]))"))
-    celdas.append(code("Markdown(f\"Según la gestión por colchones el proyecto está en zona **{s['zona']}**: se ha consumido el {s['pct_consumo']:.1f} % del \"\n"
+    celdas.append(code("Markdown(f\"**Respuesta:** según la gestión por colchones el proyecto está en zona **{s['zona']}**: se ha consumido el {s['pct_consumo']:.1f} % del \"\n"
                        "         f\"colchón con el {s['pct_avance']:.1f} % de la cadena completada (BPI {s['bpi']:.2f}). \"\n"
                        "         + ('La fecha comprometida está amenazada.' if s['zona'] != 'verde' else 'La fecha comprometida no corre peligro.'))"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "SPI de la cadena crítica y de la alimentación"\n#| label: tbl-spiPartes\n'
                        "partes = {'cadena crítica': tabla_vg['cadena'] == 'sí', 'alimentación': tabla_vg['cadena'] != 'sí', 'todo el proyecto': None}\n"
                        "spis = {k: indices(tabla_vg, f) for k, f in partes.items()}\n"
-                       "pd.DataFrame({k: {'PV': round(pv, 2), 'EV': round(ev, 2), 'SPI = EV/PV': f'{ev:.2f}/{pv:.2f} = {spi:.3f}'} for k, (pv, ev, spi) in spis.items()})"))
+                       "def suma_parte(f, col):\n"
+                       "    t = tabla_vg if f is None else tabla_vg[f]\n"
+                       "    v = [f'{x:.2f} ({a})' for a, x in t[col].items() if x > 0]\n"
+                       "    return ' + '.join(v) + (f' = {float(t[col].sum()):.2f}' if len(v) > 1 else '') if v else '0.00'\n"
+                       "pd.DataFrame({k: {'PV': suma_parte(partes[k], 'PV_i'), 'EV': suma_parte(partes[k], 'EV_i'), 'SPI = EV/PV': f'{ev:.2f}/{pv:.2f} = {spi:.3f}'}\n"
+                       "              for k, (pv, ev, spi) in spis.items()})"))
     if escenario == "adelanto":
-        celdas.append(code("Markdown(f\"El SPI global ({spis['todo el proyecto'][2]:.3f}) mezcla dos cosas: la alimentación va por delante del plan \"\n"
+        celdas.append(code("Markdown(f\"**Respuesta:** el SPI global ({spis['todo el proyecto'][2]:.3f}) mezcla dos cosas: la alimentación va por delante del plan \"\n"
                            "         f\"(SPI {spis['alimentación'][2]:.3f}): sus actividades se están haciendo antes de lo que prevé el plan, que las programa \"\n"
                            "         \"lo más tarde posible; la \"\n"
                            "         f\"cadena crítica va por detrás (SPI {spis['cadena crítica'][2]:.3f}). El trabajo adelantado en la alimentación suma valor \"\n"
                            "         \"ganado, pero no acerca la fecha de entrega, que sólo depende de la cadena y de sus colchones; el retraso de la cadena, \"\n"
                            "         \"en cambio, consume colchón del proyecto día a día.\")"))
     else:
-        celdas.append(code("Markdown(f\"El SPI global ({spis['todo el proyecto'][2]:.3f}) mezcla dos cosas: la cadena crítica va al ritmo del plan \"\n"
+        celdas.append(code("Markdown(f\"**Respuesta:** el SPI global ({spis['todo el proyecto'][2]:.3f}) mezcla dos cosas: la cadena crítica va al ritmo del plan \"\n"
                            "         f\"(SPI {spis['cadena crítica'][2]:.3f}) y la alimentación va retrasada (SPI {spis['alimentación'][2]:.3f}), pero su \"\n"
                            "         \"retraso cabe en sus colchones de alimentación: por eso no llega a la cadena ni consume colchón del proyecto. El valor \"\n"
                            "         \"ganado pesa igual un día de retraso en cualquier actividad; la gestión por colchones sólo cuenta el que amenaza la entrega.\")"))
         celdas.append(code('#| tbl-cap: "Consumo de los colchones de alimentación"\n#| label: tbl-consumoCA\n'
-                           "ca = s['alimentacion'].set_index('colchon')[['desde', 'antes_de', 'fin_previsto', 'adoptado', 'consumido']]\n"
+                           "ca = s['alimentacion'].set_index('colchon')\n"
                            "ca.index.name = None\n"
-                           "sin_decimales(ca.rename(columns={'antes_de': 'antes de', 'fin_previsto': 'fin previsto', 'adoptado': 'colchón (días)'}).astype(object))"))
+                           "pd.DataFrame({n: {'arco': f'{f.desde} → {f.antes_de}', 'colchón (días)': int(f.adoptado),\n"
+                           "                  'el colchón empieza = inicio de la actividad de la cadena − colchón': f'{int(plan.inicios[f.antes_de])} − {int(f.adoptado)} = {int(plan.inicios[f.antes_de]) - int(f.adoptado)}' if f.antes_de != 'fin' else f'{T} − {int(f.adoptado)} = {T - int(f.adoptado)}',\n"
+                           "                  'fin previsto de ' + 'la alimentación': f'{f.fin_previsto:g} ({f.desde})',\n"
+                           "                  'consumido = máx(0, fin previsto − inicio del colchón)': f'máx(0, {f.fin_previsto:g} − {(int(plan.inicios[f.antes_de]) if f.antes_de != \"fin\" else T) - int(f.adoptado)}) = {f.consumido:g}'}\n"
+                           "              for n, f in ca.iterrows()}).T"))
     celdas += apartado(4)
     celdas.append(md("Para proteger la fecha comprometida manda la gestión por colchones: el BPI y el gráfico de fiebre "
                      "miran sólo lo que fija la entrega (la cadena crítica, y la alimentación cuando desborda su colchón) y "
@@ -2159,7 +2358,7 @@ def _p_multitarea(dur, bloque, cambio):
          _ops_num(total, [total + bloque, int(fin_mc.max()), max(d.values()) * k], pre="día "),
          "El trabajo total es el mismo, así que la última tarea termina el mismo día que sin multitarea; lo que se "
          "retrasa son las demás."),
-        (f"Con multitarea en turnos de {bloque} días y una pérdida de {cambio} día(s) en cada cambio de tarea, ¿qué día "
+        (f"Con multitarea en turnos de {bloque} días y una pérdida de {cambio} día{'s' if cambio > 1 else ''} en cada cambio de tarea, ¿qué día "
          "termina la última tarea?",
          _ops_num(int(fin_mc.max()), [total, int(fin_sc.max()), int(fin_mc.max()) + bloque], pre="día "),
          f"Hay {n_cambios} cambios de tarea, que añaden {n_cambios * cambio} días al trabajo: la persona produce menos."),
@@ -2209,7 +2408,8 @@ def _p_dimensionado(plan):
          f"σ = √(Σ márgenes²)/1,2816 = {_coma(rz, 3)}/1,2816 = {_coma(s, 2)} días: se suman las varianzas, no las desviaciones."),
         ("¿Con qué probabilidad se termina la cadena en su duración más el colchón de cortar y pegar?",
          _ops_num(_Phi(cp / s), [_Phi(rz_d / s), 0.9, 0.5], dec=3),
-         f"P = Φ(CP/σ) = Φ({cp}/{_coma(s, 3)}) = {_coma(_Phi(cp / s), 3)}."),
+         f"P(T_C ≤ {plan.duracion_cadena + cp}) con T_C ~ N({plan.duracion_cadena}; {_coma(s, 3)}): "
+         f"=DISTR.NORM.N({plan.duracion_cadena + cp}; {plan.duracion_cadena}; {_coma(s, 3)}; VERDADERO) = {_coma(_Phi(cp / s), 3)}."),
         ("Para una cadena de n actividades con el mismo margen, ¿cuándo da cortar y pegar un colchón mayor que la "
          "raíz de la suma de cuadrados?",
          ["con más de 4 actividades", "con más de 2 actividades", "con más de 9 actividades",
@@ -2436,7 +2636,7 @@ def _p_consumo(plan, dia, terminadas, en_curso, ns):
         ("¿Cuántos días del colchón del proyecto se consumen por culpa de las cadenas de alimentación?",
          _ops_num(float(s["fin_previsto"]) - solo, [float(s["consumo"]), solo - T, int(desb["pasa a la cadena"]) + 1], unidad=" días"),
          f"Fin previsto {_coma(float(s['fin_previsto']))}; si la alimentación no la retrasara, la cadena terminaría el "
-         f"día {solo}: {_coma(float(s['fin_previsto']) - solo)} día(s) se deben a la alimentación."),
+         f"día {solo}: {_coma(float(s['fin_previsto']) - solo)} día{'' if float(s['fin_previsto']) - solo == 1 else 's'} se {'debe' if float(s['fin_previsto']) - solo == 1 else 'deben'} a la alimentación."),
         ("Según la gestión por colchones, ¿qué actividad en curso debe reforzarse primero?",
          _ops(orden[0], *resto),
          f"Es la de colchón más consumido en porcentaje ({_coma(prioridad[orden[0]], 1)} %)."),
@@ -2452,7 +2652,7 @@ def _p_tendencia(plan, segs):
     y100 = ys[-1] + v * (100 - xs[-1])
     bpi = (100 - ys[-1]) / (100 - xs[-1])
     lv, lr = 10 + 0.6 * xs[-1], 30 + 0.6 * xs[-1]
-    zona = "verde" if ys[-1] < lv else ("roja" if ys[-1] >= lr else "amarilla")
+    zona = "verde" if ys[-1] < lv - 1e-9 else ("roja" if ys[-1] >= lr - 1e-9 else "amarilla")
     return [
         ("¿Cuál es la velocidad de consumo del colchón en el último tramo (entre los dos últimos informes)?",
          _ops_num(v, [(ys[-1] - ys[-2]) / (dias[-1] - dias[-2]), ys[-1] / xs[-1], bpi], dec=2),

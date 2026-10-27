@@ -1,6 +1,6 @@
 # ---
 # title: Caso 05
-# subtitle: "comité de inversión: una flota de vehículos eléctricos de alquiler; VAN 203 k€ (14%), precio −20% con prob. 25%"
+# subtitle: "comité de inversión: una flota de vehículos eléctricos de alquiler; VAN 201 k€ (14%), precio −20% con prob. 25%"
 # coleccion: 18_casos
 # variante: comite-inversion
 # nivel: 3
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -284,6 +288,54 @@ def anualidad_equivalente(VAN, k, n):
     '''Anualidad constante durante n años cuyo valor actual es VAN.'''
     return float(VAN * k / (1 - (1 + k) ** -n))
 
+_SUP = str.maketrans('0123456789-', '⁰¹²³⁴⁵⁶⁷⁸⁹⁻')
+def _num(x, d=1):
+    return f'{round(float(x), d) + 0.0:.{d}f}'.replace('-', '−')
+def _con_signo(x, d=1):
+    return f' − {_num(-x, d)}' if x < 0 else f' + {_num(x, d)}'
+
+def explica_van(flujos, k, unidad='k€', nombre='VAN'):
+    '''VAN término a término: Σ flujo_t / (1 + k)^t con los números sustituidos.'''
+    base = f'{1 + k:.6g}'
+    terminos = _num(flujos[0]) + ''.join(f' {"−" if f < 0 else "+"} {_num(abs(f))}/{base}{str(t).translate(_SUP)}' for t, f in enumerate(flujos) if t > 0)
+    actuales = _num(flujos[0]) + ''.join(_con_signo(f / (1 + k) ** t) for t, f in enumerate(flujos) if t > 0)
+    return f'{nombre} = Σ flujo_t/(1 + k)^t = {terminos} = {actuales} = **{_num(van(flujos, k))} {unidad}**'
+
+def explica_tir(flujos, unidad='k€'):
+    '''Cómo se obtiene la TIR: horquilla de dos tasas enteras con VAN de signo contrario, interpolación y comprobación.'''
+    r = tir(flujos)
+    a = np.floor(r * 100) / 100; b = a + 0.01
+    va, vb = van(flujos, a), van(flujos, b)
+    aprox = a + 0.01 * va / (va - vb)
+    return (f'La TIR es la tasa que anula el VAN. Probando tasas: VAN({a:.0%}) = {_num(va)} {unidad} y VAN({b:.0%}) = {_num(vb)} {unidad} tienen signo distinto, '
+            f'así que la TIR está entre {a:.0%} y {b:.0%}; interpolando linealmente, TIR ≈ {a:.0%} + 1 % × {_num(va)}/({_num(va)} − ({_num(vb)})) = {aprox:.2%}. '
+            f'Afinando (bisección, o =TIR(rango de flujos) en la hoja de cálculo): **TIR = {r:.2%}**. Comprobación: VAN({r:.2%}) = {abs(van(flujos, r)):.4f} ≈ 0.')
+
+def explica_payback(flujos, k=None, unidad='k€'):
+    '''Año en que el acumulado (simple o descontado) se hace positivo e interpolación lineal dentro de ese año.'''
+    acum, nombre = 0.0, 'acumulado' + ('' if k is None else ' descontado')
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return (f'el {nombre} pasa de {_num(acum)} (año {t - 1}) a {_num(acum + v)} (año {t}); dentro del año {t} se recuperan los {_num(-acum)} {unidad} '
+                    f'que faltaban con un flujo{"" if k is None else " descontado"} de {_num(v)}: payback = {t - 1} + {_num(-acum)}/{_num(v)} = **{t - 1 + (-acum) / v:.2f} años**')
+        acum += v
+    return f'el {nombre} no llega a ser positivo: la inversión no se recupera'
+
+def explica_van_mensual(pagos, F, N, km, unidad='k€'):
+    '''VAN mensual = VA de los ingresos (renta de N meses desde el mes T + 1) − VA de los desembolsos de los meses 1…T.'''
+    pagos = [float(x) for x in pagos]; T = len(pagos); base = f'{1 + km:.5f}'
+    va_des = sum(x / (1 + km) ** m for m, x in enumerate(pagos, 1))
+    a_N = (1 - (1 + km) ** -N) / km
+    va_ing = F * a_N * (1 + km) ** -T
+    t_des = ' + '.join(f'{_num(x)}/{base}{str(m).translate(_SUP)}' for m, x in list(enumerate(pagos, 1))[:3])
+    if T > 3:
+        t_des += f' + … + {_num(pagos[-1])}/{base}{str(T).translate(_SUP)}'
+    return (f'- VA de los desembolsos = Σ desembolso_m/(1 + k_m)^m = {t_des} = **{_num(va_des)} {unidad}**.\n'
+            f'- VA de los ingresos: renta de N = {N} meses de {_num(F)} {unidad} que empieza en el mes T + 1 = {T + 1}: '
+            f'F · [1 − (1 + k_m)^−N]/k_m · (1 + k_m)^−T = {_num(F)} × [1 − {base}^−{N}]/{km:.6f} × {base}^−{T} = {_num(F)} × {a_N:.3f} × {(1 + km) ** -T:.4f} = **{_num(va_ing)} {unidad}**.\n'
+            f'- VAN = {_num(va_ing)} − {_num(va_des)} = **{_num(va_ing - va_des)} {unidad}**.')
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -310,8 +362,8 @@ amortizacion = pd.Series([0] + [(I0 - VR) / n] * n, index=anos)
 BAI = EBITDA - amortizacion
 impuesto = BAI.clip(lower=0) * t_imp; impuesto[0] = 0
 BDI = BAI - impuesto
-circulante = pd.Series([w * ventas[1]] + [w * ventas[t] for t in range(1, n + 1)], index=anos)   # el del año 1 se aporta en t = 0
-variacion_circulante = circulante.diff().fillna(circulante[0]); variacion_circulante[n] -= circulante[n]   # se recupera al final
+circulante = pd.Series([w * ventas[t + 1] for t in range(n)] + [0], index=anos)   # saldo en el momento t: el que necesitan las ventas del año t + 1
+variacion_circulante = circulante.diff().fillna(circulante[0])   # aportaciones al principio de cada año; en t = n (saldo 0) se recupera todo
 inversion = pd.Series([I0] + [0] * n, index=anos)
 valor_residual = pd.Series([0] * n + [VR], index=anos)
 FCL = BDI + amortizacion - variacion_circulante - inversion + valor_residual
@@ -334,11 +386,19 @@ def modelo(precio=precio, u1=u1, cv=cv, CF=CF, g=g, I0=I0, n=n, VR=VR, w=w, t_im
     dcirc = circ.diff().fillna(circ[0]); dcirc[n] -= circ[n]
     return (BAI - imp + amort - dcirc - pd.Series([I0] + [0] * n) + pd.Series([0] * n + [VR])).tolist()
 VAN, TIR = van(flujos, k), tir(flujos)
-display(tabla_descuento(flujos, k).round(2))
+td = tabla_descuento(flujos, k)
+display(td.round(2))
+def explica_payback(col):
+    t = int((td[col] >= 0).idxmax()); prev = float(td.loc[t - 1, col]); f = float(td.loc[t, col] - td.loc[t - 1, col])
+    return f'{t - 1} + {-prev:.1f} / {f:.1f} = {t - 1 + (-prev) / f:.2f} años'
+display(Markdown('VAN = Σ FCLₜ·(1 + k)⁻ᵗ = ' + ' + '.join(f'({v:.1f})' for v in td['valor actual']) + f' = **{VAN:.1f} k€**. '
+                 f'La TIR es la tasa que anula el VAN: con k = {TIR:.4f}, VAN = {van(flujos, TIR):.2f} ≈ 0. '
+                 'Recuperación (año en que el acumulado se hace positivo, interpolando dentro del año: años completos + lo que falta / flujo del año): '
+                 f'simple {explica_payback("acumulado")}; descontada {explica_payback("acumulado descontado")}.'))
 Markdown(f'''VAN = {VAN:.1f} k€ al {k:.0%} ({VAN / I0:.1%} de la inversión; la regla pide el 10 %: {"pasa" if VAN >= 0.1 * I0 else "no pasa"}); TIR = {TIR:.2%}; recuperación simple {payback(flujos):.2f} años, descontada {payback(flujos, k):.2f}.''')
 
 # %% [markdown]
-# El caso base es moderadamente rentable: VAN 203 k€ (14% de la inversión; supera el 10 % de la regla), TIR 14.1% frente al 10% exigido. El consejero delegado pide además que no haya una probabilidad apreciable de VAN negativo, y eso es lo que los mensajes ponen en duda.
+# **Respuesta:** el caso base es moderadamente rentable: VAN 201.4 k€, que es 201.4 / 1430 = 14.1% de la inversión, así que pasa la primera parte de la regla (VAN ≥ 10 % de la inversión); TIR 14.0% frente al 10% exigido. El consejero delegado pide además que no haya una probabilidad apreciable de VAN negativo, y eso es lo que los mensajes ponen en duda.
 
 # %% [markdown]
 # ## Apartado 2
@@ -367,18 +427,18 @@ umbrales = pd.DataFrame({'caso base': [precio, u1, cv], 'umbral (VAN = 0)': [pre
 umbrales['variación admisible'] = umbrales['umbral (VAN = 0)'] / umbrales['caso base'] - 1
 display(umbrales.round(3))
 mas_sensible = umbrales['variación admisible'].abs().idxmin()
-Markdown(f'La variable más sensible es **{mas_sensible}**: una variación del {umbrales.loc[mas_sensible, "variación admisible"]:+.1%} anula el VAN.')
+Markdown(f'**Respuesta:** la variable más sensible es **{mas_sensible}**: una variación del {umbrales.loc[mas_sensible, "variación admisible"]:+.1%} anula el VAN.')
 
 # %% [markdown]
 # Cada mensaje por separado:
 #
-# - caso base: VAN 203 k€ (+14% de la inversión).
-# - precio −10%: VAN -166 k€ (-12% de la inversión).
-# - precio −20%: VAN -572 k€ (-40% de la inversión).
-# - volumen +15%: VAN 493 k€ (+34% de la inversión).
-# - coste variable +8%: VAN 63 k€ (+4% de la inversión).
+# - caso base: VAN 201 k€ (+14% de la inversión).
+# - precio −10%: VAN -167 k€ (-12% de la inversión).
+# - precio −20%: VAN -573 k€ (-40% de la inversión).
+# - volumen +15%: VAN 491 k€ (+34% de la inversión).
+# - coste variable +8%: VAN 61 k€ (+4% de la inversión).
 #
-# El mensaje del director comercial tiene dos caras: su volumen convierte el proyecto en muy bueno, pero su escenario de precio lo hunde; el coste variable de producción se come buena parte del VAN. El proyecto es más sensible al precio que al volumen (el volumen arrastra costes variables; el precio va directo al margen), y el coste variable actúa como un precio negativo.
+# El mensaje del director comercial tiene dos caras: su volumen convierte el proyecto en muy bueno, pero su escenario de precio lo hunde; el coste variable de producción se come buena parte del VAN. El proyecto es más sensible al precio que al volumen: un 1 % de precio cambia los ingresos de cada unidad en 0.51 y todo eso va al margen, mientras que un 1 % de volumen sólo añade el margen de contribución de esas unidades (precio − coste variable = 51 − 24 = 27 por unidad); el coste variable actúa como un precio negativo. Por eso la variación admisible del precio (umbrales) es la más pequeña.
 
 # %% [markdown]
 # ## Apartado 3
@@ -399,10 +459,14 @@ contrato = pd.DataFrame({'sin contrato': van_sin, 'con contrato': van_con}).T
 contrato['VAN esperado'] = (1 - pi) * contrato['mercado estable'] + pi * contrato['cae el precio']
 contrato['peor caso'] = contrato['cae el precio']
 display(contrato.round(1))
-Markdown(f'''Con probabilidad {pi:.0%} de caída del precio: VAN esperado **{contrato.loc["sin contrato", "VAN esperado"]:.1f}** k€ sin contrato y **{contrato.loc["con contrato", "VAN esperado"]:.1f}** con él. El contrato cuesta {van_sin["mercado estable"] - van_con["mercado estable"]:.1f} k€ de VAN si el mercado aguanta y ahorra {van_con["cae el precio"] - van_sin["cae el precio"]:.1f} si cae.''')
+display(Markdown(f'Precio medio con el contrato = 0.4·(1 − {x:g})·p + 0.6·p_mercado: {0.4 * (1 - x) + 0.6:.3f}·p si el mercado aguanta y '
+                 f'{0.4 * (1 - x) + 0.6 * (1 - 2 * x):.3f}·p si cae un {2 * x:.0%}. VAN esperado = (1 − π)·VAN(estable) + π·VAN(cae):\n\n'
+                 + '\n'.join(f'- {nombre}: {1 - pi:g} × {fila["mercado estable"]:.1f} + {pi:g} × ({fila["cae el precio"]:.1f}) = **{fila["VAN esperado"]:.1f} k€**'
+                             for nombre, fila in contrato.iterrows())))
+Markdown(f'''**Respuesta:** con probabilidad {pi:.0%} de caída del precio, VAN esperado **{contrato.loc["sin contrato", "VAN esperado"]:.1f}** k€ sin contrato y **{contrato.loc["con contrato", "VAN esperado"]:.1f}** con él. El contrato cuesta {van_sin["mercado estable"] - van_con["mercado estable"]:.1f} k€ de VAN si el mercado aguanta y ahorra {van_con["cae el precio"] - van_sin["cae el precio"]:.1f} si cae.''')
 
 # %% [markdown]
-# El contrato es un seguro: se paga una prima cierta (148 k€ de VAN si el mercado aguanta) a cambio de recortar la pérdida en el escenario malo (175 k€ menos de pérdida). En valor esperado sale mejor **sin contrato** (9 frente a -58 k€): como casi todo seguro, la prima vale más que la pérdida esperada que evita (el VAN es casi lineal en el precio y la caída tiene probabilidad 25% < 50 %). Pero la regla del consejero mira también al peor caso: con el contrato el peor caso sigue siendo negativo (-396 k€ frente a -572 sin él). El 40 % que ofrece el cliente no basta para cubrir el riesgo de precio: cubre menos de la mitad del volumen. Una contraoferta razonable es ampliar el porcentaje contratado o acortar el descuento.
+# El contrato es un seguro: se paga una prima (147.5 k€ de VAN si el mercado aguanta) a cambio de recortar la pérdida en el escenario malo (175.4 k€ menos de pérdida). En valor esperado, la prima cuesta 0.75 × 147.5 = 110.6 k€ y el ahorro vale 0.25 × 175.4 = 43.9 k€, así que sale mejor **sin contrato** (7.8 frente a -59.0 k€): como en casi todo seguro, la prima esperada supera a la pérdida esperada que evita (la caída tiene probabilidad 25% < 50 % y prima y ahorro son de tamaño parecido). Pero la regla del consejero mira también al peor caso: con el contrato el peor caso sigue siendo negativo (-398 k€ frente a -573 sin él). El 40 % que ofrece el cliente no basta para cubrir el riesgo de precio. El VAN es nulo con un precio un 5.5% menor que el previsto (precio umbral del apartado 2); el peor caso sólo deja de ser negativo si el precio medio no baja de ese umbral. Pero ampliar el porcentaje contratado no basta, ni siquiera al 100 %: con un descuento del 10% el precio del contrato ya queda por debajo del umbral (−5.5%). Con todo el volumen haría falta un descuento de como mucho el 5.5%, que deja el VAN en cero también si el mercado aguanta; y con sólo el 40 % el precio fijo tendría que ser un 16% mayor que el previsto. Este contrato no sirve para cubrir el riesgo de precio: el problema es que el proyecto sólo aguanta una caída del precio del 5.5%.
 
 # %% [markdown]
 # ## Apartado 4
@@ -431,10 +495,16 @@ display(cuadro.round(2))
 fa = flujo_accionista(cuadro, prestamo)
 display(pd.DataFrame({'FCL proyecto': flujos, 'flujo del accionista': fa.tolist()}, index=pd.Index(range(n + 1), name='año')).round(1).T)
 TIR_acc = tir(fa.tolist())
+display(Markdown(f'Cuota constante C = P·i / (1 − (1 + i)⁻ⁿ) = {prestamo:.1f} × {i:g} / (1 − {1 + i:g}^−{n_p}) = **{cuadro.cuota.iloc[0]:.2f} k€**. '
+                 f'Flujo del accionista: en el año 0, FCL + préstamo = {flujos[0]:.1f} + {prestamo:.1f} = {fa[0]:.1f}; en el año 1, '
+                 f'FCL − cuota + {t_imp:g} × intereses = {flujos[1]:.1f} − {cuadro.cuota.iloc[0]:.2f} + {t_imp:g} × {cuadro.intereses.iloc[0]:.2f} = {fa[1]:.1f} '
+                 '(los intereses se deducen del impuesto: es el ahorro fiscal); igual en los demás años del préstamo.'))
 Markdown(f'''TIR del proyecto {TIR:.2%}; TIR del accionista con el préstamo {TIR_acc:.2%}. Coste de la deuda después de impuestos {i * (1 - t_imp):.2%}, {"menor" if i * (1 - t_imp) < TIR else "mayor"} que la TIR del proyecto: el apalancamiento {"amplifica la rentabilidad del accionista" if i * (1 - t_imp) < TIR else "la reduce"}.''')
 
 # %% [markdown]
-# La TIR del accionista (20.1%) es mayor que la del proyecto (14.1%) porque la deuda cuesta 3.8% neto, menos de lo que rinde el proyecto: el accionista pone el 50% del capital y se queda con la diferencia. Pero el apalancamiento amplifica en los dos sentidos: en el escenario de caída del precio las cuotas se pagan igual y la pérdida del accionista es proporcionalmente mayor. Dirección financiera tiene razón: la decisión de invertir se toma sobre el flujo de caja libre (sin deuda) y la de financiar, después; una TIR del accionista alta no convierte en bueno un proyecto malo.
+# La TIR del accionista (20.0%) es mayor que la del proyecto (14.0%) porque la deuda cuesta 5% × (1 − 0.25) = 3.75% neto, menos de lo que rinde el proyecto: el accionista pone sólo el 50% de la inversión y se queda con la diferencia. Pero el apalancamiento amplifica en los dos sentidos: en el escenario de caída del precio las cuotas se pagan igual y la pérdida del accionista es proporcionalmente mayor. Dirección financiera tiene razón: la decisión de invertir se toma sobre el flujo de caja libre (sin deuda) y la de financiar, después; una TIR del accionista alta no convierte en bueno un proyecto malo.
+#
+# **Respuesta:** TIR del proyecto 14.01% y del accionista 20.03%; sí, Dirección financiera tiene razón: el proyecto se juzga sin deuda.
 
 # %% [markdown]
 # ## Apartado 5
@@ -443,13 +513,13 @@ Markdown(f'''TIR del proyecto {TIR:.2%}; TIR del accionista con el préstamo {TI
 display(Markdown(pregunta_5))
 
 # %% [markdown]
-# Recomendación defendible: **no aprobar tal como está y volver al comité con tres cosas: la probabilidad de caída del precio documentada (no una opinión), una cobertura que cubra la mayor parte del volumen (contraoferta al cliente clave) y el coste variable revisado con producción**. El caso base pasa la regla del 10 % (sí: 14%), pero con el riesgo de precio el VAN esperado queda en 9 k€ (1% de la inversión; no pasa) y hay un 25% de probabilidad de VAN -572 k€, y la regla también mira eso. El volumen del director comercial no se incorpora al caso base (es una opinión sin contrato detrás) pero sí como escenario favorable. Mensajes:
+# Recomendación defendible: **no aprobar tal como está y volver al comité con tres cosas: la probabilidad de caída del precio documentada (no una opinión), una cobertura que de verdad proteja el peor caso (contraoferta al cliente clave: el contrato ofrecido no cubre el riesgo: a −10% el precio fijo queda por debajo del umbral (−5.5%), así que hay que buscar otra cobertura o rebajar el riesgo de precio) y el coste variable revisado con producción**. El caso base pasa la regla del 10 % (sí: 14%), pero con el riesgo de precio el VAN esperado queda en 8 k€ (1% de la inversión; no pasa) y hay un 25% de probabilidad de VAN -573 k€, y la regla también mira eso. El volumen del director comercial no se incorpora al caso base (es una opinión sin contrato detrás) pero sí como escenario favorable. Mensajes:
 #
-# - *Director comercial:* «Tu volumen daría VAN 493 k€; tu riesgo de precio, -572. El segundo pesa más que el primero en la decisión: ¿puedes convertir parte del volumen extra en contratos firmados?»
-# - *Director de producción:* «Con tu coste variable el VAN baja a 63 k€. Necesito la estimación documentada (proveedores, índices) para llevarla al caso base o como escenario.»
-# - *Dirección financiera:* «TIR del accionista 20.1% frente a 14.1% del proyecto; de acuerdo en decidir sobre el FCL sin deuda. Si se aprueba, el préstamo mejora la rentabilidad del capital, con el riesgo que conlleva.»
-# - *Cliente clave:* «Valoramos el contrato. El 40 % a −10% cubre poco riesgo para lo que cuesta; proponemos un 60 % con el mismo descuento, o el 40 % con un descuento menor.»
-# - *Consejero delegado:* «VAN base 203 k€ (14% de la inversión); VAN esperado 9 sin cobertura y -58 con el contrato ofrecido; peor caso -572 sin cubrir y -396 con él. Recomiendo no aprobar tal como está.»
+# - *Director comercial:* «Tu volumen daría VAN 491 k€; tu riesgo de precio, -573. El segundo pesa más que el primero en la decisión: ¿puedes convertir parte del volumen extra en contratos firmados?»
+# - *Director de producción:* «Con tu coste variable el VAN baja a 61 k€. Necesito la estimación documentada (proveedores, índices) para llevarla al caso base o como escenario.»
+# - *Dirección financiera:* «TIR del accionista 20.0% frente a 14.0% del proyecto; de acuerdo en decidir sobre el FCL sin deuda. Si se aprueba, el préstamo mejora la rentabilidad del capital, con el riesgo que conlleva.»
+# - *Cliente clave:* «Valoramos el contrato. Pero a −10% el precio fijo queda por debajo del que el proyecto necesita para no perder dinero (−5.5%): así no nos sirve como cobertura. Sólo tendría sentido con un descuento claramente menor.»
+# - *Consejero delegado:* «VAN base 201 k€ (14% de la inversión); VAN esperado 8 sin cobertura y -59 con el contrato ofrecido; peor caso -573 sin cubrir y -398 con él. Recomiendo no aprobar tal como está.»
 
 # %% [markdown]
 # ## Apartado 6

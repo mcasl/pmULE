@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -261,6 +265,40 @@ proyecto = prelaciones.create_project()
 R = proyecto.path_matrix(dummies=False)
 t = datos_proyecto['duration'][R.columns]
 
+# %%
+def _num(x, dec=0):
+    x = float(x)
+    return (f'{x:.{dec}f}' if dec else f'{x:g}').replace('-', '−')
+
+
+def producto_Rt(proyecto, R, t, base, decimales=0):
+    """Cada fila de R por el vector t: (R·t)_r = Σ_i R_ri·t_i, con los términos no nulos (actividades de la
+    ruta, en orden de ejecución) y el valor; marca las filas que dan el máximo."""
+    cal = proyecto.calendar(base)
+    orden = {a: k for k, a in enumerate(ordena_ruta(list(R.columns), cal))}
+    filas = {}
+    for r in R.index:
+        acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: orden.get(a, 0))
+        total = float(sum(float(t[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    'fila de R · t = suma': ' + '.join(f'{a}({_num(t[a], decimales)})' for a in acts) + f' = {_num(total, decimales)}',
+                    'R·t': total}
+    tabla = pd.DataFrame(filas).T
+    tabla['R·t'] = tabla['R·t'].astype(float)
+    tabla['máximo'] = np.where(np.isclose(tabla['R·t'], tabla['R·t'].max()), '← τ', '')
+    return tabla
+
+
+def explica_tau(tabla, unidad='', decimales=0, nombre='τ'):
+    """«τ = ‖R·t‖∞ = máx(19, 20, 17) = 20, que da la ruta Route_2 (A – C – E)»."""
+    v = tabla['R·t']
+    T = float(v.max())
+    rutas = [f"{r} ({tabla.loc[r, 'actividades']})" for r in v.index if np.isclose(v[r], T)]
+    u = f' {unidad}' if unidad else ''
+    quien = (f'que corresponde a la ruta {rutas[0]}' if len(rutas) == 1
+             else f'alcanzado a la vez por {len(rutas)} rutas: {lista_y(rutas)}')
+    return (f"{nombre} = ‖R·t‖∞ = máx({', '.join(_num(x, decimales) for x in v)}) = **{_num(T, decimales)}{u}**, {quien}")
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -277,10 +315,11 @@ proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
 #| label: tbl-R
 rutas = proyecto.paths(dummies=False)
 display(pd.Series({r: ' - '.join(a) for r, a in rutas.items()}).to_frame('actividades'))
-proyecto.display_rutas('roy')
+proyecto.display_rutas("roy")
 
 # %%
-Markdown(f'R tiene {R.shape[0]} filas (rutas) y {R.shape[1]} columnas (actividades).')
+Markdown(f'**Respuesta:** el grafo tiene {R.shape[0]} rutas del nodo inicial al final (tabla); R tiene {R.shape[0]} filas (una por ruta) '
+         f'y {R.shape[1]} columnas (una por actividad real; las ficticias duran 0 y no se incluyen): dimensiones {R.shape[0]} × {R.shape[1]}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -293,22 +332,28 @@ Rt = R @ t
 tau = float(Rt.max())
 from pmule import display_producto_rutas
 display_producto_rutas(R, t, Rt)
-Markdown(f'τ = {tau:.0f}')
+
+# %% [markdown]
+# Cada componente de $R\,t$ es el producto de una fila de $R$ por $t$: como la fila tiene un 1 en las actividades de la ruta y un 0 en las demás, el producto es la suma de las duraciones de esa ruta. La norma infinito es el mayor de esos valores.
+
+# %%
+producto = producto_Rt(proyecto, R, t, datos_proyecto['duration'])
+display(producto)
+Markdown(explica_tau(producto, 'días') + '.')
+
+# %% [markdown]
+# Algoritmo de Zaderenko paso a paso, con el grafo PERT arriba y la matriz debajo. El primer paso muestra el resultado final; a partir del siguiente se construye desde el principio (avance con los botones):
 
 # %%
 #| tbl-cap: "Matriz de Zaderenko"
 #| label: tbl-zaderenko
-proyecto.zaderenko(durations=datos_proyecto['duration'])
-
-# %% [markdown]
-# Algoritmo de Zaderenko paso a paso (avance con los botones):
-
-# %%
 proyecto.display_zaderenko_tikz(datos_proyecto['duration'])
 
 # %%
-Markdown(f'‖R·t‖∞ = {tau:.0f}; tiempo más temprano del último nodo = {proyecto.duration(datos_proyecto["duration"])}; '
-         f'la librería (`proyecto.tau`) da {proyecto.tau(t.to_dict()):.0f}. Las tres coinciden: el cálculo de tiempos hacia delante es una forma de calcular el máximo sin enumerar las rutas.')
+T_zad = proyecto.duration(datos_proyecto['duration'])
+Markdown(f'**Respuesta:** R·t = ({", ".join(_num(x) for x in Rt)}) y ‖R·t‖∞ = {tau:.0f} días; el tiempo más temprano del último nodo por Zaderenko es {T_zad} días '
+         f'y la librería (`proyecto.tau`) da {proyecto.tau(t.to_dict()):.0f}. Las tres coinciden: el cálculo de tiempos hacia delante es una forma de calcular el '
+         'máximo de las rutas sin enumerarlas.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -317,7 +362,7 @@ Markdown(f'‖R·t‖∞ = {tau:.0f}; tiempo más temprano del último nodo = {p
 display(Markdown(pregunta_3))
 
 # %%
-Markdown(f'''‖R·t‖₁ = {float(Rt.abs().sum()):.0f} sumaría las duraciones de todas las rutas, contando varias veces cada actividad compartida: no tiene sentido como plazo. El mínimo de R·t, {float(Rt.min()):.0f}, es la ruta más corta: el tiempo que *como mínimo* ocupa cualquier cadena del proyecto, pero el proyecto no termina hasta que acaba la última ruta. El plazo es el máximo porque todas las rutas deben completarse; de ahí la norma infinito.''')
+Markdown(f'''**Respuesta:** ‖R·t‖₁ = {' + '.join(_num(x) for x in Rt)} = {float(Rt.abs().sum()):.0f} sumaría las duraciones de todas las rutas, contando varias veces cada actividad compartida: no tiene sentido como plazo. El mínimo de R·t, {float(Rt.min()):.0f} ({Rt.idxmin()}), es la ruta más corta: el tiempo que *como mínimo* ocupa cualquier cadena del proyecto, pero el proyecto no termina hasta que acaba la última ruta. El plazo es el máximo porque todas las rutas deben completarse; de ahí la norma infinito.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -340,4 +385,28 @@ ax.plot(valores, taus, marker='o'); ax.axvline(int(t[k]), color='grey', linestyl
 ax.set_xlabel(f'duración de {k}'); ax.set_ylabel('τ'); plt.show()
 
 # %%
-Markdown(f'''τ es el máximo de varias funciones lineales de t_{k} (una por ruta): las rutas que no contienen a {k} son constantes y las que la contienen tienen pendiente 1. El resultado es lineal a trozos y convexo: pendiente 0 mientras otra ruta manda y pendiente 1 a partir de t_{k} = {codo} (cuando la ruta más larga que pasa por {k} alcanza a la crítica). La duración actual de {k} es {int(t[k])}: su sensibilidad es {int(pendiente[list(valores).index(int(t[k]))])}.''')
+con_k = [r for r in R.index if R.loc[r, k] == 1]
+sin_k = [r for r in R.index if R.loc[r, k] == 0]
+resto = (Rt[con_k] - t[k])                     # lo que suman las demás actividades de cada ruta con k
+c1 = float(resto.max())
+c0 = float(Rt[sin_k].max()) if sin_k else None
+if c0 is None:
+    formula = f'τ(t_{k}) = {_num(c1)} + t_{k}: todas las rutas pasan por {k}, así que τ es lineal con pendiente 1 para cualquier duración'
+elif c0 - c1 <= 0:
+    formula = (f'τ(t_{k}) = máx({_num(c0)}, {_num(c1)} + t_{k}) = {_num(c1)} + t_{k} para cualquier t_{k} ≥ 0, porque la ruta más larga con {k} ({resto.idxmax()}) '
+               f'ya supera sin {k} a la más larga sin {k} ({Rt[sin_k].idxmax()}, {_num(c0)}): pendiente 1 en todo el dominio, sin cambio de pendiente')
+else:
+    codo_f = c0 - c1
+    formula = (f'τ(t_{k}) = máx({_num(c0)}, {_num(c1)} + t_{k}), donde {_num(c0)} es la ruta más larga sin {k} ({Rt[sin_k].idxmax()}) y {_num(c1)} lo que suman las demás '
+               f'actividades de la ruta más larga con {k} ({resto.idxmax()}). Es lineal a trozos y convexa: pendiente 0 mientras t_{k} < {_num(c0)} − {_num(c1)} = {_num(c0 - c1)} '
+               f'(manda la ruta sin {k}) y pendiente 1 a partir de ahí; el cambio de pendiente está en t_{k} = {_num(codo_f)}')
+actual = c1 + t[k]
+if c0 is None or actual > c0:
+    sens = f'con t_{k} = {int(t[k])}, {k} está en la ruta crítica: alargarla o acortarla un día cambia τ un día (pendiente 1)'
+elif actual < c0:
+    sens = f'con t_{k} = {int(t[k])}, {k} no es crítica: puede alargarse hasta {_num(c0 - c1)} sin cambiar τ (pendiente 0)'
+else:
+    sens = f'con t_{k} = {int(t[k])} el valor actual está justo en el codo: alargarla aumenta τ, acortarla no lo reduce'
+lineal = c0 is None or c0 - c1 <= 0
+previo = 'En el rango de duraciones posibles es lineal; ' if lineal else 'No es lineal (es el máximo de funciones lineales); '
+Markdown(f'**Respuesta:** {formula}. {previo}{sens}.')

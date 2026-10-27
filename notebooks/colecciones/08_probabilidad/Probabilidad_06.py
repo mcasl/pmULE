@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -226,7 +230,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en semanas).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -253,6 +257,31 @@ datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 plazo = 32
+ruta_alumno_1 = ['A', 'C', 'D', 'E', 'H', 'I']   # ruta crítica del primer alumno
+ruta_alumno_2 = ['A', 'C', 'D', 'E', 'G', 'I']   # ruta usada por el segundo alumno
+sigma_alumno_1 = 3.6999999999999997
+
+# %%
+def tabla_rutas(R, medias, varianzas=None, calendario=None, dec=0, dec_var=3, nombre='media'):
+    """Media (y varianza) de cada ruta con la suma término a término; actividades en orden de ejecución."""
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        m = float(sum(float(medias[a]) for a in acts))
+        fila = {'actividades': ' – '.join(acts),
+                f'{nombre} = suma': ' + '.join(f'{a}({float(medias[a]):.{dec}f})' for a in acts) + f' = {m:.{dec}f}',
+                nombre: m}
+        if varianzas is not None:
+            v = float(sum(float(varianzas[a]) for a in acts))
+            fila['varianza = suma'] = ' + '.join(f'{a}({float(varianzas[a]):.{dec_var}f})' for a in acts) + f' = {v:.{dec_var}f}'
+            fila['varianza'] = v
+            fila['σ = √varianza'] = v ** 0.5
+        filas[r] = fila
+    t = pd.DataFrame(filas).T
+    for c in (nombre, 'varianza', 'σ = √varianza'):
+        if c in t:
+            t[c] = t[c].astype(float)
+    return t
 
 # %% [markdown]
 # ## Apartado 1
@@ -270,7 +299,12 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])
-camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
+calendario = proyecto.calendar(datos_proyecto['duration'])
+criticas = ordena_ruta(sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts)), calendario)
+display(explica_camino_critico(proyecto, datos_proyecto['duration']))
+coincide = set(criticas) == set(ruta_alumno_1)
+Markdown(f'**Respuesta:** la duración media es {plural(duracion_media, "semana")} y la ruta crítica {" – ".join(criticas)}: '
+         + ('ambas coinciden con las del primer alumno.' if coincide else 'no coinciden con las del primer alumno.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -279,21 +313,21 @@ camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Las varianzas de variables independientes se suman; las desviaciones típicas no. $\sigma_T = \sqrt{\sum \sigma_i^2}$, que es siempre menor que $\sum \sigma_i$. Al usar una σ demasiado grande el alumno obtiene un z demasiado pequeño y, para un plazo mayor que la media, una probabilidad demasiado baja (subestima).
+# Las varianzas de actividades independientes se suman; las desviaciones típicas no: $\sigma_T = \sqrt{\sum \sigma_i^2}$, que es siempre menor que $\sum \sigma_i$. El primer alumno ha sumado desviaciones típicas.
 
 # %%
 desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(datos_proyecto['duration'], datos_proyecto['variance'])
-criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts))
 suma_sigmas = float(datos_proyecto.loc[criticas, 'standard_deviation'].sum())
-pd.Series({'suma de σ (incorrecto)': suma_sigmas, 'raíz de la suma de varianzas (correcto)': desviacion_proyecto}).round(3).to_frame('σ del proyecto')
-
-# %%
-#| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"
-#| label: tbl-rutas
-R = proyecto.path_matrix(dummies=False)
-medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')
-varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'varianza', 3)
-pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)
+p_correcta = norm.cdf(plazo, duracion_media, desviacion_proyecto)
+p_alumno = norm.cdf(plazo, duracion_media, sigma_alumno_1)
+sentido = 'subestima' if p_alumno < p_correcta else 'sobrestima'
+Markdown(f'''Cálculo correcto: {explica_sigma_ruta(criticas, datos_proyecto["variance"], nombre="σ_T")} semanas, frente a la suma de desviaciones '''
+         f'''del alumno, {suma_sigmas:.1f}.\n\n'''
+         f'''- Con la σ del alumno: {explica_probabilidad(duracion_media, sigma_alumno_1, plazo)}.\n'''
+         f'''- Con la σ correcta: {explica_probabilidad(duracion_media, desviacion_proyecto, plazo)}.\n\n'''
+         f'''**Respuesta:** el error es sumar desviaciones típicas en lugar de varianzas; la σ correcta es {desviacion_proyecto:.3f} y no {suma_sigmas:.1f}. '''
+         f'''Una σ demasiado grande reparte la probabilidad hacia las colas y, para un plazo por encima de la media ({plazo} > {duracion_media}), '''
+         f'''el alumno **{sentido}** la probabilidad: {p_alumno:.4f} en lugar de {p_correcta:.4f}.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -302,7 +336,27 @@ pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# El segundo alumno ha sumado varianzas, que es lo correcto, pero de una ruta que no es la crítica. La varianza del proyecto se toma de la ruta crítica; sólo si esa otra ruta también fuera crítica (misma duración media) habría que considerarla, y entonces se tomaría la de mayor varianza.
+# Media y varianza de cada ruta (sumas de las de sus actividades):
+
+# %%
+#| tbl-cap: "Media y varianza de cada ruta (sumas de las de sus actividades)"
+#| label: tbl-rutas
+R = proyecto.path_matrix(dummies=False)
+rutas = tabla_rutas(R, datos_proyecto['duration'], datos_proyecto['variance'], calendario)
+limpia_tabla(rutas, decimales=3)
+
+# %%
+r2 = next(r for r in R.index if set(R.columns[R.loc[r] == 1]) == set(ruta_alumno_2))
+media_2, var_2, sigma_2 = (float(rutas.loc[r2, c]) for c in ('media', 'varianza', 'σ = √varianza'))
+var_c = desviacion_proyecto ** 2
+if var_2 > var_c:
+    caso = (f'Su σ sería la correcta si esa ruta fuera también crítica (media {duracion_media} en lugar de {media_2:g}): habría entonces dos rutas '
+            f'críticas y, como la suya tiene más varianza ({var_2:.3f} > {var_c:.3f}), sería la que hay que usar.')
+else:
+    caso = (f'Su σ sólo sería la correcta si esa ruta fuera la única crítica; aunque empatara en media con la crítica actual, se usaría la de '
+            f'mayor varianza, y la suya tiene menos ({var_2:.3f} ≤ {var_c:.3f}).')
+Markdown(f'''**Respuesta:** el segundo alumno ha sumado varianzas, que es lo correcto, pero de la ruta {rutas.loc[r2, "actividades"]}, que no es la crítica: '''
+         f'''dura {media_2:g} semanas de media frente a {duracion_media}. La varianza del proyecto se toma de la ruta crítica ({var_c:.3f}), no de otra. {caso}''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -311,5 +365,6 @@ display(Markdown(pregunta_3))
 display(Markdown(pregunta_4))
 
 # %%
-z = (plazo - duracion_media) / desviacion_proyecto
-Markdown(f'z = ({plazo} − {duracion_media}) / {desviacion_proyecto:.3f} = {z:.3f}; P(T ≤ {plazo}) = {norm.cdf(z):.3f}, frente al {0.706} del primer alumno.')
+Markdown(f'''{explica_probabilidad(duracion_media, desviacion_proyecto, plazo)}.\n\n'''
+         f'''**Respuesta:** la probabilidad correcta de terminar en {plazo} semanas o menos es {p_correcta:.4f} ({p_correcta:.1%}), '''
+         f'''frente al {p_alumno:.3f} del primer alumno.''')

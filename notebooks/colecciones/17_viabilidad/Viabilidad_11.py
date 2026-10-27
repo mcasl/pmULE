@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -257,6 +261,54 @@ def anualidad_equivalente(VAN, k, n):
     '''Anualidad constante durante n años cuyo valor actual es VAN.'''
     return float(VAN * k / (1 - (1 + k) ** -n))
 
+_SUP = str.maketrans('0123456789-', '⁰¹²³⁴⁵⁶⁷⁸⁹⁻')
+def _num(x, d=1):
+    return f'{round(float(x), d) + 0.0:.{d}f}'.replace('-', '−')
+def _con_signo(x, d=1):
+    return f' − {_num(-x, d)}' if x < 0 else f' + {_num(x, d)}'
+
+def explica_van(flujos, k, unidad='k€', nombre='VAN'):
+    '''VAN término a término: Σ flujo_t / (1 + k)^t con los números sustituidos.'''
+    base = f'{1 + k:.6g}'
+    terminos = _num(flujos[0]) + ''.join(f' {"−" if f < 0 else "+"} {_num(abs(f))}/{base}{str(t).translate(_SUP)}' for t, f in enumerate(flujos) if t > 0)
+    actuales = _num(flujos[0]) + ''.join(_con_signo(f / (1 + k) ** t) for t, f in enumerate(flujos) if t > 0)
+    return f'{nombre} = Σ flujo_t/(1 + k)^t = {terminos} = {actuales} = **{_num(van(flujos, k))} {unidad}**'
+
+def explica_tir(flujos, unidad='k€'):
+    '''Cómo se obtiene la TIR: horquilla de dos tasas enteras con VAN de signo contrario, interpolación y comprobación.'''
+    r = tir(flujos)
+    a = np.floor(r * 100) / 100; b = a + 0.01
+    va, vb = van(flujos, a), van(flujos, b)
+    aprox = a + 0.01 * va / (va - vb)
+    return (f'La TIR es la tasa que anula el VAN. Probando tasas: VAN({a:.0%}) = {_num(va)} {unidad} y VAN({b:.0%}) = {_num(vb)} {unidad} tienen signo distinto, '
+            f'así que la TIR está entre {a:.0%} y {b:.0%}; interpolando linealmente, TIR ≈ {a:.0%} + 1 % × {_num(va)}/({_num(va)} − ({_num(vb)})) = {aprox:.2%}. '
+            f'Afinando (bisección, o =TIR(rango de flujos) en la hoja de cálculo): **TIR = {r:.2%}**. Comprobación: VAN({r:.2%}) = {abs(van(flujos, r)):.4f} ≈ 0.')
+
+def explica_payback(flujos, k=None, unidad='k€'):
+    '''Año en que el acumulado (simple o descontado) se hace positivo e interpolación lineal dentro de ese año.'''
+    acum, nombre = 0.0, 'acumulado' + ('' if k is None else ' descontado')
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return (f'el {nombre} pasa de {_num(acum)} (año {t - 1}) a {_num(acum + v)} (año {t}); dentro del año {t} se recuperan los {_num(-acum)} {unidad} '
+                    f'que faltaban con un flujo{"" if k is None else " descontado"} de {_num(v)}: payback = {t - 1} + {_num(-acum)}/{_num(v)} = **{t - 1 + (-acum) / v:.2f} años**')
+        acum += v
+    return f'el {nombre} no llega a ser positivo: la inversión no se recupera'
+
+def explica_van_mensual(pagos, F, N, km, unidad='k€'):
+    '''VAN mensual = VA de los ingresos (renta de N meses desde el mes T + 1) − VA de los desembolsos de los meses 1…T.'''
+    pagos = [float(x) for x in pagos]; T = len(pagos); base = f'{1 + km:.5f}'
+    va_des = sum(x / (1 + km) ** m for m, x in enumerate(pagos, 1))
+    a_N = (1 - (1 + km) ** -N) / km
+    va_ing = F * a_N * (1 + km) ** -T
+    t_des = ' + '.join(f'{_num(x)}/{base}{str(m).translate(_SUP)}' for m, x in list(enumerate(pagos, 1))[:3])
+    if T > 3:
+        t_des += f' + … + {_num(pagos[-1])}/{base}{str(T).translate(_SUP)}'
+    return (f'- VA de los desembolsos = Σ desembolso_m/(1 + k_m)^m = {t_des} = **{_num(va_des)} {unidad}**.\n'
+            f'- VA de los ingresos: renta de N = {N} meses de {_num(F)} {unidad} que empieza en el mes T + 1 = {T + 1}: '
+            f'F · [1 − (1 + k_m)^−N]/k_m · (1 + k_m)^−T = {_num(F)} × [1 − {base}^−{N}]/{km:.6f} × {base}^−{T} = {_num(F)} × {a_N:.3f} × {(1 + km) ** -T:.4f} = **{_num(va_ing)} {unidad}**.\n'
+            f'- VAN = {_num(va_ing)} − {_num(va_des)} = **{_num(va_ing - va_des)} {unidad}**.')
+
 # %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
@@ -295,8 +347,10 @@ for act, fila in datos_proyecto.iterrows():
 flujos = [0.0] + [-float(x) for x in pagos] + [F] * N
 VAN_det = van(flujos, k_mensual)
 criticas = calendario.index[calendario['H_total'] == 0].tolist()
-Markdown(f'Duración {duracion} meses; actividades críticas: {", ".join(criticas)}. Inversión Σ BAC = {I0:.0f} k€. '
-         f'Con k mensual = {k_mensual:.4%}, el VAN determinista es {VAN_det:.1f} k€.')
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'meses'))
+Markdown(f'Desembolso de cada mes (BAC/duración de cada actividad en curso, con los inicios más tempranos): ' + ', '.join(f'{x:.1f}' for x in pagos) + f' k€ (Σ = Σ BAC = {I0:.0f} k€). '
+         f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}.\n\n' + explica_van_mensual(pagos, F, N, k_mensual)
+         + f'\n\n**Respuesta:** duración {duracion} meses; camino crítico {" – ".join(ordena_ruta(criticas, calendario))}; VAN determinista = {VAN_det:.1f} k€.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -324,7 +378,9 @@ ejes[1].set_xlabel('VAN (k€)'); ejes[1].legend(); plt.tight_layout()
 
 # %%
 Markdown(f'La duración media es {mc.tau_samples.mean():.2f} meses frente a {duracion} del plan; el VAN medio es {mc.van_mean:.1f} k€ '
-         f'(determinista {VAN_det:.1f}), con desviación {mc.van_std:.1f}. P(VAN < 0) = {mc.prob_negativo:.1%} y el percentil 5 % es {mc.cuantil(0.05):.1f} k€.')
+         f'(determinista {VAN_det:.1f}), con desviación {mc.van_std:.1f}. P(VAN < 0) = {mc.prob_negativo:.1%} y el percentil 5 % es {mc.cuantil(0.05):.1f} k€. '
+         f'Las probabilidades salen de contar réplicas: P(VAN < 0) = (réplicas con VAN < 0)/5000 = {int(round(mc.prob_negativo * 5000))}/5000; el percentil 5 % deja por debajo el 5 % de los VAN simulados (250 réplicas). '
+         f'**Respuesta:** media {mc.van_mean:.1f} k€, desviación típica {mc.van_std:.1f} k€, P(VAN < 0) = {mc.prob_negativo:.1%}, percentil 5 % = {mc.cuantil(0.05):.1f} k€.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -346,7 +402,9 @@ Markdown(f'La incertidumbre del ingreso (simétrica y lineal en el VAN) ensancha
          f'{solo_ingreso.van_mean:.1f} ± {ee_ing:.1f} (dos errores estándar de simulación) frente a {VAN_det:.1f}. Las duraciones sí la bajan, hasta '
          f'{solo_duraciones.van_mean:.1f} ± {ee_dur:.1f}: el proyecto termina cuando termina el último camino, así que la duración media es '
          f'{solo_duraciones.tau_samples.mean():.2f} > {duracion} (caminos casi críticos que se fusionan) y cada mes de retraso retrasa un flujo descontado. '
-         'Es el mismo sesgo de la aproximación normal, ahora medido en k€.')
+         'Es el mismo sesgo de la aproximación normal, ahora medido en k€. '
+         f'**Respuesta:** la media simulada ({mc.van_mean:.1f}) queda por debajo del VAN determinista ({VAN_det:.1f}) por las duraciones (el proyecto dura de media más de lo planificado y los ingresos llegan más tarde); '
+         'la incertidumbre del ingreso sólo añade dispersión.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -360,10 +418,16 @@ criticidad = proyecto.monte_carlo(distribuciones, n_samples=5000, seed=2025).sen
 comparacion = pd.DataFrame({'Spearman con el VAN': tornado['Spearman con el VAN']})
 comparacion['índice de criticidad'] = [criticidad.get(v.split()[-1], np.nan) if v.startswith('duración') else np.nan for v in comparacion.index]
 display(comparacion.round(3))
-positivas = [v for v, r in tornado['Spearman con el VAN'].items() if r > 0.02 and v.startswith('duración')]
-Markdown(f'Mandan el ingreso y las actividades con alto índice de criticidad (su retraso retrasa el cobro). '
-         f'Con correlación positiva apreciable: {positivas or "ninguna"}. Una actividad con holgura que se alarga no retrasa el cobro y '
-         'desplaza el pago de su BAC hacia meses más descontados, por lo que puede mejorar ligeramente el VAN; el efecto es pequeño.')
+_dur = comparacion.loc[[v for v in comparacion.index if v.startswith('duración')]]
+positivas = [v.split()[-1] for v, r in _dur['Spearman con el VAN'].items() if r > 0]
+_top = _dur['Spearman con el VAN'].abs().idxmax().split()[-1]
+Markdown(f'Manda el ingreso mensual (Spearman {tornado.loc["ingreso mensual", "Spearman con el VAN"]:.3f}); entre las duraciones, la de más peso es {_top} '
+         f'(Spearman {_dur.loc["duración " + _top, "Spearman con el VAN"]:.3f}, índice de criticidad {_dur.loc["duración " + _top, "índice de criticidad"]:.3f}): las actividades que más veces son críticas son las que, al alargarse, retrasan el cobro. '
+         + (f'**Respuesta:** tienen correlación positiva (su demora mejora el VAN) {lista_y(positivas)}, con índices de criticidad '
+            + ', '.join(f'{a}: {_dur.loc["duración " + a, "índice de criticidad"]:.3f}' for a in positivas)
+            + '. Son actividades que casi nunca son críticas: si se alargan no retrasan el cobro y desplazan el pago de su BAC hacia meses más descontados, '
+              f'así que el VAN mejora ligeramente; el efecto es pequeño (|Spearman| ≤ {max(abs(_dur.loc["duración " + a, "Spearman con el VAN"]) for a in positivas):.3f}).'
+            if positivas else '**Respuesta:** ninguna duración tiene correlación positiva con el VAN: toda demora lo empeora o no lo afecta.'))
 
 # %% [markdown]
 # ## Apartado 5
@@ -385,4 +449,8 @@ mejor_riesgo = tabla_op.drop(index=['sin hacer nada', '(a) y (b)'])['P(VAN < 0)'
 Markdown(f'La actividad más influyente es {influyente}. Fijar el ingreso o una duración cambia poco el VAN medio '
          f'({tabla_op.loc["sin hacer nada", "VAN medio"]:.1f} → entre {tabla_op["VAN medio"].drop("sin hacer nada").min():.1f} y {tabla_op["VAN medio"].drop("sin hacer nada").max():.1f}): '
          f'lo que compra es seguridad. La opción que más reduce P(VAN < 0) es {mejor_riesgo}. Si la empresa es neutral al riesgo, solo vale la pena pagar '
-         'por lo que sube la media; si le preocupa la cola (P(VAN < 0), CVaR), se paga por reducir dispersión.')
+         'por lo que sube la media; si le preocupa la cola (P(VAN < 0), CVaR, el VAN medio del 5 % de peores réplicas), se paga por reducir dispersión. '
+         f'**Respuesta:** (a) deja la desviación en {tabla_op.loc["(a) fijar el ingreso", "desviación"]:.1f} k€ y P(VAN < 0) en {tabla_op.loc["(a) fijar el ingreso", "P(VAN < 0)"]:.1%}; '
+         f'(b) en {tabla_op.iloc[2]["desviación"]:.1f} k€ y {tabla_op.iloc[2]["P(VAN < 0)"]:.1%}; las dos, en {tabla_op.loc["(a) y (b)", "desviación"]:.1f} k€ y {tabla_op.loc["(a) y (b)", "P(VAN < 0)"]:.1%} '
+         f'(sin hacer nada: {tabla_op.loc["sin hacer nada", "desviación"]:.1f} k€ y {tabla_op.loc["sin hacer nada", "P(VAN < 0)"]:.1%}). Ninguna sube apreciablemente el VAN medio: lo que se compra es reducción del riesgo'
+         + (f'; (b) apenas lo reduce, porque la duración de {influyente} pesa poco frente al ingreso.' if tabla_op.iloc[2]['desviación'] > 0.9 * tabla_op.loc['sin hacer nada', 'desviación'] else '.'))

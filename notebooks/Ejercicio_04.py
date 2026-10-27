@@ -28,7 +28,42 @@ from IPython.display import display, HTML, Markdown, Math
 sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, pinta_tikz, colorea_minimo_fila, plot_cargas
+from pmule import explica_camino_critico, explica_probabilidad, ordena_ruta, lista_y, plural
 
+def _cargas(gantt, limites=None):
+    """Carga de recursos por periodo (y, si se da, frente al límite, que se prolonga con su último valor)."""
+    import numpy as _np, pandas as _pd
+    _c = gantt.data.loc['Total'].drop('H_total').astype(float)
+    _t = _pd.DataFrame({'Periodo': range(1, len(_c) + 1), 'Carga': _c.astype(int).values})
+    if limites is not None:
+        _l = list(limites) if isinstance(limites, (list, tuple)) else [limites]
+        _t['Límite'] = (_l + [_l[-1]] * len(_c))[:len(_c)]
+        _t['¿Supera?'] = _np.where(_t['Carga'] > _t['Límite'], 'sí', 'no')
+    return _t.set_index('Periodo').T
+
+def _respuesta_nivelacion(cuadrados, desplazamientos):
+    """Respuesta de la nivelación: suma de cuadrados inicial y final y actividades desplazadas."""
+    _sc = cuadrados.data if hasattr(cuadrados, 'data') else cuadrados
+    _sc0, _scf = float(_sc.iloc[0, 0]), float(_sc.iloc[-1].min())
+    _mov = {a: int(v) for a, v in desplazamientos.iloc[:, 0].items() if v != 0}
+    if not _mov:
+        return Markdown(f"**Respuesta:** los recursos ya estaban nivelados: ningún desplazamiento reduce la suma de cuadrados ({_sc0:g}).")
+    return Markdown(f"**Respuesta:** para nivelar los recursos se desplaza " + lista_y([f"{a} {plural(d, 'periodo')}" for a, d in _mov.items()])
+                    + f" respecto de su inicio más temprano; la suma de cuadrados de las cargas baja de {_sc0:g} a **{_scf:g}**. "
+                    "Las demás actividades no críticas no se desplazan por sí mismas (solo lo que las arrastren sus predecesoras) porque desplazarlas no reduce más la suma de cuadrados; "
+                    "como solo se mueven actividades dentro de su holgura, la duración del proyecto no cambia.")
+
+def _respuesta_ackoff(best_option, costes, T0, T1, unidad='periodos'):
+    """Coste de cada iteración de Ackoff-Sasieni y resumen de las reducciones."""
+    from collections import Counter as _Counter
+    _ci = {it: sum(costes[a] for a in acts) for it, acts in best_option.items()}
+    _n = _Counter(a for acts in best_option.values() for a in acts)
+    return Markdown(
+        'Coste de cada iteración (suma de los costes unitarios de reducción de las actividades acortadas un periodo):\n\n'
+        + '\n'.join(f"- Iteración {it}: " + ' + '.join(f"{a}({costes[a]:g})" for a in acts) + f" = {_ci[it]:g}" for it, acts in best_option.items())
+        + "\n\n**Respuesta:** hay que reducir " + lista_y([f"{a} {plural(n, 'periodo')}" for a, n in _n.items()])
+        + f"; la duración pasa de {T0:g} a {T1:g} {unidad} con un sobrecoste mínimo de "
+        + ' + '.join(f"({c:g})" for c in _ci.values()) + f" = **{sum(_ci.values()):g}** unidades monetarias.")
 # %%
 # %%capture
 # %mkdir -p ~/temp
@@ -55,6 +90,7 @@ from IPython.display import display, HTML
 display(HTML("<style>.container { width:80% !important; }</style>"))
 
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 
 datos_enunciado = pd.DataFrame([
@@ -144,7 +180,7 @@ resultados_pert['nodes']
 duracion_media_proyecto = int(float(proyecto.duration(datos_proyecto['duration'])))
 
 # %%
-Markdown(f"De acuerdo a la duración obtenida para el nodo final del proyecto, la duración media del proyecto es {duracion_media_proyecto} periodos.")
+Markdown(f"El tiempo más temprano del nodo final del proyecto es su duración media: **{duracion_media_proyecto} periodos**.")
 
 # %% [markdown]
 # ### Calendario del proyecto
@@ -167,17 +203,18 @@ proyecto.display_calendario(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Holgura total de las actividades"
 #| label: tbl-holguras
-resultados_pert['activities'][['H_total']]
-
+display(resultados_pert['activities'][['H_total']].rename(columns={'H_total': 'Holgura total'}))
+display(Markdown('(Las filas que empiezan por @ son actividades ficticias.) Actividades con holgura total nula: **'
+                 + lista_y([a for a in ordena_ruta(datos_proyecto.index, calendario) if resultados_pert['activities'].loc[a, 'H_total'] == 0]) + '**.'))
 # %% [markdown]
 # #### Camino crítico
-# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas, cuyas actividades se listan en orden alfabético:
+# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas (actividades en orden de ejecución):
 
 # %%
 camino_critico = proyecto.critical_path(datos_proyecto['duration'])
 for ruta, actividades in camino_critico.items():
-    display(Markdown(f"{ruta}: " + ", ".join(actividades)))
-
+    pass
+explica_camino_critico(proyecto, datos_proyecto['duration'], 'periodos')
 # %% [markdown]
 # #### Grafo PERT con indicación del camino crítico
 
@@ -206,7 +243,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 # Se calcula entonces la varianza de cada una de las rutas del camino crítico como suma de las varianzas de las actividades que lo componen.
 
 # %% [markdown]
-# El enunciado nos aporta la desviación típica, la varianza se calcula elevando al cuadrado.
+# El enunciado nos aporta la desviación típica $\sigma$ de cada actividad; su varianza se calcula elevándola al cuadrado, $\sigma^2$.
 
 # %%
 desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=datos_proyecto['duration'],
@@ -215,12 +252,14 @@ desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=da
 # %%
 #| tbl-cap: "Varianza de las rutas del camino crítico"
 #| label: tbl-varianzaRutas
+display(Markdown('Varianzas de las actividades: ' + ', '.join(f"σ²({a}) = {s:g}² = {s**2:g}" for a, s in datos_proyecto['standard_deviation'].items()) + '.'))
 varianza_caminos
-
 # %%
-display(Markdown(f"""La varianza de la duración del proyecto es la máxima varianza de las rutas críticas. Para este proyecto es {round(desviacion_proyecto**2,2)}.  
-Habitualmente será útil calcular su raiz cuadrada, la desviación típica, para ser utilizada como parámetro de la ley de distribución normal.  """))
-display(Markdown(f"La desviación típica es {round(desviacion_proyecto,2)}"""))
+_v = varianza_caminos.data['Variance'].astype(float)
+display(Markdown(f"""La varianza de la duración del proyecto es la máxima varianza de las rutas críticas: """
+                 + (f"máx({', '.join(f'{x:g}' for x in _v)}) = " if len(_v) > 1 else f"la de la única ruta crítica, ")
+                 + f"""**{desviacion_proyecto**2:g}**.  
+Su raíz cuadrada, la desviación típica, es el parámetro de la ley normal: σ = √{desviacion_proyecto**2:g} = **{desviacion_proyecto:.2f}** periodos."""))
 
 
 # %% [markdown]
@@ -235,7 +274,10 @@ probabilidad_de_terminar_antes_de_b = round(float(norm.cdf(periodo_probabilidad_
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=periodo_probabilidad_b)
 
-Markdown(f"Para un proyecto con duración media {duracion_media_proyecto} y desviación típica {round(desviacion_proyecto, 2)} el valor de la probabilidad de terminar antes de {periodo_probabilidad_b} periodos es {round(probabilidad_de_terminar_antes_de_b * 100, 2)} por ciento.")
+display(Markdown(explica_probabilidad(duracion_media_proyecto, desviacion_proyecto, periodo_probabilidad_b)
+                 + f"\n\n**Respuesta:** la probabilidad de terminar el proyecto antes de {periodo_probabilidad_b} periodos es "
+                   f"**{norm.cdf(periodo_probabilidad_b, duracion_media_proyecto, desviacion_proyecto):.4f}** "
+                   f"({norm.cdf(periodo_probabilidad_b, duracion_media_proyecto, desviacion_proyecto):.1%})."))
 
 # %% [markdown]
 # ## Apartado 2
@@ -261,11 +303,10 @@ proyecto.display_ackoff_pasos_tikz(
 
 # %%
 for iteracion, actividades in best_option.items():
-    display(Markdown(f"- Iteración {iteracion}: " + ", ".join(actividades) + "<br>"))
-
+    pass
+_respuesta_ackoff(best_option, datos_proyecto['ucr'], proyecto.duration(datos_proyecto['duration']), proyecto.duration(duration))
 # %% [markdown]
-# Tras esta reducción ya se ha alcanzado el objetivo de 10 periodos de duración.
-# Se muestra la representación Pert y Roy del proyecto con las nuevas duración y la indicación de los caminos críticos.
+# Se muestra la representación Pert y Roy del proyecto con las nuevas duraciones y la indicación de los caminos críticos.
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -304,9 +345,12 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto antes de la nivelación"
 #| label: fig-ganttPrenivelacionCargas
 plot_cargas(gantt_df=gantt_recursos, limite_maximo_recursos=None);
-
+_c3 = _cargas(gantt_recursos)
+display(_c3)
+display(Markdown('Suma de cuadrados de las cargas: ' + ' + '.join(f"{c}²" for c in _c3.loc['Carga'])
+                 + f" = **{int((_c3.loc['Carga'] ** 2).sum())}**."))
 # %% [markdown]
-# La demanda de recursos actual no se encuentra nivelada. Se procede a aplicar el algoritmo de nivelación.
+# Para nivelar se aplica el algoritmo de mínimos cuadrados: se prueba a desplazar las actividades no críticas dentro de su holgura y se elige, para cada una, el desplazamiento que minimiza la suma de cuadrados de las cargas.
 
 # %% [markdown]
 # ### Orden de desplazamientos
@@ -316,7 +360,7 @@ plot_cargas(gantt_df=gantt_recursos, limite_maximo_recursos=None);
 #    - Se desplazan primero aquellas no críticas aun no desplazadas con su final más temprano más próximo al principio del proyecto.  
 #    - En caso de empate se preferirá mover primero la de mayor holgura.  
 #    - De persistir el empate se moverá la de menor duración.  
-#    - Descartamos del análisis las actividades f1 y f2 por no consumir recursos.  
+#    - Descartamos del análisis las actividades ficticias (las que empiezan por @) por no consumir recursos.    
 #    - En caso de persistir el empate, resulta indiferente una u otra.  
 
 # %%
@@ -355,5 +399,6 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto tras la nivelación"
 #| label: fig-ganttPostNivelacionCargas
 plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=None);
-
+display(_cargas(gantt_df))
+_respuesta_nivelacion(cuadrados, desplazamientos)
 # %%

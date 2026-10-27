@@ -24,6 +24,7 @@ from jupyter_tikz import TexFragment
 import os, sys
 from IPython.display import display, HTML, Markdown, Math
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 
 
@@ -31,6 +32,16 @@ import numpy as np
 sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, pinta_tikz, plot_cargas
+from pmule import explica_camino_critico, explica_probabilidad, ordena_ruta, lista_y, plural
+
+def _cargas(gantt, limites):
+    """Carga de recursos por periodo frente al límite (lista que se prolonga con su último valor)."""
+    _c = gantt.data.loc['Total'].drop('H_total').astype(float)
+    _l = list(limites) if isinstance(limites, (list, tuple)) else [limites]
+    _l = (_l + [_l[-1]] * len(_c))[:len(_c)]
+    _t = pd.DataFrame({'Periodo': range(1, len(_c) + 1), 'Carga': _c.astype(int).values, 'Límite': _l})
+    _t['¿Supera?'] = np.where(_t['Carga'] > _t['Límite'], 'sí', 'no')
+    return _t.set_index('Periodo').T
 
 # %%
 # %%capture
@@ -86,15 +97,32 @@ datos_enunciado
 display(Markdown(pregunta_1))
 
 # %% [markdown]
-# Si entendemos la duración mínima de un proyecto como la duración media obtenida al utilizar para su cálculo las duraciones tope de las actividades, la duración optimista no causa efecto directo en esta duración. La duración máxima o Pert de una actividad, y su duración tope, son valores medios para los que a su vez podemos entender que existen valores optimístas y pesimístas de la duración. No debemos confundir el cambio en la duración de una actividad provocado de manera consciente mediante el cambio del nivel de esfuerzo aplicado, calidad de herramientas, equipos, técnicas; con la observación de que en un caso concreto la duración resulte ser aleatoriamente mayor o menor.
+# En el método PERT la duración media $D$ de cada actividad se obtiene a partir de su duración optimista $a$, la más probable o modal $m$ y la pesimista $b$ mediante $D=\frac{a+4m+b}{6}$. Como el enunciado da $D$ (columna `duration`), $m$ y $b$, despejamos la duración optimista: $a=6D-b-4m$.
 
 # %% [markdown]
-# En lo relativo al cálculo solicitado, A partir de los datos del enunciado y de la relación $D=\frac{a+4m+b}{6}$ obtenemos la duración optimista $a=6D-b-4m$.
+# Sustituyendo los datos de cada actividad:
 
 # %%
 datos_proyecto = datos_enunciado.copy()
 datos_proyecto['optimistic_duration'] = datos_proyecto.eval('6*duration - pesimistic_duration - 4*modal_duration')
-datos_proyecto[['optimistic_duration']]
+_t1 = pd.DataFrame({
+    'D (media)': datos_proyecto['duration'],
+    'b (pesimista)': datos_proyecto['pesimistic_duration'],
+    'm (modal)': datos_proyecto['modal_duration'],
+    'a = 6D − b − 4m': [f"6·{d:g} − {b:g} − 4·{m:g} = {a:g}" for d, b, m, a in
+                        datos_proyecto[['duration', 'pesimistic_duration', 'modal_duration', 'optimistic_duration']].values],
+})
+display(_t1)
+display(Markdown(
+    '**Respuesta:** las duraciones optimistas son '
+    + ', '.join(f"{k} = {v:g}" for k, v in datos_proyecto['optimistic_duration'].items()) + '.\n\n'
+    'La duración optimista **no influye** en la duración mínima del proyecto, entendida como la duración media que se obtiene '
+    'al calcular el proyecto con las duraciones tope de las actividades. La duración media (o PERT) de una actividad y su '
+    'duración tope son valores medios, y para cada uno de ellos cabe a su vez hablar de valores optimistas y pesimistas. '
+    'No debe confundirse el cambio de duración de una actividad provocado conscientemente (cambiando el nivel de esfuerzo, '
+    'la calidad de las herramientas, los equipos o las técnicas) con la observación de que, en un caso concreto, la duración '
+    'resulte ser aleatoriamente mayor o menor: la duración optimista describe esta variabilidad aleatoria (interviene en la '
+    'media y en la varianza), no la reducción por aceleración.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -149,7 +177,8 @@ resultados_pert['nodes']
 duracion_media_proyecto = int(proyecto.duration(durations=duraciones_medias))
 
 # %%
-Markdown(f"La información del nodo final del proyecto nos informa de la duración media del proyecto: {duracion_media_proyecto} periodos")
+Markdown(f"El tiempo más temprano del nodo final del proyecto (nodo {resultados_pert['nodes'].index[-1]}) es su duración media: "
+         f"**{duracion_media_proyecto} periodos**.")
 
 # %% [markdown]
 # ### Calendario del proyecto
@@ -191,10 +220,15 @@ proyecto.display_roy_construccion(tabla=prelaciones)
 # %%
 #| tbl-cap: "Valor de la holgura total de las actividades"
 #| label: tbl-htotal
-resultados_pert['activities'][['H_total']]
+display(resultados_pert['activities'][['H_total']].rename(columns={'H_total': 'Holgura total'}))
+_criticas = [a for a in ordena_ruta(list(resultados_pert['activities'].index), calendario)
+             if resultados_pert['activities'].loc[a, 'H_total'] == 0]
+_no_criticas = [a for a in datos_proyecto.index if a not in _criticas]
+display(Markdown(f"(Las filas que empiezan por @ son actividades ficticias.) Actividades reales con holgura total nula: "
+                 f"**{lista_y(_criticas)}**; con holgura: " + lista_y([f"{a} ({resultados_pert['activities'].loc[a, 'H_total']:g})" for a in _no_criticas]) + "."))
 
 # %% [markdown]
-# Las actividades con holgura total igual a cero forman el camino crítico.
+# Las actividades con holgura total igual a cero forman el camino crítico: un retraso en cualquiera de ellas retrasa el proyecto.
 
 # %% [markdown]
 # ### Diagrama de red con indicación del camino crítico
@@ -218,7 +252,8 @@ proyecto.display_pert_pasos(duraciones_medias)
 #| label: tbl-rutasCriticas
 camino_critico = proyecto.critical_path(durations=duraciones_medias)
 for key, value in camino_critico.items():
-    print(f"{key}: ", ", ".join(value))
+    pass
+explica_camino_critico(proyecto, duraciones_medias, 'periodos')
 
 # %% [markdown]
 # Alternativamente, podríamos haber representado el proyecto a traves de su grafo Roy. Se muestra a continuación con indicación de las actividades críticas:
@@ -236,13 +271,18 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
 # Para determinar la varianza del proyecto es necesario conocer la varianza de cada una de las rutas del camino crítico, y para ello la varianza de las actividades que las componen.
-# La varianza de cada actividad no es aportada por el enunciado como dato, pero sí se puede calcular a partir de la expresión $\sigma^2 = \left(\frac{b-a}{6} \right)$
+# La varianza de cada actividad no es aportada por el enunciado como dato, pero sí se puede calcular a partir de la expresión $\sigma^2 = \left(\frac{b-a}{6} \right)^2$ (redondeada a dos decimales):
 
 # %%
 #| tbl-cap: "Cálculo de la varianza de la duración de las actividades"
 #| label: tbl-varianzas
 datos_proyecto['variance'] = (((datos_proyecto['pesimistic_duration'] - datos_proyecto['optimistic_duration'])/6)**2).round(2)
-datos_proyecto[['pesimistic_duration', 'optimistic_duration', 'variance']]
+pd.DataFrame({
+    'b (pesimista)': datos_proyecto['pesimistic_duration'],
+    'a (optimista)': datos_proyecto['optimistic_duration'],
+    'σ² = ((b − a)/6)²': [f"(({b:g} − {a:g})/6)² = {v:.2f}" for b, a, v in
+                          datos_proyecto[['pesimistic_duration', 'optimistic_duration', 'variance']].values],
+})
 
 # %% [markdown]
 # Conocidos estos valores podemos calcular, mediante el teorema del límite central, la varianza de cada ruta como suma de las varianzas de sus actividades.
@@ -254,12 +294,24 @@ desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations = 
 # %%
 #| tbl-cap: "Varianza de las rutas del camino crítico"
 #| label: tbl-varianzaRutas
-varianza_caminos
+_vr = {}
+for _r, _acts in camino_critico.items():
+    _acts = ordena_ruta(_acts, calendario)
+    _vr[_r] = {'Ruta': ' – '.join(_acts),
+               'Varianza = suma': ' + '.join(f"σ²({a})" for a in _acts) + ' = '
+                                  + ' + '.join(f"{datos_proyecto.loc[a, 'variance']:g}" for a in _acts)
+                                  + f" = {sum(datos_proyecto.loc[a, 'variance'] for a in _acts):.2f}"}
+pd.DataFrame(_vr).T
 
 # %%
-display(Markdown(f"""La varianza de la duración del proyecto es la máxima varianza de las rutas críticas. Para este proyecto es {round(desviacion_proyecto**2,2)}.  
-Habitualmente será útil calcular su raiz cuadrada, la desviación típica, para ser utilizada como parámetro de la ley de distribución normal.  """))
-display(Markdown(f"La desviación típica es {desviacion_proyecto}"""))
+_vmax = varianza_caminos.data['Variance'].astype(float)
+_rmax = [r for r in _vmax.index if np.isclose(_vmax[r], _vmax.max())]
+display(Markdown(f"""Cuando hay varias rutas críticas se toma, por prudencia, la de **mayor varianza**: 
+σ²(proyecto) = máx({", ".join(f"{v:.2f}" for v in _vmax)}) = **{desviacion_proyecto**2:.2f}** ({lista_y(_rmax)}).  
+Su raíz cuadrada, la desviación típica, es el parámetro que se usa en la ley normal: σ = √{desviacion_proyecto**2:.2f} = **{desviacion_proyecto:.2f}**.
+
+**Respuesta:** por el teorema del límite central la duración del proyecto se aproxima por una normal de media **{duracion_media_proyecto} periodos** 
+(la duración del camino crítico) y varianza **{desviacion_proyecto**2:.2f}** (desviación típica {desviacion_proyecto:.2f} periodos)."""))
 
 # %% [markdown]
 # ## Apartado 3
@@ -274,7 +326,9 @@ from scipy.stats import norm
 probabilidad_de_terminar_antes_de_tau = norm.cdf(periodo_probabilidad_tau, loc=duracion_media_proyecto, scale=desviacion_proyecto)
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=periodo_probabilidad_tau)
-Markdown(f"Para un proyecto con duración media {duracion_media_proyecto} y desviación típica {round(desviacion_proyecto, 2)} el valor de la probabilidad de terminar antes de {periodo_probabilidad_tau} periodos es {round(probabilidad_de_terminar_antes_de_tau * 100, 2)} por ciento.")
+display(Markdown(explica_probabilidad(duracion_media_proyecto, desviacion_proyecto, periodo_probabilidad_tau)
+                 + f"\n\n**Respuesta:** la probabilidad de terminar el proyecto antes de {periodo_probabilidad_tau} periodos es "
+                   f"**{probabilidad_de_terminar_antes_de_tau:.4f}** ({probabilidad_de_terminar_antes_de_tau * 100:.2f} %)."))
 
 # %% [markdown]
 # ## Apartado 4
@@ -321,9 +375,16 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto de acuerdo a su definición original"
 #| label: fig-preAsignacionBarras
 plot_cargas(gantt_df, limite_maximo_recursos)
+_c0 = _cargas(gantt_df, limite_maximo_recursos)
+_exc = [p for p in _c0.columns if _c0.loc['¿Supera?', p] == 'sí']
+display(Markdown('Carga de recursos de cada periodo con la programación más temprana, frente al límite disponible:'))
+display(_c0)
+display(Markdown((f"Se supera el límite en {plural(len(_exc), 'periodo')}: "
+                  + lista_y([f"periodo {p} (carga {_c0.loc['Carga', p]} > {_c0.loc['Límite', p]})" for p in _exc]) + '.')
+                 if _exc else 'La carga no supera el límite en ningún periodo.'))
 
 # %% [markdown]
-# La demanda de recursos actual infringe el límite impuesto en el enunciado. Es necesario aplicar el algoritmo de asignación. Representamos a continuación la nueva planificación atendiendo a los cambios introducidos de acuerdo al algoritmo de asignación.
+# Como la demanda de recursos infringe el límite impuesto en el enunciado, es necesario aplicar el algoritmo de asignación. Representamos a continuación la nueva planificación atendiendo a los cambios introducidos de acuerdo al algoritmo de asignación.
 
 # %% [markdown]
 # ### Algoritmo de asignación de Wiest-Levy
@@ -343,6 +404,8 @@ datos_proyecto_tras_asignacion, gantt_df, dibujo = proyecto_asignacion.asignar(d
                                                   )
                                               )
 pinta_tikz(dibujo)
+_T4 = int(proyecto_asignacion.duration(datos_proyecto_tras_asignacion['duration']))
+_desp4 = {a[1:]: int(d) for a, d in datos_proyecto_tras_asignacion['duration'].items() if str(a).startswith('💤')}
 
 # %% [markdown]
 # La zona sombreada indica el desplazamiento realizado en las actividades. De acuerdo a los cambios introducidos el proyecto ya es compatible con las restricciones impuestas a los recursos.
@@ -351,6 +414,14 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto tras aplicar el algoritmo de asignación"
 #| label: fig-postAsignacionBarras
 plot_cargas(gantt_df, limite_maximo_recursos)
+_c4 = _cargas(gantt_df, limite_maximo_recursos)
+display(_c4)
+display(Markdown(
+    f"**Respuesta:** el algoritmo de asignación retrasa " + lista_y([f"{a} {plural(d, 'periodo')}" for a, d in _desp4.items()])
+    + f" respecto de su inicio más temprano; con esa planificación la carga máxima es {_c4.loc['Carga'].max()} y "
+    + ("no se supera el límite en ningún periodo" if (_c4.loc['¿Supera?'] == 'no').all() else "aún se supera el límite")
+    + f", y el proyecto pasa de {duracion_media_proyecto} a **{plural(_T4, 'periodo')}**"
+    + (f" ({plural(_T4 - duracion_media_proyecto, 'periodo')} más)." if _T4 > duracion_media_proyecto else ".")))
 
 # %% [markdown]
 # ## Apartado 5
@@ -377,12 +448,23 @@ datos_proyecto_tras_asignar, gantt_df, dibujo = proyecto_asignacion.asignar(data
 pinta_tikz(dibujo)
 
 # %% [markdown]
-# En estas condiciones el proyecto ya es viable con 4 recursos. No obstante su duración se ha prolongado hasta 11 periodos.
+# El diagrama de cargas de esta nueva planificación es:
 
 # %%
 #| fig-cap: "Diagrama de cargas del proyecto tras la nueva configuración"
 #| label: fig-postAsignacionBarras2
 plot_cargas(gantt_df, 4)
+_T5 = int(proyecto_asignacion.duration(datos_proyecto_tras_asignar['duration']))
+_desp5 = {a[1:]: int(d) for a, d in datos_proyecto_tras_asignar['duration'].items() if str(a).startswith('💤')}
+_c5 = _cargas(gantt_df, 4)
+_rmax = int(datos_proyecto['resources'].max())
+display(Markdown(
+    f"**Respuesta:** sí, 4 recursos serían suficientes para ejecutar el proyecto, porque ninguna actividad necesita por sí sola más de "
+    f"{_rmax} recursos ({_rmax} ≤ 4), de modo que el algoritmo siempre puede encontrar una programación que respete el límite: "
+    f"retrasando " + lista_y([f"{a} {plural(d, 'periodo')}" for a, d in _desp5.items()])
+    + f" la carga máxima es {_c5.loc['Carga'].max()} ≤ 4. El precio es el plazo: el proyecto se prolonga hasta **{plural(_T5, 'periodo')}**, "
+    f"frente a {duracion_media_proyecto} sin restricción de recursos y {_T4} con los recursos del apartado 4. "
+    f"Si el plazo de {duracion_media_proyecto} periodos fuese obligado, 4 recursos no bastarían."))
 
 # %%
 

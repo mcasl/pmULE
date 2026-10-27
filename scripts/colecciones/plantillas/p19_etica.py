@@ -225,6 +225,71 @@ INDICADORES = ("def indicadores(seguimiento, calendario_plan, semana):\n"
                "    PV, EV, AC = float(detalle['PV_i'].sum()), float(detalle['EV_i'].sum()), float(detalle['AC'].sum())\n"
                "    return detalle, pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV': EV - AC, 'SV': EV - PV, 'CPI': EV / AC, 'SPI': EV / PV})\n")
 
+# Utilidades que se emiten en cada cuaderno de la colección (celda de código tras la preparación de datos)
+_AUX_ETICA = '''
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\\n\\n' if titulo else '') + '\\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
+'''.strip('\n')
+
+_NOTACION_VG = ("**Notación.** BAC: presupuesto de cada actividad; PV (*planned value*): coste presupuestado del trabajo "
+                "programado hasta la semana de control; EV (*earned value*): valor ganado, BAC × porcentaje realizado; AC "
+                "(*actual cost*): coste real incurrido; CV = EV − AC (variación de coste) y SV = EV − PV (variación de "
+                "plazo); CPI = EV / AC y SPI = EV / PV (índices de rendimiento del coste y del cronograma; menos de 1 es "
+                "desfavorable); EAC = BAC / CPI (previsión del coste final si se mantiene el CPI) y VAC = BAC − EAC.")
+
 
 # ---------------------------------------------------------------------------
 # Caso 1 — El informe maquillado: «el avance es lo gastado» (EV := AC)
@@ -307,9 +372,12 @@ def _informe_maquillado(rng):
         "comité)? Aplique la rúbrica de la lección."]))
     celdas.append(md("# Resolución"))
     celdas.append(code(f"semana_control, plazo = {t}, {T}\n" + SETUP + "BAC_total = float(datos_proyecto['BAC'].sum())\n" + INDICADORES))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la planificación", label="fig-pert")
     celdas += apartado(1)
-    celdas.append(code('#| tbl-cap: "PV, EV y AC actividad a actividad con el avance del informe (EV = AC por construcción)"\n'
+    celdas.append(md(_NOTACION_VG + " PV y AC no dependen del método de medir el avance; EV sí, y por eso se calcula dos "
+                     "veces: con la columna `performed_informe` y con `performed_verificado`."))
+    celdas.append(code('#| tbl-cap: "PV, EV y AC actividad a actividad con el avance del informe (avance = AC / BAC)"\n'
                        '#| label: tbl-detalleInforme\n'
                        "seg_informe = seguimiento[['actual_duration', 'AC']].assign(performed=seguimiento['performed_informe'])\n"
                        "seg_verificado = seguimiento[['actual_duration', 'AC']].assign(performed=seguimiento['performed_verificado'])\n"
@@ -318,47 +386,86 @@ def _informe_maquillado(rng):
                        "detalle_inf[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]"))
     celdas.append(code('#| tbl-cap: "PV, EV y AC con el avance físico verificado"\n#| label: tbl-detalleVerificado\n'
                        "detalle_ver[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]"))
+    celdas.append(code(
+        "PV_txt = explica_suma(sin_ceros(detalle_ver['PV_i']), 'PV', 'k€', 1)\n"
+        "EVi_txt = explica_suma(sin_ceros(detalle_inf['EV_i']), 'EV (informe)', 'k€', 1)\n"
+        "EVv_txt = explica_suma(sin_ceros(detalle_ver['EV_i']), 'EV (verificado)', 'k€', 1)\n"
+        "AC_txt = explica_suma(sin_ceros(seguimiento['AC']), 'AC', 'k€', 0)\n"
+        "Markdown(f'''Totales en la semana {semana_control} (sumas de las columnas de las tablas):\n\n"
+        "- {PV_txt}\n- {AC_txt}\n- {EVi_txt}\n- {EVv_txt}\n\n"
+        "{explica_indicadores(ind_inf, BAC_total, '**Con el avance del informe:**')}\n\n"
+        "{explica_indicadores(ind_ver, BAC_total, '**Con el avance verificado:**')}''')"))
     celdas.append(code('#| tbl-cap: "Indicadores y previsión de coste final con las dos versiones"\n#| label: tbl-indicadores\n'
-                       "comparacion = pd.DataFrame({'informe (EV = AC)': ind_inf, 'verificado': ind_ver})\n"
+                       "comparacion = pd.DataFrame({'informe (avance = AC / BAC)': ind_inf, 'verificado': ind_ver})\n"
                        "comparacion.loc['EAC = BAC / CPI'] = [BAC_total / ind_inf['CPI'], BAC_total / ind_ver['CPI']]\n"
                        "comparacion.loc['VAC = BAC − EAC'] = BAC_total - comparacion.loc['EAC = BAC / CPI']\n"
                        "comparacion.round(3)"))
-    celdas.append(md(f"Con el informe, SPI = {e['SPIi']:.2f} («en plazo o adelantados») y CPI = 1,00; con el avance verificado, "
-                     f"SPI = {e['SPIv']:.2f} y CPI = {e['CPIv']:.2f}, y el coste final previsto pasa de {BAC_total:.0f} k€ a "
-                     f"{EAC_v:.0f} k€ ({EAC_v - BAC_total:.0f} k€ de sobrecoste). La diferencia está sólo en EV: las actividades "
-                     f"en curso ({', '.join(e['en_curso'])}) han gastado más de lo que han avanzado."))
+    celdas.append(code(
+        "en_curso = [a for a in seguimiento.index if 0 < seguimiento.loc[a, 'performed_verificado'] < 100]\n"
+        "sobregasto = [a for a in en_curso if seguimiento.loc[a, 'AC'] > detalle_ver.loc[a, 'EV_i'] + 0.05]\n"
+        "eac_v = BAC_total / ind_ver['CPI']\n"
+        "Markdown(f'''**Respuesta.** Con el informe, SPI = {ind_inf[\"SPI\"]:.2f} y CPI = {ind_inf[\"CPI\"]:.3f} (prácticamente 1: el proyecto "
+        "parece en plazo y en presupuesto) y EAC = {BAC_total / ind_inf[\"CPI\"]:.1f} k€. Con el avance verificado, SPI = {ind_ver[\"SPI\"]:.2f} "
+        "y CPI = {ind_ver[\"CPI\"]:.2f} ({'retrasado' if ind_ver['SPI'] < 1 else 'en plazo'} y {'con sobrecoste' if ind_ver['CPI'] < 1 else 'sin sobrecoste'}), "
+        "y el coste final previsto pasa de {BAC_total:.0f} a **{eac_v:.1f} k€** ({eac_v - BAC_total:.1f} k€ de desviación, VAC = {BAC_total - eac_v:.1f} k€). "
+        "PV y AC son iguales en las dos versiones; sólo cambia EV, en {ind_inf[\"EV\"] - ind_ver[\"EV\"]:.1f} k€, y la diferencia procede "
+        "de las actividades en curso {lista_y(sobregasto)}, que han gastado más de lo que han avanzado.''')"))
     celdas += apartado(2)
-    celdas.append(md("Si el porcentaje realizado se define como AC / BAC, entonces EV = BAC · (AC / BAC) = AC para cada "
-                     "actividad, y por tanto CPI = EV / AC = 1 siempre, con independencia de lo que se haya gastado de más. El "
-                     "«porcentaje realizado» del informe no mide avance: mide **consumo de presupuesto**. Y el SPI del informe "
-                     "compara lo gastado con lo planificado (AC / PV): una actividad que gasta de más aparece como adelantada. "
-                     "El método anula por construcción las dos señales que el valor ganado existe para dar."))
+    celdas.append(code(
+        "redondeo = [a for a in seguimiento.index if abs(detalle_inf.loc[a, 'EV_i'] - seguimiento.loc[a, 'AC']) > 0.05]\n"
+        "x = max(en_curso, key=lambda a: detalle_inf.loc[a, 'EV_i'] - detalle_ver.loc[a, 'EV_i'])\n"
+        "bac_x, ac_x = float(datos_proyecto.loc[x, 'BAC']), float(seguimiento.loc[x, 'AC'])\n"
+        "texto_redondeo = (f'''En los datos el CPI del informe sale {ind_inf[\"CPI\"]:.3f} y no exactamente 1 sólo porque el porcentaje se redondea "
+        "a un entero ({', '.join(f\"{a}: {seguimiento.loc[a, 'AC']:.0f}/{datos_proyecto.loc[a, 'BAC']:.0f} = {100 * seguimiento.loc[a, 'AC'] / datos_proyecto.loc[a, 'BAC']:.1f} % → {seguimiento.loc[a, 'performed_informe']} %\" for a in redondeo)}).''' "
+        "if redondeo else 'En los datos, EV = AC actividad a actividad y el CPI del informe es exactamente 1.')\n"
+        "Markdown(f'''Si el porcentaje realizado se define como AC / BAC, para cada actividad EV = BAC · (AC / BAC) = AC; sumando, EV = AC y "
+        "CPI = EV / AC = 1, se haya gastado lo que se haya gastado. {texto_redondeo}\n\n"
+        "Por ejemplo, {x}: el informe declara {seguimiento.loc[x, \"performed_informe\"]} % = {ac_x:.0f} / {bac_x:.0f}, luego "
+        "EV = {bac_x:.0f} · {seguimiento.loc[x, \"performed_informe\"] / 100:.2f} = {detalle_inf.loc[x, \"EV_i\"]:.1f} ≈ AC = {ac_x:.0f}; el avance "
+        "verificado es {seguimiento.loc[x, \"performed_verificado\"]} %, es decir, EV = {detalle_ver.loc[x, \"EV_i\"]:.1f} k€.\n\n"
+        "Por la misma razón, el SPI del informe es EV / PV ≈ AC / PV = {ind_inf[\"AC\"]:.1f} / {ind_inf[\"PV\"]:.1f} = {ind_inf[\"AC\"] / ind_inf[\"PV\"]:.3f}: "
+        "compara lo gastado con lo planificado, y una actividad que gasta de más aparece como adelantada.\n\n"
+        "**Respuesta.** El CPI del método del informe vale 1 por construcción (EV = AC). Ese «porcentaje realizado» no mide avance físico: "
+        "mide **consumo de presupuesto** (AC / BAC). El método anula las dos señales que el valor ganado existe para dar: el sobrecoste "
+        "(CPI {ind_ver[\"CPI\"]:.2f} verificado) y el retraso (SPI {ind_ver[\"SPI\"]:.2f} verificado).''')"))
     celdas += apartado(3)
-    celdas.append(md("**C1 (afirmación falsa).** El informe afirma un avance que el jefe de proyecto sabe que no es el real "
-                     "(«sé que lo que hay en obra va algo más lento»); no es una estimación discutible sino un dato que se "
-                     "sabe falso, calculado con un método elegido porque da el resultado deseado. También **C3**: los índices "
-                     "son cifras «ciertas» (salen de los datos) presentadas en un marco —un método de medida que no mide "
-                     "avance— que lleva al comité a una conclusión equivocada. Para cumplir el criterio, el informe debe "
-                     f"contener los indicadores con el avance verificado (SPI {e['SPIv']:.2f}, CPI {e['CPIv']:.2f}, EAC "
-                     f"{EAC_v:.0f} k€) y, si se quiere, la versión del informe como «consumo de presupuesto», con su nombre."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C1 (afirmación falsa).** El jefe de proyecto sabe que el avance real es menor («sé que lo que hay en obra va "
+        "algo más lento») y que con el avance verificado el SPI es {ind_ver[\"SPI\"]:.2f} y el CPI {ind_ver[\"CPI\"]:.2f} («con tu versión nos ponen en rojo»). "
+        "Aun así, quiere comunicar al comité un valor ganado de {ind_inf[\"EV\"]:.1f} k€ cuando el verificado es {ind_ver[\"EV\"]:.1f} k€. "
+        "No es una estimación discutible: el método se elige porque da el resultado deseado.\n\n"
+        "**Criterio C3 (información fuera de contexto).** Los índices del informe salen de los datos («ciertos» aritméticamente), pero se presentan "
+        "como índices de valor ganado cuando el método no mide avance; el comité, que «sólo mira el SPI y el CPI», concluiría que el proyecto va en "
+        "plazo y en presupuesto.\n\n"
+        "**Respuesta.** El informe tal como se quiere enviar incumple **C1** (comunica un avance que se sabe falso) y **C3** (índices en un marco que "
+        "lleva a una conclusión equivocada). Para cumplir los criterios debe contener los indicadores con el avance verificado: "
+        "EV {ind_ver[\"EV\"]:.1f} k€, SPI {ind_ver[\"SPI\"]:.2f}, CPI {ind_ver[\"CPI\"]:.2f}, EAC {eac_v:.1f} k€ y VAC {BAC_total - eac_v:.1f} k€; "
+        "la versión del gasto sólo puede aparecer con su nombre real, «consumo de presupuesto» ({ind_inf[\"AC\"]:.0f} de {BAC_total:.0f} k€).''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
-        "    ('Con el método «avance = gastado / presupuesto», el CPI vale…', ['exactamente 1 siempre', 'menos de 1 si hay sobrecoste', 'más de 1 si hay sobrecoste', 'lo mismo que con el avance físico'],\n"
+        "    ('Con el método «avance = gastado / presupuesto», el CPI vale…', ['1 por construcción (salvo redondeo)', 'menos de 1 si hay sobrecoste', 'más de 1 si hay sobrecoste', 'lo mismo que con el avance físico'],\n"
         "     'EV = BAC·(AC/BAC) = AC, luego CPI = EV/AC = 1 sea cual sea el gasto.'),\n"
-        "    ('Enviar al comité un avance que se sabe inferior al real es, según los criterios de la lección…', ['C1, afirmación falsa', 'C4, retención de información', 'C8, reserva declarada', 'ningún criterio: es una estimación'],\n"
+        "    ('Enviar al comité un avance que se sabe superior al real es, según los criterios de la lección…', ['C1, afirmación falsa', 'C4, retención de información', 'C8, reserva declarada', 'ningún criterio: es una estimación'],\n"
         "     'Es un dato que quien lo comunica sabe falso; no una omisión ni una estimación.'),\n"
-        f"    ('¿Qué indicador cambia entre las dos versiones del informe?', ['sólo EV (y con él CPI y SPI)', 'sólo AC', 'PV y AC', 'ninguno'],\n"
+        f"    ('¿Qué indicador cambia entre las dos versiones del informe?', ['sólo EV (y con él CV, SV, CPI, SPI y EAC)', 'sólo AC', 'PV y AC', 'ninguno'],\n"
         "     'PV depende del plan y AC de lo gastado; el porcentaje de avance sólo entra en EV.'),\n"
         "]", "Ética 19 — informe maquillado"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md("Un camino defendible: no firmar el informe con el método del gasto; proponer al jefe de proyecto enviar "
-                     "el avance verificado con una nota de método (quién lo midió y cómo) y un plan de recuperación para las "
-                     f"actividades en curso; si se niega, hacer constar por escrito la discrepancia ({e['EVi'] - e['EVv']:.0f} k€ "
-                     "de valor declarado y no ejecutado) y elevarla a quien corresponda en la organización. Al comité: los "
-                     f"índices verificados, el EAC de {EAC_v:.0f} k€ y las medidas. Lo que no cabe: firmar y «ya lo "
-                     "corregiremos el mes que viene» (publicidad: ¿defendería ese informe si el comité supiera cómo se ha "
-                     "calculado?)."))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Comité', f'decide con SPI {ind_inf[\"SPI\"]:.2f} y CPI {ind_inf[\"CPI\"]:.2f} en lugar de {ind_ver[\"SPI\"]:.2f} y {ind_ver[\"CPI\"]:.2f}; no puede reaccionar a un sobrecoste previsto de {eac_v - BAC_total:.1f} k€'),\n"
+        "     ('Jefe de proyecto', 'evita «ponerse en rojo» este mes, a cambio de un informe que se desmonta en cuanto alguien mire las actividades en curso'),\n"
+        "     ('Usted (firma el informe)', 'su firma avala un EV que sabe falso'),\n"
+        "     ('Responsables de ' + lista_y(sobregasto), 'sin el aviso pierden el tiempo de corregir el sobregasto mientras aún hay margen')],\n"
+        "    [('Firmar el informe con avance = AC / BAC (propuesta)', 'no hay norma legal en juego', 'no: el comité no aceptaría el método si lo conociera', 'no: usted no querría decidir con ese informe'),\n"
+        "     ('Enviar el avance verificado con nota de método y plan de recuperación', 'sí', 'sí', 'sí'),\n"
+        "     ('Enviar las dos versiones, cada una con su nombre (avance físico y consumo de presupuesto)', 'sí', 'sí, si el comité ve cuál mide avance', 'sí'),\n"
+        "     ('No firmar y elevar la discrepancia por escrito si el jefe de proyecto se niega', 'sí', 'sí', 'sí, aunque tensa la relación')],\n"
+        "    f'''proponer al jefe de proyecto enviar el avance verificado con una nota de método (quién lo midió y cómo) y un plan de recuperación para {lista_y(sobregasto)}; "
+        "si se niega, no firmar, dejar constancia escrita de la discrepancia ({ind_inf[\"EV\"] - ind_ver[\"EV\"]:.1f} k€ de valor declarado y no ejecutado) y elevarla a quien "
+        "corresponda en la organización. Al comité: SPI {ind_ver[\"SPI\"]:.2f}, CPI {ind_ver[\"CPI\"]:.2f}, EAC {eac_v:.1f} k€ y las medidas. Lo que no cabe: firmar y «ya lo "
+        "corregiremos el mes que viene».''')"))
     return celdas, f"informe con avance = gastado/presupuesto: SPI {e['SPIi']:.2f} y CPI 1,00 frente a {e['SPIv']:.2f} y {e['CPIv']:.2f} verificados"
 
 
@@ -401,7 +508,7 @@ def _verdad_a_medias(rng):
               code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)),
               _mensaje("Director comercial",
                        f"Contéstale que «según la planificación, la ruta crítica termina en la semana {T}», que es verdad y "
-                       f"es antes de la {F}. No le des probabilidades: si le hablas de un 60 % se pone nervioso y empieza a "
+                       + (f"es antes de la {F}." if F > T else f"es justo la {F}.") + " No le des probabilidades: si le hablas de un 60 % se pone nervioso y empieza a "
                        "pedir penalizaciones."),
               _criterios(["C2", "C4"]),
               md("Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).")]
@@ -424,18 +531,25 @@ def _verdad_a_medias(rng):
                        "proyecto = prelaciones.create_project()\n"
                        "duracion = float(proyecto.duration(datos_proyecto['duration']))\n"
                        "sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])\n"
-                       "z = (fecha_cliente - duracion) / sigma\n"
-                       "p_pert = float(norm.cdf(z))"))
+                       "p_pert = float(norm.cdf(fecha_cliente, duracion, sigma))"))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias", label="fig-pert")
     celdas += apartado(1)
+    celdas.append(md("Cada actividad tiene duración media D = (a + 4m + b)/6 y varianza σ² = ((b − a)/6)² (a: optimista, m: más "
+                     "probable, b: pesimista). La duración esperada del proyecto es la de la ruta más larga con esas medias, y su "
+                     "varianza es la suma de las varianzas de esa ruta."))
     celdas.append(code('#| tbl-cap: "Media y varianza PERT de cada actividad"\n#| label: tbl-estimaciones\ndetalle_estimaciones(datos_enunciado)'))
     celdas.append(code('#| tbl-cap: "Duración y varianza de cada ruta"\n#| label: tbl-rutas\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
                        "display(detalle_rutas(R, datos_proyecto['duration'], 'duración', 2))\n"
                        "detalle_rutas(R, datos_proyecto['variance'], 'varianza', 3)"))
-    celdas.append(code("Markdown(f'''Duración esperada **{duracion:.2f}** semanas, σ del camino crítico **{sigma:.2f}**; "
-                       "z = ({fecha_cliente} − {duracion:.2f}) / {sigma:.2f} = {z:.2f} y **P(T ≤ {fecha_cliente}) = {p_pert:.2f}** "
-                       "con la aproximación normal del PERT.''')"))
+    celdas.append(code(
+        "camino, _ = camino_critico_sigma(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])\n"
+        "Markdown(f'''Camino crítico: **{' – '.join(camino)}**, con duración esperada "
+        "{' + '.join(f\"{datos_proyecto.loc[a, 'duration']:.2f}\" for a in camino)} = **{duracion:.2f}** semanas y "
+        "{explica_sigma_ruta(camino, datos_proyecto['variance'])} semanas.\n\n"
+        "Con la aproximación normal del PERT: {explica_probabilidad(duracion, sigma, fecha_cliente)}.\n\n"
+        "**Respuesta.** Duración esperada {duracion:.2f} semanas, σ = {sigma:.3f} semanas y P(T ≤ {fecha_cliente}) = **{p_pert:.3f}** con el PERT.''')"))
     celdas += apartado(2)
     celdas.append(code(f"dists = {{act: ('normal', fila['duration'], fila['standard_deviation']) for act, fila in datos_proyecto.iterrows()}}\n"
                        f"resultado = proyecto.monte_carlo(dists, n_samples={N_MC}, seed={SEMILLA_MC})\n"
@@ -443,20 +557,41 @@ def _verdad_a_medias(rng):
                        "p_mc = float((tau <= fecha_cliente).mean())\n"
                        "p50, p80 = np.percentile(tau, 50), np.percentile(tau, 80)\n"
                        "display(resultado.summary().round(2))\n"
-                       "Markdown(f'''Monte Carlo: **P(T ≤ {fecha_cliente}) = {p_mc:.2f}** (PERT: {p_pert:.2f}); mediana {p50:.1f} semanas; "
-                       "con probabilidad 0,8 se termina en **{p80:.1f}** semanas.''')"))
-    celdas.append(code('#| tbl-cap: "Índice de criticidad de las actividades"\n#| label: tbl-criticidad\n'
+                       "Markdown(f'''Monte Carlo ({len(tau)} réplicas, semilla {SEMILLA_MC}): en {int((tau <= fecha_cliente).sum())} réplicas el proyecto "
+                       "termina en la semana {fecha_cliente} o antes, luego **P(T ≤ {fecha_cliente}) = {int((tau <= fecha_cliente).sum())} / {len(tau)} = {p_mc:.3f}** "
+                       "(PERT: {p_pert:.3f}). Semana que se cumple con probabilidad 0,5 (mediana de las réplicas): **{p50:.2f}**; con probabilidad 0,8 "
+                       "(percentil 80): **{p80:.2f}**. Con el PERT serían {explica_percentil(duracion, sigma, 0.5, 'semanas')} y "
+                       "{explica_percentil(duracion, sigma, 0.8, 'semanas')}.''')".replace("{SEMILLA_MC}", str(SEMILLA_MC))))
+    celdas.append(code('#| tbl-cap: "Índice de criticidad de las actividades (porcentaje de réplicas en que la actividad está en la ruta más larga)"\n#| label: tbl-criticidad\n'
                        "(resultado.sensitivity_mean * 100).round(1).to_frame('criticidad (%)').T"))
-    celdas.append(md("La simulación da menos probabilidad porque hay rutas casi críticas: el PERT sólo mira la ruta de "
-                     "mayor media, pero en muchas réplicas la más larga es otra (sesgo de fusión). Cuanto más parecidas son "
-                     "las rutas, más optimista es el PERT."))
+    celdas.append(code(
+        "rutas = rutas_media_varianza(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])\n"
+        "segunda = rutas.iloc[1]\n"
+        "p_segunda = float(norm.cdf(fecha_cliente, segunda['media'], segunda['varianza'] ** 0.5))\n"
+        "criticidad = resultado.sensitivity_mean * 100\n"
+        "fuera = [a for a in criticidad.index if a not in camino and criticidad[a] >= 1]\n"
+        "crit_min = float(min(criticidad[a] for a in camino))\n"
+        "Markdown(f'''La simulación da menos probabilidad que el PERT ({p_mc:.3f} frente a {p_pert:.3f}) porque el PERT sólo mira la ruta "
+        "{' – '.join(camino)} y supone que es siempre la más larga. No lo es: la siguiente ruta, {segunda['ruta']}, tiene media "
+        "{segunda['media']:.2f} semanas y varianza {segunda['varianza']:.3f}, y por sí sola cumpliría la semana {fecha_cliente} con probabilidad "
+        "{p_segunda:.3f}. El proyecto termina en plazo sólo si **todas** las rutas terminan a tiempo, y eso es menos probable que lo que da una sola "
+        "ruta (sesgo de fusión). En la tabla de criticidad se ve: las actividades del camino crítico PERT están en la ruta más larga en un "
+        "{crit_min:.1f} % de las réplicas como mínimo, y {lista_y(fuera) if fuera else 'ninguna otra actividad'} "
+        "{'lo están en ' + lista_y([f\"{criticidad[a]:.1f} %\" for a in fuera]) + ' de las réplicas' if fuera else 'aparece'}.\n\n"
+        "**Respuesta.** P(T ≤ {fecha_cliente}) = {p_mc:.3f} con la simulación (PERT {p_pert:.3f}); se cumplen {p50:.2f} semanas con probabilidad 0,5 "
+        "y {p80:.2f} con probabilidad 0,8 (la semana entera que se puede comprometer con al menos un 80 % es la **{int(np.ceil(p80))}**).''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**C2 (verdad a medias).** La frase es cierta y, aun así, no responde a lo que el cliente pregunta: él "
-                     f"quiere saber si puede contar con la semana {F}, y la respuesta honesta es «con una probabilidad de "
-                     f"{e['p_mc']:.0%} ({e['p_pert']:.0%} con el PERT)». Dar la duración media sin la dispersión lleva al "
-                     f"cliente a concluir que la fecha está asegurada; el dato que falta es la **probabilidad** (o la semana que "
-                     f"sí se puede comprometer con un 80 %: la {e['p80']:.0f}). Omitirlo a sabiendas, como pide el director "
-                     "comercial, es además **C4**. No es C1: no se afirma nada falso."))
+    celdas.append(code(
+        "semana_80 = int(np.ceil(p80))\n"
+        "Markdown(f'''**Criterio C2 (verdad a medias).** La frase «la ruta crítica termina en la semana {duracion:.0f}» es cierta: es la duración esperada. "
+        "Pero el cliente no pregunta por la media, sino si puede contar con la semana {fecha_cliente}, y la respuesta es que eso ocurre con "
+        "probabilidad {p_mc:.3f} ({porc(p_mc)}; {p_pert:.3f} con el PERT): **{porc(1 - p_mc)} de no llegar**. Dar la media sin la dispersión "
+        "lleva al cliente a creer que la fecha está asegurada; la parte omitida cambia la interpretación del dato, que es justo lo que define C2. "
+        "**Criterio C4 (retención de información).** Además, el director comercial pide callar la probabilidad a sabiendas («no le des probabilidades») "
+        "y es el dato que el cliente necesita para decidir sobre su apertura. No es C1: no se afirma nada falso.\n\n"
+        "**Respuesta.** No cumple el criterio: es una **verdad a medias (C2)** y, al ocultar el dato a propósito, **retención de información (C4)**. "
+        "El dato que falta es la **probabilidad de cumplir la semana {fecha_cliente}** ({p_mc:.3f}) o, equivalentemente, la semana que sí se puede "
+        "comprometer con un 80 % de confianza: la {semana_80}.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         f"    ('«La ruta crítica termina en la semana {T}» como respuesta a «¿estará en la semana {F}?» es…', ['C2, verdad a medias', 'C1, afirmación falsa', 'una respuesta completa', 'C6, conflicto de interés'],\n"
@@ -468,12 +603,19 @@ def _verdad_a_medias(rng):
         "]", "Ética 19 — verdad a medias"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"Respuesta al cliente (modelo): «La planificación da una duración esperada de {T} semanas; la "
-                     f"probabilidad de terminar en la semana {F} es del {e['p_mc']:.0%}. La semana que podemos comprometer "
-                     f"con un 80 % de confianza es la {e['p80']:.0f}. Si la apertura exige la {F}, podemos estudiar qué "
-                     "actividades acortar y a qué coste.» Nota interna: el cliente que descubre después que la fecha tenía "
-                     f"un {1 - e['p_mc']:.0%} de riesgo pedirá las penalizaciones igualmente, y con razón; la probabilidad "
-                     "no es una debilidad comercial sino la base para vender la reducción de plazo (lección 10)."))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Cliente', f'organiza la apertura en la semana {fecha_cliente} creyendo que es segura, cuando hay un {porc(1 - p_mc)} de no llegar'),\n"
+        "     ('Director comercial', 'evita hoy una conversación sobre penalizaciones; la tendrá después, y con la confianza del cliente perdida'),\n"
+        "     ('Empresa y equipo', f'cargan con la reclamación si la obra acaba después de la {fecha_cliente}; pierden la ocasión de vender una reducción de plazo')],\n"
+        "    [('Responder sólo «la ruta crítica termina en la semana ' + f'{duracion:.0f}»' + ' (propuesta)', 'sí', 'no: el cliente no la aceptaría si supiera la probabilidad', 'no: nadie querría recibir esa respuesta'),\n"
+        "     (f'Dar la probabilidad ({p_mc:.2f}) y la semana comprometible con un 80 % ({semana_80})', 'sí', 'sí', 'sí'),\n"
+        "     (f'Ofrecer además acortar actividades para cumplir la {fecha_cliente}, con su coste (lección 10)', 'sí', 'sí', 'sí')],\n"
+        "    f'''al cliente: «La planificación da una duración esperada de {duracion:.0f} semanas; la probabilidad de terminar en la semana {fecha_cliente} "
+        "es del {porc(p_mc, 0)}. La semana que podemos comprometer con un 80 % de confianza es la {semana_80}. Si la apertura exige la {fecha_cliente}, "
+        "podemos estudiar qué actividades acortar y a qué coste.» Nota interna al director comercial: si el cliente descubre después que la fecha tenía un "
+        "{porc(1 - p_mc, 0)} de riesgo pedirá las penalizaciones igualmente, y con razón; la probabilidad no es una debilidad comercial sino la base para "
+        "vender la reducción de plazo.''')"))
     return celdas, f"«la ruta crítica acaba en la semana {T}» frente a P(T ≤ {F}) = {e['p_pert']:.2f} (PERT) y {e['p_mc']:.2f} (MC)"
 
 
@@ -532,37 +674,67 @@ def _colchones_ocultos(rng):
                        "proyecto = prelaciones.create_project()\n"
                        "duracion = float(proyecto.duration(datos_proyecto['duration']))\n"
                        "sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])\n"
-                       "T80 = duracion + norm.ppf(0.8) * sigma\n"
+                       "T80 = float(norm.ppf(0.8, duracion, sigma))\n"
                        "reserva = T80 - duracion"))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias", label="fig-pert")
     celdas += apartado(1)
+    celdas.append(md("Cada actividad tiene duración media D = (a + 4m + b)/6 y varianza σ² = ((b − a)/6)². La duración esperada "
+                     "del proyecto es la de la ruta más larga con esas medias; su varianza, la suma de las varianzas de esa ruta. "
+                     "La **reserva de contingencia** para un nivel de confianza del 80 % es lo que hay que añadir a la duración "
+                     "esperada para que P(T ≤ duración + reserva) = 0,8."))
     celdas.append(code('#| tbl-cap: "Media y varianza PERT de cada actividad"\n#| label: tbl-estimaciones\ndetalle_estimaciones(datos_enunciado)'))
     celdas.append(code('#| tbl-cap: "Duración y varianza de cada ruta"\n#| label: tbl-rutas\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
                        "display(detalle_rutas(R, datos_proyecto['duration'], 'duración', 2))\n"
                        "detalle_rutas(R, datos_proyecto['variance'], 'varianza', 3)"))
-    celdas.append(code("Markdown(f'''Duración esperada **{duracion:.2f}** semanas, σ = {sigma:.2f}; con probabilidad 0,8 se termina en "
-                       "**{T80:.2f}** semanas: la reserva de contingencia para ese nivel de confianza es **{reserva:.2f}** semanas "
-                       "(z₀,₈ · σ = 0,84 · {sigma:.2f}).''')"))
+    celdas.append(code(
+        "camino, _ = camino_critico_sigma(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])\n"
+        "Markdown(f'''Camino crítico: **{' – '.join(camino)}**, duración esperada "
+        "{' + '.join(f\"{datos_proyecto.loc[a, 'duration']:.2f}\" for a in camino)} = **{duracion:.2f}** semanas; "
+        "{explica_sigma_ruta(camino, datos_proyecto['variance'])} semanas.\n\n"
+        "Duración que se cumple con probabilidad 0,8: {explica_percentil(duracion, sigma, 0.8, 'semanas')}.\n\n"
+        "**Respuesta.** Duración esperada {duracion:.2f} semanas, σ = {sigma:.3f} semanas; con probabilidad 0,8 se termina en {T80:.2f} semanas, "
+        "luego la reserva de contingencia para ese nivel de confianza es {T80:.2f} − {duracion:.2f} = **{reserva:.2f} semanas** "
+        "(comprometer la semana {int(np.ceil(T80))}).''')"))
     celdas += apartado(2)
-    celdas.append(code("duracion_entregada = int(proyecto.duration(datos_proyecto['estimacion_entregada']))\n"
-                       "duracion_jp = int(np.ceil(1.1 * duracion_entregada))\n"
-                       "camino_entregado = ' / '.join('–'.join(r) for r in proyecto.critical_path(datos_proyecto['estimacion_entregada']).values())\n"
-                       "Markdown(f'''Con las estimaciones entregadas: **{duracion_entregada}** semanas (ruta {camino_entregado}); con el 10 % del jefe "
-                       "de proyecto: **{duracion_jp}**. Margen oculto total: {duracion_jp - duracion:.1f} semanas frente a las {reserva:.2f} que "
-                       "justifica el 80 %: **{(duracion_jp - duracion) / reserva:.1f} veces** la reserva necesaria.''')"))
-    celdas.append(md("Sumar los peores casos sobrestima porque las desviaciones no se suman: se suman las **varianzas**, y la "
-                     "raíz de la suma es mucho menor que la suma de las raíces. Que todas las actividades de una ruta salgan a "
-                     "la vez en su peor caso es un suceso improbable; el margen que protege al proyecto se calcula sobre la "
-                     "ruta, no actividad a actividad, y una sola vez."))
+    celdas.append(code('#| tbl-cap: "Rutas con las estimaciones entregadas (los peores casos)"\n#| label: tbl-rutasEntregadas\n'
+                       "explica_rutas(proyecto, datos_proyecto['estimacion_entregada'])"))
+    celdas.append(code(
+        "duracion_entregada = int(proyecto.duration(datos_proyecto['estimacion_entregada']))\n"
+        "duracion_jp = int(np.ceil(1.1 * duracion_entregada))\n"
+        "margen_oculto = duracion_jp - duracion\n"
+        "p_jp = float(norm.cdf(duracion_jp, duracion, sigma))\n"
+        "ruta_b, _ = camino_critico_sigma(proyecto, datos_proyecto['estimacion_entregada'], datos_proyecto['variance'])\n"
+        "media_b = float(datos_proyecto.loc[ruta_b, 'duration'].sum())\n"
+        "sigma_b = float(datos_proyecto.loc[ruta_b, 'variance'].sum()) ** 0.5\n"
+        "suma_sd = float(datos_proyecto.loc[ruta_b, 'standard_deviation'].sum())\n"
+        "Markdown(f'''Con las estimaciones entregadas la ruta más larga suma **{duracion_entregada}** semanas (tabla). El jefe de proyecto añade un 10 %: "
+        "1.1 × {duracion_entregada} = {1.1 * duracion_entregada:.1f} → **{duracion_jp}** semanas.\n\n"
+        "Margen oculto total = {duracion_jp} − {duracion:.2f} = **{margen_oculto:.2f} semanas**: {duracion_entregada} − {duracion:.2f} = {duracion_entregada - duracion:.2f} "
+        "por los peores casos y {duracion_jp} − {duracion_entregada} = {duracion_jp - duracion_entregada} por el 10 %. La reserva necesaria para el 80 % es "
+        "{reserva:.2f} semanas: el margen oculto es **{margen_oculto / reserva:.1f} veces** la reserva. Con {duracion_jp} semanas la probabilidad de cumplir sería "
+        "{explica_probabilidad(duracion, sigma, duracion_jp)}: se paga plazo para protegerse de sucesos que prácticamente no ocurren.\n\n"
+        "Por qué sobrestima tanto: la ruta {' – '.join(ruta_b)} llega a {duracion_entregada} semanas sólo si **todas** sus actividades duran a la vez su peor caso "
+        "({' + '.join(str(int(datos_proyecto.loc[a, 'b'])) for a in ruta_b)} = {int(datos_proyecto.loc[ruta_b, 'b'].sum())}). Con las tres estimaciones esa ruta tiene "
+        "media {media_b:.2f} semanas y {explica_sigma_ruta(ruta_b, datos_proyecto['variance'])}: superar {duracion_entregada} semanas tiene probabilidad "
+        "1 − `=DISTR.NORM.N({duracion_entregada}; {f'{media_b:g}'.replace('.', ',')}; {str(round(sigma_b, 4)).replace('.', ',')}; VERDADERO)` = "
+        "{1 - norm.cdf(duracion_entregada, media_b, sigma_b):.6f}. Las desviaciones de actividades independientes no se suman: se suman las **varianzas** "
+        "(Σσ = {suma_sd:.3f} frente a √Σσ² = {sigma_b:.3f}), porque los retrasos de unas se compensan con los adelantos de otras. Además, cada responsable "
+        "protege su actividad y el jefe de proyecto vuelve a proteger el total.\n\n"
+        "**Respuesta.** {duracion_entregada} semanas con las estimaciones entregadas y {duracion_jp} con el 10 %; el margen oculto "
+        "({margen_oculto:.2f} semanas) es {margen_oculto / reserva:.1f} veces la reserva que justifica el 80 % ({reserva:.2f} semanas).''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**C8.** Una reserva de contingencia correcta se **dimensiona** con un nivel de confianza ({reserva:.1f} "
-                     f"semanas para el 80 %) y se **declara**: el cliente ve la duración esperada ({T} semanas), la reserva y a "
-                     f"quién pertenece. El margen del enunciado se esconde dos veces (cada responsable en su estimación y el jefe "
-                     f"de proyecto en su 10 %), no se dimensiona y no se comunica: es **C4**, retención de información, y cuesta "
-                     f"{e['T_jp'] - T} semanas de plazo al cliente. Para cumplir el criterio, el informe de planificación "
-                     f"debe llevar las tres estimaciones por actividad, la duración esperada, la reserva calculada y su nivel "
-                     "de confianza."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C8 (reserva declarada frente a colchón oculto).** Una reserva correcta cumple dos condiciones: se **dimensiona** con un "
+        "nivel de confianza ({reserva:.2f} semanas para el 80 %) y se **declara** (el cliente ve la duración esperada, {duracion:.2f} semanas, la reserva y "
+        "quién la gestiona). El margen del enunciado no cumple ninguna: no se dimensiona (es la suma de peores casos más un 10 % elegido a ojo) y se "
+        "esconde dos veces, en cada estimación entregada y en el 10 % del jefe de proyecto («no hace falta contarlo»). Escondido, es **C4** (retención de "
+        "información): el cliente decide su calendario con {duracion_jp} semanas sin saber que {int(np.ceil(T80))} bastan con un 80 % de confianza.\n\n"
+        "**Respuesta.** Lo que distingue el margen del jefe de proyecto de una reserva correcta es el criterio **C8**: estar calculada con un nivel de "
+        "confianza y declarada; el margen oculto incumple además **C4**. El informe de planificación debe llevar las tres estimaciones de cada actividad, la "
+        "duración esperada ({duracion:.2f}), la desviación típica ({sigma:.3f}), la reserva y su nivel de confianza ({reserva:.2f} semanas para el 80 %) y el plazo "
+        "que se compromete con ella (semana {int(np.ceil(T80))}).''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Una reserva de contingencia cumple el criterio C8 cuando…', ['se dimensiona con un nivel de confianza y se declara', 'cada responsable la incluye en su estimación', 'el jefe de proyecto la añade sin comunicarla', 'es como mínimo un 10 %'],\n"
@@ -574,12 +746,17 @@ def _colchones_ocultos(rng):
         "]", "Ética 19 — colchones ocultos"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"Al equipo: pedir las tres estimaciones a cada responsable y explicar que el margen se calcula una vez, "
-                     f"sobre la ruta; los colchones individuales no protegen más y alargan el plazo. Al cliente: duración esperada "
-                     f"de {T} semanas, reserva de {reserva:.1f} semanas para el 80 % y compromiso en {np.ceil(e['T80']):.0f} semanas, "
-                     f"con la reserva visible y gestionada por el jefe de proyecto. Prometer {e['T_jp']} semanas «para no llegar "
-                     "nunca tarde» supera la prueba de legalidad pero no la de publicidad: si el cliente viera la cuenta, no "
-                     "aceptaría pagar el plazo de dos colchones."))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Cliente', f'recibe un compromiso de {duracion_jp} semanas cuando {int(np.ceil(T80))} bastan con un 80 %: {duracion_jp - int(np.ceil(T80))} semanas de plazo pagadas de más'),\n"
+        "     ('Responsables de actividad', 'su colchón individual no los protege más (el retraso se acumula en la ruta) y queda fuera del control del jefe de proyecto'),\n"
+        "     ('Jefe de proyecto y empresa', f'«nunca llegan tarde» a costa de ofertas menos competitivas y de un plan que nadie puede auditar')],\n"
+        "    [(f'Prometer {duracion_jp} semanas sin decir por qué (propuesta)', 'sí', 'no: el cliente no aceptaría pagar el plazo de dos colchones si viera la cuenta', 'no'),\n"
+        "     (f'Prometer {duracion:.0f} semanas (la media) sin reserva', 'sí', 'sí, pero es una verdad a medias (50 % de cumplir)', 'no: el cliente asumiría un riesgo que no conoce'),\n"
+        "     (f'Duración esperada {duracion:.2f} + reserva declarada {reserva:.2f} para el 80 %: semana {int(np.ceil(T80))}', 'sí', 'sí', 'sí')],\n"
+        "    f'''al equipo: pedir las tres estimaciones a cada responsable y explicar que el margen se calcula una vez, sobre la ruta, y lo gestiona el jefe de "
+        "proyecto. Al cliente: duración esperada de {duracion:.2f} semanas, reserva de {reserva:.2f} semanas para un 80 % de confianza y compromiso en la "
+        "semana {int(np.ceil(T80))}, con la reserva visible y su consumo informado en cada seguimiento.''')"))
     return celdas, f"peores casos entregados + 10 %: {e['T_jp']} semanas frente a {T} esperadas y {np.ceil(e['T80']):.0f} con el 80 %"
 
 
@@ -659,7 +836,8 @@ def _riesgo_silenciado(rng):
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "duracion = int(proyecto.duration(datos_proyecto['duration']))\n"
                        "sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])\n"
-                       "p_pert = float(norm.cdf((plazo - duracion) / sigma))"))
+                       "p_pert = float(norm.cdf(plazo, duracion, sigma))"))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el camino crítico", label="fig-pert")
     celdas += apartado(1)
     celdas.append(code('#| tbl-cap: "Duración y varianza de cada ruta"\n#| label: tbl-rutas\n'
@@ -668,9 +846,17 @@ def _riesgo_silenciado(rng):
                        "detalle_rutas(R, datos_proyecto['variance'], 'varianza', 3)"))
     celdas.append(code(f"dists = {{act: ('normal', fila['duration'], fila['standard_deviation']) for act, fila in datos_proyecto.iterrows()}}\n"
                        f"sin_riesgo = proyecto.monte_carlo(dict(dists), n_samples={N_MC}, seed={SEMILLA_MC})\n"
-                       "p_mc0 = float((np.asarray(sin_riesgo.tau_samples) <= plazo).mean())\n"
-                       "Markdown(f'''Sin el riesgo: duración esperada {duracion}, σ = {sigma:.2f}, **P(T ≤ {plazo}) = {p_pert:.2f}** (PERT) y "
-                       "**{p_mc0:.2f}** (Monte Carlo). Supera el umbral del {umbral:.0%}: el comité autorizaría.''')"))
+                       "tau0 = np.asarray(sin_riesgo.tau_samples, dtype=float)\n"
+                       "p_mc0 = float((tau0 <= plazo).mean())\n"
+                       "camino, _ = camino_critico_sigma(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])\n"
+                       "Markdown(f'''Camino crítico **{' – '.join(camino)}**: duración esperada {' + '.join(str(int(datos_proyecto.loc[a, 'duration'])) for a in camino)} = "
+                       "**{duracion}** semanas; {explica_sigma_ruta(camino, datos_proyecto['variance'])} semanas.\n\n"
+                       "- PERT (aproximación normal): {explica_probabilidad(duracion, sigma, plazo)}.\n"
+                       "- Monte Carlo ({len(tau0)} réplicas con duraciones normales, semilla " + str(SEMILLA_MC) + "): el proyecto termina en {plazo} semanas o menos en "
+                       "{int((tau0 <= plazo).sum())} réplicas: P(T ≤ {plazo}) = {int((tau0 <= plazo).sum())} / {len(tau0)} = **{p_mc0:.3f}**.\n\n"
+                       "**Respuesta.** Sin el riesgo, P(T ≤ {plazo}) = {p_pert:.3f} con el PERT y {p_mc0:.3f} con la simulación; "
+                       "{'las dos superan' if min(p_pert, p_mc0) >= umbral else 'no superan las dos'} el umbral del comité ({porc(umbral, 0)}), "
+                       "{'así que el comité autorizaría' if min(p_pert, p_mc0) >= umbral else 'así que la autorización ya sería dudosa'}.''')"))
     celdas += apartado(2)
     celdas.append(code(f"rng_mc = np.random.default_rng({SEMILLA_MC})\n"
                        "mu_X, sd_X = float(datos_proyecto.loc[X, 'duration']), float(datos_proyecto.loc[X, 'standard_deviation'])\n"
@@ -679,23 +865,36 @@ def _riesgo_silenciado(rng):
                        "    return rng_mc.normal(mu_X, sd_X, size) + delta * (rng_mc.random(size) < p_riesgo)\n"
                        "dists_riesgo = dict(dists); dists_riesgo[X] = duracion_X_con_riesgo\n"
                        f"con_riesgo = proyecto.monte_carlo(dists_riesgo, n_samples={N_MC}, seed={SEMILLA_MC})\n"
-                       "p_mc1 = float((np.asarray(con_riesgo.tau_samples) <= plazo).mean())\n"
-                       "comparacion = pd.DataFrame({'sin el riesgo': sin_riesgo.summary().iloc[:, 0], 'con el riesgo': con_riesgo.summary().iloc[:, 0]})\n"
-                       "display(comparacion.round(2))\n"
-                       "Markdown(f'''Con el riesgo: **P(T ≤ {plazo}) = {p_mc1:.2f}**, por debajo del umbral del {umbral:.0%}. "
-                       "La decisión del comité cambia: con la información del lunes no autorizaría (o exigiría un plan de mitigación antes).''')"))
-    celdas.append(md(f"Comprobación a mano: {X} es crítica, así que las {delta} semanas van enteras al plazo cuando el riesgo "
-                     f"se materializa; la probabilidad es aproximadamente {1 - p:.0%} · P(T ≤ {plazo}) + {p:.0%} · "
-                     f"P(T ≤ {plazo - delta}) = {(1 - p) * e['p0'] + p * norm.cdf((plazo - delta - T) / e['sigma']):.2f} "
-                     "con el PERT, en línea con la simulación."))
+                       "tau1 = np.asarray(con_riesgo.tau_samples, dtype=float)\n"
+                       "p_mc1 = float((tau1 <= plazo).mean())\n"
+                       "comparacion = pd.DataFrame({'sin el riesgo': sin_riesgo.summary().iloc[0], 'con el riesgo': con_riesgo.summary().iloc[0]}).T\n"
+                       "comparacion[f'P(T ≤ {plazo})'] = [p_mc0, p_mc1]\n"
+                       "comparacion.round(3)"))
+    celdas.append(code(
+        "cambia = p_mc0 >= umbral > p_mc1\n"
+        "p_menos = float(norm.cdf(plazo - delta, duracion, sigma))\n"
+        "aprox = (1 - p_riesgo) * p_pert + p_riesgo * p_menos\n"
+        "Markdown(f'''La tabla resume la duración simulada (media, desviación típica, percentiles 5, 50 y 95, mínimo y máximo). Con el riesgo, "
+        "el proyecto termina en {plazo} semanas o menos en {int((tau1 <= plazo).sum())} de {len(tau1)} réplicas: **P(T ≤ {plazo}) = {p_mc1:.3f}**, "
+        "{'por debajo' if p_mc1 < umbral else 'por encima'} del umbral del {porc(umbral, 0)}.\n\n"
+        "Comprobación a mano con el PERT: {X} es crítica, así que cuando el riesgo se materializa las {delta} semanas van enteras al plazo y el "
+        "proyecto debe acabar en {plazo} − {delta} = {plazo - delta} semanas «de las normales». Por la probabilidad total:\n\n"
+        "P(T ≤ {plazo}) ≈ (1 − {p_riesgo}) · P(T ≤ {plazo}) + {p_riesgo} · P(T ≤ {plazo - delta}) = {1 - p_riesgo:.2f} · {p_pert:.4f} + {p_riesgo:.2f} · {p_menos:.4f} "
+        "= **{aprox:.3f}**, con P(T ≤ {plazo - delta}) = `=DISTR.NORM.N({plazo - delta}; {duracion}; {str(round(sigma, 4)).replace('.', ',')}; VERDADERO)`; "
+        "en línea con la simulación ({p_mc1:.3f}).\n\n"
+        "**Respuesta.** Con el riesgo la probabilidad baja de {p_mc0:.3f} a **{p_mc1:.3f}**. "
+        + "{'**La decisión cambia**: según su regla, el comité no autorizaría con la información del lunes (o exigiría antes un plan de mitigación).' if cambia else 'La decisión del comité no cambia según su regla, aunque el dato sigue siendo relevante.'}''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**C4 (retención de información).** El comité decide con una regla explícita sobre una cifra, y el jefe "
-                     f"de proyecto sabe un hecho que la mueve de {e['p_mc0']:.2f} a {e['p_mc1']:.2f}, de un lado al otro del "
-                     "umbral. Que el riesgo pueda gestionarse en ejecución no cambia nada: la decisión de autorizar es del "
-                     "comité, y se le estaría quitando la posibilidad de tomarla con los datos. La omisión es **material** "
-                     "precisamente porque la decisión cambia con el dato; ese es el test objetivo (si el riesgo dejara la "
-                     "probabilidad por encima del umbral, seguiría siendo obligatorio informar —5.2.3— pero no cambiaría la "
-                     "decisión)."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C4 (retención de información).** El comité decide con una regla escrita (autorizar si P ≥ {porc(umbral, 0)}) sobre una cifra, "
+        "y el jefe de proyecto conoce desde el lunes un hecho —la quiebra del único proveedor de {X}, con un {porc(p_riesgo, 0)} de añadir {delta} semanas— que "
+        "mueve esa cifra de {p_mc0:.3f} a {p_mc1:.3f}. Callarlo el jueves es callar un hecho conocido que la otra parte necesita para decidir.\n\n"
+        "Que el riesgo pueda «gestionarse en ejecución» no es relevante: la decisión de autorizar con ese riesgo es del comité, no del jefe de proyecto, y "
+        "omitirlo le quita la posibilidad de tomarla con los datos. Que el informe estuviera «cerrado desde el viernes» tampoco: la información llegó antes "
+        "de la decisión.\n\n"
+        "**Respuesta.** Incumple **C4**. La omisión es **material** porque la decisión cambia con el dato: la probabilidad pasa "
+        "{'de un lado al otro' if cambia else 'cerca'} del umbral ({p_mc0:.3f} → {p_mc1:.3f} frente a {porc(umbral, 0)}). Ese es el test objetivo; si el riesgo dejara la "
+        "probabilidad por encima del umbral, informar seguiría siendo exigible (proporcionar información exacta a tiempo, cf. PMI 5.2.3), pero no cambiaría la decisión.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('No comunicar al comité un riesgo conocido que cambia su decisión es…', ['C4, retención de información', 'C2, verdad a medias', 'C8, reserva declarada', 'gestión de riesgos en ejecución'],\n"
@@ -707,13 +906,19 @@ def _riesgo_silenciado(rng):
         "]", "Ética 19 — riesgo silenciado"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md("Antes del jueves: recalcular (dos horas de trabajo), redactar una página con las dos probabilidades y un "
-                     f"plan de mitigación (proveedor alternativo precalificado, acopio anticipado, acortar otra actividad "
-                     "crítica) con su coste, y llevarla al jefe de proyecto. Al jefe de proyecto: «el informe tiene una cifra "
-                     "que sabemos que ya no es cierta; si el comité lo descubre después, el problema no es el proveedor sino "
-                     "nosotros». Al comité, con o sin el acuerdo del jefe de proyecto: la actualización y el plan; el criterio "
-                     "2.3.2 del Código del PMI pide elevar la cuestión a quien corresponde cuando no se resuelve en el nivel "
-                     "propio. Lo que no cabe: callar el jueves y «gestionarlo en ejecución»."))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Comité de inversión', f'autoriza con P = {p_mc0:.2f} creyendo que cumple su regla, cuando con el dato del lunes es {p_mc1:.2f}'),\n"
+        "     ('Jefe de proyecto', 'evita reabrir el informe y quizá un retraso en la autorización; se expone a que el comité lo descubra después'),\n"
+        "     ('Responsable de riesgos', 'si calla, comparte la omisión; si habla, se enfrenta al jefe de proyecto'),\n"
+        "     ('Cliente del contrato', f'soporta el riesgo de no tener la obra en {plazo} semanas sin que nadie haya preparado una mitigación')],\n"
+        "    [('Callar el jueves y «gestionarlo en ejecución» (propuesta)', 'no hay norma legal directa', 'no: el comité no lo aceptaría si lo supiera', 'no'),\n"
+        "     ('Llevar al comité las dos probabilidades y un plan de mitigación con su coste', 'sí', 'sí', 'sí'),\n"
+        "     ('Pedir al comité que aplace la decisión hasta tener un proveedor alternativo precalificado', 'sí', 'sí', 'sí'),\n"
+        "     ('Si el jefe de proyecto se niega, elevarlo a quien corresponda en la organización', 'sí', 'sí', 'sí')],\n"
+        "    f'''antes del jueves, recalcular (este apartado) y redactar una página con P = {p_mc0:.2f} sin el riesgo y {p_mc1:.2f} con él, y un plan de mitigación "
+        "(proveedor alternativo precalificado, acopio anticipado o acortar otra actividad crítica) con su coste; llevarla primero al jefe de proyecto: «el informe tiene "
+        "una cifra que sabemos que ya no es cierta». Al comité, con o sin su acuerdo: la actualización y el plan. Lo que no cabe: callar el jueves.''')"))
     return celdas, f"riesgo en {X} ({p:.0%}, +{delta} semanas): P(T ≤ {plazo}) pasa de {e['p_mc0']:.2f} a {e['p_mc1']:.2f}, umbral {UMBRAL_COMITE:.0%}"
 
 
@@ -771,6 +976,16 @@ def _horas_extra(rng):
         "(C) ¿Qué propone al jefe de proyecto y al cliente? Aplique la rúbrica de la lección."]))
     celdas.append(md("# Resolución"))
     celdas.append(code(f"plantilla, jornada, maximo_horas_extra = {L}, 40, 80\n" + SETUP))
+    celdas.append(code(_AUX_ETICA + "\n\n"
+                       "def rangos(semanas):\n"
+                       "    '''«3, 5–8 y 10»: semanas consecutivas agrupadas.'''\n"
+                       "    semanas, grupos = sorted(int(s) for s in semanas), []\n"
+                       "    for s in semanas:\n"
+                       "        if grupos and s == grupos[-1][1] + 1:\n"
+                       "            grupos[-1][1] = s\n"
+                       "        else:\n"
+                       "            grupos.append([s, s])\n"
+                       "    return lista_y([f'{a}' if a == b else f'{a}–{b}' for a, b in grupos])"))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT del proyecto", label="fig-pert")
     celdas += apartado(1)
     celdas.append(code('#| fig-cap: "Gantt con inicios más tempranos y carga de operarios"\n#| label: fig-ganttCargas\n'
@@ -779,31 +994,60 @@ def _horas_extra(rng):
     celdas.append(code('#| fig-cap: "Diagrama de cargas frente a la plantilla disponible"\n#| label: fig-cargas\n'
                        "cargas = gantt_inicial.data.loc['Total'].drop('H_total').astype(float)\n"
                        "plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[plantilla])"))
+    celdas.append(md(f"La tabla siguiente da, semana a semana, los operarios necesarios con inicios más tempranos (fila «Total» "
+                     f"del Gantt), el exceso sobre la plantilla, exceso = máx(0, necesarios − {L}), las horas extra que ese exceso "
+                     f"supone (exceso × 40 h) y su reparto uniforme entre los {L} operarios (horas extra / {L})."))
     celdas.append(code('#| tbl-cap: "Exceso de operarios y horas extraordinarias semana a semana"\n#| label: tbl-exceso\n'
                        "exceso = (cargas - plantilla).clip(lower=0)\n"
                        "tabla = pd.DataFrame({'operarios necesarios': cargas, 'exceso sobre la plantilla': exceso,\n"
                        "                      'horas extra de la semana': exceso * jornada, 'horas extra por operario': exceso * jornada / plantilla})\n"
                        "tabla.loc['Total'] = tabla.sum()\n"
                        "horas_persona = float(tabla.loc['Total', 'horas extra por operario'])\n"
-                       "display(tabla.round(1).T)\n"
-                       "Markdown(f'''Pico de **{int(cargas.max())}** operarios frente a {plantilla}; exceso en {int((exceso > 0).sum())} semanas; "
-                       "**{horas_persona:.0f} horas extraordinarias por operario** en el año (máximo legal: {maximo_horas_extra}).''')"))
+                       "limpia_tabla(tabla, 1).T"))
+    celdas.append(code(
+        "semanas_exceso = [s for s in exceso.index if exceso[s] > 0]\n"
+        "op_semanas = float(exceso.sum())\n"
+        "horas_totales = op_semanas * jornada\n"
+        "semana_max = max(semanas_exceso, key=lambda s: exceso[s])\n"
+        "Markdown(f'''Pico de **{int(cargas.max())}** operarios frente a {plantilla}; hay exceso en {plural(len(semanas_exceso), 'semana')} "
+        "({'semana' if len(semanas_exceso) == 1 else 'semanas'} {rangos(semanas_exceso)}).\n\n"
+        "- Exceso total: {' + '.join(str(int(exceso[s])) for s in semanas_exceso)} = **{op_semanas:.0f} operario-semanas**.\n"
+        "- Horas extra: {op_semanas:.0f} × {jornada} h = **{horas_totales:.0f} h**.\n"
+        "- Por operario (reparto uniforme): {horas_totales:.0f} / {plantilla} = **{horas_persona:.0f} h** en el año (el proyecto dura {duracion} semanas, "
+        "menos de un año).\n"
+        "- En la peor semana (la {semana_max}) cada operario trabajaría {jornada} + {exceso[semana_max] * jornada / plantilla:.0f} = "
+        "{jornada + exceso[semana_max] * jornada / plantilla:.0f} h.\n\n"
+        "**Respuesta.** El plan exige **{horas_persona:.0f} horas extraordinarias por operario** en el año, "
+        "{'más que' if horas_persona > maximo_horas_extra else 'dentro de'} las {maximo_horas_extra} que permite la ley.''')"))
     celdas += apartado(2)
     celdas.append(code("proyecto_asignado = proyecto.copy()\n"
                        "datos_asignados, gantt_asignado, dibujo = proyecto_asignado.asignar(data=datos_proyecto.copy(), duration_label='duration',\n"
                        "                                                                  resource_label='resources', maximo=[plantilla], report=False, params=GANTT_PARAMS)\n"
                        "duracion_con_limite = len(gantt_asignado.data.columns.drop('H_total'))\n"
                        "contratar = int(cargas.max()) - plantilla\n"
-                       "Markdown(f'''Respetando los {plantilla} operarios el proyecto dura **{duracion_con_limite}** semanas ({duracion_con_limite - duracion} más que el plan); "
-                       "para cumplir las {duracion} semanas sin horas extra habría que contratar **{contratar}** operarios durante las semanas de pico (o nivelar primero y ver si baja el pico).''')"))
+                       "por_nivel = {int(k): [s for s in semanas_exceso if exceso[s] == k] for k in sorted(set(exceso[semanas_exceso]))}\n"
+                       "horas_legales = maximo_horas_extra * plantilla\n"
+                       "op_sem_legales = horas_legales / jornada\n"
+                       "Markdown(f'''**Con el límite de {plantilla} operarios** (asignación: cada semana entran las actividades por orden de prioridad mientras "
+                       "caben en la plantilla; las demás esperan) el proyecto dura **{duracion_con_limite}** semanas, {plural(duracion_con_limite - duracion, 'semana')} "
+                       "más que las {duracion} del plan (Gantt siguiente).\n\n"
+                       "**Para cumplir las {duracion} semanas sin horas extra** hay que cubrir el exceso con personal contratado: como máximo "
+                       "{int(cargas.max())} − {plantilla} = **{contratar}** operarios a la vez, y no todas las semanas: "
+                       "{'; '.join(f'{plural(k, \"operario\")} {\"en la semana\" if len(v) == 1 else \"en las semanas\"} {rangos(v)}' for k, v in por_nivel.items())}, "
+                       "en total {op_semanas:.0f} operario-semanas de refuerzo.\n\n"
+                       "Combinación legal: las {maximo_horas_extra} h por operario permiten {maximo_horas_extra} × {plantilla} = {horas_legales} h = "
+                       "{op_sem_legales:.0f} operario-semanas en horas extra; el resto, {max(op_semanas - op_sem_legales, 0):.0f} operario-semanas, con refuerzo.\n\n"
+                       "**Respuesta.** Con el límite de {plantilla} operarios el proyecto dura {duracion_con_limite} semanas; para cumplir {duracion} sin horas extra hay que "
+                       "contratar {plural(contratar, 'operario')} en el pico ({op_semanas:.0f} operario-semanas en total).''')"))
     celdas.append(code('#| fig-cap: "Gantt con asignación limitada a la plantilla"\n#| label: fig-ganttAsignado\npinta_tikz(dibujo)'))
     celdas += apartado(3)
-    celdas.append(md(f"**C7 y la norma.** El plan exige {e['horas_persona']:.0f} horas extraordinarias por operario en el año, "
-                     f"más de las 80 que fija el Estatuto de los Trabajadores (art. 35.2) salvo las compensadas con descanso, "
-                     "y supone sostener semanas por encima de la jornada ordinaria (art. 34.1). No es una opción de "
-                     "planificación: una actividad o un plan que incumple una norma no está en la tabla de opciones, por "
-                     "mucho que «se paguen». La cifra objetiva es la del apartado 1; con menos de 80 horas por operario el plan "
-                     "sería legal (y entonces la pregunta pasaría al bloque C: si conviene)."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C7 y norma.** El Estatuto de los Trabajadores limita las horas extraordinarias a {maximo_horas_extra} por trabajador y año "
+        "(art. 35.2), sin contar las compensadas con descanso, y la jornada ordinaria a {jornada} horas semanales de promedio (art. 34.1). El plan del jefe "
+        "de proyecto exige {horas_persona:.0f} h por operario, {horas_persona - maximo_horas_extra:+.0f} h sobre el máximo, con semanas de "
+        "{jornada + exceso[semana_max] * jornada / plantilla:.0f} h. Según C7, un plan que incumple una norma no es una opción de planificación, por mucho que "
+        "las horas «se paguen»: pagar no convierte en legal lo que la ley limita.\n\n"
+        "**Respuesta.** " + "{'**No puede ejecutarse**: ' + f'{horas_persona:.0f} h > {maximo_horas_extra} h por operario y año, salvo que el exceso se compense con descanso (lo que alargaría el proyecto igualmente).' if horas_persona > maximo_horas_extra else 'Puede ejecutarse legalmente: ' + f'{horas_persona:.0f} h ≤ {maximo_horas_extra}; la pregunta pasa al bloque C (si conviene).'}''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('El máximo de horas extraordinarias por trabajador y año fijado por el Estatuto de los Trabajadores es…', ['80', '40', '120', 'no hay máximo si se pagan'],\n"
@@ -815,11 +1059,19 @@ def _horas_extra(rng):
         "]", "Ética 19 — horas extra"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"Tabla de opciones para el jefe de proyecto: (1) aceptar {e['T_L']} semanas con la plantilla; (2) contratar "
-                     f"{pico - L} operarios temporales las {semanas_exceso} semanas de pico y cumplir {T}; (3) nivelar y "
-                     "combinar: parte en horas extra dentro de las 80 y el resto con refuerzo. Al cliente se le cuenta la "
-                     "opción elegida con su coste y su fecha; lo que no se le cuenta es que el plazo «se consigue» "
-                     "incumpliendo la ley (prueba de publicidad)."))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Operarios', f'{horas_persona:.0f} h extra cada uno y semanas de hasta {jornada + exceso[semana_max] * jornada / plantilla:.0f} h: salud, seguridad y descanso'),\n"
+        "     ('Cliente', f'quiere {duracion} semanas; con la plantilla serían {duracion_con_limite}'),\n"
+        "     ('Empresa', f'ahorra la contratación de {op_semanas:.0f} operario-semanas a cambio de un incumplimiento sancionable y de un riesgo de accidentes'),\n"
+        "     ('Jefe de proyecto', 'cumple el plazo «sobre el papel» con un plan que no puede firmar')],\n"
+        "    [(f'Horas extra sin límite: {horas_persona:.0f} h por operario (propuesta)', f'no: supera las {maximo_horas_extra} h del art. 35.2', 'no', 'no: ningún operario aceptaría esas semanas si pudiera elegir'),\n"
+        "     (f'Aceptar {duracion_con_limite} semanas con la plantilla', 'sí', 'sí', 'sí, si el cliente lo acepta informado'),\n"
+        "     (f'Contratar el refuerzo: {op_semanas:.0f} operario-semanas (hasta {contratar} a la vez)', 'sí', 'sí', 'sí'),\n"
+        "     (f'Combinar: {op_sem_legales:.0f} operario-semanas en horas extra (≤ {maximo_horas_extra} h por operario) y el resto con refuerzo', 'sí', 'sí', 'sí')],\n"
+        "    f'''al jefe de proyecto, la tabla de opciones con su coste y su fecha ({duracion_con_limite} semanas con la plantilla; {duracion} contratando "
+        "{op_semanas:.0f} operario-semanas; o la combinación dentro de las {maximo_horas_extra} h); al cliente, la opción elegida con su precio y su fecha. "
+        "Lo que no se le cuenta es que el plazo «se consigue» incumpliendo la ley, porque no está en la tabla.''')"))
     return celdas, f"{L} operarios, pico {pico}: {e['horas_persona']:.0f} horas extra por operario frente a 80 legales; con límite, {e['T_L']} semanas"
 
 
@@ -881,8 +1133,13 @@ def _inspeccion_suprimida(rng):
         "(C) ¿Qué responde al director de operaciones y qué ofrece al cliente? Aplique la rúbrica de la lección."]))
     celdas.append(md("# Resolución"))
     celdas.append(code(f"inspeccion, semanas_pedidas, p_defecto, coste_defecto = {I!r}, {r}, {e['p_def']}, {e['K']}\n" + SETUP))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el camino crítico", label="fig-pert")
     celdas += apartado(1)
+    celdas.append(md(f"El algoritmo de Ackoff-Sasieni acorta el proyecto semana a semana: en cada paso busca, entre las combinaciones "
+                     f"de actividades que acortan a la vez **todas** las rutas críticas, la de menor coste (suma de los costes "
+                     f"unitarios de reducción, `ucr`), respetando las duraciones mínimas (`cap_duration`). La inspección {I} tiene "
+                     f"`ucr` infinito: no puede elegirse nunca."))
     celdas.append(code('#| tbl-cap: "Algoritmo de Ackoff-Sasieni"\n#| label: tbl-ackoff\n'
                        "tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(\n"
                        "    durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],\n"
@@ -892,21 +1149,32 @@ def _inspeccion_suprimida(rng):
                        "detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duration'], datos_proyecto['ucr'], pasos)"))
     celdas.append(code("coste_reduccion = float(sum(datos_proyecto.loc[acts, 'ucr'].sum() for acts in pasos.values()))\n"
                        "duracion_reducida = int(proyecto.duration(duraciones_reducidas))\n"
-                       "Markdown(f'''Adelantar {semanas_pedidas} semanas acortando actividades cuesta **{coste_reduccion:.0f} k€** "
-                       "(de {duracion} a {duracion_reducida} semanas); pasos: ''' + '; '.join(', '.join(a) for a in pasos.values()) + '.')"))
+                       "costes_paso = [float(datos_proyecto.loc[acts, 'ucr'].sum()) for acts in pasos.values()]\n"
+                       "lineas = [f'- Paso {i}: se acorta {lista_y(acts)} una semana, coste ' + (' + '.join(f\"{datos_proyecto.loc[a, 'ucr']:g}\" for a in acts) + ' = ' if len(acts) > 1 else '')\n"
+                       "          + f'{c:g} k€; el proyecto pasa a {duracion - i} semanas.' for i, (acts, c) in enumerate(zip(pasos.values(), costes_paso), 1)]\n"
+                       "Markdown('\\n'.join(lineas) + f'''\\n\\n**Respuesta.** Adelantar {semanas_pedidas} semanas sin tocar {inspeccion} cuesta "
+                       "{' + '.join(f'{c:g}' for c in costes_paso)} = **{coste_reduccion:g} k€** (de {duracion} a {duracion_reducida} semanas).''')"))
     celdas += apartado(2)
     celdas.append(code("coste_esperado_sin_inspeccion = p_defecto * coste_defecto\n"
-                       "Markdown(f'''Sin la inspección, el coste esperado del defecto es {p_defecto:.0%} × {coste_defecto} = **{coste_esperado_sin_inspeccion:.0f} k€**, "
-                       "frente a los {coste_reduccion:.0f} k€ de la reducción legítima. La propuesta no ahorra: traslada un coste mayor, incierto y "
-                       "a cargo de otros (usuarios, aseguradora, inspector) a cambio de un ahorro cierto y pequeño.''')"))
+                       "d_insp = int(datos_proyecto.loc[inspeccion, 'duration'])\n"
+                       "Markdown(f'''Coste esperado de poner en servicio sin la inspección = P(defecto) × coste del defecto = {p_defecto} × {coste_defecto} = "
+                       "**{coste_esperado_sin_inspeccion:g} k€**, frente a los {coste_reduccion:g} k€ de la reducción legítima "
+                       "({coste_esperado_sin_inspeccion / coste_reduccion:.1f} veces más).\n\n"
+                       "**Respuesta.** La propuesta «ahorra» los {coste_reduccion:g} k€ de la reducción {'(y gana ' + plural(d_insp, 'semana') + ', las ' + str(semanas_pedidas) + ' pedidas)' if d_insp == semanas_pedidas else '(y gana ' + plural(d_insp, 'semana') + ' en lugar de las ' + str(semanas_pedidas) + ' pedidas)'}, pero no los ahorra de verdad: los cambia por un coste esperado de {coste_esperado_sin_inspeccion:g} k€, incierto "
+                       "y que no paga quien decide sino otros (usuarios, cliente, aseguradora). "
+                       "{'En valor esperado es peor negocio: ' + f'{coste_esperado_sin_inspeccion:g} > {coste_reduccion:g} k€.' if coste_esperado_sin_inspeccion > coste_reduccion else 'Aunque en valor esperado saliera más barato, el criterio del apartado 3 no depende de esta cuenta.'}''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**C7.** {I} está exigida por una norma de seguridad: no es una opción de compresión, de modo que no "
-                     f"entra en la tabla de Ackoff (por eso su coste de reducción es infinito y no «cero»). Comprimir el "
-                     "cronograma es hacer el **mismo alcance** en menos tiempo pagando por ello (reducción de duraciones, más "
-                     "recursos, solapes); quitar una actividad es **recortar el alcance**, y cuando la actividad es un "
-                     "requisito legal, incumplir la norma. Hacer las pruebas «en marcha» no es lo mismo: la norma exige la "
-                     "inspección antes de la puesta en servicio, y el inspector que firma después firma algo que no ha visto. "
-                     "La respuesta no depende del cálculo del apartado 2; el cálculo sólo muestra que, además, es mal negocio."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C7 (cumplimiento de la ley y de las normas de seguridad).** El enunciado dice que {inspeccion} (pruebas de presión e "
+        "inspección reglamentaria) está exigida por la normativa de seguridad **antes** de la puesta en servicio. Según C7, una actividad exigida por una "
+        "norma no es una opción de compresión: por eso en la tabla de Ackoff su coste de reducción es infinito, y no «cero» como sugiere el director de "
+        "operaciones. Hacer las pruebas «en marcha» el primer mes no es lo mismo: incumple el «antes», y el inspector que firma después firma algo que no "
+        "ha visto.\n\n"
+        "Comprimir el cronograma es hacer el **mismo alcance** en menos tiempo pagando por ello (acortar duraciones con más recursos, solapar actividades), "
+        "como en el apartado 1: {coste_reduccion:g} k€ por {semanas_pedidas} semanas. Suprimir {inspeccion} es **recortar el alcance**; y como {inspeccion} es un "
+        "requisito legal, es además incumplir la norma.\n\n"
+        "**Respuesta.** No: la supresión de {inspeccion} no es una opción de compresión (C7). La respuesta no depende del cálculo del apartado 2; ese cálculo "
+        "sólo muestra que, además, la propuesta {'es peor negocio' if coste_esperado_sin_inspeccion > coste_reduccion else 'no aporta un ahorro que la justifique'}.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Suprimir una actividad exigida por una norma para acortar el proyecto es…', ['recortar el alcance e incumplir la norma (C7)', 'una opción de compresión más', 'legítimo si el cliente lo pide', 'una reducción a coste cero'],\n"
@@ -918,11 +1186,20 @@ def _inspeccion_suprimida(rng):
         "]", "Ética 19 — inspección suprimida"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"Al director de operaciones: la inspección no está en la tabla de opciones; la tabla real es «{r} "
-                     f"semanas por {coste:.0f} k€» con las actividades del apartado 1, o menos semanas por menos dinero. Al "
-                     f"cliente: la oferta de reducción con su precio y, si quiere, la curva coste-semanas; la puesta en "
-                     "servicio sigue exigiendo la inspección. Prueba de publicidad: ¿explicaría al inspector, o a los usuarios, "
-                     "que las pruebas se hicieron después de arrancar?"))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Cliente', f'quiere adelantar {semanas_pedidas} semanas; sin la inspección asume, sin saberlo, un {porc(p_defecto, 0)} de un defecto de {coste_defecto} k€'),\n"
+        "     ('Usuarios y terceros', 'soportan el riesgo de seguridad de una instalación a presión sin probar'),\n"
+        "     ('Inspector', 'se le pide firmar algo que no ha visto'),\n"
+        "     ('Empresa', f'«ahorra» {coste_reduccion:g} k€ y se expone a la sanción, a la responsabilidad por el defecto y a perder el cliente')],\n"
+        "    [(f'Suprimir {inspeccion} y probar «en marcha» (propuesta)', 'no: la norma exige la inspección antes de la puesta en servicio', 'no', 'no: el usuario no aceptaría la instalación sin probar'),\n"
+        "     (f'Acortar {semanas_pedidas} semanas con Ackoff por {coste_reduccion:g} k€', 'sí', 'sí', 'sí'),\n"
+        "     ('Adelantar menos semanas por menos dinero (la curva coste-semanas)', 'sí', 'sí', 'sí'),\n"
+        "     (f'Negociar con el cliente la fecha o el reparto del coste de {coste_reduccion:g} k€', 'sí', 'sí', 'sí')],\n"
+        "    f'''al director de operaciones: la inspección no está en la tabla de opciones; la tabla real es «{semanas_pedidas} semanas por {coste_reduccion:g} k€» "
+        "acortando {lista_y(sorted(set(a for acts in pasos.values() for a in acts)))}, o menos semanas por menos dinero. Al cliente: la oferta de reducción con su "
+        "precio; la puesta en servicio sigue exigiendo la inspección. Prueba de publicidad: ¿explicaría al inspector, o a los usuarios, que las pruebas se hicieron "
+        "después de arrancar?''')"))
     return celdas, f"adelantar {r} semanas: {coste:.0f} k€ por Ackoff frente a «quitar {I}» (coste esperado del defecto {e['p_def'] * e['K']:.0f} k€)"
 
 
@@ -988,34 +1265,57 @@ def _linea_base_reescrita(rng):
     celdas.append(md("# Resolución"))
     celdas.append(code(f"semana_control, desplazamiento = {t}, {delta}\n" + SETUP +
                        "BAC_total = float(datos_proyecto['BAC'].sum())\n" + INDICADORES))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT de la línea base", label="fig-pert")
     celdas += apartado(1)
+    celdas.append(md(_NOTACION_VG + " PV se calcula con las fechas de la línea base: cada actividad reparte su BAC "
+                     "uniformemente entre su inicio más temprano y su fin."))
     celdas.append(code('#| tbl-cap: "PV, EV y AC contra la línea base aprobada"\n#| label: tbl-detalleBase\n'
                        "detalle_base, ind_base = indicadores(seguimiento, calendario, semana_control)\n"
-                       "display(detalle_base[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']])\n"
-                       "ind_base.round(3).to_frame('línea base aprobada').T"))
-    celdas.append(code("fin_previsto = duracion + desplazamiento\n"
-                       "Markdown(f'''SPI = {ind_base[\"SPI\"]:.2f}, SV = {ind_base[\"SV\"]:.1f} k€ (CPI = {ind_base[\"CPI\"]:.2f}: el coste va según lo hecho). "
-                       "Como el retraso es de arranque y el ritmo es el previsto, la fecha de fin prevista es la semana **{fin_previsto}** "
-                       "({desplazamiento} más que la línea base).''')"))
+                       "detalle_base[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]"))
+    celdas.append(code(
+        "fin_previsto = duracion + desplazamiento\n"
+        "Markdown(f'''Totales en la semana {semana_control}:\n\n"
+        "- {explica_suma(sin_ceros(detalle_base['PV_i']), 'PV', 'k€', 1)}\n"
+        "- {explica_suma(sin_ceros(detalle_base['EV_i']), 'EV', 'k€', 1)}\n"
+        "- {explica_suma(sin_ceros(seguimiento['AC']), 'AC', 'k€', 0)}\n\n"
+        "{explica_indicadores(ind_base, titulo='**Contra la línea base aprobada:**')}\n\n"
+        "Fecha de fin prevista: el retraso es sólo de arranque ({desplazamiento} semanas) y desde entonces todo avanza al ritmo previsto, así que el "
+        "proyecto terminará {desplazamiento} semanas después de lo planificado: {duracion} + {desplazamiento} = **semana {fin_previsto}**. (La previsión "
+        "genérica duración / SPI = {duracion} / {ind_base[\"SPI\"]:.3f} = {duracion / ind_base[\"SPI\"]:.1f} semanas no sirve aquí: supone que el retraso "
+        "seguirá creciendo al ritmo actual, y el enunciado dice que no.)\n\n"
+        "**Respuesta.** PV = {ind_base[\"PV\"]:.1f}, EV = {ind_base[\"EV\"]:.1f} y AC = {ind_base[\"AC\"]:.1f} k€; SV = {ind_base[\"SV\"]:.1f} k€ y "
+        "SPI = {ind_base[\"SPI\"]:.2f} (retraso); CV = {ind_base[\"CV\"]:.1f} k€ y CPI = {ind_base[\"CPI\"]:.2f} (el coste va según lo hecho); "
+        "fin previsto en la semana {fin_previsto}, frente a la {duracion} de la línea base.''')"))
     celdas += apartado(2)
-    celdas.append(code('#| tbl-cap: "Lo mismo contra la línea base desplazada (PV calculado en la semana t − desplazamiento)"\n#| label: tbl-detalleDesplazada\n'
+    celdas.append(md("Desplazar la línea base equivale a sumar el desplazamiento a todas las fechas del calendario; en la semana de "
+                     "control, PV se calcula entonces con las semanas transcurridas desde el nuevo inicio."))
+    celdas.append(code('#| tbl-cap: "PV, EV y AC contra la línea base desplazada"\n#| label: tbl-detalleDesplazada\n'
                        "calendario_desplazado = calendario.copy()\n"
                        "for col in ['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio']:\n"
                        "    calendario_desplazado[col] = calendario[col] + desplazamiento\n"
                        "detalle_desp, ind_desp = indicadores(seguimiento, calendario_desplazado, semana_control)\n"
+                       "detalle_desp[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]"))
+    celdas.append(code('#| tbl-cap: "Indicadores contra las dos líneas base"\n#| label: tbl-comparacionLB\n'
                        "comparacion = pd.DataFrame({'línea base aprobada': ind_base, 'línea base desplazada': ind_desp})\n"
                        "comparacion.round(3)"))
-    celdas.append(code("Markdown(f'''Sólo cambia PV (y con él SV y SPI, que pasa a {ind_desp[\"SPI\"]:.2f}); EV, AC, CV y CPI no se mueven. "
-                       "La fecha de fin prevista sigue siendo la semana {fin_previsto}: el retraso ha desaparecido del informe, no del proyecto.''')"))
+    celdas.append(code(
+        "Markdown(f'''- {explica_suma(sin_ceros(detalle_desp['PV_i']), 'PV (desplazada)', 'k€', 1)}\n\n"
+        "{explica_indicadores(ind_desp, titulo='**Contra la línea base desplazada:**')}\n\n"
+        "**Respuesta.** Sólo cambia PV ({ind_base[\"PV\"]:.1f} → {ind_desp[\"PV\"]:.1f} k€) y, con él, SV ({ind_base[\"SV\"]:.1f} → {ind_desp[\"SV\"]:.1f} k€) "
+        "y SPI ({ind_base[\"SPI\"]:.2f} → {ind_desp[\"SPI\"]:.2f}). EV, AC, CV y CPI no cambian, porque no dependen de la línea base. La fecha de fin prevista "
+        "**no cambia**: sigue siendo la semana {fin_previsto}. El retraso desaparece del informe, no del proyecto.''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**C9.** La línea base es un compromiso aprobado con el cliente; cambiarla exige una **solicitud de "
-                     f"cambio aprobada** por el control integrado de cambios, no un «ajuste técnico» del jefe de proyecto. "
-                     f"Que la causa del retraso sea del cliente no cambia el procedimiento: es justamente el motivo de una "
-                     f"solicitud de cambio (o de una reclamación) en la que el cliente reconoce las {delta} semanas y se "
-                     f"aprueba la nueva fecha de fin ({T + delta}). Sin ese trámite, un informe con SPI = 1 es **C3**: una "
-                     "cifra correcta contra una referencia que nadie ha aprobado, presentada como si fuera el plan. "
-                     "Con el trámite, el mismo SPI = 1 es legítimo, porque la referencia es la nueva línea base aprobada."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C9 (línea base y control de cambios).** La línea base es un compromiso aprobado por el cliente (fin en la semana {duracion}); "
+        "sólo cambia mediante una solicitud de cambio aprobada, no por un «ajuste técnico» del jefe de proyecto. Que la causa del retraso sea del cliente "
+        "(permisos entregados {desplazamiento} semanas tarde) no cambia el procedimiento: es precisamente el motivo de una solicitud de cambio (o de una "
+        "reclamación) en la que el cliente reconoce esas {desplazamiento} semanas y aprueba el nuevo fin en la semana {fin_previsto}.\n\n"
+        "**Criterio C3 (información fuera de contexto).** Sin ese trámite, el informe con SPI = {ind_desp[\"SPI\"]:.2f} da una cifra aritméticamente correcta "
+        "contra una referencia que nadie ha aprobado, presentada como si fuera el plan: el cliente leería «en plazo» un proyecto que acabará en la semana "
+        "{fin_previsto} y no en la {duracion}.\n\n"
+        "**Respuesta.** No puede desplazarla por su cuenta (C9). El informe con SPI = {ind_desp[\"SPI\"]:.2f} sería **información fuera de contexto (C3)**. "
+        "Lo haría legítimo una **solicitud de cambio aprobada** que mueva la línea base {desplazamiento} semanas; con ella, el mismo SPI ≈ 1 sería correcto.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Una línea base puede cambiarse…', ['mediante una solicitud de cambio aprobada', 'por decisión del jefe de proyecto si la causa es del cliente', 'nunca', 'siempre que no cambie el alcance'],\n"
@@ -1027,11 +1327,17 @@ def _linea_base_reescrita(rng):
         "]", "Ética 19 — línea base reescrita"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"Informe: SPI {e['SPI']:.2f} contra la línea base aprobada, con la causa documentada (permisos entregados "
-                     f"{delta} semanas tarde) y la fecha prevista {T + delta}. Propuesta al cliente: solicitud de cambio por "
-                     f"causa imputable al cliente que mueva la línea base {delta} semanas y, si procede, la compensación de "
-                     "costes de la espera; aprobada, los informes siguientes miden contra la nueva línea base. Lo que no cabe: "
-                     "el «ajuste técnico» silencioso, que además deja al contratista sin la prueba de que el retraso no es suyo."))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Cliente', f'recibe «SPI = {ind_desp[\"SPI\"]:.2f}» y planifica con la semana {duracion}, cuando el fin previsto es la {fin_previsto}'),\n"
+        "     ('Contratista', f'sin solicitud de cambio pierde la prueba de que las {desplazamiento} semanas de retraso son imputables al cliente (y la compensación de la espera)'),\n"
+        "     ('Jefe de proyecto', 'evita un informe en rojo este mes a costa de su credibilidad cuando la fecha real aparezca')],\n"
+        "    [('Desplazar la línea base sin aprobación e informar SPI ≈ 1 (propuesta)', 'no infringe una ley, pero sí el procedimiento contractual de cambios', 'no', 'no: el cliente no aceptaría que le cambien la referencia sin preguntar'),\n"
+        "     (f'Informar SPI {ind_base[\"SPI\"]:.2f} contra la línea base aprobada, con la causa documentada', 'sí', 'sí', 'sí'),\n"
+        "     (f'Además, presentar una solicitud de cambio por causa del cliente: fin en la semana {fin_previsto}', 'sí', 'sí', 'sí')],\n"
+        "    f'''informe con SPI {ind_base[\"SPI\"]:.2f} contra la línea base aprobada, la causa documentada (permisos entregados {desplazamiento} semanas tarde) y "
+        "la fecha prevista, semana {fin_previsto}. Al cliente: solicitud de cambio que mueva la línea base {desplazamiento} semanas y, si procede, la compensación "
+        "de los costes de la espera; una vez aprobada, los informes siguientes miden contra la nueva línea base.''')"))
     return celdas, f"arranque {delta} semanas tarde por el cliente: SPI {e['SPI']:.2f} contra la línea base y 1,00 contra la desplazada sin aprobar"
 
 
@@ -1096,38 +1402,84 @@ def _pago_subcontratistas(rng):
                        "m_c, m_s = (1 + k_contratista) ** (1 / 12) - 1, (1 + k_subcontratas) ** (1 / 12) - 1\n"
                        "meses = int(np.ceil(duracion / 4))\n"
                        "factura = pd.Series(0.0, index=pd.Index(range(1, meses + 1), name='mes'))\n"
+                       "reparto = pd.DataFrame(0.0, index=datos_proyecto.index, columns=factura.index)\n"
                        "for a, fila in datos_proyecto.iterrows():\n"
                        "    es, d = int(calendario.loc[a, 'inicio_mas_temprano']), int(fila['duration'])\n"
                        "    for w in range(es, es + d):\n"
                        "        factura[w // 4 + 1] += fila['coste_subcontrata'] / d\n"
+                       "        reparto.loc[a, w // 4 + 1] += fila['coste_subcontrata'] / d\n"
                        "def valor_actual(dias, m):\n"
                        "    '''Valor actual de las facturas pagadas «dias» días después de cada fin de mes, al tipo mensual m.'''\n"
                        "    return float(sum(f / (1 + m) ** (t + dias / 30) for t, f in factura.items()))"))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT del proyecto", label="fig-pert")
     celdas += apartado(1)
-    celdas.append(code('#| tbl-cap: "Facturación mensual de las subcontratas (k€)"\n#| label: tbl-facturas\n'
-                       "factura.round(2).to_frame('factura').T"))
-    celdas.append(code("tabla = pd.DataFrame({dias: {'valor actual para el contratista': valor_actual(dias, m_c),\n"
-                       "                             'valor actual para las subcontratas': valor_actual(dias, m_s)} for dias in (30, 60, 90)}).T\n"
-                       "tabla.index.name = 'días de pago'\n"
-                       "tabla['ganancia del contratista frente a 30'] = tabla.loc[30, 'valor actual para el contratista'] - tabla['valor actual para el contratista']\n"
-                       "tabla['pérdida de las subcontratas frente a 30'] = tabla.loc[30, 'valor actual para las subcontratas'] - tabla['valor actual para las subcontratas']\n"
-                       "tabla['neto conjunto'] = tabla['ganancia del contratista frente a 30'] - tabla['pérdida de las subcontratas frente a 30']\n"
-                       "tabla.round(2)"))
-    celdas.append(code("Markdown(f'''Pagar a 90 días en vez de a 30 vale **{tabla.loc[90, \"ganancia del contratista frente a 30\"]:.2f} k€** para el contratista "
-                       "(a 60 días, {tabla.loc[60, \"ganancia del contratista frente a 30\"]:.2f} k€).''')"))
+    celdas.append(md("Con inicios más tempranos, cada actividad factura su coste repartido por igual entre sus semanas (coste / "
+                     "duración por semana); el mes 1 son las semanas 1–4, el mes 2 las semanas 5–8, y así sucesivamente. La tabla "
+                     "reparte el coste de cada actividad entre los meses; la fila «factura» es la suma de cada mes."))
+    celdas.append(code('#| tbl-cap: "Facturación mensual de las subcontratas por actividad (k€)"\n#| label: tbl-facturas\n'
+                       "tabla_facturas = reparto.copy()\n"
+                       "tabla_facturas['semanas (inicio–fin)'] = [(lambda i, f: f'{i}' if i == f else f'{i}–{f}')(int(calendario.loc[a, 'inicio_mas_temprano']) + 1, int(calendario.loc[a, 'fin_mas_temprano'])) for a in reparto.index]\n"
+                       "tabla_facturas.loc['factura'] = list(factura) + ['']\n"
+                       "limpia_tabla(tabla_facturas, 2)"))
+    celdas.append(code(
+        "def tabla_va(m, nombre):\n"
+        "    t = pd.DataFrame({'factura': factura})\n"
+        "    for dias in (30, 60, 90):\n"
+        "        t[f'factor a {dias} días = 1/(1+m)^(t+{dias // 30})'] = [1 / (1 + m) ** (mes + dias / 30) for mes in factura.index]\n"
+        "        t[f'VA a {dias} días'] = t['factura'] * t[f'factor a {dias} días = 1/(1+m)^(t+{dias // 30})']\n"
+        "    t.loc['Total'] = [factura.sum()] + [np.nan if c.startswith('factor') else t[c].sum() for c in t.columns[1:]]\n"
+        "    return t\n"
+        "va_c = tabla_va(m_c, 'contratista')\n"
+        "display(Markdown(f'''Tipo mensual equivalente del contratista: m = (1 + {k_contratista})^(1/12) − 1 = **{m_c:.5f}**. La factura del mes t pagada a "
+        "d días se descuenta t + d/30 meses: VA = Σ factura_t / (1 + m)^(t + d/30). Valor actual de los pagos para el contratista:'''))\n"
+        "limpia_tabla(va_c, 4)"))
+    celdas.append(code(
+        "tabla = pd.DataFrame({dias: {'valor actual para el contratista': valor_actual(dias, m_c),\n"
+        "                             'valor actual para las subcontratas': valor_actual(dias, m_s)} for dias in (30, 60, 90)}).T\n"
+        "tabla.index.name = 'días de pago'\n"
+        "tabla['ganancia del contratista frente a 30'] = tabla.loc[30, 'valor actual para el contratista'] - tabla['valor actual para el contratista']\n"
+        "tabla['pérdida de las subcontratas frente a 30'] = tabla.loc[30, 'valor actual para las subcontratas'] - tabla['valor actual para las subcontratas']\n"
+        "tabla['neto conjunto'] = tabla['ganancia del contratista frente a 30'] - tabla['pérdida de las subcontratas frente a 30']\n"
+        "g = tabla['ganancia del contratista frente a 30']\n"
+        "vc = tabla['valor actual para el contratista']\n"
+        "Markdown(f'''Pagar más tarde reduce el valor actual de lo que paga el contratista; esa reducción es su ganancia:\n\n"
+        "- A 90 días: {vc[30]:.2f} − {vc[90]:.2f} = **{g[90]:.2f} k€**.\n"
+        "- A 60 días: {vc[30]:.2f} − {vc[60]:.2f} = **{g[60]:.2f} k€**.\n\n"
+        "**Respuesta.** Facturas mensuales de {lista_y([f'{v:.2f}' for v in factura])} k€ (total {factura.sum():.0f} k€). Pagar a 90 días en vez de a 30 "
+        "vale {g[90]:.2f} k€ para el contratista y pagar a 60, {g[60]:.2f} k€: un {100 * g[90] / factura.sum():.1f} % y un {100 * g[60] / factura.sum():.1f} % "
+        "de lo facturado.''')"))
     celdas += apartado(2)
-    celdas.append(code("Markdown(f'''Las subcontratas pierden **{tabla.loc[90, \"pérdida de las subcontratas frente a 30\"]:.2f} k€** a 90 días "
-                       "({tabla.loc[60, \"pérdida de las subcontratas frente a 30\"]:.2f} a 60): más de lo que gana el contratista, porque se financian "
-                       "más caro ({k_subcontratas:.0%} frente a {k_contratista:.0%}). El neto conjunto es **{tabla.loc[90, \"neto conjunto\"]:.2f} k€**: "
-                       "el aplazamiento destruye valor; sólo lo traslada, con pérdida, de quien se financia barato a quien se financia caro.''')"))
+    celdas.append(code(
+        "va_s = tabla_va(m_s, 'subcontratas')\n"
+        "display(Markdown(f'''Las subcontratas se financian al {porc(k_subcontratas, 0)}: m = (1 + {k_subcontratas})^(1/12) − 1 = **{m_s:.5f}**. Valor actual "
+        "de los cobros para las subcontratas:'''))\n"
+        "limpia_tabla(va_s, 4)"))
+    celdas.append(code('#| tbl-cap: "Ganancia, pérdida y neto frente a pagar a 30 días (k€)"\n#| label: tbl-neto\n'
+                       "display(tabla.round(2))\n"
+                       "pe = tabla['pérdida de las subcontratas frente a 30']\n"
+                       "vs = tabla['valor actual para las subcontratas']\n"
+                       "Markdown(f'''- Pérdida de las subcontratas a 90 días: {vs[30]:.2f} − {vs[90]:.2f} = **{pe[90]:.2f} k€**; a 60 días: {vs[30]:.2f} − {vs[60]:.2f} = **{pe[60]:.2f} k€**.\n"
+                       "- Neto conjunto a 90 días: {g[90]:.2f} − {pe[90]:.2f} = **{g[90] - pe[90]:.2f} k€**; a 60 días: {g[60]:.2f} − {pe[60]:.2f} = **{g[60] - pe[60]:.2f} k€**.\n\n"
+                       "No es un juego de suma cero porque cada parte valora el dinero aplazado a su propio coste de financiación: dos meses de aplazamiento valen "
+                       "para el contratista lo que le cuesta financiarse ({porc(k_contratista, 0)} anual) y le cuestan a la subcontrata lo que le cuesta a ella "
+                       "({porc(k_subcontratas, 0)}). Mientras {porc(k_subcontratas, 0)} > {porc(k_contratista, 0)}, lo que pierde la subcontrata es más de lo que gana "
+                       "el contratista.\n\n"
+                       "**Respuesta.** Las subcontratas pierden {pe[90]:.2f} k€ (90 días) y {pe[60]:.2f} k€ (60 días); el conjunto pierde {-(g[90] - pe[90]):.2f} k€ y "
+                       "{-(g[60] - pe[60]):.2f} k€: el aplazamiento no crea valor, traslada dinero de quien se financia caro a quien se financia barato y por el camino "
+                       "destruye una parte.''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**Norma.** Entre empresas el plazo de pago es de 30 días salvo pacto, y el pacto no puede superar los "
-                     f"60 (Ley 3/2004, art. 4): **90 días es ilegal**, aunque la subcontrata lo acepte; 60 es legal si se pacta. "
-                     f"**C5.** La propuesta obtiene {ganancia_90:.1f} k€ trasladando a las subcontratas un coste mayor "
-                     f"({coste_subs_90:.1f} k€) que no han aceptado libremente («siempre hay otra que acepta» describe una "
-                     "imposición, no un acuerdo). **C10.** Negociar de buena fe el plazo (a 60, con un precio que lo "
-                     "compense) es legítimo; imponerlo con la amenaza de sustituir al que proteste, no."))
+    celdas.append(code(
+        "Markdown(f'''**Norma** (Ley 3/2004, art. 4). Entre empresas, el plazo de pago es de 30 días si no se pacta otro y, por pacto, nunca más de "
+        "{plazo_legal_maximo}. Pagar a 90 días **es ilegal**, aunque la subcontrata lo acepte: el pacto no puede superar el máximo. Pagar a 60 es **legal** "
+        "si se pacta.\n\n"
+        "**Criterio C5 (beneficio propio a costa de otro).** La propuesta obtiene {g[90]:.2f} k€ trasladando a las subcontratas un coste mayor "
+        "({pe[90]:.2f} k€) que no han aceptado: «si alguna protesta, siempre hay otra que acepta» describe una imposición, no un acuerdo. **Criterio C10 "
+        "(buena fe en la negociación).** Negociar el plazo es legítimo; imponerlo con la amenaza de sustituir a quien proteste, no; y decir que «no cuesta "
+        "nada» es falso: cuesta {pe[90]:.2f} k€ a las subcontratas.\n\n"
+        "**Respuesta.** A 90 días: ilegal (más de {plazo_legal_maximo} días) y, además, C5 y C10. A 60 días: legal si se pacta libremente; formulado como "
+        "en el enunciado (impuesto con la amenaza de cambiar de proveedor) sigue incumpliendo C5 (gana {g[60]:.2f} k€ a costa de {pe[60]:.2f} k€ ajenos) "
+        "y C10.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('El plazo máximo de pago entre empresas que admite la Ley 3/2004 por pacto es…', ['60 días', '30 días', '90 días', 'el que acepte el proveedor'],\n"
@@ -1139,12 +1491,18 @@ def _pago_subcontratistas(rng):
         "]", "Ética 19 — pago a subcontratistas"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"Propuesta defendible: pagar a 30 (o pactar 60 a cambio de un precio que compense a la subcontrata: su "
-                     f"coste de financiación a 60 es {coste_subs_60:.1f} k€, frente a {ganancia_60:.1f} k€ de ganancia nuestra, "
-                     "así que no hay precio que convenga a los dos: el aplazamiento no crea valor que repartir). Al director "
-                     "financiero: la cifra del apartado 1 es pequeña, la del apartado 2 es mayor y la sanción y la "
-                     "reputación con los proveedores no están en su cuenta. Prueba de reversibilidad: ¿aceptaría la empresa "
-                     "que el cliente le pagara a 90?"))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Subcontratas', f'pierden {pe[90]:.2f} k€ (a 90) o {pe[60]:.2f} k€ (a 60) en valor actual; tensiones de tesorería en empresas pequeñas'),\n"
+        "     ('Contratista', f'gana {g[90]:.2f} k€ (a 90) o {g[60]:.2f} k€ (a 60), y arriesga sanción, reclamaciones de intereses de demora y peores proveedores'),\n"
+        "     ('Cliente y proyecto', 'una subcontrata ahogada financieramente entrega peor o más tarde')],\n"
+        "    [('Pagar a 90 días impuesto (propuesta)', f'no: supera los {plazo_legal_maximo} días', 'no', 'no: la empresa no aceptaría que su cliente le pagara a 90'),\n"
+        "     ('Pagar a 30 días', 'sí', 'sí', 'sí'),\n"
+        "     (f'Pactar 60 días compensando a la subcontrata ({pe[60]:.2f} k€)', 'sí', 'sí', f'sí, pero la compensación ({pe[60]:.2f}) supera la ganancia ({g[60]:.2f}): no conviene a nadie'),\n"
+        "     ('Financiar el desfase de tesorería con el banco', 'sí', 'sí', 'sí')],\n"
+        "    f'''pagar a 30 días. Al director financiero: la ganancia del aplazamiento es pequeña ({g[90]:.2f} k€ a 90 días), menor que lo que pierden las "
+        "subcontratas ({pe[90]:.2f} k€), y a 90 días además es ilegal; a 60 días no hay precio que compense a la subcontrata y deje ganancia al contratista, "
+        "porque el aplazamiento no crea valor que repartir. Prueba de reversibilidad: ¿aceptaría la empresa que el cliente le pagara a 90?''')"))
     return celdas, f"pagar a 90 días: +{ganancia_90:.1f} k€ para el contratista, −{coste_subs_90:.1f} k€ para las subcontratas; máximo legal 60"
 
 
@@ -1192,7 +1550,7 @@ def _adjudicacion_conflicto(rng):
                  "No lo ha comunicado a nadie."),
               _mensaje("Jefe de proyecto",
                        f"Propongo adjudicar a la {cunado}: ya han trabajado con nosotros y sé que responden. El pliego "
-                       "es orientativo; la experiencia previa con la casa vale más que dos puntos de diferencia."),
+                       "es orientativo; la experiencia previa con la casa vale más que unos puntos de diferencia en el baremo."),
               _criterios(["C6"]),
               md("Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).")]
     celdas.append(preguntas([
@@ -1205,37 +1563,59 @@ def _adjudicacion_conflicto(rng):
         "(C) ¿Qué hace usted en la mesa y qué dice al jefe de proyecto? Aplique la rúbrica de la lección."]))
     celdas.append(md("# Resolución"))
     celdas.append(code(f"pesos = dict(precio={pesos['precio']}, plazo={pesos['plazo']}, calidad={pesos['calidad']})\n"
-                       f"oferta_cunado, coste_semana = {cunado!r}, {coste_semana}\n"
+                       f"oferta_cunado, coste_semana, contrato_publico = {cunado!r}, {coste_semana}, {publico}\n"
                        "ofertas = datos_enunciado.copy()"))
+    celdas.append(code(_AUX_ETICA))
     celdas += apartado(1)
+    celdas.append(md(f"Con el criterio proporcional inverso, la mejor oferta en precio (la más baja) recibe los {pesos['precio']} "
+                     f"puntos y cada una de las demás, {pesos['precio']} · precio mínimo / su precio; igual con el plazo y "
+                     f"{pesos['plazo']} puntos. La calidad ya viene puntuada sobre {pesos['calidad']}."))
     celdas.append(code('#| tbl-cap: "Puntuación con los criterios publicados"\n#| label: tbl-puntuacion\n'
+                       "p_min, t_min = ofertas['precio'].min(), ofertas['plazo'].min()\n"
                        "puntuacion = pd.DataFrame({\n"
-                       "    'precio = 50 · mín / precio': pesos['precio'] * ofertas['precio'].min() / ofertas['precio'],\n"
-                       "    'plazo = 30 · mín / plazo': pesos['plazo'] * ofertas['plazo'].min() / ofertas['plazo'],\n"
+                       "    'precio': pesos['precio'] * p_min / ofertas['precio'],\n"
+                       "    'plazo': pesos['plazo'] * t_min / ofertas['plazo'],\n"
                        "    'calidad': ofertas['calidad'].astype(float)})\n"
                        "puntuacion['total'] = puntuacion.sum(axis=1)\n"
                        "puntuacion = puntuacion.sort_values('total', ascending=False)\n"
                        "mejor = puntuacion.index[0]\n"
-                       "display(puntuacion.round(2))\n"
-                       "Markdown(f'''Gana la **{mejor}** con {puntuacion.loc[mejor, \"total\"]:.2f} puntos; la {oferta_cunado} obtiene "
-                       "{puntuacion.loc[oferta_cunado, \"total\"]:.2f} ({puntuacion.loc[mejor, \"total\"] - puntuacion.loc[oferta_cunado, \"total\"]:.2f} menos).''')"))
+                       "detalle = pd.DataFrame({\n"
+                       "    f\"precio = {pesos['precio']} · mín / precio\": [f\"{pesos['precio']} · {p_min:g} / {ofertas.loc[o, 'precio']:g} = {puntuacion.loc[o, 'precio']:.2f}\" for o in puntuacion.index],\n"
+                       "    f\"plazo = {pesos['plazo']} · mín / plazo\": [f\"{pesos['plazo']} · {t_min} / {ofertas.loc[o, 'plazo']} = {puntuacion.loc[o, 'plazo']:.2f}\" for o in puntuacion.index],\n"
+                       "    'calidad': [f\"{puntuacion.loc[o, 'calidad']:.0f}\" for o in puntuacion.index],\n"
+                       "    'total = suma': [f\"{puntuacion.loc[o, 'precio']:.2f} + {puntuacion.loc[o, 'plazo']:.2f} + {puntuacion.loc[o, 'calidad']:.0f} = {puntuacion.loc[o, 'total']:.2f}\" for o in puntuacion.index]},\n"
+                       "    index=puntuacion.index)\n"
+                       "detalle"))
+    celdas.append(code("dif_puntos = puntuacion.loc[mejor, 'total'] - puntuacion.loc[oferta_cunado, 'total']\n"
+                       "Markdown(f'''**Respuesta.** Orden: {', '.join(f\"{i}.ª {o} ({puntuacion.loc[o, 'total']:.2f} puntos)\" for i, o in enumerate(puntuacion.index, 1))}. "
+                       "Gana la **{mejor}**; la {oferta_cunado}, que propone el jefe de proyecto, queda {dif_puntos:.2f} puntos por debajo.''')"))
     celdas += apartado(2)
     celdas.append(code("dif_precio = float(ofertas.loc[oferta_cunado, 'precio'] - ofertas.loc[mejor, 'precio'])\n"
                        "dif_plazo = int(ofertas.loc[oferta_cunado, 'plazo'] - ofertas.loc[mejor, 'plazo'])\n"
                        "sobrecoste = dif_precio + dif_plazo * coste_semana\n"
-                       "Markdown(f'''Adjudicar a la {oferta_cunado}: {dif_precio:+.1f} k€ de precio y {dif_plazo:+d} semanas de plazo "
-                       "({dif_plazo * coste_semana:+.0f} k€ de indirectos): **{sobrecoste:+.1f} k€** para el proyecto frente a la mejor oferta.''')"))
+                       "Markdown(f'''- Diferencia de precio: {ofertas.loc[oferta_cunado, 'precio']:g} − {ofertas.loc[mejor, 'precio']:g} = {dif_precio:+.1f} k€.\n"
+                       "- Diferencia de plazo: {ofertas.loc[oferta_cunado, 'plazo']} − {ofertas.loc[mejor, 'plazo']} = {dif_plazo:+d} semanas, que a {coste_semana} k€ por "
+                       "semana de indirectos son {dif_plazo:+d} × {coste_semana} = {dif_plazo * coste_semana:+d} k€.\n"
+                       "- Total: {dif_precio:+.1f} {'+' if dif_plazo * coste_semana >= 0 else '−'} {abs(dif_plazo * coste_semana)} = **{sobrecoste:+.1f} k€**.\n\n"
+                       "**Respuesta.** Adjudicar a la {oferta_cunado} en lugar de a la {mejor} "
+                       "{'costaría al proyecto ' + f'{sobrecoste:.1f} k€ más' if sobrecoste > 0 else 'no costaría más al proyecto (' + f'{sobrecoste:+.1f} k€' + '), pero sigue siendo peor según el pliego'}.''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**C6.** El jefe de proyecto tiene un conflicto de interés (parentesco con el gerente de una licitadora) "
-                     "y lo exigible no depende de qué oferta sea mejor: **revelarlo** a la mesa y a su organización y "
-                     "**abstenerse** de la decisión (4.3.1 y 4.3.2 del Código del PMI); si además la propuesta beneficia al "
-                     "familiar, es adjudicar por consideraciones personales (4.3.3). La «experiencia previa con la casa» no "
-                     "está en el pliego: introducir un criterio no publicado es aplicar las reglas con favoritismo (4.3.5). "
-                     + ("En un contrato público, la LCSP (art. 64) obliga a la entidad a prevenir y resolver el conflicto y "
-                        "la adjudicación con criterios no publicados es anulable; " if publico else
-                        "En un contrato privado no hay un procedimiento administrativo que lo anule, pero el criterio es el "
-                        "mismo y la empresa suele tenerlo en su código de conducta; ")
-                     + "en los dos casos la respuesta del bloque B es idéntica."))
+    texto_marco = ("**Contrato público.** La LCSP (art. 64) obliga además al órgano de contratación a prevenir, detectar y "
+                   "resolver los conflictos de interés, y una adjudicación con un criterio no publicado puede impugnarse y anularse. "
+                   if publico else
+                   "**Contrato privado.** No hay un procedimiento administrativo que anule la adjudicación, pero el criterio ético es "
+                   "el mismo y la empresa suele recogerlo en su código de conducta. ")
+    celdas.append(code(
+        "Markdown(f'''**Criterio C6 (conflicto de interés no revelado).** El jefe de proyecto preside la mesa y es cuñado del gerente de la empresa que "
+        "presenta la {oferta_cunado}; tiene, por tanto, un interés personal en el resultado, y no lo ha comunicado a nadie. Lo exigible según C6 no depende de "
+        "qué oferta sea mejor: **revelarlo** a la mesa y a su organización y **abstenerse** de la decisión. Proponer además la oferta del familiar es decidir "
+        "por consideraciones personales (cf. PMI 4.3.3).\n\n"
+        "**«La experiencia previa con la casa».** No es uno de los criterios publicados (precio, plazo y calidad); aplicarlo después de abrir las ofertas "
+        "cambia las reglas a favor de un licitador (cf. PMI 4.3.5). La mesa sólo puede aplicar el pliego, y con el pliego gana la {mejor} por {dif_puntos:.2f} puntos.\n\n"
+        "" + texto_marco.replace("{", "{{").replace("}", "}}") + "\n\n"
+        "**Respuesta.** El jefe de proyecto debe revelar el parentesco y abstenerse (C6), sea cual sea la mejor oferta. La mesa no puede aplicar «la "
+        "experiencia previa», porque no está en el pliego. Que el contrato sea {'público' if contrato_publico else 'privado'} cambia las consecuencias "
+        "jurídicas, no la respuesta: en los dos casos hay que revelar, abstenerse y adjudicar con los criterios publicados.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Quien tiene un conflicto de interés en una adjudicación debe…', ['revelarlo y abstenerse', 'votar sólo si su candidata es la mejor', 'callarlo si no influye', 'cambiar los pesos del pliego'],\n"
@@ -1247,12 +1627,19 @@ def _adjudicacion_conflicto(rng):
         "]", "Ética 19 — adjudicación"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"En la mesa: pedir que conste la puntuación del apartado 1 y la propuesta de adjudicar a la mejor "
-                     f"oferta; si el jefe de proyecto insiste, preguntar en acta si algún miembro tiene relación con las "
-                     f"licitadoras. Al jefe de proyecto, antes: «tienes que decirlo tú y apartarte; si la {cunado} fuera "
-                     f"realmente mejor, la mesa lo verá sin ti». Si no lo hace, comunicarlo al órgano competente (2.3.2 y "
-                     f"2.3.3). Prueba de publicidad: ¿cómo se leería la adjudicación, con {dif_precio + dif_plazo * coste_semana:+.1f} "
-                     "k€ de sobrecoste, si el parentesco saliera en el periódico?"))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Proyecto y empresa adjudicadora', f'{sobrecoste:+.1f} k€ si se adjudica a la {oferta_cunado}' + ('' if sobrecoste > 0 else ' (no hay sobrecoste, pero sí una adjudicación contra el pliego)')),\n"
+        "     ('Licitadora mejor puntuada', f'la {mejor} pierde un contrato que ganó con las reglas publicadas'),\n"
+        "     ('Jefe de proyecto', 'favorece a su familia y arriesga su puesto y la validez de la adjudicación'),\n"
+        "     ('Usted y la mesa', 'si callan sabiendo el parentesco, comparten la decisión')],\n"
+        "    [(f'Adjudicar a la {oferta_cunado} por «experiencia» (propuesta)', 'no en contrato público; contraria al pliego en ambos casos', 'no', 'no: ninguna licitadora aceptaría perder así'),\n"
+        "     (f'Que el jefe de proyecto revele y se abstenga, y la mesa adjudique a la {mejor} con el pliego', 'sí', 'sí', 'sí'),\n"
+        "     ('Si quiere valorar la experiencia, incluirla como criterio publicado en la próxima licitación', 'sí', 'sí', 'sí'),\n"
+        "     ('Si no revela, comunicarlo al órgano competente de la organización', 'sí', 'sí', 'sí')],\n"
+        "    f'''en la mesa, pedir que conste la puntuación del apartado 1 y la propuesta de adjudicar a la {mejor}; antes, al jefe de proyecto: «tienes que "
+        "decirlo tú y apartarte; si la {oferta_cunado} fuera realmente mejor, la mesa lo verá sin ti». Si no lo hace, comunicarlo a quien corresponda. Prueba de "
+        "publicidad: ¿cómo se leería la adjudicación, con {dif_puntos:.2f} puntos menos y {sobrecoste:+.1f} k€, si el parentesco saliera en la prensa?''')"))
     return celdas, f"{'contrato público' if publico else 'contrato privado'}: la {cunado} queda {float(orden.iloc[0] - orden[cunado]):.1f} puntos por debajo con los criterios del pliego"
 
 
@@ -1296,7 +1683,7 @@ def _holgura_oculta(rng):
                  "responsable con su propio equipo."),
               code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)),
               md(f"La actividad crítica {Y} va retrasada y el jefe de proyecto pide a los responsables de las actividades "
-                 f"que se solapan con ella que cedan a alguien de su equipo durante {semanas} semana{'s' if semanas > 1 else ''}, "
+                 f"no críticas que cedan a alguien de su equipo durante {semanas} semana{'s' if semanas > 1 else ''}, "
                  f"lo que retrasaría la actividad cedente otras tantas. Al responsable de {X} le pregunta si puede."),
               _mensaje(f"Responsable de {X} (al jefe de proyecto)",
                        f"Imposible: {X} no tiene ningún margen, si cedo a alguien retraso el proyecto."),
@@ -1315,55 +1702,87 @@ def _holgura_oculta(rng):
         "buena voluntad de cada responsable? Aplique la rúbrica."]))
     celdas.append(md("# Resolución"))
     celdas.append(code(f"X, Y, semanas_cedidas = {X!r}, {Y!r}, {semanas}\n" + SETUP))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el camino crítico", label="fig-pert")
     celdas += apartado(1)
+    celdas.append(md("Notación: ES y EF, inicio y fin más tempranos (*early start/finish*); LS y LF, inicio y fin más tardíos "
+                     "(*late start/finish*). Holgura total = LS − ES (lo que la actividad puede retrasarse sin retrasar el proyecto); "
+                     "holgura libre = mín ES de las sucesoras − EF (lo que puede retrasarse sin retrasar el inicio más temprano de "
+                     "ninguna sucesora); holgura independiente = máx(0, mín ES de las sucesoras − máx LF de las predecesoras − d) (la "
+                     "que tiene aunque las predecesoras acaben lo más tarde posible y las sucesoras empiecen lo antes posible)."))
     celdas.append(code('#| tbl-cap: "Calendario del proyecto"\n#| label: tbl-calendario\ncalendario'))
-    celdas.append(code('#| tbl-cap: "Cómo se obtiene cada fecha y cada holgura"\n#| label: tbl-detalleHolguras\n'
+    celdas.append(code('#| tbl-cap: "Cómo se obtiene cada fecha y cada holgura de la actividad X"\n#| label: tbl-detalleHolguras\n'
                        "detalle_holguras(calendario, prelaciones).loc[[X]].T"))
     celdas.append(code("Ht, Hl, Hi = (int(calendario.loc[X, c]) for c in ('H_total', 'H_libre', 'H_independiente'))\n"
-                       "Markdown(f'''{X}: holgura total **{Ht}**, libre **{Hl}**, independiente **{Hi}**. "
-                       "«No tiene ningún margen» es falso: puede retrasarse {Hl} semana(s) sin afectar a nadie y {Ht} sin retrasar el proyecto.''')"))
+                       "Markdown(f'''**Respuesta.** {X}: ES = {int(calendario.loc[X, 'inicio_mas_temprano'])}, EF = {int(calendario.loc[X, 'fin_mas_temprano'])}, "
+                       "LS = {int(calendario.loc[X, 'inicio_mas_tardio'])}, LF = {int(calendario.loc[X, 'fin_mas_tardio'])}; holgura total **{Ht}**, libre **{Hl}** e "
+                       "independiente **{Hi}** (semanas). «No tiene ningún margen» es falso: {X} puede retrasarse {plural(Hl, 'semana')} sin afectar a ninguna otra "
+                       "actividad y {plural(Ht, 'semana')} sin retrasar el proyecto.''')"))
     celdas += apartado(2)
-    celdas.append(code('#| tbl-cap: "Holguras de las demás actividades si X se retrasa lo que se le pide y si consume toda su holgura total"\n#| label: tbl-escenarios\n'
+    celdas.append(code('#| tbl-cap: "Holgura total de cada actividad en el plan, si X se retrasa lo que se le pide y si consume toda su holgura total"\n#| label: tbl-escenarios\n'
                        "def holguras_si_X_dura(extra):\n"
                        "    d = datos_proyecto['duration'].copy(); d[X] = d[X] + extra\n"
                        "    return proyecto.calendar(d)['H_total'], int(proyecto.duration(d))\n"
                        "H_ceder, T_ceder = holguras_si_X_dura(semanas_cedidas)\n"
                        "H_toda, T_toda = holguras_si_X_dura(Ht)\n"
-                       "escenarios = pd.DataFrame({'plan': calendario['H_total'], f'X +{semanas_cedidas}': H_ceder, f'X +{Ht}': H_toda})\n"
-                       "display(escenarios.T)\n"
-                       "afectadas_ceder = [a for a in escenarios.index if a != X and H_ceder[a] < calendario.loc[a, 'H_total']]\n"
-                       "afectadas_toda = [a for a in escenarios.index if a != X and H_toda[a] < calendario.loc[a, 'H_total']]\n"
-                       "Markdown(f'''Retrasar {X} {semanas_cedidas} semana(s): duración {T_ceder} (= {duracion}); actividades que pierden holgura: "
-                       "{', '.join(afectadas_ceder) or 'ninguna'} (dentro de la holgura libre nadie se entera). Consumir toda la holgura total ({Ht}): "
-                       "duración {T_toda}, pero {', '.join(afectadas_toda)} {\"pasa\" if len(afectadas_toda) == 1 else \"pasan\"} a ser crítica(s): el margen que «era mío» era también de ellas.''')"))
+                       "escenarios = pd.DataFrame({'plan': calendario['H_total'], f'{X} + {semanas_cedidas}': H_ceder, f'{X} + {Ht}': H_toda})\n"
+                       "escenarios.T"))
+    celdas.append(code(
+        "afectadas_ceder = [a for a in escenarios.index if a != X and H_ceder[a] < calendario.loc[a, 'H_total']]\n"
+        "afectadas_toda = [a for a in escenarios.index if a != X and H_toda[a] < calendario.loc[a, 'H_total']]\n"
+        "nuevas_criticas = [a for a in afectadas_toda if H_toda[a] == 0]\n"
+        "def cambios(H):\n"
+        "    return lista_y([f'{a} ({int(calendario.loc[a, \"H_total\"])} → {int(H[a])})' for a in escenarios.index if a != X and H[a] < calendario.loc[a, 'H_total']])\n"
+        "txt_ceder = ('ninguna otra actividad pierde holgura: el retraso cabe en la holgura libre de ' + X + f' ({Hl})' if not afectadas_ceder\n"
+        "             else 'pierden holgura ' + cambios(H_ceder))\n"
+        "Markdown(f'''- **{X} se retrasa {plural(semanas_cedidas, 'semana')}**: la duración del proyecto es {T_ceder} semanas "
+        "({'no cambia' if T_ceder == duracion else 'cambia'}); {X} pasa de holgura total {Ht} a {int(H_ceder[X])}, y {txt_ceder}.\n"
+        "- **{X} consume toda su holgura total ({plural(Ht, 'semana')})**: la duración sigue siendo {T_toda} semanas, pero {X} se vuelve crítica y "
+        "{'pierden holgura ' + cambios(H_toda) if afectadas_toda else 'ninguna otra actividad pierde holgura'}"
+        "{'; ' + lista_y(nuevas_criticas) + (' pasa' if len(nuevas_criticas) == 1 else ' pasan') + ' a ser ' + ('crítica' if len(nuevas_criticas) == 1 else 'críticas') if nuevas_criticas else ''}.\n\n"
+        "**Respuesta.** Retrasar {X} {plural(semanas_cedidas, 'semana')} "
+        "{'no afecta a ninguna otra actividad' if not afectadas_ceder else 'reduce la holgura de ' + lista_y(afectadas_ceder)}, y la duración "
+        "{'sigue siendo' if T_ceder == duracion else 'pasa a'} {T_ceder} semanas. "
+        "Consumir las {Ht} semanas de holgura total no retrasa el proyecto ({T_toda} semanas), pero deja sin margen a "
+        "{lista_y(afectadas_toda) if afectadas_toda else 'nadie más'}: la parte de la holgura que excede la libre ({Ht} − {Hl} = {Ht - Hl}) era compartida con "
+        "{'ellas' if len(afectadas_toda) > 1 else 'ella'}.''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**C1 y C4.** «{X} no tiene ningún margen» es una **afirmación falsa** (C1): el responsable sabe que tiene "
-                     f"{e['Ht']} semanas de holgura total. Si sólo hubiera callado, sería C4, retención de información: el jefe "
-                     "de proyecto necesita las holguras para decidir y las holguras no son un dato privado del responsable, "
-                     "sino del plan. Sobre a quién pertenece la holgura el criterio de la lección es el de la holgura libre: "
-                     f"hasta {e['Hl']} semanas {X} puede usarla sin afectar a nadie; entre {e['Hl']} y {e['Ht']} la usa a costa "
-                     f"de las actividades siguientes ({', '.join(e['nuevas_criticas'])} se vuelven críticas); y la decisión de "
-                     "a quién se asigna la holgura compartida es del jefe de proyecto, no de quien la «descubre» primero. "
-                     "Lo que no es objetivo —si es justo que quien planifica bien pierda su margen— se trata en C."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C1 (afirmación falsa).** «{X} no tiene ningún margen» es falso, y su responsable lo sabe («{X} tiene margen de sobra», dice en "
+        "privado): {X} tiene {plural(Ht, 'semana')} de holgura total y {Hl} de libre, y ceder {plural(semanas_cedidas, 'semana')} no retrasaría el proyecto.\n\n"
+        "**Criterio C4 (retención de información).** Si sólo hubiera callado el margen, sería C4: el jefe de proyecto necesita las holguras para decidir de "
+        "dónde sacar recursos para {Y}, y la holgura no es un dato privado del responsable sino del plan. Afirmar lo contrario es más grave que callar: es C1.\n\n"
+        "**A quién pertenece la holgura.** La holgura libre ({plural(Hl, 'semana')}) puede usarla {X} sin afectar a nadie; las {Ht - Hl} semanas restantes "
+        "hasta la total son compartidas con {lista_y(afectadas_toda) if afectadas_toda else 'las actividades siguientes'}. Repartir la holgura compartida es "
+        "decisión del jefe de proyecto, no de quien la «descubre» primero. Si es justo que quien planifica bien pierda su margen no se resuelve con un criterio "
+        "objetivo: es materia del bloque C.\n\n"
+        "**Respuesta.** Incumple **C1** (afirma que no hay margen sabiendo que hay {Ht} semanas); no mencionarlo habría sido **C4**. La holgura es del proyecto: "
+        "la libre ({Hl}) la usa la actividad sin afectar a nadie y la compartida ({Ht - Hl}) la asigna el jefe de proyecto.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         f"    ('Decir «{X} no tiene margen» sabiendo que tiene {e['Ht']} semanas de holgura total es…', ['C1, afirmación falsa', 'C4, retención de información', 'C8, reserva declarada', 'una estimación prudente'],\n"
         "     'Se afirma algo que se sabe falso; callar habría sido C4.'),\n"
         "    ('La holgura que una actividad puede consumir sin afectar a ninguna otra es la…', ['libre', 'total', 'independiente', 'de la ruta'],\n"
         "     'Holgura libre: mín ES de las sucesoras − EF.'),\n"
-        "    ('Si una actividad consume toda su holgura total…', ['sus sucesoras en la misma ruta se vuelven críticas', 'el proyecto se retrasa', 'no pasa nada', 'la ruta crítica desaparece'],\n"
-        "     'La duración del proyecto no cambia, pero la ruta queda sin margen.'),\n"
+        "    ('Si una actividad consume toda su holgura total…', ['la ruta más larga que pasa por ella se vuelve crítica, sin retrasar el proyecto', 'el proyecto se retrasa', 'no pasa nada', 'la ruta crítica desaparece'],\n"
+        "     'La duración del proyecto no cambia, pero esa ruta queda sin margen.'),\n"
         "]", "Ética 19 — holgura oculta"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md("Lo que depende de la buena voluntad falla; lo que está en el procedimiento no: el calendario con las "
-                     "tres holguras lo publica el jefe de proyecto cada semana a partir de los datos de todos, de modo que el "
-                     "margen de cada actividad es visible y la pregunta no es «¿tienes margen?» sino «el plan dice que tienes "
-                     f"{e['Hl']} semanas libres: te pido {semanas}». Para el incentivo perverso («si lo digo me quitan gente»): "
-                     "reconocer explícitamente a quien cede, y ceder sólo dentro de la holgura libre salvo decisión del "
-                     "jefe de proyecto. Prueba de reversibilidad para el responsable: ¿aceptaría que el responsable de "
-                     f"{Y} le escondiera su margen cuando fuera él quien lo necesitara?"))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [(f'Proyecto y responsable de {Y}', f'{Y} es crítica y va retrasada: cada semana que no se recupera es una semana más de proyecto'),\n"
+        "     (f'Responsable de {X}', f'teme que le quiten gente «cada vez que alguien va mal»; ceder {plural(semanas_cedidas, \"semana\")} no le cuesta plazo (holgura libre {Hl})'),\n"
+        "     ((('Responsable de ' if len(afectadas_toda) == 1 else 'Responsables de ') + lista_y(afectadas_toda)) if afectadas_toda else 'Resto del equipo', 'su margen desaparece si alguien consume la holgura compartida sin decirlo'),\n"
+        "     ('Jefe de proyecto', 'decide a ciegas si las holguras dependen de lo que cada uno quiera contar')],\n"
+        "    [('Que cada responsable informe de su margen si quiere (situación actual)', 'sí', 'no: nadie defendería en público un «no tengo margen» falso', 'no'),\n"
+        "     ('Publicar cada semana el calendario con las tres holguras, calculado con los datos de todos', 'sí', 'sí', 'sí'),\n"
+        "     ('Regla de cesión: dentro de la holgura libre sin consulta; la compartida, por decisión del jefe de proyecto', 'sí', 'sí', 'sí'),\n"
+        "     ('Reconocer a quien cede (no penalizar con más cesiones a quien planifica bien)', 'sí', 'sí', 'sí')],\n"
+        "    f'''el calendario con las tres holguras lo publica el jefe de proyecto a partir de los datos de todos, de modo que la pregunta no es «¿tienes margen?» "
+        "sino «el plan dice que {X} tiene {plural(Hl, 'semana')} de holgura libre: te pido {semanas_cedidas}». Para el incentivo perverso, reconocer a quien cede y "
+        "limitar las cesiones a la holgura libre salvo decisión expresa. Prueba de reversibilidad para el responsable de {X}: ¿aceptaría que el de {Y} le "
+        "escondiera su margen cuando fuera él quien lo necesitara?''')"))
     return celdas, f"{X} con holguras {e['Ht']}/{e['Hl']}/{e['Hi']} y «no tiene ningún margen»; ceder {semanas} a {Y}"
 
 
@@ -1415,37 +1834,58 @@ def _coste_hundido(rng):
                        "    return float(sum(f / (1 + k) ** t for t, f in enumerate(flujos)))\n"
                        "van_restante = van(flujos_restantes, k)\n"
                        "van_total = van_restante - gastado\n"
-                       "suma_nominal = flujo_anual * anos"))
+                       "suma_nominal = flujo_anual * anos\n"
+                       "va_flujos = van_restante + inversion_restante"))
+    celdas.append(code(_AUX_ETICA))
     celdas += apartado(1)
-    celdas.append(code('#| tbl-cap: "Flujos que quedan y su valor actual"\n#| label: tbl-flujos\n'
-                       "detalle = pd.DataFrame({'flujo': flujos_restantes, 'factor 1/(1+k)^t': [1 / (1 + k) ** t for t in range(anos + 1)]},\n"
-                       "                       index=pd.Index(range(anos + 1), name='año'))\n"
+    celdas.append(md("VAN (valor actual neto) de los flujos que quedan: la inversión que falta se paga hoy (año 0) y cada flujo "
+                     "anual se descuenta al coste de capital k con el factor 1/(1 + k)^t. Lo ya gastado no forma parte de esos "
+                     "flujos: es un coste hundido, que no se recupera ni se evita con la decisión."))
+    celdas.append(code('#| tbl-cap: "Flujos que quedan y su valor actual (k€)"\n#| label: tbl-flujos\n'
+                       "detalle = pd.DataFrame({'flujo': [float(f) for f in flujos_restantes], 'factor 1/(1+k)^t': [1 / (1 + k) ** t for t in range(anos + 1)]},\n"
+                       "                       index=pd.Index([str(t) for t in range(anos + 1)], name='año'))\n"
                        "detalle['valor actual'] = detalle['flujo'] * detalle['factor 1/(1+k)^t']\n"
-                       "detalle.loc['Total'] = [None, None, detalle['valor actual'].sum()]\n"
-                       "display(detalle.round(2))\n"
-                       "Markdown(f'''VAN de lo que queda: **{van_restante:.1f} k€**; VAN del proyecto completo (restando los {gastado} k€ gastados): **{van_total:.1f} k€**.''')"))
+                       "detalle.loc['Total'] = [float(sum(flujos_restantes)), np.nan, detalle['valor actual'].sum()]\n"
+                       "limpia_tabla(detalle, 4)"))
+    celdas.append(code(
+        "factor_anualidad = (1 - (1 + k) ** -anos) / k\n"
+        "Markdown(f'''- Valor actual de los flujos de explotación: {flujo_anual} · (1/{1 + k:g} + 1/{1 + k:g}² + … + 1/{1 + k:g}^{anos}) = {flujo_anual} · "
+        "(1 − {1 + k:g}^−{anos}) / {k:g} = {flujo_anual} · {factor_anualidad:.4f} = **{va_flujos:.2f} k€**.\n"
+        "- VAN de lo que queda = −{inversion_restante} + {va_flujos:.2f} = **{van_restante:.2f} k€**.\n"
+        "- VAN del proyecto completo = VAN de lo que queda − lo gastado = {van_restante:.2f} − {gastado} = **{van_total:.2f} k€**.\n\n"
+        "**Respuesta.** VAN de los flujos que quedan: {van_restante:.2f} k€; VAN del proyecto completo contando lo gastado: {van_total:.2f} k€.''')"))
     celdas += apartado(2)
-    if continuar:
-        texto = (f"El VAN restante es positivo ({van_r:.1f} k€): **continuar** crea valor a partir de hoy. El VAN total es "
-                 f"negativo ({van_total:.1f} k€): el proyecto, visto desde el principio, fue una mala inversión, pero esa "
-                 "pérdida ya está hecha y es la misma si se continúa o se cancela. El criterio correcto es el VAN restante; "
-                 f"lo gastado no cambia la decisión. Y «recuperar la inversión» no es cierto: ni siquiera sumando sin "
-                 f"descontar ({suma_nominal} k€) se recuperan los {S + I_r} k€ totales.")
-    else:
-        texto = (f"El VAN restante es negativo ({van_r:.1f} k€): **cancelar**, aunque haya {S} k€ gastados, porque cada euro "
-                 f"que se invierta a partir de hoy vale menos de lo que cuesta. El argumento «{suma_nominal} k€ recuperan "
-                 f"los {I_r} k€ que faltan» suma flujos sin descontar; al {k:.0%} valen {van_r + I_r:.1f} k€, menos que la "
-                 "inversión. Lo gastado es un coste hundido: no vuelve ni continuando ni cancelando, y por eso no entra en "
-                 "la decisión.")
-    celdas.append(md(texto))
+    celdas.append(code(
+        "rec_restante = va_flujos >= inversion_restante\n"
+        "rec_total_nominal = suma_nominal >= gastado + inversion_restante\n"
+        "Markdown(f'''- El VAN de lo que queda ({van_restante:.2f} k€) es {'positivo' if van_restante > 0 else 'negativo'}: recomienda "
+        "**{'continuar' if van_restante > 0 else 'cancelar'}**.\n"
+        "- El VAN total ({van_total:.2f} k€) es {'positivo' if van_total > 0 else 'negativo'}: recomendaría "
+        "{'continuar' if van_total > 0 else 'cancelar'}.\n\n"
+        "El criterio correcto es el **VAN de lo que queda**. Lo gastado ({gastado} k€) es el mismo si se continúa y si se cancela: no cambia con la "
+        "decisión y, por tanto, no puede inclinarla. El VAN total responde a otra pregunta, si el proyecto completo fue buena inversión "
+        "({'sí' if van_total > 0 else 'no'}), que ya no se puede cambiar.\n\n"
+        "¿«Recuperan la inversión»? Depende de qué inversión, y hay que descontar:\n\n"
+        "- La que falta: los flujos valen hoy {va_flujos:.2f} k€ {'≥' if rec_restante else '<'} {inversion_restante} k€: "
+        "{'sí la recuperan' if rec_restante else 'no la recuperan'} "
+        "{('(la suma sin descontar, ' + str(suma_nominal) + ' k€, también la supera)') if rec_restante else ('(sólo la suma sin descontar, ' + str(suma_nominal) + ' k€, la supera: de ahí la apariencia de que la recupera)' if suma_nominal >= inversion_restante else '(ni siquiera la suma sin descontar, ' + str(suma_nominal) + ' k€, llega)')}.\n"
+        "- La total, {gastado} + {inversion_restante} = {gastado + inversion_restante} k€: los flujos valen hoy {va_flujos:.2f} k€, así que **no** "
+        "(VAN total {van_total:.2f} k€){'; ni siquiera sumando sin descontar: ' + str(suma_nominal) + ' k€' if not rec_total_nominal else '; sólo la suma sin descontar (' + str(suma_nominal) + ' k€) lo aparenta'}.\n\n"
+        "**Respuesta.** El VAN de lo que queda recomienda {'continuar' if van_restante > 0 else 'cancelar'} y el VAN total, "
+        "{'continuar' if van_total > 0 else 'cancelar'}; el correcto es el primero. "
+        "{'La afirmación del borrador es cierta sólo para la inversión que falta; para la inversión total es falsa.' if rec_restante else 'La afirmación del borrador es falsa: descontados, los flujos no cubren ni la inversión que falta.'}''')"))
     celdas += apartado(3)
-    celdas.append(md("**C12.** La decisión se toma sobre el VAN de los flujos que quedan; el borrador argumenta con lo gastado "
-                     "(«cancelar es tirarlos»), que es irrelevante, y con una suma sin descontar («recuperan la inversión») "
-                     + ("que no recupera ni siquiera la inversión total: una afirmación falsa (C1) aunque la conclusión "
-                        "—continuar— sea la correcta por la razón equivocada. " if continuar else
-                        "que al coste de capital no cubre la inversión que falta: una afirmación falsa (C1). ")
-                     + "**C11.** Si el motivo real de continuar es no reconocer que el proyecto fue un error, el criterio pide "
-                     "lo contrario: reconocerlo, y decidir el resto con los números."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C12 (decidir sobre el futuro, no sobre lo gastado).** El borrador argumenta con lo gastado («hemos invertido {gastado} k€; "
+        "cancelar ahora es tirarlos»), que no es un argumento ni a favor ni en contra, y con una suma sin descontar ({flujo_anual} × {anos} = {suma_nominal} k€). "
+        "La decisión se toma con el VAN de lo que queda: {van_restante:.2f} k€, que recomienda **{'continuar' if van_restante > 0 else 'cancelar'}**. "
+        + "{'La conclusión del borrador (continuar) es correcta, pero por razones equivocadas.' if van_restante > 0 else 'La propuesta del borrador (continuar) es incorrecta.'}\n\n"
+        "**Criterio C1 (afirmación falsa).** «Recuperan la inversión» "
+        + "{'es falso si se refiere, como sugiere el borrador, a lo invertido en total (' + str(gastado + inversion_restante) + ' k€ frente a ' + f'{va_flujos:.2f}' + ' k€ de valor actual).' if rec_restante else 'es falso: descontados al ' + porc(k, 0) + ', los flujos valen ' + f'{va_flujos:.2f}' + ' k€, menos que los ' + str(inversion_restante) + ' k€ que faltan (C12 lo califica expresamente de C1).'}"
+        " **Criterio C11 (reconocer los errores propios).** Si el motivo real de seguir es no reconocer que el proyecto fue mala inversión (VAN total "
+        "{van_total:.2f} k€), el criterio pide lo contrario: reconocerlo y decidir el resto con los números.\n\n"
+        "**Respuesta.** {'La propuesta (continuar) es correcta en su conclusión, pero su argumentación incumple C12' if van_restante > 0 else 'La propuesta es incorrecta: incumple C12'}; "
+        "la afirmación «recuperan la inversión» incumple **C1**, y seguir para no admitir el error incumpliría **C11**.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('La decisión de continuar o cancelar un proyecto en marcha se toma con…', ['el VAN de los flujos que quedan', 'el VAN incluyendo lo ya gastado', 'la suma sin descontar de los flujos futuros', 'lo gastado hasta hoy'],\n"
@@ -1457,17 +1897,21 @@ def _coste_hundido(rng):
         "]", "Ética 19 — coste hundido"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(("Párrafo para el comité (modelo): «El proyecto ha costado hasta hoy más de lo que valdrá: visto desde el "
-                      f"inicio, su VAN es de {van_total:.0f} k€. Esa pérdida es ya un hecho. La decisión de hoy es otra: "
-                      f"terminarlo requiere {I_r} k€ y los flujos previstos valen {van_r + I_r:.0f} k€ actuales, así que "
-                      f"continuar aporta {van_r:.0f} k€. Recomendamos continuar, y revisar por qué la estimación inicial falló.»"
-                      if continuar else
-                      "Párrafo para el comité (modelo): «Terminar el proyecto requiere "
-                      f"{I_r} k€ y los flujos previstos valen {van_r + I_r:.0f} k€ actuales: continuar destruye {-van_r:.0f} k€ "
-                      f"más. Los {S} k€ gastados no se recuperan en ningún caso. Recomendamos cancelar, documentar lo "
-                      "aprendido y, si hay un comprador para el trabajo hecho, venderlo.»")
-                     + " Al jefe de proyecto: reconocer el error es lo que protege su credibilidad para el siguiente proyecto; "
-                     "defender el proyecto con una cuenta que no se sostiene la destruye en cuanto alguien la rehace."))
+    celdas.append(code(
+        "decision = 'continuar' if van_restante > 0 else 'cancelar'\n"
+        "rubrica_caso(\n"
+        "    [('Empresa (accionistas)', ('continuar aporta ' if van_restante > 0 else 'continuar resta ') + f'{abs(van_restante):.2f} k€ de valor desde hoy; los {gastado} k€ gastados están perdidos en cualquier caso'),\n"
+        "     ('Comité de dirección', 'necesita la cuenta correcta (VAN de lo que queda) para decidir, no la del borrador'),\n"
+        "     ('Jefe de proyecto y equipo', 'reconocer que el proyecto fue mala inversión les cuesta reputación a corto plazo; defenderlo con una cuenta falsa, más a largo plazo')],\n"
+        "    [('Enviar el borrador tal cual (propuesta)', 'sí', 'no: no resiste que alguien rehaga la cuenta', 'no: el comité no querría decidir con ella'),\n"
+        "     (f'Recomendar {decision} con el VAN de lo que queda y explicar el coste hundido', 'sí', 'sí', 'sí'),\n"
+        "     ('Presentar además el análisis de por qué falló la estimación inicial (lecciones aprendidas)', 'sí', 'sí', 'sí')]\n"
+        "    + ([] if van_restante > 0 else [('Cancelar y buscar comprador para el trabajo hecho', 'sí', 'sí', 'sí')]),\n"
+        "    (f'''párrafo para el comité: «Visto desde el inicio, el proyecto tiene un VAN de {van_total:.0f} k€: esa pérdida ya está hecha. La decisión de hoy es "
+        "otra: terminarlo requiere {inversion_restante} k€ y los flujos previstos valen {va_flujos:.0f} k€ actuales, así que continuar "
+        "{'aporta ' + f'{van_restante:.0f}' + ' k€. Recomendamos continuar y revisar por qué falló la estimación inicial.»' if van_restante > 0 else 'destruye ' + f'{-van_restante:.0f}' + ' k€ más. Recomendamos cancelar, documentar lo aprendido y, si hay comprador para el trabajo hecho, venderlo.»'} "
+        "Al jefe de proyecto: reconocer el error es lo que protege su credibilidad para el siguiente proyecto; defender el proyecto con una cuenta que no se "
+        "sostiene la destruye en cuanto alguien la rehace.'''))"))
     return celdas, (f"VAN restante {van_r:.0f} k€ (continuar) con VAN total {van_total:.0f} k€" if continuar
                     else f"VAN restante {van_r:.0f} k€ (cancelar) aunque los flujos nominales ({suma_nominal}) superen la inversión que falta ({I_r})")
 
@@ -1523,6 +1967,7 @@ def _recurso_desviado(rng):
         "(C) ¿Qué propone al director de operaciones y qué comunica al cliente? Aplique la rúbrica."]))
     celdas.append(md("# Resolución"))
     celdas.append(code(f"X, semanas_parada, precio_contrato, penalidad_por_mil_y_dia, ahorro_otro_proyecto = {X!r}, {w}, {precio}, {pen_dia}, {ganancia_A}\n" + SETUP))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el camino crítico", label="fig-pert")
     celdas += apartado(1)
     celdas.append(code('#| tbl-cap: "Calendario del proyecto"\n#| label: tbl-calendario\ncalendario'))
@@ -1530,23 +1975,35 @@ def _recurso_desviado(rng):
                        "d = datos_proyecto['duration'].copy(); d[X] = d[X] + semanas_parada\n"
                        "duracion_con_parada = int(proyecto.duration(d))\n"
                        "retraso = duracion_con_parada - duracion\n"
-                       "penalidad = penalidad_por_mil_y_dia * precio_contrato / 1000 * 7 * retraso\n"
-                       "Markdown(f'''{X} tiene holgura total {H}; parada {semanas_parada} semanas, el proyecto pasa de {duracion} a **{duracion_con_parada}** semanas "
-                       "(retraso {retraso} = máx(0, {semanas_parada} − {H})). Penalidad: {penalidad_por_mil_y_dia} € por cada 1 000 € × {precio_contrato} k€ = {penalidad_por_mil_y_dia * precio_contrato / 1000:.2f} k€ por día × 7 × {retraso} días = **{penalidad:.1f} k€**.''')"))
+                       "pen_dia_keur = penalidad_por_mil_y_dia * precio_contrato / 1000\n"
+                       "penalidad = pen_dia_keur * 7 * retraso\n"
+                       "Markdown(f'''- Holgura total de {X}: LS − ES = {int(calendario.loc[X, 'inicio_mas_tardio'])} − {int(calendario.loc[X, 'inicio_mas_temprano'])} = **{H}**.\n"
+                       "- Parar {X} {plural(semanas_parada, 'semana')} equivale a alargarla otras tantas: el proyecto pasa de {duracion} a **{duracion_con_parada}** "
+                       "semanas; retraso = máx(0, {semanas_parada} − {H}) = **{plural(retraso, 'semana')}** = {7 * retraso} días naturales.\n"
+                       "- Penalidad diaria: {penalidad_por_mil_y_dia:.2f} € por cada 1 000 € de precio; el precio es {precio_contrato} k€ = {precio_contrato} × 1 000 €, "
+                       "luego {penalidad_por_mil_y_dia:.2f} × {precio_contrato} = {1000 * pen_dia_keur:.0f} € = {pen_dia_keur:.2f} k€ por día.\n"
+                       "- Penalidad total: {pen_dia_keur:.2f} × {7 * retraso} días = **{penalidad:.2f} k€**.\n\n"
+                       "**Respuesta.** {X} tiene holgura total {H}; si se para {semanas_parada} semanas el proyecto se retrasa {plural(retraso, 'semana')} "
+                       "({duracion_con_parada} en lugar de {duracion}) y la penalidad legal es de {penalidad:.2f} k€.''')"))
     celdas += apartado(2)
     celdas.append(code("neto_empresa = ahorro_otro_proyecto - penalidad\n"
-                       "Markdown(f'''El otro proyecto ahorra {ahorro_otro_proyecto} k€ y este pierde {penalidad:.1f} k€: neto para la empresa "
-                       "**{neto_empresa:+.1f} k€** ({'conviene' if neto_empresa > 0 else 'no conviene'} ceder, en cifras). "
-                       f"Sin retrasar el proyecto, {X} podría cederse como mucho **{{H}}** semana(s), las de su holgura total.''')"))
+                       "cesion = (f'ceder hasta {plural(H, \"semana\")} (su holgura total) no retrasa el proyecto ni cuesta penalidad' if H > 0\n"
+                       "          else f'{X} es crítica (holgura total 0): cualquier semana de parada retrasa el proyecto')\n"
+                       "Markdown(f'''Neto para la empresa = ahorro en el otro proyecto − penalidad en este = {ahorro_otro_proyecto} − {penalidad:.2f} = **{neto_empresa:+.2f} k€**.\n\n"
+                       "**Respuesta.** {'En cifras, a la empresa le conviene ceder: gana ' + f'{neto_empresa:.2f}' + ' k€ netos.' if neto_empresa > 0 else 'En cifras, a la empresa no le conviene ceder: pierde ' + f'{-neto_empresa:.2f}' + ' k€ netos.'} "
+                       "Sin retrasar el proyecto, {X} {('puede cederse como mucho **' + plural(H, 'semana') + '**') if H > 0 else 'no puede cederse **ninguna semana**'}: {cesion}.''')"))
     celdas += apartado(3)
-    celdas.append(md("**C1.** Decir al cliente que el retraso lo causa el proveedor de material, sabiendo que lo causa una "
-                     "decisión propia, es una afirmación falsa; además, en un contrato público, la causa del retraso determina "
-                     "si procede la penalidad o una prórroga (la causa imputable al contratista no da derecho a prórroga), de "
-                     "modo que la mentira tiene consecuencias jurídicas. **C5.** Desviar los operarios sin decirlo traslada al "
-                     "cliente un coste (el retraso) para beneficio de otro cliente de la empresa, sin su conocimiento. La "
-                     "respuesta de B **no depende** del apartado 2: que a la empresa le convenga ceder dice qué debería "
-                     "negociar con el cliente, no que pueda ocultárselo ni mentirle sobre la causa. Lo que sí depende de la "
-                     f"cifra es la decisión de negocio: ceder hasta {e['H']} semanas es gratis en plazo; más, cuesta la penalidad."))
+    celdas.append(code(
+        "Markdown(f'''**Criterio C1 (afirmación falsa).** Decir al cliente que el retraso es «del proveedor de material», sabiendo que lo causa la decisión "
+        "de llevarse los operarios de {X}, es comunicar como cierta una causa falsa. En un contrato público la causa importa además jurídicamente: un retraso "
+        "imputable al contratista lleva penalidad ({penalidad:.2f} k€ aquí) y uno no imputable puede justificar una prórroga; mentir sobre la causa es intentar "
+        "librarse de la penalidad.\n\n"
+        "**Criterio C5 (beneficio propio a costa de otro).** Desviar los operarios sin decirlo traslada a este cliente un coste (el retraso de "
+        "{plural(retraso, 'semana')}) en beneficio de otro cliente de la empresa ({ahorro_otro_proyecto} k€ de ahorro allí), sin que lo haya aceptado.\n\n"
+        "**Respuesta.** La causa falsa incumple **C1**; desviar los operarios ocultándolo, **C5**. La respuesta **no depende** de qué proyecto convenga más a "
+        "la empresa (apartado 2: {neto_empresa:+.2f} k€): esa cifra dice qué conviene negociar con el cliente, no autoriza a ocultárselo ni a mentir sobre la "
+        "causa. Lo que sí depende de las cifras es la decisión de negocio: {cesion}; cada semana de retraso cuesta "
+        "{pen_dia_keur * 7:.2f} k€ de penalidad.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Atribuir al proveedor un retraso causado por una decisión propia es…', ['C1, afirmación falsa', 'C2, verdad a medias', 'C4, retención de información', 'legítimo si la empresa gana en conjunto'],\n"
@@ -1558,12 +2015,20 @@ def _recurso_desviado(rng):
         "]", "Ética 19 — recurso desviado"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"Al director de operaciones: la tabla de opciones (ceder {e['H']} semanas gratis; ceder {w} con "
-                     f"{penalidad:.1f} k€ de penalidad y un retraso de {retraso} semanas que hay que comunicar; reforzar {X} "
-                     "con subcontrata) y la condición de que el cliente conozca la causa real. Al cliente, si se cede más de "
-                     f"la holgura: aviso por escrito del retraso previsto, su causa y, si se quiere, una propuesta "
-                     "(compensación, recuperación en otra actividad). Prueba de publicidad: la versión «del proveedor» no "
-                     "resiste una llamada del cliente al proveedor."))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Cliente (administración pública)', f'recibe la obra {plural(retraso, \"semana\")} tarde y, con la versión falsa, sin saber por qué ni poder reclamar la penalidad de {penalidad:.2f} k€'),\n"
+        "     ('Cliente del otro proyecto', f'se beneficia de {ahorro_otro_proyecto} k€ de penalización evitada'),\n"
+        "     ('Empresa', f'neto {neto_empresa:+.2f} k€ si cede {semanas_parada} semanas; con la mentira, riesgo de que se descubra y de perder futuras licitaciones'),\n"
+        "     ('Proveedor de material', 'se le atribuye un retraso que no ha causado')],\n"
+        "    [('Ceder y atribuir el retraso al proveedor (propuesta)', 'no: elude la penalidad con una causa falsa', 'no: no resiste una llamada del cliente al proveedor', 'no'),\n"
+        "     ((f'Ceder sólo {plural(H, \"semana\")} (la holgura total), sin retraso' if H > 0 else f'No ceder {X} (es crítica) y buscar los operarios en una actividad con holgura'), 'sí', 'sí', 'sí'),\n"
+        "     (f'Ceder {semanas_parada} semanas, avisar al cliente del retraso y asumir la penalidad', 'sí', 'sí', 'sí'),\n"
+        "     (f'Reforzar {X} con una subcontrata para no retrasar', 'sí', 'sí', 'sí')],\n"
+        "    f'''al director de operaciones, la tabla de opciones ({cesion}; ceder {semanas_parada} con {penalidad:.2f} k€ de "
+        "penalidad y {plural(retraso, 'semana')} de retraso que hay que comunicar; reforzar {X}) y la condición de que el cliente conozca la causa real. Al cliente, "
+        "si se cede más que la holgura: aviso por escrito del retraso previsto y de su causa y, si se quiere, una propuesta (compensación o recuperación en otra "
+        "actividad).''')"))
     return celdas, f"parar {X} {w} semanas (holgura {e['H']}): {retraso} de retraso, {penalidad:.1f} k€ de penalidad frente a {ganancia_A} k€ del otro proyecto"
 
 
@@ -1649,8 +2114,14 @@ def _baja_temeraria(rng):
                        "proyecto = prelaciones.create_project()\n"
                        "duracion = float(proyecto.duration(datos_proyecto['duration']))\n"
                        "sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])"))
+    celdas.append(code(_AUX_ETICA))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con las duraciones medias", label="fig-pert")
     celdas += apartado(1)
+    celdas.append(md("Con cuatro o más licitadores y el precio como único criterio, la norma de referencia se aplica así: (1) media "
+                     "de las bajas de todas las ofertas; (2) si alguna oferta es superior a esa media en más de 10 puntos (es decir, "
+                     "su baja es más de 10 puntos **menor** que la media), se excluye y se recalcula la media con las restantes (y, si "
+                     "quedan menos de tres, con las tres ofertas más bajas, que son las de mayor baja); (3) se presume anormalmente "
+                     "baja la oferta cuya baja supera la media en más de 10 puntos."))
     celdas.append(code("def umbral_temeridad(bajas):\n"
                        "    '''Cuatro o más licitadores (art. 85.4 RGLCAP): media de las bajas sin las ofertas que superan la media en más\n"
                        "    de 10 puntos (bajas 10 puntos menores que la media); si quedan menos de tres, media de las tres ofertas más bajas.'''\n"
@@ -1665,26 +2136,44 @@ def _baja_temeraria(rng):
                        "    return media + 10, media\n"
                        "bajas = bajas_competidores['baja (%)'].tolist() + [baja_propuesta]\n"
                        "umbral, media = umbral_temeridad(bajas)\n"
+                       "media0 = float(np.mean(bajas))\n"
+                       "excluidas = [b for b in bajas if b < media0 - 10]\n"
                        "precio_oferta = presupuesto * (1 - baja_propuesta / 100)\n"
                        "margen = precio_oferta - coste_estimado\n"
-                       "Markdown(f'''Bajas: {bajas}; media {media:.2f} %; umbral de presunción: media + 10 = **{umbral:.2f} %**. "
-                       "Nuestra baja del {baja_propuesta} % {'**supera** el umbral: se presume anormalmente baja' if baja_propuesta > umbral else 'no supera el umbral'}. "
-                       "Precio ofertado {precio_oferta:.1f} k€ frente a un coste estimado de {coste_estimado} k€: margen **{margen:+.1f} k€**.''')"))
+                       "baja_sin_perdida = 100 * (1 - coste_estimado / presupuesto)\n"
+                       "paso2 = (f'Ninguna baja es menor que {media0:.2f} − 10 = {media0 - 10:.2f}: no se excluye ninguna oferta y la media se mantiene.' if not excluidas else\n"
+                       "         f'Las bajas {lista_y([f\"{b:g}\" for b in excluidas])} son menores que {media0:.2f} − 10 = {media0 - 10:.2f}: se excluyen y la nueva media es **{media:.2f} %**.')\n"
+                       "Markdown(f'''1. Media de las cuatro bajas: ({' + '.join(f\"{b:g}\" for b in bajas)}) / {len(bajas)} = **{media0:.2f} %**.\n"
+                       "2. {paso2}\n"
+                       "3. Umbral de presunción: {media:.2f} + 10 = **{umbral:.2f} %**. Nuestra baja, {baja_propuesta:g} %, "
+                       "{'**supera** el umbral: se presume anormalmente baja' if baja_propuesta > umbral else 'no supera el umbral'}.\n\n"
+                       "Precio ofertado = {presupuesto} · (1 − {baja_propuesta:g}/100) = **{precio_oferta:.1f} k€**; margen sobre el coste estimado = "
+                       "{precio_oferta:.1f} − {coste_estimado:g} = **{margen:+.1f} k€** ({'pérdidas' if margen < 0 else 'beneficio'}). La mayor baja sin perder dinero sería "
+                       "100 · (1 − {coste_estimado:g}/{presupuesto}) = {baja_sin_perdida:.1f} %.\n\n"
+                       "**Respuesta.** Media de las bajas {media:.2f} %, umbral {umbral:.2f} %; la oferta del {baja_propuesta:g} % "
+                       "{'incurre' if baja_propuesta > umbral else 'no incurre'} en la presunción y deja un margen de {margen:+.1f} k€ sobre el coste.''')"))
     celdas += apartado(2)
-    celdas.append(code("z = (plazo_oferta - duracion) / sigma\n"
-                       "p_plazo = float(norm.cdf(z))\n"
-                       "plazo_80 = duracion + norm.ppf(0.8) * sigma\n"
-                       "Markdown(f'''Duración esperada {duracion:.1f} semanas, σ = {sigma:.2f}: **P(T ≤ {plazo_oferta}) = {p_plazo:.2f}**. "
-                       "Con probabilidad 0,8 se cumplirían **{plazo_80:.1f}** semanas.''')"))
+    celdas.append(code("camino, _ = camino_critico_sigma(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])\n"
+                       "p_plazo = float(norm.cdf(plazo_oferta, duracion, sigma))\n"
+                       "plazo_80 = float(norm.ppf(0.8, duracion, sigma))\n"
+                       "Markdown(f'''Camino crítico {' – '.join(camino)}: duración esperada {' + '.join(f\"{datos_proyecto.loc[a, 'duration']:g}\" for a in camino)} = "
+                       "**{duracion:.2f}** semanas; {explica_sigma_ruta(camino, datos_proyecto['variance'])} semanas.\n\n"
+                       "- {explica_probabilidad(duracion, sigma, plazo_oferta)}.\n"
+                       "- Plazo con probabilidad 0,8: {explica_percentil(duracion, sigma, 0.8, 'semanas')}.\n\n"
+                       "**Respuesta.** La probabilidad de ejecutar en {plazo_oferta} semanas es **{p_plazo:.3f}** ({porc(p_plazo)}); el plazo que se cumple con "
+                       "probabilidad 0,8 es {plazo_80:.2f} semanas, es decir, se podrían ofertar **{int(np.ceil(plazo_80))} semanas** (con {int(np.floor(plazo_80))} "
+                       "la probabilidad sería {norm.cdf(np.floor(plazo_80), duracion, sigma):.3f}, menor que 0,8).''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**Norma.** La presunción de anormalidad obliga a la mesa a pedir justificación de la oferta; si la "
-                     f"justificación no acredita que se puede ejecutar a ese precio (con un margen de {precio_oferta - coste_estimado:+.0f} "
-                     "k€ sobre el coste, difícilmente), la oferta se excluye. «Ganar seguro» no es, por tanto, lo que ocurre. "
-                     f"**C13.** Ofertar {plazo_oferta} semanas con una probabilidad del {p:.0%} de cumplirlas, contando con "
-                     "renegociar, es un compromiso que no se hace de buena fe; y **C1**: la oferta afirma un plazo que quien la "
-                     "firma sabe que no es el que espera cumplir. Que «siempre se haga» no cambia el criterio; y los "
-                     "modificados y prórrogas de la LCSP tienen causas tasadas, entre las que no está «ofertamos lo que no "
-                     "podíamos»."))
+    celdas.append(code(
+        "Markdown(f'''**Norma** (RGLCAP art. 85; LCSP art. 149). La presunción de anormalidad obliga a la mesa a pedir al licitador que justifique su oferta; "
+        "si la justificación no convence, la oferta se excluye. Con un margen de {margen:+.1f} k€ sobre el propio coste estimado, la justificación sería difícil: "
+        "«ganar seguro» no es lo que la norma prevé, sino un trámite que puede acabar en exclusión.\n\n"
+        "**Criterio C13 (compromisos de buena fe).** Ofertar {plazo_oferta} semanas con una probabilidad de cumplirlas de {p_plazo:.3f}, sabiendo que «el equipo "
+        "dice que no llega» y contando con «renegociar con modificados y prórrogas», es asumir un compromiso que se sabe inalcanzable: no es de buena fe. "
+        "**Criterio C1 (afirmación falsa).** La oferta afirma un plazo que quien la firma no espera cumplir. Que «siempre se haga» no cambia el criterio, y los "
+        "modificados y las prórrogas tienen causas tasadas en la ley, entre las que no está haber ofertado lo que no se podía cumplir.\n\n"
+        "**Respuesta.** La presunción de anormalidad abre un trámite de justificación y, si no convence, la **exclusión**. Ofertar un plazo inalcanzable "
+        "(P = {p_plazo:.3f}) contando con renegociarlo incumple **C13** y **C1**.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Con cuatro o más licitadores y sólo el precio como criterio, se presume anormal la oferta que…', ['baja más de 10 puntos por debajo de la media de las ofertas', 'es la más baja', 'baja más del 25 %', 'baja más de 20 puntos que la siguiente'],\n"
@@ -1696,13 +2185,22 @@ def _baja_temeraria(rng):
         "]", "Ética 19 — oferta temeraria"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md(f"Oferta defendible: una baja por debajo del umbral ({umbral:.1f} %) que deje margen sobre el coste, y el "
-                     f"plazo que se puede cumplir con un 80 % ({T + norm.ppf(0.8) * e['sigma']:.0f} semanas), o {T} con la "
-                     "reserva declarada; si el plazo corto es decisivo, con el coste de comprimirlo (lección 10) dentro del "
-                     "precio. Al director comercial: la oferta temeraria se puede quedar fuera en la mesa, y si entra, los "
-                     f"modificados no cubren un plazo que no se podía cumplir: el {1 - p:.0%} de retraso se paga en "
-                     "penalidades y reputación. Prueba de publicidad: ¿firmaría la oferta si la mesa pudiera leer el correo "
-                     "del director comercial?"))
+    celdas.append(code(
+        "baja_defendible = min(umbral, baja_sin_perdida)\n"
+        "rubrica_caso(\n"
+        "    [('Administración contratante', f'adjudica a una oferta con {margen:+.1f} k€ de margen y un {porc(1 - p_plazo, 0)} de probabilidad de no cumplir el plazo: riesgo de abandono, modificados y retrasos'),\n"
+        "     ('Competidores', 'pierden una licitación ante una oferta que no se podía cumplir'),\n"
+        "     ('Empresa y equipo', f'si gana, ejecuta con pérdidas ({margen:+.1f} k€) y penalidades probables; si la excluyen, pierde la licitación igualmente'),\n"
+        "     ('Usuarios de la obra', 'reciben la obra más tarde de lo prometido')],\n"
+        "    [(f'Baja del {baja_propuesta:g} % y plazo de {plazo_oferta} semanas (propuesta)', 'presunción de anormalidad: justificación y posible exclusión', 'no', 'no: la empresa no aceptaría un proveedor que le hiciera esto'),\n"
+        "     (f'Baja ≤ {baja_defendible:.1f} % (bajo el umbral y sin pérdidas) y plazo de {int(np.ceil(plazo_80))} semanas (80 %)', 'sí', 'sí', 'sí'),\n"
+        "     (f'Plazo de {duracion:.0f} semanas con la reserva declarada y su probabilidad', 'sí', 'sí', 'sí'),\n"
+        "     ('Si el plazo corto es decisivo, ofertarlo con el coste de comprimir (lección 10) incluido en el precio', 'sí', 'sí', 'sí'),\n"
+        "     ('No presentarse si no se puede competir sin pérdidas', 'sí', 'sí', 'sí')],\n"
+        "    f'''una baja que no supere ni el umbral ({umbral:.2f} %) ni la que deja el precio por debajo del coste ({baja_sin_perdida:.1f} %), y el plazo de "
+        "{int(np.ceil(plazo_80))} semanas, que se cumple con un 80 % de probabilidad. Al director comercial: la oferta temeraria puede quedar fuera en la mesa; si "
+        "entra, los modificados no cubren un plazo que no se podía cumplir y la probabilidad del {porc(1 - p_plazo, 0)} de retraso se paga en penalidades y "
+        "reputación. Prueba de publicidad: ¿firmaría la oferta si la mesa pudiera leer su correo?''')"))
     return celdas, f"baja {nuestra:.1f} % (umbral {umbral:.1f} %) y plazo {plazo_oferta} con P = {p:.2f}: temeraria y sin buena fe"
 
 
@@ -1755,31 +2253,57 @@ def _imputacion_cruzada(rng):
                        "    t['EAC = BAC / CPI'] = t['BAC'] / t['CPI']; t['VAC'] = t['BAC'] - t['EAC = BAC / CPI']\n"
                        "    t.loc['Total'] = t.sum(); t.loc['Total', 'CPI'] = t.loc['Total', 'EV'] / t.loc['Total', 'AC']\n"
                        "    return t\n"
-                       "coste_horas = horas * tarifa / 1000"))
+                       "coste_horas = horas * tarifa / 1000\n"
+                       "pA, pB = vg.index[0], vg.index[1]\n"
+                       "nA, nB = pA.split()[0], pB.split()[0]"))
+    celdas.append(code(_AUX_ETICA))
     celdas += apartado(1)
+    celdas.append(md("Notación: BAC, presupuesto; PV, EV y AC, valor planificado, valor ganado y coste real en la fecha de control; "
+                     "CV = EV − AC; CPI = EV / AC; EAC = BAC / CPI (coste final previsto si se mantiene el CPI); VAC = BAC − EAC. "
+                     "En la fila «Total», EAC y VAC son la suma de las previsiones de los dos proyectos."))
     celdas.append(code('#| tbl-cap: "Indicadores con los datos reales"\n#| label: tbl-reales\n'
                        "reales = indicadores(vg)\n"
-                       "display(reales.round(2))\n"
-                       "Markdown(f'''Horas a reimputar: {horas} × {tarifa} € = **{coste_horas:.1f} k€**. A: CPI {reales.iloc[0][\"CPI\"]:.2f}, "
-                       "previsión de coste final {reales.iloc[0][\"EAC = BAC / CPI\"]:.0f} k€ sobre {reales.iloc[0][\"BAC\"]:.0f} de subvención.''')"))
+                       "reales.round(3)"))
+    celdas.append(code(
+        "Markdown(f'''{explica_indicadores(dict(PV=vg.loc[pA, 'PV'], EV=vg.loc[pA, 'EV'], AC=vg.loc[pA, 'AC']), float(vg.loc[pA, 'BAC']), '**' + pA + ':**')}\n\n"
+        "{explica_indicadores(dict(PV=vg.loc[pB, 'PV'], EV=vg.loc[pB, 'EV'], AC=vg.loc[pB, 'AC']), float(vg.loc[pB, 'BAC']), '**' + pB + ':**')}\n\n"
+        "Importe de las horas que se quieren reimputar: {horas} h × {tarifa} €/h = {horas * tarifa} € = **{coste_horas:.1f} k€**.\n\n"
+        "**Respuesta.** {nA}: CV = {reales.loc[pA, 'CV']:.1f} k€, CPI = {reales.loc[pA, 'CPI']:.3f}, EAC = {reales.loc[pA, 'EAC = BAC / CPI']:.1f} k€ "
+        "y VAC = {reales.loc[pA, 'VAC']:.1f} k€ (la subvención cubre hasta {vg.loc[pA, 'BAC']:g} k€). {nB}: CV = {reales.loc[pB, 'CV']:.1f} k€, "
+        "CPI = {reales.loc[pB, 'CPI']:.3f}, EAC = {reales.loc[pB, 'EAC = BAC / CPI']:.1f} k€ y VAC = {reales.loc[pB, 'VAC']:.1f} k€. "
+        "Las horas a reimputar valen {coste_horas:.1f} k€.''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Indicadores tras reimputar las horas de A a B"\n#| label: tbl-reimputado\n'
-                       "vg2 = vg.copy(); vg2.iloc[0, vg2.columns.get_loc('AC')] -= coste_horas; vg2.iloc[1, vg2.columns.get_loc('AC')] += coste_horas\n"
+                       "vg2 = vg.copy(); vg2.loc[pA, 'AC'] -= coste_horas; vg2.loc[pB, 'AC'] += coste_horas\n"
                        "reimputado = indicadores(vg2)\n"
-                       "comparacion = pd.DataFrame({'CPI real': reales['CPI'], 'CPI reimputado': reimputado['CPI'], 'AC real': reales['AC'], 'AC reimputado': reimputado['AC']})\n"
-                       "display(comparacion.round(3))\n"
-                       "horas_cpi_1 = (vg.iloc[0]['AC'] - vg.iloc[0]['EV']) * 1000 / tarifa\n"
-                       "Markdown(f'''El total de la empresa no cambia (AC {reales.loc[\"Total\", \"AC\"]:.1f} k€ y CPI {reales.loc[\"Total\", \"CPI\"]:.2f} en los dos casos): "
-                       "sólo cambia quién paga. Para que A saliera a CPI = 1 habría que mover {horas_cpi_1:.0f} horas.''')"))
+                       "comparacion = pd.DataFrame({'AC real': reales['AC'], 'AC reimputado': reimputado['AC'], 'CPI real': reales['CPI'], 'CPI reimputado': reimputado['CPI'],\n"
+                       "                            'EAC real': reales['EAC = BAC / CPI'], 'EAC reimputado': reimputado['EAC = BAC / CPI']})\n"
+                       "comparacion.round(3)"))
+    celdas.append(code(
+        "horas_cpi_1 = (vg.loc[pA, 'AC'] - vg.loc[pA, 'EV']) * 1000 / tarifa\n"
+        "Markdown(f'''- {nA}: AC = {vg.loc[pA, 'AC']:g} − {coste_horas:.1f} = {vg2.loc[pA, 'AC']:.1f} k€; CPI = {vg.loc[pA, 'EV']:g} / {vg2.loc[pA, 'AC']:.1f} = "
+        "**{reimputado.loc[pA, 'CPI']:.3f}** (antes {reales.loc[pA, 'CPI']:.3f}, {reimputado.loc[pA, 'CPI'] - reales.loc[pA, 'CPI']:+.3f}).\n"
+        "- {nB}: AC = {vg.loc[pB, 'AC']:g} + {coste_horas:.1f} = {vg2.loc[pB, 'AC']:.1f} k€; CPI = {vg.loc[pB, 'EV']:g} / {vg2.loc[pB, 'AC']:.1f} = "
+        "**{reimputado.loc[pB, 'CPI']:.3f}** (antes {reales.loc[pB, 'CPI']:.3f}, {reimputado.loc[pB, 'CPI'] - reales.loc[pB, 'CPI']:+.3f}).\n"
+        "- Total de la empresa: AC = {reales.loc['Total', 'AC']:.1f} k€ en los dos casos y CPI = {reales.loc['Total', 'EV']:.1f} / {reales.loc['Total', 'AC']:.1f} = "
+        "**{reales.loc['Total', 'CPI']:.3f}** en los dos casos.\n"
+        "- Para que {nA} saliera exactamente a CPI = 1 habría que mover AC − EV = {vg.loc[pA, 'AC']:g} − {vg.loc[pA, 'EV']:g} = "
+        "{vg.loc[pA, 'AC'] - vg.loc[pA, 'EV']:.1f} k€, es decir, {vg.loc[pA, 'AC'] - vg.loc[pA, 'EV']:.1f} × 1000 / {tarifa} = **{horas_cpi_1:.0f} horas**.\n\n"
+        "**Respuesta.** El CPI de {nA} pasa de {reales.loc[pA, 'CPI']:.3f} a {reimputado.loc[pA, 'CPI']:.3f} y el de {nB} de {reales.loc[pB, 'CPI']:.3f} a "
+        "{reimputado.loc[pB, 'CPI']:.3f}; el de la empresa no cambia ({reales.loc['Total', 'CPI']:.3f}): sólo cambia a quién se carga el coste. Con "
+        "{horas_cpi_1:.0f} horas {nA} quedaría a CPI = 1; las {horas} propuestas lo dejan {'por encima de 1' if horas > horas_cpi_1 else 'por debajo de 1'}.''')"))
     celdas += apartado(3)
-    celdas.append(md("**Norma.** Sólo es subvencionable el gasto que responde de manera indubitada a la actividad "
-                     "subvencionada (Ley 38/2003, art. 31): las horas de A son gasto de A, y presentarlas como gasto de B "
-                     "—o, lo que es lo mismo, presentar A «a presupuesto» ocultando que parte de su coste se ha cargado a "
-                     "otro proyecto— no hace que A cueste menos: hace que la justificación sea falsa. La consecuencia es el "
-                     "reintegro de lo indebidamente justificado con intereses y, según el importe y la intención, la "
-                     "infracción o el fraude de subvenciones. **C1.** La justificación afirma un coste que se sabe falso. "
-                     "**C5.** Y el beneficio (cobrar la subvención completa) se obtiene a costa del financiador público y, de "
-                     "paso, del cliente de B, cuyo proyecto aparece más caro de lo que es."))
+    celdas.append(code(
+        "Markdown(f'''**Norma** (Ley 38/2003, arts. 31 y 37). Sólo es subvencionable el gasto que responde de manera indubitada a la actividad subvencionada. "
+        "Las {horas} horas se trabajaron en {nA}: son gasto de {nA}. Imputarlas a {nB} no hace que {nA} cueste menos ({reales.loc[pA, 'AC']:g} k€ reales), "
+        "sino que la justificación presente {vg2.loc[pA, 'AC']:.1f} k€, una cifra falsa. La consecuencia es el **reintegro** de lo indebidamente justificado con "
+        "intereses y, según el importe y la intención, una infracción o un delito de fraude de subvenciones.\n\n"
+        "**Criterio C1 (afirmación falsa).** La justificación de la subvención afirma un coste de {nA} que quien la firma sabe que no es el real. "
+        "**Criterio C5 (beneficio propio a costa de otro).** La empresa obtiene una ventaja (que {nA} salga «a presupuesto», CPI {reimputado.loc[pA, 'CPI']:.3f}) "
+        "trasladando el riesgo al financiador público y falseando además la información de {nB} (su CPI baja de {reales.loc[pB, 'CPI']:.3f} a "
+        "{reimputado.loc[pB, 'CPI']:.3f}); si {nB} se factura por costes, el perjudicado es también su cliente.\n\n"
+        "**Respuesta.** No: el coste reimputado no es gasto subvencionable de {nB} ni deja de serlo de {nA}. La propuesta incumple la norma, **C1** y **C5**, y "
+        "expone a la empresa al reintegro con intereses y a sanciones.''')"))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Reimputar a otro proyecto horas trabajadas en el subvencionado…', ['hace falsa la justificación: no es gasto subvencionable', 'es neutro porque el coste total no cambia', 'es correcto si lo hacen las mismas personas', 'es una reserva de contingencia'],\n"
@@ -1791,13 +2315,19 @@ def _imputacion_cruzada(rng):
         "]", "Ética 19 — imputación cruzada"))
     celdas += apartado(4)
     celdas.append(_rubrica())
-    celdas.append(md("Alternativas reales: asumir el sobrecoste de A con fondos propios (es lo que significa una subvención a "
-                     "presupuesto cerrado); solicitar al órgano concedente una modificación o ampliación si la causa lo "
-                     "justifica y el programa lo permite; reducir el alcance restante de A de acuerdo con el financiador; "
-                     "revisar por qué A se ha desviado para que la siguiente justificación sea limpia. Al director: la "
-                     "reimputación no ahorra nada a la empresa (apartado 2), convierte un sobrecoste en un fraude y pone en "
-                     "riesgo la subvención entera y las siguientes. Prueba de publicidad: ¿cómo se leería la justificación "
-                     "en una auditoría que cruce los partes de horas de A y de B?"))
+    celdas.append(code(
+        "rubrica_caso(\n"
+        "    [('Financiador público', f'recibe una justificación falsa: {nA} aparece con AC {vg2.loc[pA, \"AC\"]:.1f} k€ y CPI {reimputado.loc[pA, \"CPI\"]:.3f}, cuando su coste real es {vg.loc[pA, \"AC\"]:g} k€ y su previsión {reales.loc[pA, \"EAC = BAC / CPI\"]:.1f} k€ sobre {vg.loc[pA, \"BAC\"]:g}; no puede controlar el uso de los fondos'),\n"
+        "     ('Empresa', f'no ahorra nada (el CPI total sigue en {reales.loc[\"Total\", \"CPI\"]:.3f}) y arriesga el reintegro, sanciones y futuras subvenciones'),\n"
+        "     (f'Cliente y equipo de {nB}', f'su proyecto aparece con CPI {reimputado.loc[pB, \"CPI\"]:.3f} en vez de {reales.loc[pB, \"CPI\"]:.3f}'),\n"
+        "     ('Quien firma los partes de horas y la justificación', 'firma un documento falso')],\n"
+        "    [(f'Reimputar {horas} h de {nA} a {nB} (propuesta)', 'no: gasto no subvencionable justificado como si lo fuera', 'no: no resiste una auditoría que cruce los partes de horas', 'no: el financiador no lo aceptaría'),\n"
+        "     (f'Asumir el sobrecoste de {nA} con fondos propios', 'sí', 'sí', 'sí'),\n"
+        "     ('Pedir al órgano concedente una modificación o ampliación, si la causa lo justifica y las bases lo permiten', 'sí', 'sí', 'sí'),\n"
+        "     (f'Reducir el alcance restante de {nA} de acuerdo con el financiador y revisar por qué se ha desviado', 'sí', 'sí', 'sí')],\n"
+        "    f'''al director: la reimputación no ahorra nada a la empresa (CPI total {reales.loc['Total', 'CPI']:.3f} en los dos casos), convierte un sobrecoste de "
+        "{-reales.loc[pA, 'VAC']:.1f} k€ previsto en un fraude y pone en riesgo la subvención entera; la propuesta es asumir el sobrecoste o pedir una modificación "
+        "al financiador, y analizar la desviación de {nA}.''')"))
     return celdas, f"{horas} h ({horas * tarifa / 1000:.0f} k€) de A a B: CPI de A de {EV_A / AC_A:.2f} a {EV_A / (AC_A - horas * tarifa / 1000):.2f}; no subvencionable"
 
 

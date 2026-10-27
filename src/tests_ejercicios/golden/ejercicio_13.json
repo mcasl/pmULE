@@ -1522,7 +1522,7 @@
   },
   {
    "index": 52,
-   "source": "desplazamientos, cuadrados, my_data, gantt_df, dibujo = proyecto_nivelacion.nivelar(data=datos_proye",
+   "source": "proyecto_nivelacion.display_nivelar_pasos_tikz(datos_proyecto, duration_label='duration', resource_l",
    "vars": {
     "cuadrados": {
      "__type__": "Styler",
@@ -2132,7 +2132,7 @@
   },
   {
    "index": 60,
-   "source": "proyecto_asignacion = proyecto_nivelacion.copy()",
+   "source": "proyecto_asignacion = proyecto.copy()",
    "vars": {
     "dibujo": {
      "__hash__": "d09d10c475005b50343d93fd0004bf0c49876709",
@@ -2439,23 +2439,18 @@
      "edges": [
       [
        "1",
-       "10",
-       "💤B"
-      ],
-      [
-       "1",
        "2",
        "G"
       ],
       [
        "1",
-       "4",
-       "A"
-      ],
-      [
-       "10",
        "3",
        "B"
+      ],
+      [
+       "1",
+       "4",
+       "A"
       ],
       [
        "2",
@@ -2506,9 +2501,8 @@
      "nodes": [
       "1",
       "2",
-      "4",
-      "10",
       "3",
+      "4",
       "5",
       "6",
       "7",

@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -259,8 +263,12 @@ display(Markdown(pregunta_1))
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
-print('Iniciales:', ', '.join(sorted(prelaciones.start_activities)), '  Finales:', ', '.join(sorted(prelaciones.end_activities)))
-datos_proyecto[['predecessor', 'duration']]
+display(datos_proyecto[['predecessor', 'duration']])
+_ini, _fin = sorted(prelaciones.start_activities), sorted(prelaciones.end_activities)
+Markdown(f'**Respuesta:** el cuadro de prelaciones y las duraciones son los de la tabla. '
+         f'{"Es inicial" if len(_ini) == 1 else "Son iniciales"} {lista_y(_ini)}: no {"recibe" if len(_ini) == 1 else "reciben"} ninguna flecha y '
+         f'{"empieza" if len(_ini) == 1 else "empiezan"} en la semana 0. {"Es final" if len(_fin) == 1 else "Son finales"} {lista_y(_fin)}: '
+         f'no salen flechas de {"ella" if len(_fin) == 1 else "ellas"}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -297,6 +305,12 @@ proyecto.display_calendario(datos_proyecto['duration'])
 _g, _dibujo = proyecto.gantt(datos_proyecto, 'duration', holguras=True, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))
 pinta_tikz(_dibujo)
 
+# %%
+_es = ', '.join(f"{a} {int(calendario.loc[a, 'inicio_mas_temprano'])}" for a in ordena_ruta(calendario.index, calendario))
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas'))
+Markdown(f'**Respuesta:** los inicios más tempranos calculados ({_es}) son los inicios de las barras del Gantt del '
+         f'enunciado, y las actividades de holgura total nula son las unidas por flechas rojas.')
+
 # %% [markdown]
 # ## Apartado 4
 
@@ -311,7 +325,25 @@ lectura = pd.DataFrame({
     'mín ES de sus sucesoras (o fin)': [int(calendario.loc[suc[a], 'inicio_mas_temprano'].min()) if suc[a] else fin for a in calendario.index],
     'H_libre leída = hueco': [int((calendario.loc[suc[a], 'inicio_mas_temprano'].min() if suc[a] else fin) - calendario.loc[a, 'fin_mas_temprano']) for a in calendario.index],
     'H_libre calculada': calendario['H_libre'], 'H_total calculada': calendario['H_total']})
+lectura.columns = ['EF (fin más temprano)', 'mín ES de sus sucesoras (o fin)', 'H_libre leída = hueco', 'H_libre calculada', 'H_total calculada']
 lectura
 
 # %% [markdown]
-# La holgura libre es el hueco visible entre el fin de la barra y el inicio de la sucesora más próxima. La holgura total no se ve en un Gantt de inicios tempranos: requiere saber cuánto podrían retrasarse *también* las sucesoras, es decir, el paso hacia atrás (o el Gantt de inicios tardíos). Sólo coinciden cuando la sucesora es crítica.
+# La holgura libre es el hueco visible entre el fin de la barra y el inicio de la sucesora más próxima. La holgura total no se ve en un Gantt de inicios tempranos: requiere saber cuánto podrían retrasarse *también* las sucesoras, es decir, el paso hacia atrás (o el Gantt de inicios tardíos). Se obtiene sumando al hueco la holgura total de la sucesora: H_total = mín sobre las sucesoras de (ES + H_total) − EF.
+
+# %%
+_l = []
+for a in ordena_ruta(calendario.index[calendario['H_total'] > 0], calendario):
+    ef, ht = int(calendario.loc[a, 'fin_mas_temprano']), int(calendario.loc[a, 'H_total'])
+    if suc[a]:
+        _c = ', '.join(f"{b}: {int(calendario.loc[b, 'inicio_mas_temprano'])} + {int(calendario.loc[b, 'H_total'])}" for b in sorted(suc[a]))
+        _l.append(f'- {a}: hueco {int(calendario.loc[a, "H_libre"])}; H_total = mín({_c}) − {ef} = {ht}')
+    else:
+        _l.append(f'- {a} (final): hueco hasta el fin = H_total = {fin} − {ef} = {ht}')
+_dif = [a for a in calendario.index if calendario.loc[a, 'H_total'] != calendario.loc[a, 'H_libre']]
+_ok = (lectura['H_libre leída = hueco'] == lectura['H_libre calculada']).all()
+Markdown('\n'.join(_l) + '\n\n**Respuesta:** la holgura libre leída como hueco '
+         + ('coincide con la calculada en todas las actividades. ' if _ok else 'NO coincide con la calculada en alguna actividad. ')
+         + 'La holgura total sólo se puede leer en el Gantt temprano cuando coincide con la libre '
+         '(la sucesora que empieza antes es crítica, o la actividad es final)'
+         + (f'; en {lista_y(_dif)} es mayor, y hace falta el paso hacia atrás o el Gantt de inicios tardíos.' if _dif else '; aquí ocurre en todas.'))

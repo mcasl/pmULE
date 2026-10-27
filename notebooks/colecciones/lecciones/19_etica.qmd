@@ -96,11 +96,11 @@ Una respuesta que opina sin cifras, sin alternativas y sin pasar las pruebas no 
 
 Con el proyecto de las lecciones anteriores (A 3, B 2, C 4 ← A, D 1 ← A y B, E 2 ← B, F 3 ← C y D, G 2 ← E; $T = 10$, crítica A–C–F) y una desviación típica de 1,2 semanas en el camino crítico:
 
-**Verdad a medias.** El cliente pregunta si estará en la semana 10. «La ruta crítica termina en la semana 10» es cierto y es C2: $P(T \le 10) = \Phi(0) = 0{,}50$; con un 80 % de confianza la semana es $10 + 0{,}84 \cdot 1{,}2 \approx 11$. El dato que falta es la probabilidad, y la respuesta que cumple el criterio es «50 % en la semana 10; con un 80 %, la 11».
+**Verdad a medias.** El cliente pregunta si estará en la semana 10. «La ruta crítica termina en la semana 10» es cierto y es C2: $P(T \le 10)$ = `=DISTR.NORM.N(10; 10; 1,2; VERDADERO)` = 0,50; con un 80 % de confianza, `=INV.NORM(0,8; 10; 1,2)` = 11,01, así que la semana entera que se puede comprometer es la 12 (con la 11, $P$ = 0,798 < 0,80). El dato que falta es la probabilidad, y la respuesta que cumple el criterio es «50 % en la semana 10; con un 80 %, la 12».
 
 **Holgura escondida.** B tiene holgura total 4 (fin más tardío 6, fin más temprano 2) y holgura libre 0 (D y E empiezan en cuanto B acaba). «B no tiene ningún margen» es C1: tiene 4 semanas sin retrasar el proyecto. Pero si B consume las 4, D (6–7), E (6–8) y G (8–10) se vuelven críticas: el margen era de la ruta, no de B. La pregunta «¿a quién pertenece?» es del bloque C; la de «¿cuánto hay y a quién afecta?» es del A.
 
-**Riesgo silenciado.** Si el proveedor de C puede fallar con probabilidad 0,4 añadiendo 3 semanas, $P(T \le 11) \approx 0{,}6 \cdot \Phi(0{,}83) + 0{,}4 \cdot \Phi(-1{,}67) = 0{,}6 \cdot 0{,}80 + 0{,}4 \cdot 0{,}05 = 0{,}50$ frente a 0,80 sin el riesgo. Si el comité autoriza con un 70 %, el dato cambia la decisión: la omisión es material y es C4.
+**Riesgo silenciado.** Si el proveedor de C puede fallar con probabilidad 0,4 añadiendo 3 semanas, $P(T \le 11) \approx 0{,}6 \cdot P(T_{\text{sin fallo}} \le 11) + 0{,}4 \cdot P(T_{\text{con fallo}} \le 11)$ = 0,6 · `DISTR.NORM.N(11; 10; 1,2; VERDADERO)` + 0,4 · `DISTR.NORM.N(11; 13; 1,2; VERDADERO)` $= 0{,}6 \cdot 0{,}80 + 0{,}4 \cdot 0{,}05 = 0{,}50$ frente a 0,80 sin el riesgo. Si el comité autoriza con un 70 %, el dato cambia la decisión: la omisión es material y es C4.
 
 ## Lo que suele fallar
 

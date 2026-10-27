@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -212,7 +216,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# La ordenanza municipal de ruido limita los trabajos de obra ruidosos al horario de **8 a 22 h** y sólo admite trabajos ruidosos nocturnos con **autorización expresa y motivada del ayuntamiento**, que en el entorno del hospital no se concede salvo emergencia; el trabajo nocturno no ruidoso (interiores, instalaciones, acabados) es libre. Según la experiencia de la empresa en obras similares, un turno de noche ruidoso sin autorización acaba en denuncia con probabilidad 80%; si hay denuncia, la policía municipal paraliza el turno, la multa es de 12 k€ y la obra pierde 2 semana(s) hasta reorganizarse, con una penalidad de 10 k€ por semana de retraso en la entrega.
+# La ordenanza municipal de ruido limita los trabajos de obra ruidosos al horario de **8 a 22 h** y sólo admite trabajos ruidosos nocturnos con **autorización expresa y motivada del ayuntamiento**, que en el entorno del hospital no se concede salvo emergencia; el trabajo nocturno no ruidoso (interiores, instalaciones, acabados) es libre. Según la experiencia de la empresa en obras similares, un turno de noche ruidoso sin autorización acaba en denuncia con probabilidad 80%; si hay denuncia, la policía municipal paraliza el turno, la multa es de 12 k€ y la obra pierde 2 semanas hasta reorganizarse, con una penalidad de 10 k€ por semana de retraso en la entrega.
 
 # %% [markdown]
 # > **De: Jefe de obra**
@@ -246,6 +250,24 @@ for item in sorted(dir()):
 
 # %%
 semanas_pedidas, p_denuncia, multa, paralizacion, penalidad = 3, 0.8, 12, 2, 10
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -271,6 +293,15 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 display(Markdown(pregunta_1))
 
 # %%
+#| tbl-cap: "Costes unitarios de reducción de las actividades que pueden acortarse"
+#| label: tbl-costesUnitarios
+reducibles = datos_proyecto.index[datos_proyecto['cap_duration'] < datos_proyecto['duration']]
+display(datos_proyecto.loc[reducibles, ['ucr', 'ucr_noche', 'ruidosa', 'ucr_propuesta', 'ucr_legal']]
+        .rename(columns={'ucr': 'ucr diurno', 'ucr_noche': 'ucr con turno de noche', 'ucr_propuesta': 'propuesta: mín(diurno, noche)', 'ucr_legal': 'legal: noche sólo si no es ruidosa'}))
+Markdown('La propuesta usa en cada actividad el menor de los dos costes unitarios; el coste legal usa el de noche sólo en las actividades no ruidosas '
+         '(en las ruidosas, el diurno). Con cada columna se aplica el mismo algoritmo de Ackoff-Sasieni.')
+
+# %%
 #| tbl-cap: "Ackoff-Sasieni con el menor coste unitario de cada actividad (propuesta)"
 #| label: tbl-ackoffPropuesta
 tabla_1, pasos_1, duraciones_1, margen_1 = proyecto.ackoff(durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
@@ -290,7 +321,8 @@ detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duratio
 acts_1 = [a for paso in pasos_1.values() for a in paso]
 nocturnas_ruidosas = sorted(set(a for a in acts_1 if datos_proyecto.loc[a, 'ruidosa'] == 1 and datos_proyecto.loc[a, 'ucr_noche'] < datos_proyecto.loc[a, 'ucr']))
 coste_1 = coste_plan(pasos_1, 'ucr_propuesta')
-Markdown('Plan 1 (propuesta): ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_1.items())) + f'''. Coste **{coste_1:.0f} k€**. Actividades ruidosas que se harían de noche: **{', '.join(nocturnas_ruidosas)}**.''')
+acts_1o = [a for _, paso in sorted(pasos_1.items()) for a in paso]
+Markdown(f'''Plan 1 (propuesta): {pasos_txt(pasos_1)}; coste = {suma_acts(acts_1o, datos_proyecto['ucr_propuesta'])} k€.\n\n**Respuesta:** el plan más barato de la propuesta ({pasos_txt(pasos_1)}) cuesta **{coste_1:.0f} k€**; se harían de noche, siendo ruidosas, **{lista_y(nocturnas_ruidosas)}** (de noche cuestan menos que de día, y el algoritmo elige el menor coste).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -323,7 +355,9 @@ comparacion = pd.DataFrame({'plan 1: propuesta (noche en todo)': [coste_1, p_den
                             'plan 2: legal': [coste_2, 0.0, 0.0, coste_2]},
                            index=['coste de la compresión (k€)', 'multa esperada (k€)', 'paralización esperada (k€)', 'coste esperado (k€)'])
 display(comparacion.round(1))
-Markdown('Plan 2 (legal): ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_2.items())) + f'''. Coste **{coste_2:.0f} k€**, {coste_2 - coste_1:.0f} k€ más que la propuesta: ese es el «ahorro» del turno de noche. Con la denuncia, el coste esperado de la propuesta es de {esperado_1:.1f} k€''' + (', más que el plan legal: mal negocio además de infracción.' if esperado_1 > coste_2 else ', todavía menor que el plan legal: la respuesta B no depende de esta cuenta.'))
+acts_2o = [a for _, paso in sorted(pasos_2.items()) for a in paso]
+mismas = sorted(acts_1o) == sorted(acts_2o)
+Markdown(f'''Plan 2 (legal): {pasos_txt(pasos_2)}; coste = {suma_acts(acts_2o, datos_proyecto['ucr_legal'])} k€''' + (' (acorta las mismas actividades que el plan 1, pero las ruidosas a precio diurno).' if mismas else '.') + f'''\n\nCoste esperado de la propuesta = coste de la compresión + P(denuncia) × (multa + semanas de paralización × penalidad) = {coste_1:.0f} + {p_denuncia} × ({multa} + {paralizacion} × {penalidad}) = **{esperado_1:.1f} k€**''' + (', más que el plan legal: mal negocio además de infracción.' if esperado_1 > coste_2 else ', todavía menor que el plan legal: la respuesta B no depende de esta cuenta.') + f'''\n\n**Respuesta:** el plan legal cuesta **{coste_2:.0f} k€**, {coste_2 - coste_1:.0f} k€ más que la propuesta: ese es el «ahorro» del turno de noche ruidoso; con la denuncia, la propuesta cuesta {esperado_1:.1f} k€ esperados.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -332,7 +366,9 @@ Markdown('Plan 2 (legal): ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma y S12.** El horario de la ordenanza es una condición de la autorización de la obra: el turno de noche en actividades ruidosas junto a viviendas y un hospital, sin autorización expresa, es infracción (Ley 37/2003, arts. 6 y 28) y **no es una opción de la tabla**; sí lo es en las actividades no ruidosas. El plan correcto es el **plan 2**, con el coste unitario legal (6 k€ frente a 3): se excluyen las opciones prohibidas antes de ordenar, no se usan y se paga la multa como un coste. **S10.** El «ahorro» de 3 k€ sale del sueño de los vecinos y de los pacientes del hospital, que no están en la mesa: una ventaja de plazo obtenida incumpliendo la norma no es una opción, y «si viene la policía se para esa noche» describe la infracción, no la evita. **S1.** El plan 1 ni compensa ni minimiza: traslada el impacto a la comunidad; el plan 2 **minimiza** (ruido sólo de día, noche en lo silencioso); **evitar** sería negociar con el cliente las 3 semanas (lección 19, C13) o pedir la autorización con tiempo para lo que de verdad lo necesite.
+# **Norma y S12.** El horario de la ordenanza es una condición de la autorización de la obra: el turno de noche en actividades ruidosas junto a viviendas y un hospital, sin autorización expresa, es infracción (Ley 37/2003, arts. 6 y 28) y **no es una opción de la tabla**; sí lo es en las actividades no ruidosas. El plan correcto es el **plan 2**, con el coste unitario legal (6 k€ frente a 3): las opciones prohibidas se excluyen antes de ordenar; no se usan pagando la multa como si fuera un coste más. **S10.** El «ahorro» de 3 k€ sale del sueño de los vecinos y de los pacientes del hospital, que no están en la mesa: una ventaja de plazo obtenida incumpliendo la norma no es una opción, y «si viene la policía se para esa noche» describe la infracción, no la evita. **S1.** El plan 1 ni compensa ni minimiza: traslada el impacto a la comunidad; el plan 2 **minimiza** (ruido sólo de día, noche en lo silencioso); **evitar** sería negociar con el cliente las 3 semanas (lección 19, C13) o pedir la autorización con tiempo para lo que de verdad lo necesite.
+#
+# **Respuesta:** el turno de noche en actividades ruidosas **no** es una opción de la tabla; el plan correcto es el **plan 2** (6 k€); el plan 1 traslada el impacto a los vecinos (ni siquiera compensa) y el plan 2 minimiza.
 
 # %%
 preguntas_test = [

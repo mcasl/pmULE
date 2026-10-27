@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -297,16 +301,25 @@ duraciones_rutas = path_matrix @ duraciones
 from pmule import display_producto_rutas
 display_producto_rutas(path_matrix, duraciones, duraciones_rutas)
 
+# %% [markdown]
+# Cada fila del producto es la suma de las duraciones de las actividades de esa ruta:
+
 # %%
 #| tbl-cap: "Duración de cada ruta, sumando sus actividades"
 #| label: tbl-rutasPaso-a
-detalle_rutas(path_matrix, duraciones)
+pd.DataFrame({r: {'ruta': ' – '.join(acts),
+                  'duración (días) = suma': ' + '.join(str(int(duraciones[a])) for a in acts) + f' = {int(duraciones_rutas[r])}'}
+              for r, acts in rutas_enunciado.items()}).T
 
 # %%
 duracion_proyecto = int(duraciones_rutas.max())
-ruta_critica = duraciones_rutas.idxmax()
-Markdown(f'La duración del proyecto es {duracion_proyecto} días, la de la ruta más larga, {ruta_critica}: '
-         f'{" - ".join(rutas_enunciado[ruta_critica])}.')
+criticas = [r for r in duraciones_rutas.index if duraciones_rutas[r] == duracion_proyecto]
+ruta_critica = criticas[0]
+Markdown(f'La duración del proyecto es la mayor de las duraciones de las rutas: T = máx('
+         f'{", ".join(str(int(x)) for x in duraciones_rutas)}) = **{duracion_proyecto} días**.\n\n'
+         f'**Respuesta:** el proyecto dura {duracion_proyecto} días; '
+         + ('; '.join(f'{r}: {" – ".join(rutas_enunciado[r])}' for r in criticas))
+         + (' es la ruta crítica.' if len(criticas) == 1 else ' son rutas críticas.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -331,32 +344,27 @@ datos_proyecto
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT reconstruido, con tiempos y ruta crítica"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo Roy reconstruido"
 #| label: fig-roy
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 rutas_grafo = {' - '.join(a) for a in proyecto.paths(dummies=False).values()}
 rutas_dadas = {' - '.join(a) for a in rutas_enunciado.values()}
-print('Las rutas del grafo coinciden con las del enunciado:', rutas_grafo == rutas_dadas)
+Markdown('**Respuesta:** el cuadro de prelaciones reconstruido es el de la tabla anterior, y las rutas de los grafos '
+         + ('coinciden con las del enunciado.' if rutas_grafo == rutas_dadas else 'NO coinciden con las del enunciado.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -367,25 +375,42 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La duración del proyecto es $\tau = \max_r (P\,d)_r$. Si una actividad crítica dura un día más, la ruta crítica se alarga un día y con ella el proyecto: su sensibilidad es 1. Si una actividad no crítica dura un día más, la ruta más larga no cambia mientras no se agote la holgura: sensibilidad 0. Al acortar una actividad crítica el proyecto sólo se acorta hasta que otra ruta pasa a ser la más larga.
 
+# %% [markdown]
+# Para cada actividad basta mirar la ruta más larga que la contiene: su *margen* hasta T (que es la holgura total de la actividad) dice si un día más alarga el proyecto, y la ruta más larga que *no* la contiene dice si un día menos lo acorta.
+
 # %%
+T = duracion_proyecto
+L = duraciones_rutas.astype(int)
 sensibilidad = proyecto.tau_sensitivity(duraciones.to_dict())
-holgura = duracion_proyecto - duraciones_rutas
-segunda = holgura[holgura > 0].min() if (holgura > 0).any() else None
-pd.DataFrame({'sensibilidad (+1 día)': sensibilidad.reindex(duraciones.index)}).T
-
-# %%
-comprobacion = {}
+filas = {}
 for act in duraciones.index:
-    mas = duraciones.copy(); mas[act] += 1
-    menos = duraciones.copy(); menos[act] -= 1
-    comprobacion[act] = {'+1 día': int((path_matrix @ mas).max()) - duracion_proyecto,
-                         '-1 día': int((path_matrix @ menos).max()) - duracion_proyecto}
-pd.DataFrame(comprobacion)
+    con = [r for r in L.index if path_matrix.loc[r, act] == 1]
+    sin = [r for r in L.index if path_matrix.loc[r, act] == 0]
+    r_con = max(con, key=lambda r: L[r])
+    L_sin = int(L[sin].max()) if sin else 0
+    margen = T - int(L[r_con])
+    mas = 1 if margen == 0 else 0
+    menos = (max(T - 1, L_sin) - T) if margen == 0 else 0
+    filas[act] = {'ruta más larga con ella': f'{r_con} ({int(L[r_con])})',
+                  'margen = T − esa ruta': f'{T} − {int(L[r_con])} = {margen}',
+                  'ruta más larga sin ella': L_sin if sin else '—',
+                  '+1 día': f'{mas:+d}' if mas else '0', '−1 día': f'{menos:+d}' if menos else '0',
+                  'tau_sensitivity': int(round(float(sensibilidad[act])))}
+sens = pd.DataFrame(filas).T
+sens
 
 # %%
-Markdown(f'Al acortar una actividad crítica el proyecto se reduce un día sólo si ninguna otra ruta alcanza la duración máxima; '
-         f'la segunda ruta más larga está a {segunda} día(s) de la crítica, así que esa es la reducción máxima que puede conseguirse '
-         'acortando una única actividad crítica que no pertenezca también a esa segunda ruta.')
+crit = [a for a in sens.index if sens.loc[a, '+1 día'] == '+1']
+resto = [a for a in sens.index if a not in crit]
+baja = [a for a in crit if sens.loc[a, '−1 día'] == '-1']
+_resto = lista_y([f"{a} (margen {sens.loc[a, 'margen = T − esa ruta'].split(' = ')[-1]})" for a in resto])
+Markdown(f'La columna de la librería (`tau_sensitivity`) coincide con la de +1 día.\n\n'
+         f'**Respuesta:** si una actividad dura un día más, el proyecto pasa de {T} a {T + 1} días cuando es crítica '
+         f'({lista_y(crit)}: margen 0) y no cambia en las demás' + (f', {_resto}, porque su margen absorbe el día.' if resto else '.')
+         + f' Si dura un día menos, el proyecto se acorta un día con '
+         + (f'{lista_y(baja)}, porque la ruta más larga que no las contiene dura menos de {T}' if baja else 'ninguna')
+         + (f'; con {lista_y([a for a in crit if a not in baja])} no cambia, porque otra ruta de {T} días no la contiene' if len(baja) < len(crit) else '')
+         + '; acortar una actividad no crítica no cambia nada.')
 
 # %% [markdown]
 # ## Apartado 5
@@ -408,7 +433,28 @@ Math(r'S = ' + bmatrix(S.round(2), dec=2))
 #| label: tbl-svd
 ordena_rutas(path_matrix.copy(), importancia_actividades.values, importancia_rutas.values)
 
+# %% [markdown]
+# Cómo sale cada importancia: como $P\,v_1 = s_1\,u_1$, el peso de una ruta es la suma de los pesos $v_1$ de sus actividades dividida por $s_1$; la columna «Importancia» de la tabla anterior es ese peso normalizado para que las rutas sumen 1 ($u_1/\sum u_1$), y cada celda de actividad es $v_1/\sum v_1$ si la actividad está en la ruta.
+
 # %%
-Markdown(f'La ruta dominante según la SVD es {importancia_rutas.idxmax()} y la ruta crítica es {ruta_critica}. '
-         f'La actividad de mayor peso es {importancia_actividades.idxmax()}, que aparece en '
-         f'{int(path_matrix[importancia_actividades.idxmax()].sum())} de las {len(path_matrix)} rutas.')
+_v = pd.Series(v1, index=path_matrix.columns)
+_u = pd.Series(u1, index=path_matrix.index)
+display(Markdown(f'$s_1$ = {S[0]:.3f}; pesos $v_1$ de las actividades: '
+                 + ', '.join(f'{a} {x:.3f}' for a, x in _v.sort_values(ascending=False).items()) + '.'))
+_tabla = pd.DataFrame({r: {'ruta': ' – '.join(rutas_enunciado[r]),
+                           'u₁ = (suma de v₁)/s₁': '(' + ' + '.join(f'{_v[a]:.3f}' for a in rutas_enunciado[r]) + f')/{S[0]:.3f} = {_u[r]:.3f}',
+                           'importancia = u₁/Σu₁': round(float(importancia_rutas[r]), 3),
+                           'duración': int(duraciones_rutas[r])} for r in path_matrix.index}).T
+_tabla.sort_values('importancia = u₁/Σu₁', ascending=False)
+
+# %%
+_dom = [r for r in importancia_rutas.index if np.isclose(importancia_rutas[r], importancia_rutas.max())]
+_act = [a for a in importancia_actividades.index if np.isclose(importancia_actividades[a], importancia_actividades.max())]
+_veces = int(path_matrix[_act[0]].sum())
+Markdown('**Respuesta:** ' + (f'la ruta dominante según la SVD es {_dom[0]}' if len(_dom) == 1 else
+         f'empatan como dominantes según la SVD las rutas {lista_y(_dom)}')
+         + f' (importancia {importancia_rutas.max():.3f}); la ruta crítica, {ruta_critica} ({duracion_proyecto} días), '
+         + ('es una de ellas' if ruta_critica in _dom and len(_dom) > 1 else ('coincide con ella' if ruta_critica in _dom else 'no coincide'))
+         + '. ' + (f'La actividad de mayor peso es {_act[0]}' if len(_act) == 1 else f'Las actividades de mayor peso son {lista_y(_act)}')
+         + f', que aparece{"" if len(_act) == 1 else "n"} en {_veces} de las {len(path_matrix)} rutas. La SVD sólo mira la '
+         'estructura (en cuántas rutas está cada actividad); la ruta crítica depende además de las duraciones.')

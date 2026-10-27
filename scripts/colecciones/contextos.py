@@ -82,6 +82,16 @@ def _actividades_de_la_tabla(celdas) -> tuple[int, list[str]]:
     return -1, []
 
 
+_UNIDADES = ("semanas", "días", "meses", "horas", "jornadas")
+
+
+def _unidad_del_enunciado(celdas) -> str | None:
+    """Unidad de tiempo que usa el enunciado (la primera que aparece en sus textos y preguntas)."""
+    texto = "\n".join(t for _, t in celdas)
+    posiciones = {u: texto.find(u) for u in _UNIDADES if u in texto}
+    return min(posiciones, key=posiciones.get) if posiciones else None
+
+
 def inyectar(celdas: list, rng) -> list:
     """Inserta, tras la tabla de datos, una tabla con la descripción de cada actividad
     según un contexto narrativo. Si no encuentra la tabla devuelve las celdas intactas."""
@@ -94,7 +104,11 @@ def inyectar(celdas: list, rng) -> list:
         lineas.append(f"    {a!r}: {desc!r},")
     lineas.append("}, name='Descripción')")
     lineas.append("descripciones.to_frame()")
-    md = ("md", f"El proyecto corresponde {con_a(ctx['tema'])}; las actividades son las siguientes "
-                f"(las duraciones del cuadro están en {ctx['unidad']}).")
+    # La unidad de tiempo es la que usa el enunciado (no la del contexto); si el cuadro no
+    # lleva duraciones (colecciones de prelaciones/PERT) no se menciona ninguna.
+    unidad = _unidad_del_enunciado(celdas[:i + 1])
+    con_duraciones = re.search(r"['\"](duration|a|m|b|D|dur\w*)['\"]", celdas[i][1]) is not None
+    coletilla = f" (las duraciones del cuadro están en {unidad})" if (unidad and con_duraciones) else ""
+    md = ("md", f"El proyecto corresponde {con_a(ctx['tema'])}; las actividades son las siguientes{coletilla}.")
     code = ("code", '#| tbl-cap: "Descripción de las actividades"\n#| label: tbl-descripciones\n' + "\n".join(lineas))
     return celdas[:i + 1] + [md, code] + celdas[i + 1:]

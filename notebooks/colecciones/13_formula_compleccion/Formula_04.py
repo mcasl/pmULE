@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -237,6 +241,40 @@ datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 
+# %%
+def _num(x, dec=0):
+    x = float(x)
+    return (f'{x:.{dec}f}' if dec else f'{x:g}').replace('-', '−')
+
+
+def producto_Rt(proyecto, R, t, base, decimales=0):
+    """Cada fila de R por el vector t: (R·t)_r = Σ_i R_ri·t_i, con los términos no nulos (actividades de la
+    ruta, en orden de ejecución) y el valor; marca las filas que dan el máximo."""
+    cal = proyecto.calendar(base)
+    orden = {a: k for k, a in enumerate(ordena_ruta(list(R.columns), cal))}
+    filas = {}
+    for r in R.index:
+        acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: orden.get(a, 0))
+        total = float(sum(float(t[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    'fila de R · t = suma': ' + '.join(f'{a}({_num(t[a], decimales)})' for a in acts) + f' = {_num(total, decimales)}',
+                    'R·t': total}
+    tabla = pd.DataFrame(filas).T
+    tabla['R·t'] = tabla['R·t'].astype(float)
+    tabla['máximo'] = np.where(np.isclose(tabla['R·t'], tabla['R·t'].max()), '← τ', '')
+    return tabla
+
+
+def explica_tau(tabla, unidad='', decimales=0, nombre='τ'):
+    """«τ = ‖R·t‖∞ = máx(19, 20, 17) = 20, que da la ruta Route_2 (A – C – E)»."""
+    v = tabla['R·t']
+    T = float(v.max())
+    rutas = [f"{r} ({tabla.loc[r, 'actividades']})" for r in v.index if np.isclose(v[r], T)]
+    u = f' {unidad}' if unidad else ''
+    quien = (f'que corresponde a la ruta {rutas[0]}' if len(rutas) == 1
+             else f'alcanzado a la vez por {len(rutas)} rutas: {lista_y(rutas)}')
+    return (f"{nombre} = ‖R·t‖∞ = máx({', '.join(_num(x, decimales) for x in v)}) = **{_num(T, decimales)}{u}**, {quien}")
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -254,18 +292,31 @@ proyecto.pert(durations=False, ranksep=1)
 H = proyecto.incidence_matrix()
 H
 
+# %%
+Markdown(f'**Respuesta:** H tiene {H.shape[0]} filas (las {len(proyecto.actual_activities)} actividades y {H.shape[0] - len(proyecto.actual_activities)} '
+         f'ficticias) y {H.shape[1]} columnas (nodos); cada fila tiene un −1 en el nodo donde empieza el arco y un +1 en el nodo donde termina.')
+
 # %% [markdown]
 # ## Apartado 2
 
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# Matriz de rutas con las ficticias (una columna por arco, en el mismo orden que las filas de H):
+
 # %%
 R = proyecto.path_matrix(dummies=True)[H.index]
+display(R)
 RH = R @ H
 display(RH)
 interiores = H.columns[1:-1]
-Markdown(f'R·H es cero en las columnas interiores: {bool((RH[interiores] == 0).all().all())}; en la columna del nodo inicial vale {int(RH.iloc[0, 0])} y en la del final {int(RH.iloc[0, -1])} para todas las rutas.')
+r0 = R.index[0]
+arcos_r0 = [a for a in R.columns if R.loc[r0, a] == 1]
+nodo = interiores[0]
+ejemplo = ' + '.join(f'({_num(H.loc[a, nodo])})' for a in arcos_r0 if H.loc[a, nodo] != 0)
+cero = bool((RH[interiores] == 0).all().all())
+Markdown(f'''Ejemplo: la fila {r0} de R tiene un 1 en los arcos {lista_y(arcos_r0)}; multiplicada por la columna del nodo {nodo} de H solo suman los arcos de la ruta que tocan ese nodo: {ejemplo or '0 (la ruta no pasa por el nodo)'} = {_num(RH.loc[r0, nodo])}.\n\n**Respuesta:** R·H es {'cero' if cero else 'distinto de cero'} en todas las columnas interiores; en la del nodo inicial vale {_num(RH.iloc[0, 0])} y en la del final {_num(RH.iloc[0, -1])} para todas las rutas.''')
 
 # %% [markdown]
 # Una ruta entra y sale de cada nodo interior exactamente una vez, así que la suma de sus entradas de incidencia es +1 − 1 = 0; sólo sale del inicial (−1) y sólo entra en el final (+1).
@@ -289,15 +340,23 @@ y_interior = {
 y = pd.Series(0, index=H.columns, dtype=int)
 for nodo, valor in y_interior.items():
     y[nodo] = valor
+display(y.to_frame('y (0 en el nodo inicial y en el final)').T)
 delta = H @ y
 t = pd.Series({a: (datos_proyecto.loc[a, 'duration'] if not a.startswith('@') else 0) for a in H.index})
 t_perturbado = t + delta
-pd.DataFrame({'t': t, 'δ = H·y': delta, 't + δ': t_perturbado}).T
+origen = {a: H.columns[H.loc[a] == -1][0] for a in H.index}
+destino = {a: H.columns[H.loc[a] == 1][0] for a in H.index}
+pd.DataFrame({'t': t, 'δ = y(destino) − y(origen)': [f'{_num(y[destino[a]])} − ({_num(y[origen[a]])}) = {_num(delta[a])}' for a in H.index],
+              't + δ': t_perturbado}, index=H.index).T
 
 # %%
 Rt, Rt2 = R @ t, R @ t_perturbado
-display(pd.DataFrame({'R·t': Rt, 'R·(t+δ)': Rt2, 'diferencia': Rt2 - Rt}))
-Markdown(f'τ = {float(Rt.max()):.0f} antes y {float(Rt2.max()):.0f} después: las duraciones de todas las rutas cambian en {int((Rt2 - Rt).iloc[0])} (= y_final − y_inicial = 0), así que τ es invariante.')
+def _suma(v, r):
+    acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: list(H.columns).index(origen[a]))
+    return ' + '.join(f'{a}({_num(v[a])})' for a in acts) + f' = {_num(sum(v[a] for a in acts))}'
+display(pd.DataFrame({'R·t = suma': [_suma(t, r) for r in R.index], 'R·(t+δ) = suma': [_suma(t_perturbado, r) for r in R.index],
+                      'diferencia': (Rt2 - Rt).astype(int)}, index=R.index))
+Markdown(f'''**Respuesta:** τ = máx({', '.join(_num(x) for x in Rt)}) = {float(Rt.max()):.0f} ({Rt.idxmax()}) antes y máx({', '.join(_num(x) for x in Rt2)}) = {float(Rt2.max()):.0f} después: las duraciones de todas las rutas cambian en {int((Rt2 - Rt).iloc[0])} (= y_final − y_inicial = 0), así que τ es invariante. Con los «tiempos de los nodos» se ha hecho lo que explica el párrafo siguiente: desplazar el reloj de cada nodo interior.''')
 
 # %% [markdown]
 # δ = H·y añade a cada arco la diferencia de «potencial» entre su destino y su origen. Es lo mismo que mover el reloj de cada nodo: si al nodo j se le suma y_j a su tiempo, los arcos que llegan a j parecen y_j más largos y los que salen y_j más cortos, y a lo largo de cualquier ruta cerrada entre inicio y final todo se cancela. (Algunas duraciones perturbadas pueden salir negativas: es un ejercicio algebraico, no un calendario.)
@@ -311,4 +370,6 @@ display(Markdown(pregunta_4))
 # %%
 N = proyecto.nullspace()
 rango = np.linalg.matrix_rank(N.values)
-Markdown(f'''Las columnas interiores de H generan un espacio de dimensión {rango} (número de nodos interiores, {N.shape[1]}) contenido en el núcleo de R. Hay por tanto {rango} direcciones independientes en las que pueden moverse las duraciones de los {len(t)} arcos sin que ninguna ruta cambie. Consecuencia: observando sólo duraciones de rutas no pueden identificarse las duraciones de los arcos; sólo se identifican módulo esas {rango} direcciones.''')
+rango_R = np.linalg.matrix_rank(R.values.astype(float))
+nucleo_R = len(t) - rango_R
+Markdown(f'''**Respuesta:** las columnas interiores de H generan un espacio de dimensión {rango} (tantas como nodos interiores, {N.shape[1]}) contenido en el núcleo de R. Comprobación: R tiene {len(t)} columnas (arcos) y rango {rango_R}, así que su núcleo tiene dimensión {len(t)} − {rango_R} = **{nucleo_R}**{' = número de nodos interiores: esas son todas las perturbaciones posibles' if nucleo_R == rango else ''}. Hay por tanto {nucleo_R} direcciones independientes en las que pueden moverse las duraciones de los {len(t)} arcos sin que ninguna ruta cambie. Consecuencia: observando sólo duraciones de rutas no pueden identificarse las duraciones de los arcos; sólo se identifican salvo esas {nucleo_R} direcciones.''')

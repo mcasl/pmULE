@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -224,6 +228,9 @@ datos_enunciado
 # %% [markdown]
 # # Resolución
 
+# %% [markdown]
+# **Notación** (siglas del PMBOK): BAC (*budget at completion*), presupuesto total del proyecto; PV (*planned value*), valor planificado: presupuesto del trabajo que, según el plan, debía estar hecho en la fecha de control; EV (*earned value*), valor ganado: presupuesto del trabajo realmente hecho; AC (*actual cost*), coste real de ese trabajo. Con ellos: CV = EV − AC (*cost variance*), variación del coste; SV = EV − PV (*schedule variance*), variación del plazo; CPI = EV / AC (*cost performance index*), índice de rendimiento del coste; SPI = EV / PV (*schedule performance index*), índice de rendimiento del plazo. Una variación negativa o un índice menor que 1 indica sobrecoste (CV, CPI) o retraso (SV, SPI).
+
 # %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
@@ -238,22 +245,19 @@ BAC = datos_proyecto['BAC']
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy de la línea base (sin recursos) con el camino crítico"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Calendario de la línea base (inicios más tempranos, sin mirar los operarios)"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Carga de operarios de la línea base frente al límite"
@@ -284,7 +288,9 @@ pd.DataFrame({'inicio línea base': calendario['inicio_mas_temprano'].astype(int
 # %%
 tabla = proyecto.valor_ganado_recursos(datos_proyecto, 'duration', ['operarios'], limite, BAC)
 T_plan, T_real = tabla.attrs['T_plan'], tabla.attrs['T_real']
-Markdown(f'Línea base {T_plan:.0f} semanas; con {limite[0]} operarios el calendario real dura {T_real:.0f}.')
+Markdown(f'**Respuesta:** la línea base dura {T_plan:.0f} semanas (calendario más temprano, tabla del calendario) y su PV semana a semana '
+         f'es la columna PV de la tabla del apartado 2; con {limite[0]} operarios el calendario real (inicios de la tabla anterior) dura {T_real:.0f} semanas, '
+         f'{T_real - T_plan:.0f} más.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -292,17 +298,23 @@ Markdown(f'Línea base {T_plan:.0f} semanas; con {limite[0]} operarios el calend
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# Semana a semana: SPI = EV / PV y duración prevista = T / SPI, con T la duración de la línea base.
+
 # %%
 #| tbl-cap: "PV, EV, SPI y duración prevista semana a semana"
 #| label: tbl-valorGanado
 tabla.round(3)
 
 # %%
-primera = tabla.index[tabla['SPI'] < 0.999].min()
+primera = int(tabla.index[tabla['SPI'] < 0.999].min())
 esperas = res.traza[res.traza.decision == 'espera'].sort_values('periodo')
 primera_actividad = esperas.iloc[0]['actividad']
-Markdown(f'El SPI cae por debajo de 1 en la semana {primera}; la primera actividad que espera es {primera_actividad} '
-         f'(semana {int(esperas.iloc[0]["periodo"])}).')
+periodo_espera = int(esperas.iloc[0]['periodo'])
+f1 = tabla.loc[primera]
+Markdown(f'''En la semana {primera}: SPI = EV / PV = {f1["EV"]:.1f} / {f1["PV"]:.1f} = {f1["SPI"]:.3f} y T / SPI = {T_plan:.0f} / {f1["SPI"]:.3f} = {f1["duración prevista"]:.1f} semanas. La actividad {primera_actividad} debía empezar en la semana {int(calendario.loc[primera_actividad, "inicio_mas_temprano"]) + 1} según la línea base, pero no caben {"su" if int(datos_proyecto.loc[primera_actividad, "operarios"]) == 1 else "sus"} {plural(int(datos_proyecto.loc[primera_actividad, "operarios"]), "operario")} y espera (periodo {periodo_espera} de la traza): su parte del PV se planificó y no se gana.
+
+**Respuesta:** el SPI cae por debajo de 1 en la semana {primera}; la primera actividad que espera es {primera_actividad} (periodo {periodo_espera}).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -312,10 +324,16 @@ display(Markdown(pregunta_3))
 
 # %%
 fila = tabla.loc[t_control]
-Markdown(f'En la semana {t_control}: SPI = {fila["SPI"]:.3f}, duración prevista T/SPI = {fila["duración prevista"]:.1f} semanas; '
-         f'duración real {T_real:.0f}: el SPI {"sobrestima" if fila["duración prevista"] > T_real else "subestima"} el retraso. '
-         'Supone que la fracción del plan que se logra cada semana se mantiene hasta el final, cuando el límite de recursos '
-         'solo frena algunos tramos del proyecto.')
+prev = fila['duración prevista']
+if prev > T_real:
+    porque = ('T/SPI supone que el ritmo relativo de la semana de control se mantiene hasta el final; aquí el SPI está deprimido por esperas que '
+              'ya se han producido y que no se repiten en el resto del proyecto, así que sobrestima el retraso.')
+else:
+    porque = ('T/SPI supone que el ritmo relativo de la semana de control se mantiene hasta el final; aquí quedan esperas por venir que el SPI '
+              'de esta semana todavía no refleja, así que subestima el retraso.')
+Markdown(f'''En la semana {t_control}: SPI = EV / PV = {fila["EV"]:.1f} / {fila["PV"]:.1f} = {fila["SPI"]:.3f}; duración prevista T / SPI = {T_plan:.0f} / {fila["SPI"]:.3f} = **{prev:.1f}** semanas, frente a una duración real de **{T_real:.0f}** semanas (diferencia {prev - T_real:+.1f}). {porque}
+
+**Respuesta:** la previsión acertada es la del calendario con recursos ({T_real:.0f} semanas), que conoce exactamente cuándo podrá empezar cada actividad; T/SPI ({prev:.1f}) es solo una extrapolación.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -328,6 +346,4 @@ tabla2 = tabla[['PV', 'EV']].copy()
 tabla2['PV con recursos'] = tabla['EV']        # línea base replanificada con el límite
 tabla2['SPI con línea base realista'] = tabla2['EV'] / tabla2['PV con recursos']
 display(tabla2.round(3))
-Markdown('Con la línea base calculada respetando el límite de operarios el SPI es 1 en todas las semanas: los problemas de recursos '
-         'se detectan al planificar (con la asignación), no al controlar. Un SPI < 1 desde la primera espera es síntoma de una '
-         'línea base irrealista, no de un equipo lento.')
+Markdown(f'''Como nadie trabaja más despacio de lo previsto, la línea base que respeta el límite de operarios (calendario de la asignación, {T_real:.0f} semanas) planifica exactamente lo que luego se gana: su PV coincide con el EV de cada semana y el SPI = EV / PV = 1 en todas. **Respuesta:** el equipo debería haber preparado la línea base con la asignación de recursos ({limite[0]} operarios), comprometiendo {T_real:.0f} semanas en lugar de {T_plan:.0f}. Los problemas de recursos se detectan al planificar, no al controlar: un SPI < 1 desde la primera espera es síntoma de una línea base irrealista, no de un equipo lento.''')

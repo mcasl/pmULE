@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -270,6 +274,46 @@ def resumen_prob(p, d, sd, plazo):
     retraso_esp = sigma * (norm.pdf(z) - z * norm.cdf(-z))      # E[máx(0, X − plazo)] con X ~ N(T, σ)
     return T, sigma, float(norm.cdf(z)), float(retraso_esp)
 
+def suma_caminos_criticos(p, d, unidad='semanas'):
+    '''Cada camino crítico, en orden de ejecución, escrito como suma de duraciones.'''
+    cal = p.calendar(d)
+    T = float(p.duration(d))
+    return '; '.join('–'.join(ordena_ruta(r, cal)) + ' = ' + ' + '.join(f'{float(d[a]):g}' for a in ordena_ruta(r, cal)) + f' = {T:g} {unidad}'
+                     for r in p.critical_path(d).values())
+
+def pasos_ackoff(p, d, tope, cur, pasos):
+    '''Paso a paso de Ackoff-Sasieni: caminos críticos, opciones que los cortan todos (con su CUR) y la elegida.'''
+    from itertools import combinations
+    R = p.path_matrix(dummies=False)
+    d = d.astype(float).copy(); filas = []; acumulado = 0.0
+    for paso, elegidas in sorted(pasos.items()):
+        L = R @ d[R.columns]; T = float(L.max())
+        cal = p.calendar(d)
+        criticas = [ordena_ruta(list(R.columns[R.loc[r] == 1]), cal) for r in L.index if np.isclose(L[r], T)]
+        conjuntos = [set(c) for c in criticas]
+        margen = {x for x in R.columns if d[x] > tope[x] and np.isfinite(cur[x])}
+        opciones = {x: float(cur[x]) for x in set.intersection(*conjuntos) & margen}
+        if len(conjuntos) > 1:
+            for a, b in combinations(sorted(set().union(*conjuntos) & margen), 2):
+                if all(a in s or b in s for s in conjuntos) and a not in opciones and b not in opciones:
+                    opciones[f'{a}+{b}'] = float(cur[a] + cur[b])
+        coste = float(sum(cur[x] for x in elegidas)); acumulado += coste
+        filas.append({'paso': paso + 1, 'duración antes': int(T), 'caminos críticos': '; '.join('–'.join(c) for c in criticas),
+                      'opciones con margen (CUR, k€)': '; '.join(f'{k} ({v:g})' for k, v in sorted(opciones.items(), key=lambda kv: kv[1])),
+                      'se acorta': ' + '.join(elegidas), 'coste del paso (k€)': coste, 'coste acumulado (k€)': acumulado,
+                      'duración después': int(T) - 1})
+        for x in elegidas:
+            d[x] -= 1
+    return pd.DataFrame(filas).set_index('paso')
+
+def explica_retraso_esperado(media, sigma, plazo, unidad='semanas'):
+    '''E[máx(0, T − plazo)] con T ~ N(media, σ), sin tipificar: (μ − plazo)·P(T > plazo) + σ²·f(plazo).'''
+    p_mas = 1 - norm.cdf(plazo, media, sigma); f = norm.pdf(plazo, media, sigma)
+    hoja = lambda x: f'{x:g}'.replace('.', ',')
+    return (f'E[máx(0, T − {plazo:g})] = (μ − plazo)·P(T > plazo) + σ²·f(plazo) = ({media:g} − {plazo:g})·{p_mas:.4f} + {sigma:.3f}²·{f:.4f} '
+            f'= **{(media - plazo) * p_mas + sigma ** 2 * f:.2f} {unidad}**, donde f(plazo) es la densidad normal en el plazo: '
+            f'`=DISTR.NORM.N({hoja(plazo)}; {hoja(media)}; {hoja(round(sigma, 3))}; FALSO)` = {f:.4f}')
+
 # %%
 plazo_competidor, plazo_comercial, penalizacion, bonificacion, descuento = 25, 24, 4, 1, 2
 datos_proyecto = datos_enunciado.copy()
@@ -288,27 +332,29 @@ display(Markdown(pregunta_1))
 # %%
 #| tbl-cap: "Media y varianza PERT de cada actividad; calendario"
 #| label: tbl-pert
-display(datos_proyecto[['optimista', 'mas_probable', 'pesimista', 'duration', 'varianza']].round(3))
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']]
+display(detalle_estimaciones(datos_proyecto, 'optimista', 'mas_probable', 'pesimista'))
+proyecto.display_calendario(datos_proyecto['duration'])
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo PERT con las duraciones medias y el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 T_media = float(proyecto.duration(datos_proyecto['duration']))
 sigma, varianzas_caminos = proyecto.standard_deviation(datos_proyecto['duration'], datos_proyecto['varianza'].to_dict())
-display(varianzas_caminos)
-p_pert = norm.cdf((plazo_comercial - T_media) / sigma)
-plazo90_pert = T_media + norm.ppf(0.9) * sigma
-Markdown(f'''Duración esperada {T_media:.1f} semanas, camino crítico {camino_critico(proyecto, datos_proyecto["duration"])}, σ = {sigma:.2f}. P(T ≤ {T_media:.0f}) = {p_pert:.2f} (la media se cumple la mitad de las veces); plazo al 90 %: {T_media:.1f} + 1.28 × {sigma:.2f} = **{plazo90_pert:.1f} semanas**.''')
+p_pert = norm.cdf(plazo_comercial, T_media, sigma)
+plazo90_pert = norm.ppf(0.9, T_media, sigma)
+_ruta = ordena_ruta(list(proyecto.critical_path(datos_proyecto['duration']).values())[0], calendario)
+Markdown(f'Duración esperada: {suma_caminos_criticos(proyecto, datos_proyecto["duration"])}. Desviación típica del camino '
+         f'crítico (raíz de la suma de las varianzas de sus actividades): {explica_sigma_ruta(_ruta, datos_proyecto["varianza"])} semanas.\n\n'
+         f'Con T ~ N({T_media:g}; {sigma:.3f}):\n\n- {explica_probabilidad(T_media, sigma, plazo_comercial)}: la media se cumple '
+         f'la mitad de las veces.\n- Plazo al 90 %: {explica_percentil(T_media, sigma, 0.9, "semanas")}.\n\n'
+         f'**Respuesta:** duración esperada {T_media:g} semanas, σ = {sigma:.2f} semanas, P(T ≤ {plazo_comercial}) = {p_pert:.2f} '
+         f'y plazo al 90 % de {plazo90_pert:.1f} semanas.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -337,7 +383,11 @@ ax.axvline(plazo90_pert, ls='--', color='C1'); ax.axvline(plazo90_mc, ls='--', c
 ax.set_xlabel('duración (semanas)'); ax.legend();
 
 # %% [markdown]
+# En Monte Carlo cada réplica sortea la duración de cada actividad con su distribución PERT y calcula la duración del proyecto (la ruta más larga de esa réplica); P(T ≤ 24) es la proporción de las 20000 réplicas que terminan en 24 semanas o menos (5739 / 20000 = 0.29), el plazo al 90 % es el percentil 90 de las duraciones simuladas y el índice de criticidad de una actividad es el porcentaje de réplicas en las que está en la ruta más larga.
+#
 # La media PERT (24) subestima la duración y la normal del camino crítico subestima la cola derecha: en las réplicas hay otras rutas (la segunda dura 23 en media) que en bastantes escenarios se convierten en la más larga. Es el *sesgo de fusión* (merge bias): el máximo de varias variables aleatorias tiene media mayor que el mayor de sus medias. Por eso P(T ≤ 24) baja del 0.50 al 0.29 y el plazo al 90 % sube de 25.4 a 26.1. La actividad no crítica con más criticidad es **B** (28% de las réplicas en la ruta más larga, holgura 1): el análisis determinista la da por holgada y conviene vigilarla como si fuera crítica.
+#
+# **Respuesta:** por Monte Carlo, P(T ≤ 24) = 0.29 (PERT: 0.50) y plazo al 90 % = 26.1 semanas (PERT: 25.4); no coinciden por el sesgo de fusión, que el método PERT ignora al mirar sólo el camino crítico. La actividad no crítica que hay que vigilar es B.
 
 # %% [markdown]
 # ## Apartado 3
@@ -359,7 +409,9 @@ pd.DataFrame({'estimaciones del equipo': [T_media, sigma, p_pert, plazo90_pert, 
              index=['media PERT', 'σ PERT', f'P(T ≤ {plazo_comercial}) PERT', 'plazo 90 % PERT', f'P(T ≤ {plazo_comercial}) MC', 'plazo 90 % MC']).round(2)
 
 # %% [markdown]
-# Añadir dos semanas a la estimación pesimista de C sube su media en 0.33 semanas y su varianza; la duración esperada pasa a 24.33 y el plazo al 90 % por Monte Carlo a 26.5. El efecto es moderado pero va en la misma dirección: cuanto más incierta la actividad crítica, más colchón hace falta para la misma probabilidad. Y es información que el equipo de producción tenía y la oferta no.
+# Añadir dos semanas a la estimación pesimista de C sube su media en 2/6 = 0.33 semanas ((5 + 4·8 + 13)/6 = 8.33) y su varianza de 1.000 a ((13 − 5)/6)² = 1.778.
+#
+# **Respuesta:** la duración esperada pasa de 24 a 24.33 semanas (+0.33); P(T ≤ 24) pasa de 0.50 a 0.41 con PERT y de 0.29 a 0.23 con Monte Carlo; el plazo al 90 % sube de 25.42 a 26.15 con PERT (+0.73) y de 26.09 a 26.55 con Monte Carlo (+0.45 semanas). El efecto es moderado pero va en la misma dirección: cuanto más incierta la actividad crítica, más colchón hace falta para la misma probabilidad. Y es información que el equipo de producción tenía y la oferta no.
 
 # %% [markdown]
 # ## Apartado 4
@@ -381,7 +433,21 @@ for Dp in candidatos:
 plazos = pd.DataFrame(filas).set_index('plazo ofertado')
 display(plazos.round(2))
 D_opt = int(plazos['coste esperado total'].idxmin()); D_legal = int(np.ceil(plazo90_mc))
-Markdown(f'''El plazo que minimiza el coste esperado es **{D_opt} semanas** (P(cumplir) = {plazos.loc[D_opt, "P(cumplir)"]:.2f}); el que exige asesoría jurídica (90 %) es **{D_legal}** semanas, con coste esperado {plazos.loc[D_legal, "coste esperado total"]:.1f} k€ frente a {plazos.loc[D_opt, "coste esperado total"]:.1f}: cumplir la condición cuesta {plazos.loc[D_legal, "coste esperado total"] - plazos.loc[D_opt, "coste esperado total"]:.1f} k€ esperados.''')
+_f = plazos.loc[D_opt]
+_cumple = _f['P(cumplir)'] >= 0.9
+Markdown(f'Para un plazo ofertado D, con las {len(tau)} réplicas τ de la duración (descuento comercial, penalización esperada y bonificación esperada): coste esperado = {descuento} × máx(0, D − '
+         f'{plazo_competidor}) + {penalizacion} × media(máx(0, τ − D)) − {bonificacion} × media(máx(0, D − τ)). Para D = {D_opt}:\n\n'
+         f'- descuento = {descuento} × máx(0, {D_opt} − {plazo_competidor}) = {_f["descuento comercial"]:.2f} k€\n'
+         f'- penalización esperada = {penalizacion} × {_f["penalización esperada"] / penalizacion:.3f} = {_f["penalización esperada"]:.2f} k€\n'
+         f'- bonificación esperada = {bonificacion} × {_f["bonificación esperada"] / bonificacion:.3f} = {_f["bonificación esperada"]:.2f} k€\n'
+         f'- coste esperado = {_f["descuento comercial"]:.2f} + {_f["penalización esperada"]:.2f} − {_f["bonificación esperada"]:.2f} = **{_f["coste esperado total"]:.2f} k€**\n\n'
+         f'**Respuesta:** el plazo que minimiza el coste esperado es **{D_opt} semanas** (P(cumplir) = {_f["P(cumplir)"]:.2f}), que '
+         + ('sí cumple la condición de asesoría jurídica (≥ 0.90).' if _cumple else
+            f'no cumple la condición de asesoría jurídica (0.90). El primer plazo que la cumple es **{D_legal} semanas** '
+            f'(percentil 90 de las réplicas, {plazo90_mc:.2f}, redondeado hacia arriba; P(cumplir) = {plazos.loc[D_legal, "P(cumplir)"]:.2f}), '
+            f'con coste esperado {plazos.loc[D_legal, "coste esperado total"]:.2f} k€: cumplirla cuesta '
+            f'{plazos.loc[D_legal, "coste esperado total"]:.2f} − {_f["coste esperado total"]:.2f} = '
+            f'**{plazos.loc[D_legal, "coste esperado total"] - _f["coste esperado total"]:.2f} k€** esperados.'))
 
 # %% [markdown]
 # Prometer 24 semanas (lo que pide el director comercial) tiene un coste esperado de 3.1 k€ y se cumple el 29% de las veces; el óptimo económico es 25 (0.6 k€, P = 0.65) y el plazo «jurídico» 27 (1.7 k€). La penalización esperada decrece con el plazo ofertado y el descuento comercial crece 2 k€ por semana: el óptimo está donde la penalización marginal evitada iguala el descuento marginal. La condición del 90 % es una preferencia por el riesgo, no un óptimo en media: su coste es la diferencia entre las dos filas, y conviene que quien la impone lo sepa.

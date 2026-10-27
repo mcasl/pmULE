@@ -329,6 +329,25 @@ RUBRICA_C = ("La pregunta del bloque C es abierta: no tiene una respuesta única
              "comunicación con las cifras. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.")
 
 
+def _ly(items, conj="y"):
+    """«A», «A y B», «A, B y C» (como lista_y de pmule, para los textos que genera la plantilla)."""
+    items = [str(x) for x in items]
+    if len(items) <= 1:
+        return "".join(items) or "ninguna"
+    return ", ".join(items[:-1]) + f" {conj} " + items[-1]
+
+
+def _pl(n, singular, plural=None):
+    """«1 semana», «3 semanas» (como plural de pmule)."""
+    n = int(n) if float(n).is_integer() else n
+    return f"{n} {singular if n == 1 else (plural or singular + 's')}"
+
+
+def _miles(x):
+    """«25 400»: separador de miles con espacio."""
+    return f"{x:,.0f}".replace(",", " ")
+
+
 def _silencio():
     return contextlib.redirect_stdout(io.StringIO())
 
@@ -438,7 +457,27 @@ def _elegir(rng, lista, k):
     return sorted(str(x) for x in rng.choice(lista, size=min(k, len(lista)), replace=False))
 
 
-SETUP = ("datos_proyecto = datos_enunciado.copy()\n"
+AUX = ("def pasos_txt(pasos):\n"
+       "    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''\n"
+       "    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))\n"
+       "def suma_txt(valores, decimales=0):\n"
+       "    '''«3 + 4 + 4 = 11»: suma término a término.'''\n"
+       "    vals = [float(v) for v in valores]\n"
+       "    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'\n"
+       "def suma_acts(acts, serie, decimales=0):\n"
+       "    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''\n"
+       "    vals = [float(serie[a]) for a in acts]\n"
+       "    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'\n"
+       "def criticas_txt(proyecto, duraciones):\n"
+       "    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''\n"
+       "    cal = proyecto.calendar(duraciones)\n"
+       "    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())\n"
+       "def miles(x, decimales=0):\n"
+       "    '''«25 400»: separador de miles con espacio.'''\n"
+       "    return f'{x:,.{decimales}f}'.replace(',', ' ')\n")
+
+SETUP = (AUX +
+         "datos_proyecto = datos_enunciado.copy()\n"
          "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
          "proyecto = prelaciones.create_project()\n"
          "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
@@ -539,10 +578,25 @@ def _compresion_con_carbono(rng):
     celdas.append(code('#| tbl-cap: "Opciones consideradas en cada paso (coste monetario)"\n#| label: tbl-ackoffPaso1\n'
                        "detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duration'], datos_proyecto['ucr'], pasos_1)"))
     celdas.append(code("plan_1 = resumen_plan(pasos_1)\n"
+                       "acts_1 = [a for _, paso in sorted(pasos_1.items()) for a in paso]\n"
                        "display(plan_1.round(2).to_frame('plan 1: coste monetario').T)\n"
-                       "Markdown('Plan 1: ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_1.items())) + "
-                       "f'''. Coste **{plan_1.iloc[0]:.0f} k€** y **{plan_1.iloc[1]:.0f} t CO₂** adicionales.''')"))
+                       "Markdown(f'''Plan 1 (por el coste monetario): {pasos_txt(pasos_1)}. El coste del plan es la suma de los costes unitarios de las semanas acortadas, "
+                       "y sus emisiones adicionales, la suma de las emisiones de esas semanas:\\n\\n"
+                       "- coste = {suma_acts(acts_1, datos_proyecto['ucr'], 1)} k€;\\n"
+                       "- emisiones = {suma_acts(acts_1, datos_proyecto['emisiones_reduccion'])} t CO₂.\\n\\n"
+                       "**Respuesta:** el plan de menor coste monetario ({pasos_txt(pasos_1)}) cuesta **{plan_1.iloc[0]:.1f} k€** y añade **{plan_1.iloc[1]:.0f} t CO₂**.''')"))
     celdas += apartado(2)
+    celdas.append(code('#| tbl-cap: "Coste unitario total de las actividades que pueden acortarse"\n#| label: tbl-ucrTotal\n'
+                       "reducibles = datos_proyecto.index[datos_proyecto['cap_duration'] < datos_proyecto['duration']]\n"
+                       "costes_unitarios = pd.DataFrame({'ucr (k€/semana)': datos_proyecto.loc[reducibles, 'ucr'],\n"
+                       "                                 'emisiones (t/semana)': datos_proyecto.loc[reducibles, 'emisiones_reduccion'],\n"
+                       "                                 'emisiones × precio sombra (k€/semana)': datos_proyecto.loc[reducibles, 'emisiones_reduccion'] * precio_sombra / 1000,\n"
+                       "                                 'ucr total (k€/semana)': datos_proyecto.loc[reducibles, 'ucr_total']})\n"
+                       "display(costes_unitarios.round(2))\n"
+                       "_a = costes_unitarios['emisiones (t/semana)'].idxmax()\n"
+                       "Markdown(f'''El coste unitario total de cada actividad es ucr + emisiones × precio sombra / 1000; por ejemplo, para {_a}: "
+                       "{datos_proyecto.loc[_a, 'ucr']:g} + {datos_proyecto.loc[_a, 'emisiones_reduccion']:g} × {precio_sombra} / 1000 = **{datos_proyecto.loc[_a, 'ucr_total']:.2f} k€** por semana. "
+                       "Con estos costes se repite el algoritmo (en la tabla de opciones los costes van redondeados a enteros; los exactos son los de esta tabla).''')"))
     celdas.append(code('#| tbl-cap: "Ackoff-Sasieni con el coste unitario total (ucr + emisiones × precio sombra)"\n#| label: tbl-ackoffTotal\n'
                        "tabla_2, pasos_2, duraciones_2, margen_2 = proyecto.ackoff(\n"
                        "    durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],\n"
@@ -554,13 +608,19 @@ def _compresion_con_carbono(rng):
                        "plan_2 = resumen_plan(pasos_2)\n"
                        "comparacion = pd.DataFrame({'plan 1 (ucr)': plan_1, 'plan 2 (ucr + carbono)': plan_2})\n"
                        "display(comparacion.round(2))\n"
-                       "Markdown('Plan 2: ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_2.items())) + "
-                       "f'''. Cuesta **{plan_2.iloc[0] - plan_1.iloc[0]:.1f} k€ más** en dinero y emite **{plan_1.iloc[1] - plan_2.iloc[1]:.0f} t menos**; "
-                       "al precio sombra el plan 2 es **{plan_1.iloc[3] - plan_2.iloc[3]:.1f} k€ más barato** en total. Compensar el plan 1 a "
-                       "{precio_creditos} €/t costaría {plan_1.iloc[4]:.1f} k€; esas toneladas valen {plan_1.iloc[2]:.1f} k€ al precio sombra.''')"))
-    celdas.append(md("El algoritmo es el mismo; cambia el coste unitario con el que se ordenan las opciones. Con el precio "
-                     "del carbono dentro del coste, una semana «barata» en dinero pero cara en emisiones deja de ser la "
-                     "primera opción, y el plan cambia de actividades."))
+                       "acts_2 = [a for _, paso in sorted(pasos_2.items()) for a in paso]\n"
+                       "def linea_plan(n, plan, acts):\n"
+                       "    return (f'- Plan {n}: coste {suma_acts(acts, datos_proyecto[\"ucr\"], 1)} k€; emisiones {suma_acts(acts, datos_proyecto[\"emisiones_reduccion\"])} t; '\n"
+                       "            f'coste total = {plan.iloc[0]:.1f} + {plan.iloc[1]:.0f} × {precio_sombra} / 1000 = {plan.iloc[0]:.1f} + {plan.iloc[2]:.1f} = **{plan.iloc[3]:.1f} k€**; '\n"
+                       "            f'compensar a {precio_creditos} €/t: {plan.iloc[1]:.0f} × {precio_creditos} / 1000 = {plan.iloc[4]:.2f} k€.')\n"
+                       "salen = sorted(set(acts_1) - set(acts_2)); entran = sorted(set(acts_2) - set(acts_1))\n"
+                       "Markdown(f'''Plan 2 (por el coste total): {pasos_txt(pasos_2)}.\\n\\n''' + linea_plan(1, plan_1, acts_1) + '\\n' + linea_plan(2, plan_2, acts_2) + "
+                       "f'''\\n\\nEl algoritmo es el mismo; cambia el coste unitario con el que se ordenan las opciones. Con el carbono dentro del coste, ''' + "
+                       "((lista_y(salen) + (' deja' if len(salen) == 1 else ' dejan') + ' de elegirse' + (' y entra' + ('' if len(entran) == 1 else 'n') + ' ' + lista_y(entran) if entran else '')) if salen else 'cambia el orden de los pasos') + "
+                       "f'''.\\n\\n**Respuesta:** el plan 2 cuesta **{plan_2.iloc[0] - plan_1.iloc[0]:.1f} k€ más** en dinero y emite **{plan_1.iloc[1] - plan_2.iloc[1]:.0f} t menos**; "
+                       "al precio sombra es **{plan_1.iloc[3] - plan_2.iloc[3]:.1f} k€ más barato** en total ({plan_2.iloc[3]:.1f} frente a {plan_1.iloc[3]:.1f} k€). "
+                       "Compensar las emisiones costaría {plan_1.iloc[4]:.2f} k€ (plan 1) y {plan_2.iloc[4]:.2f} k€ (plan 2) a precio de créditos; "
+                       "al precio sombra valen {plan_1.iloc[2]:.1f} y {plan_2.iloc[2]:.1f} k€.''')"))
     celdas += apartado(3)
     celdas.append(md(f"**S2.** La organización ha fijado el precio de la externalidad ({precio} €/t), de modo que el "
                      f"criterio de decisión es el coste total: el plan 2 ({e['tot2']:.1f} k€) frente al plan 1 "
@@ -570,7 +630,10 @@ def _compresion_con_carbono(rng):
                      "política. **S1.** El plan 1 más créditos está en el escalón más bajo de la pirámide (**compensar**); "
                      "el plan 2 **minimiza** las emisiones de la compresión; **evitar** sería negociar con el cliente las "
                      f"{r} semanas (lección 19, C13 y C10) o acortar por medios sin emisiones (solapes, más personal "
-                     "en jornada ordinaria). La clasificación no es opinable: compensar es compensar."))
+                     "en jornada ordinaria). La clasificación no es opinable: compensar es compensar.\n\n"
+                     f"**Respuesta:** el plan correcto es el **plan 2** (acorta {_ly(sorted(set(e['acts2'])))}), el de menor coste total al "
+                     f"precio sombra; los créditos a {q} €/t no cambian la elección porque no son el precio que la "
+                     "organización ha fijado. Plan 1 con créditos: compensar; plan 2: minimizar."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Con un precio sombra del carbono fijado por la organización, el plan de compresión correcto es…', ['el de menor coste total (dinero + emisiones al precio sombra)', 'el de menor coste monetario, compensando después', 'el de menos emisiones a cualquier coste', 'el que pida el cliente'],\n"
@@ -666,8 +729,25 @@ def _coste_ciclo_de_vida(rng):
                        "sin_carbono = pd.DataFrame({col: ciclo_de_vida(col, 0) for col in datos.columns})\n"
                        "display(sin_carbono.round(1))\n"
                        "dif0 = sin_carbono.loc['coste del ciclo de vida', 'A (estándar)'] - sin_carbono.loc['coste del ciclo de vida', 'B (eficiente)']\n"
-                       "Markdown(f'''Factor de anualidad {anualidad:.3f} ({N} años al {k:.0%}). Sin el carbono, B es ''' + ('**más barata**' if dif0 > 0 else '**más cara**') + "
-                       "f''' que A en el ciclo de vida: {abs(dif0):.1f} k€ de diferencia, aunque cueste {datos.iloc[0, 1] - datos.iloc[0, 0]:.0f} k€ más al comprarla.''')"))
+                       "def lineas_lcc(tabla, con_carbono):\n"
+                       "    lineas = []\n"
+                       "    for col in datos.columns:\n"
+                       "        I, c, m, fin = datos[col]; t = tabla[col]\n"
+                       "        txt = (f'- **{col}**: energía = {c:g} MWh × {precio_energia} k€/MWh × {anualidad:.3f} = {t[\"energía (VA)\"]:.1f}; '\n"
+                       "               f'mantenimiento = {m:g} × {anualidad:.3f} = {t[\"mantenimiento (VA)\"]:.1f}; '\n"
+                       "               f'retirada = {fin:g} / {1 + k:g}^{N} = {t[\"retirada (VA)\"]:.1f}; ')\n"
+                       "        if con_carbono:\n"
+                       "            txt += f'carbono = {c:g} × {factor} t/MWh × {precio_sombra} €/t / 1000 × {anualidad:.3f} = {t[\"carbono (VA)\"]:.1f}; '\n"
+                       "        partes = [I, t['energía (VA)'], t['mantenimiento (VA)'], t['retirada (VA)']] + ([t['carbono (VA)']] if con_carbono else [])\n"
+                       "        txt += 'ciclo de vida = ' + ' + '.join(f'{x:.1f}' for x in partes) + f' = **{t[\"coste del ciclo de vida\"]:.1f} k€**'\n"
+                       "        lineas.append(txt)\n"
+                       "    return '\\n'.join(lineas)\n"
+                       "barata0 = 'B (eficiente)' if dif0 > 0 else 'A (estándar)'\n"
+                       "Markdown(f'''Los costes que se repiten cada año (energía, mantenimiento) se llevan a valor actual con el factor de anualidad "
+                       "a = (1 − (1 + k)^−N) / k = (1 − {1 + k:g}^−{N}) / {k:g} = **{anualidad:.3f}**; la retirada, que ocurre una vez en el año {N}, se descuenta con 1 / (1 + k)^N "
+                       "(precio de la energía: {precio_energia} €/kWh = {precio_energia} k€/MWh).\\n\\n''' + lineas_lcc(sin_carbono, False) + "
+                       "f'''\\n\\n**Respuesta:** sin el carbono la más barata en el ciclo de vida es **{barata0}**, por **{abs(dif0):.1f} k€** ''' + "
+                       "f'''(A: {sin_carbono.loc['coste del ciclo de vida', 'A (estándar)']:.1f} k€; B: {sin_carbono.loc['coste del ciclo de vida', 'B (eficiente)']:.1f} k€), aunque B cueste {datos.iloc[0, 1] - datos.iloc[0, 0]:.0f} k€ más al comprarla.''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Coste del ciclo de vida con el carbono al precio sombra (k€, valor actual)"\n#| label: tbl-lccCon\n'
                        "con_carbono = pd.DataFrame({col: ciclo_de_vida(col, precio_sombra) for col in datos.columns})\n"
@@ -676,9 +756,15 @@ def _coste_ciclo_de_vida(rng):
                        "emisiones = datos.loc['consumo eléctrico (MWh/año)'] * factor * N\n"
                        "delta_c = (datos.iloc[1, 0] - datos.iloc[1, 1]) * factor / 1000 * anualidad\n"
                        "p_equilibrio = -dif0 / delta_c\n"
-                       "Markdown(f'''Con el carbono a {precio_sombra} €/t, B es más barata en **{dif:.1f} k€**. Emisiones en {N} años: A {emisiones.iloc[0]:.0f} t, B {emisiones.iloc[1]:.0f} t. "
-                       "Las dos alternativas se igualan con un precio del carbono de **{p_equilibrio:.0f} €/t**''' + "
-                       "(' (negativo: B gana incluso sin carbono).' if p_equilibrio < 0 else '; por encima gana B.'))"))
+                       "cA, cB = datos.iloc[1, 0], datos.iloc[1, 1]\n"
+                       "Markdown(lineas_lcc(con_carbono, True) + f'''\\n\\nEmisiones en los {N} años = consumo × factor × N: A {cA:g} × {factor} × {N} = **{emisiones.iloc[0]:.0f} t**; "
+                       "B {cB:g} × {factor} × {N} = **{emisiones.iloc[1]:.0f} t**.\\n\\n"
+                       "Precio de equilibrio: cada €/t de precio del carbono encarece A más que B en (consumo A − consumo B) × factor × a / 1000 = "
+                       "({cA:g} − {cB:g}) × {factor} × {anualidad:.3f} / 1000 = {delta_c:.4f} k€; para igualar los costes del ciclo de vida sin carbono hace falta "
+                       "p* = (LCC sin carbono de B − LCC sin carbono de A) / {delta_c:.4f} = {-dif0:.1f} / {delta_c:.4f} = **{p_equilibrio:.0f} €/t**''' + "
+                       "('. Es negativo: B ya es más barata sin carbono y lo es con cualquier precio positivo; no hay un precio de equilibrio con sentido.' if p_equilibrio < 0 else '; con un precio mayor gana B, y con uno menor, A.') + "
+                       "f'''\\n\\n**Respuesta:** con el carbono a {precio_sombra} €/t, B es más barata en **{dif:.1f} k€** ''' + "
+                       "f'''(A: {con_carbono.loc['coste del ciclo de vida', 'A (estándar)']:.1f} k€; B: {con_carbono.loc['coste del ciclo de vida', 'B (eficiente)']:.1f} k€); emite {emisiones.iloc[0] - emisiones.iloc[1]:.0f} t menos en la vida útil.''')"))
     celdas += apartado(3)
     celdas.append(md("**S3.** El criterio es el coste del ciclo de vida, no el precio de adquisición: la LCSP (art. 148) "
                      "lo define con los mismos sumandos del apartado 1 y permite añadir las externalidades con precio. "
@@ -690,7 +776,9 @@ def _coste_ciclo_de_vida(rng):
                      + "la respuesta es **B**. **S4.** «El consumo no es de este proyecto» confunde el ciclo de vida del "
                      "proceso con el de los entregables: quien decide el equipo decide la factura de energía de "
                      f"{N} años, y la decisión se toma ahora. Que el coste lo pague otro presupuesto (mantenimiento) no lo "
-                     "saca del cálculo; lo saca de la vista."))
+                     "saca del cálculo; lo saca de la vista.\n\n"
+                     "**Respuesta:** se elige **B** por el coste del ciclo de vida con el carbono al precio sombra (S3 y S2); "
+                     "decir que el consumo «no es de este proyecto» no es correcto (S4)."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('El coste del ciclo de vida de un equipo, según la LCSP (art. 148), incluye…', ['adquisición, uso, mantenimiento, fin de vida y, si tienen precio, las externalidades', 'sólo el precio de adquisición', 'adquisición y mantenimiento del primer año', 'el precio más el IVA'],\n"
@@ -703,7 +791,9 @@ def _coste_ciclo_de_vida(rng):
     celdas += apartado(4)
     celdas.append(_rubrica())
     celdas.append(md(f"Al director de compras: la tabla del apartado 2; B cuesta {I_B - I_A} k€ más hoy y "
-                     f"{lcc_A - lcc_B:.0f} k€ menos en {N} años al precio sombra ({lcc_A0 - lcc_B0:.0f} k€ sin él). Al "
+                     f"{lcc_A - lcc_B:.0f} k€ menos en {N} años al precio sombra ("
+                     + (f"{lcc_A0 - lcc_B0:.0f} k€ menos también sin él" if lcc_A0 > lcc_B0 else f"sin él, {lcc_B0 - lcc_A0:.0f} k€ más")
+                     + "). Al "
                      "órgano de contratación: que el pliego fije el coste del ciclo de vida como criterio de adjudicación "
                      "con los parámetros publicados (vida útil, tasa, precio de la energía, factor de emisión y precio del "
                      "carbono), que es lo que la ley permite y la política de la organización exige. Prueba del ciclo de "
@@ -788,7 +878,7 @@ def _residuos_de_obra(rng):
               _criterios(["S8", "S1"], constantes=["fracciones_rcd", "impuesto_vertido"]),
               md("Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).")]
     celdas.append(preguntas([
-        f"(A) Calcule la duración del proyecto con la demolición selectiva y con la mecánica ({X} {s} semana(s) más "
+        f"(A) Calcule la duración del proyecto con la demolición selectiva y con la mecánica ({X} {_pl(s, 'semana')} más "
         "corta). ¿Cuántas semanas ahorra la propuesta y cuánto valen al coste semanal del equipo?",
         "(A) Calcule el coste de gestión de los residuos en las dos opciones (tarifas más impuesto al vertido) y la "
         "fracción del residuo que se valoriza en cada una. ¿Cuál es el resultado económico neto de la propuesta?",
@@ -806,10 +896,13 @@ def _residuos_de_obra(rng):
                        "duraciones_mecanica[demolicion] -= semanas_menos\n"
                        "duracion_mecanica = int(proyecto.duration(duraciones_mecanica))\n"
                        "ahorro_semanas = duracion - duracion_mecanica\n"
-                       "camino = ' / '.join('–'.join(r) for r in proyecto.critical_path(duraciones_mecanica).values())\n"
-                       "Markdown(f'''Con demolición selectiva: **{duracion}** semanas; con demolición mecánica: **{duracion_mecanica}** "
-                       "(ruta crítica {camino}). La propuesta ahorra **{ahorro_semanas}** semana(s), que al coste del equipo valen "
-                       "**{ahorro_semanas * coste_semana} k€**.''')"))
+                       "Markdown(f'''Con demolición selectiva el proyecto dura **{duracion}** semanas (camino crítico {criticas_txt(proyecto, datos_proyecto['duration'])}); "
+                       "{demolicion} es crítica, de modo que acortarla acorta el proyecto mientras siga siéndolo. Con demolición mecánica ({demolicion} pasa de "
+                       "{datos_proyecto.loc[demolicion, 'duration']} a {plural(duraciones_mecanica[demolicion], 'semana')}) dura **{duracion_mecanica}** "
+                       "(camino crítico {criticas_txt(proyecto, duraciones_mecanica)})''' + "
+                       "('.' if ahorro_semanas == semanas_menos else f''': sólo se ganan {plural(ahorro_semanas, 'semana')} de las {semanas_menos}, porque otra ruta pasa a ser crítica.''') + "
+                       "f'''\\n\\n**Respuesta:** la propuesta ahorra **{plural(ahorro_semanas, 'semana')}** ({duracion} − {duracion_mecanica}), que al coste del equipo valen "
+                       "{ahorro_semanas} × {coste_semana} = **{ahorro_semanas * coste_semana} k€**.''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Toneladas por fracción y coste de gestión de cada opción"\n#| label: tbl-residuos\n'
                        "toneladas = datos_proyecto[fracciones].sum()\n"
@@ -822,31 +915,41 @@ def _residuos_de_obra(rng):
                        "                      'mixto: tarifa + impuesto (€/t)': tarifa_mixto + impuesto_por_fraccion,\n"
                        "                      'mixto: coste (€)': toneladas * (tarifa_mixto + impuesto_por_fraccion)})\n"
                        "tabla.loc['Total'] = tabla.sum(); tabla.loc['Total', ['separado: tarifa (€/t)', 'mixto: tarifa + impuesto (€/t)']] = None\n"
-                       "display(tabla.round(1))\n"
+                       "display(tabla.rename(index={'hormigon': 'hormigón', 'ceramica': 'cerámica', 'plastico': 'plástico'}).round(1))\n"
                        "coste_separado = float(tabla.loc['Total', 'separado: coste (€)']) / 1000\n"
                        "coste_mixto = float(tabla.loc['Total', 'mixto: coste (€)']) / 1000\n"
                        "valorizado = float(toneladas[['hormigon', 'ceramica', 'madera', 'metal']].sum()) / float(toneladas.sum())\n"
                        "neto = ahorro_semanas * coste_semana - (coste_mixto - coste_separado)\n"
                        "Markdown(f'''La parte inerte (hormigón y cerámica) es el {fraccion_inerte:.0%} del contenedor''' + "
                        "(f''': supera el 75 % y paga {impuesto_inerte} €/t; el resto, {impuesto_mixto} €/t. ''' if fraccion_inerte > 0.75 else f''': no supera el 75 % y todo el contenedor paga {impuesto_mixto} €/t. ''') + "
-                       "f'''Gestión separada: **{coste_separado:.1f} k€** (el metal se cobra; las fracciones recicladas no pagan impuesto); "
-                       "mezclado a vertedero: **{coste_mixto:.1f} k€**. Se valoriza el **{valorizado:.0%}** del residuo frente al 0 % en vertedero. "
-                       "Resultado neto de la propuesta: {ahorro_semanas * coste_semana} − {coste_mixto - coste_separado:.1f} = **{neto:.1f} k€**''' + "
-                       "(' (pierde dinero además de incumplir).' if neto < 0 else ' a favor de la propuesta, antes de la sanción.'))"))
+                       "f'''Cada fila de la tabla es toneladas × tarifa. Gestión separada: **{coste_separado:.1f} k€** (el metal se cobra; las fracciones recicladas no pagan impuesto); "
+                       "mezclado a vertedero: **{coste_mixto:.1f} k€**.\\n\\n"
+                       "Fracción valorizada con la separación (hormigón y cerámica a reciclado de áridos, madera y metal a valorización): "
+                       "({suma_txt(toneladas[['hormigon', 'ceramica', 'madera', 'metal']])}) / {toneladas.sum():.0f} = **{valorizado:.0%}**; con el contenedor único a vertedero, **0 %**.\\n\\n"
+                       "Resultado neto de la propuesta = ahorro de plazo − sobrecoste de gestión = {ahorro_semanas * coste_semana} − ({coste_mixto:.1f} − {coste_separado:.1f}) = "
+                       "{ahorro_semanas * coste_semana} − {coste_mixto - coste_separado:.1f} = **{neto:.1f} k€**''' + "
+                       "(': la propuesta **pierde dinero** además de incumplir la norma.' if neto < 0 else ': la propuesta ganaría ese dinero, pero, como se ve en el apartado 3, no puede ejecutarse.') + "
+                       "f'''\\n\\n**Respuesta:** gestión separada {coste_separado:.1f} k€ con el {valorizado:.0%} valorizado; contenedor único {coste_mixto:.1f} k€ con el 0 % valorizado; resultado neto de la propuesta, {neto:.1f} k€.''')"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma.** Desde el 1 de julio de 2022 los residuos no peligrosos de la obra se clasifican en al "
                      f"menos seis fracciones, preferentemente en la propia obra (Ley 7/2022, art. 30.2), y desde el 1 de "
                      f"enero de 2024 la demolición se hace preferiblemente de forma selectiva, garantizando la retirada de "
                      f"esas fracciones previo estudio de sus cantidades (art. 30.3): la demolición mecánica con contenedor "
                      f"único a vertedero **no puede ejecutarse**, con independencia de lo que ahorre, porque incumple la "
-                     f"clasificación del 30.2 aunque se discuta el alcance del 30.3. Hay que separar las seis fracciones que "
-                     f"aparecen en la tabla: hormigón y cerámica (minerales), "
-                     f"madera, metal, yeso y plástico. **S8.** El contenedor único a vertedero es **eliminación**, el último "
+                     f"clasificación del 30.2 aunque se discuta el alcance del 30.3. Las seis fracciones de la ley son madera, "
+                     f"minerales, metales, vidrio, plástico y yeso; esta obra genera cinco de ellas y hay que separarlas: "
+                     f"minerales (hormigón y cerámica), madera, metal, yeso y plástico (no "
+                     f"genera vidrio). **S8.** El contenedor único a vertedero es **eliminación**, el último "
                      f"escalón de la jerarquía, cuando el {valorizado_sep / total:.0%} del residuo tiene reciclado o "
                      f"valorización disponibles; el plan del proyecto está en los escalones de reciclado y valorización. "
                      f"**S1.** Y en la pirámide del PMBOK 8 la propuesta ni siquiera compensa: traslada el impacto. La "
-                     f"respuesta B no depende del apartado 2 (que sólo muestra que, además, "
-                     + ("es mal negocio)." if coste_mixto - coste_sep > s * coste_semana else "el ahorro es pequeño frente a la sanción).")))
+                     f"respuesta B no depende del apartado 2, que sólo muestra que, además, "
+                     + ("es mal negocio." if coste_mixto - coste_sep > (T - e["T2"]) * coste_semana else
+                        f"ahorraría {(T - e['T2']) * coste_semana - (coste_mixto - coste_sep):.1f} k€: un ahorro que no convierte en "
+                        "opción lo que la norma prohíbe.")
+                     + "\n\n**Respuesta:** **no** puede ejecutarse; hay que separar en la obra las fracciones que se generan "
+                     "(minerales, madera, metal, yeso y plástico); el plan del proyecto está en reciclado y valorización, y el "
+                     "contenedor único a vertedero en eliminación."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Desde 2022, los residuos de construcción y demolición no peligrosos deben clasificarse en al menos…', ['seis fracciones: madera, minerales, metales, vidrio, plástico y yeso', 'dos fracciones: inertes y resto', 'tantas fracciones como quiera el gestor', 'ninguna: el vertedero las separa'],\n"
@@ -861,11 +964,11 @@ def _residuos_de_obra(rng):
     celdas.append(md(f"Al jefe de obra: la opción no está en la tabla (legalidad); si el acopio por fracciones «ocupa "
                      f"media obra», el problema es de espacio y se resuelve con contenedores por fracción retirados con más "
                      f"frecuencia o con separación en planta de un gestor autorizado para ello, no con un vertedero. Si de "
-                     f"verdad hacen falta las {s} semana(s), se buscan en otra actividad crítica con Ackoff (lección 10), "
+                     f"verdad hace falta ganar {_pl(T - e['T2'], 'semana')}, se buscan en otra actividad crítica con Ackoff (lección 10), "
                      f"no en la norma. A la dirección facultativa: el plan de gestión de residuos se cumple como está, con "
                      f"las cifras del apartado 2 ({valorizado_sep / total:.0%} valorizado, {coste_sep:.1f} k€). Prueba de "
                      "publicidad: ¿firmaría el certificado final de obra con el estudio de gestión de residuos incumplido?"))
-    return celdas, (f"demolición mecánica con contenedor único: {s} semana(s) y {s * coste_semana} k€ frente a "
+    return celdas, (f"demolición mecánica con contenedor único: {_pl(s, 'semana')} y {s * coste_semana} k€ frente a "
                     f"{coste_mixto - coste_sep:.1f} k€ más de gestión y el {valorizado_sep / total:.0%} valorizable a vertedero; art. 30 Ley 7/2022")
 
 
@@ -954,9 +1057,16 @@ def _fraccionamiento_eia(rng):
                        "duracion_ordinaria = int(proyecto.duration(duraciones_ordinaria))"))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el procedimiento simplificado", label="fig-pert")
     celdas += apartado(1)
-    celdas.append(code("Markdown(f'''Procedimiento simplificado: **{duracion}** meses, margen de {hito - duracion} sobre el hito. "
-                       "Procedimiento ordinario: **{duracion_ordinaria}** meses, ''' + (f'retraso de {duracion_ordinaria - hito}' if duracion_ordinaria > hito else f'margen de {hito - duracion_ordinaria}') + "
-                       "f''' respecto al hito (la tramitación es crítica: los {meses_mas} meses van enteros al plazo).''')"))
+    celdas.append(code("display(Markdown('**Procedimiento simplificado** (duraciones del enunciado).'))\n"
+                       "display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'meses'))\n"
+                       "display(Markdown(f'**Procedimiento ordinario** ({tramitacion} dura {datos_proyecto.loc[tramitacion, \"duration\"]} + {meses_mas} = {duraciones_ordinaria[tramitacion]} meses).'))\n"
+                       "display(explica_camino_critico(proyecto, duraciones_ordinaria, 'meses'))\n"
+                       "def frente_al_hito(T):\n"
+                       "    return (f'margen de {plural(hito - T, \"mes\", \"meses\")}' if T <= hito else f'retraso de {plural(T - hito, \"mes\", \"meses\")}')\n"
+                       "Markdown(f'''La tramitación {tramitacion} es crítica en los dos casos: los {meses_mas} meses más del procedimiento ordinario van enteros al plazo "
+                       "({duracion} + {meses_mas} = {duracion_ordinaria}).\\n\\n"
+                       "**Respuesta:** procedimiento simplificado, **{duracion} meses**: {frente_al_hito(duracion)} respecto al hito del mes {hito}; "
+                       "procedimiento ordinario, **{duracion_ordinaria} meses**: {frente_al_hito(duracion_ordinaria)}.''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Duración y varianza de cada ruta con el procedimiento ordinario"\n#| label: tbl-rutas\n'
                        "R = proyecto.path_matrix(dummies=False)\n"
@@ -972,14 +1082,56 @@ def _fraccionamiento_eia(rng):
                        "p_mc_s = float((np.asarray(mc_s.tau_samples) <= hito).mean()); p_mc_o = float((np.asarray(mc_o.tau_samples) <= hito).mean())\n"
                        "tabla = pd.DataFrame({'simplificado': [duracion, sigma_s, p_pert_s, p_mc_s], 'ordinario': [duracion_ordinaria, sigma_o, p_pert_o, p_mc_o]},\n"
                        "                     index=['duración esperada', 'σ del camino crítico', 'P(T ≤ hito) PERT', 'P(T ≤ hito) Monte Carlo'])\n"
-                       "display(tabla.round(2))\n"
-                       "Markdown(f'''La probabilidad de llegar al hito pasa de **{p_mc_s:.2f}** a **{p_mc_o:.2f}** con el procedimiento ordinario. "
-                       "Para llegar al hito habría que acortar {max(0, duracion_ordinaria - hito)} meses en actividades críticas distintas de la tramitación "
-                       "(ingeniería y compras en paralelo con la tramitación, lección 10) —y más para recuperar un margen—, o negociar el hito.''')"))
+                       "display(tabla.round(4))\n"
+                       "def ruta_sigma(duraciones):\n"
+                       "    '''Camino crítico de mayor varianza (el que da la σ del PERT), en orden de ejecución.'''\n"
+                       "    L = R @ duraciones[R.columns]; V = R @ datos_proyecto['variance'][R.columns]\n"
+                       "    criticas = [r for r in R.index if np.isclose(L[r], L.max())]\n"
+                       "    r = max(criticas, key=lambda x: V[x])\n"
+                       "    return ordena_ruta(list(R.columns[R.loc[r] == 1]), proyecto.calendar(duraciones))\n"
+                       "acts_s, acts_o = ruta_sigma(datos_proyecto['duration']), ruta_sigma(duraciones_ordinaria)\n"
+                       "Markdown(f'''La aproximación normal del PERT toma T ~ N(μ, σ), con μ la duración del camino crítico y σ la raíz de la suma de las varianzas de sus actividades "
+                       "(el hito exige terminar como muy tarde en el mes {hito}: P(T ≤ {hito})).\\n\\n"
+                       "- **Simplificado** (camino crítico {'–'.join(acts_s)}): {explica_sigma_ruta(acts_s, datos_proyecto['variance'])}; "
+                       "{explica_probabilidad(duracion, sigma_s, hito)}. Monte Carlo: {p_mc_s:.4f} (fracción de las {miles(len(mc_s.tau_samples))} réplicas con T ≤ {hito}).\\n"
+                       "- **Ordinario** (camino crítico {'–'.join(acts_o)}): {explica_sigma_ruta(acts_o, datos_proyecto['variance'])}; "
+                       "{explica_probabilidad(duracion_ordinaria, sigma_o, hito)}. Monte Carlo: {p_mc_o:.4f}.\\n\\n"
+                       "Las dos estimaciones casi coinciden; el Monte Carlo tiene en cuenta además las rutas casi críticas (tabla de criticidad).''')"))
+    celdas.append(code("L_o = R @ duraciones_ordinaria[R.columns]\n"
+                       "cal_o = proyecto.calendar(duraciones_ordinaria)\n"
+                       "def recorte(objetivo):\n"
+                       "    '''Rutas que superan la duración objetivo, con su exceso, y actividades (distintas de la tramitación) comunes a todas ellas.'''\n"
+                       "    largas = L_o[L_o > objetivo].sort_values(ascending=False)\n"
+                       "    conjuntos = [set(R.columns[R.loc[r] == 1]) for r in largas.index]\n"
+                       "    comunes = ordena_ruta(list(set.intersection(*conjuntos) - {tramitacion}), cal_o) if conjuntos else []\n"
+                       "    rutas = [f'{\"–\".join(ordena_ruta(list(R.columns[R.loc[r] == 1]), cal_o))} ({L_o[r]:.0f} meses, exceso {L_o[r] - objetivo:.0f})' for r in largas.index]\n"
+                       "    return largas, rutas, comunes\n"
+                       "def texto_recorte(objetivo, que):\n"
+                       "    largas, rutas, comunes = recorte(objetivo)\n"
+                       "    if largas.empty:\n"
+                       "        return f'- {que}: ninguna ruta supera {objetivo} meses; no hay que acortar nada.'\n"
+                       "    n = largas.max() - objetivo\n"
+                       "    txt = f'- {que} (duración ≤ {objetivo} meses): hay que acortar {plural(n, \"mes\", \"meses\")} el proyecto; superan {objetivo} meses ' + lista_y(rutas) + '. '\n"
+                       "    if len(rutas) == 1:\n"
+                       "        txt += f'Basta ganar {plural(n, \"mes\", \"meses\")} en actividades de esa ruta distintas de la tramitación ({lista_y(comunes)}).'\n"
+                       "    elif comunes:\n"
+                       "        txt += (f'Cada mes que se gane en una actividad común a todas ellas ({lista_y(comunes)}) acorta todas a la vez; lo que falte en cada ruta '\n"
+                       "                'hasta cubrir su exceso se gana en sus demás actividades (lección 10).')\n"
+                       "    else:\n"
+                       "        txt += 'No tienen otra actividad común: hay que acortar actividades de cada una de esas rutas hasta cubrir su exceso (lección 10).'\n"
+                       "    return txt\n"
+                       "Markdown('Qué hay que acortar con el procedimiento ordinario (el enunciado no da duraciones mínimas ni costes, de modo que se indican las actividades candidatas y cuántos meses):\\n\\n' + "
+                       "texto_recorte(hito, 'Para llegar al hito') + '\\n' + texto_recorte(duracion, f'Para recuperar el margen de {plural(hito - duracion, \"mes\", \"meses\")} del procedimiento simplificado') + "
+                       "f'''\\n\\nLa otra palanca es la propia tramitación: empezarla antes o solapar con ella la ingeniería y las compras, o negociar el hito.\\n\\n"
+                       "**Respuesta:** P(T ≤ {hito}) = {p_pert_s:.2f} (PERT) y {p_mc_s:.2f} (Monte Carlo) con el simplificado; {p_pert_o:.2f} y {p_mc_o:.2f} con el ordinario. "
+                       "Con el ordinario hay que acortar {plural(max(0, duracion_ordinaria - hito), \"mes\", \"meses\")} para llegar al hito y {plural(meses_mas, \"mes\", \"meses\")} para recuperar el margen.''')"))
     celdas.append(code('#| tbl-cap: "Índice de criticidad con el procedimiento ordinario"\n#| label: tbl-criticidad\n'
                        "(mc_o.sensitivity_mean * 100).round(1).to_frame('criticidad (%)').T"))
     celdas += apartado(3)
-    celdas.append(md(f"**Norma.** El proyecto es {desc_plana}: supera el umbral del anexo I ({umbral}) y le "
+    supera = (f"sus {S} ha superan las 100 ha del anexo I (y cada mitad, de {S // 2} ha, supera las 5 ha del anexo II)" if solar else
+              f"sus {S:.0f} MW superan los 30 MW del anexo I (que también incluye los parques de 50 o más aerogeneradores y los "
+              "situados a menos de 2 km de otro parque)")
+    celdas.append(md(f"**Norma.** El proyecto es {desc_plana}: {supera}, y le "
                      f"corresponde la evaluación **ordinaria**. **S9.** Presentarlo en dos partes no cambia el procedimiento: "
                      f"los proyectos que, fraccionados, alcanzan por acumulación los umbrales del anexo I se evalúan por el "
                      f"anexo I (art. 7.1.a). Lo que cambia es el riesgo: el órgano ambiental acumula las dos solicitudes "
@@ -987,7 +1139,10 @@ def _fraccionamiento_eia(rng):
                      f"más tarde— o, peor, la autorización obtenida es nula y el hito se pierde de todos modos.{doble} **S11.** La "
                      f"tramitación es un riesgo del proyecto: tiene probabilidad, impacto ({delta} meses en la ruta crítica, "
                      f"P del hito de {e['p_simp']:.2f} a {e['p_ord']:.2f}) y respuestas (empezar antes, solapar, negociar el "
-                     "hito); «es cosa de la administración» es retener del comité el dato que decide."))
+                     "hito); «es cosa de la administración» es retener del comité el dato que decide.\n\n"
+                     "**Respuesta:** le corresponde la evaluación **ordinaria**; presentarlo en dos partes no cambia el "
+                     "procedimiento (sólo añade el riesgo de nulidad), y la tramitación es un **riesgo del proyecto** que se "
+                     "cuantifica en el cronograma."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Un proyecto que se presenta fraccionado en partes que, sumadas, alcanzan los umbrales del anexo I de la Ley 21/2013…', ['se evalúa por el procedimiento ordinario, como un solo proyecto', 'se evalúa parte por parte por el simplificado', 'queda exento de evaluación', 'se evalúa sólo la parte mayor'],\n"
@@ -1113,17 +1268,28 @@ def _huella_del_proyecto(rng):
                        "                         'EPI = EE / AE': EPI, 'índice de avance EE / PE': EE / PE,\n"
                        "                         'EAC = presupuesto / EPI (t)': EAC, 'exceso previsto sobre el presupuesto (t)': EAC - presupuesto_emisiones})\n"
                        "display(indicadores.round(2).to_frame('valor').T)\n"
-                       "Markdown(f'''EPI = {EE:.1f} / {AE:.1f} = **{EPI:.2f}**: por cada tonelada planificada para el trabajo hecho se han emitido {1 / EPI:.2f}. "
-                       "Previsión al cierre **{EAC:.0f} t** frente a las {presupuesto_emisiones:.0f} del acta: el indicador **no se cumple** si no cambia el ritmo de emisión.''')"))
+                       "Markdown(f'''Cada total es la suma de la columna de la tabla anterior:\\n\\n"
+                       "- {explica_suma(detalle['PE_i'], 'PE', 't', 1)}\\n"
+                       "- {explica_suma(detalle['EE_i'], 'EE', 't', 1)}\\n"
+                       "- {explica_suma(detalle['AE'], 'AE', 't', 1)}\\n\\n"
+                       "EPI = EE / AE = {EE:.1f} / {AE:.1f} = **{EPI:.2f}**: por cada tonelada planificada para el trabajo hecho se han emitido 1 / {EPI:.2f} = {1 / EPI:.2f} t. "
+                       "Previsión al cierre EAC = presupuesto / EPI = {presupuesto_emisiones} / {EPI:.4f} = **{EAC:.0f} t**.\\n\\n"
+                       "**Respuesta:** PE = {PE:.1f} t, EE = {EE:.1f} t, AE = {AE:.1f} t, EPI = {EPI:.2f} y EAC = {EAC:.0f} t frente a las {presupuesto_emisiones} t del acta: "
+                       "el indicador **no se cumple** si no cambia el ritmo de emisión (exceso previsto de {EAC - presupuesto_emisiones:.0f} t).''')"))
     celdas += apartado(2)
-    celdas.append(md(f"Se mezclan dos efectos de signo contrario. El proyecto va **retrasado** (EE/PE = "
-                     f"{e['EE'] / e['PE']:.2f}: se ha hecho menos trabajo del previsto a la fecha), y por eso ha emitido "
-                     f"menos que lo planificado a la fecha: {e['AE']:.0f} t frente a {e['PE']:.0f}. Pero por el trabajo que sí "
-                     f"se ha hecho ha emitido **más de lo previsto** (EPI = {e['EPI']:.2f}): las actividades empezadas "
-                     f"({', '.join(e['en_curso'])}, y las terminadas) emiten entre un 20 y un 40 % más por unidad de "
-                     "avance que el plan. El acumulado compara dos cosas que no son comparables (lo emitido por el trabajo "
-                     "hecho con lo previsto para un trabajo mayor); EE es la referencia correcta, exactamente como en el "
-                     "valor ganado de costes (lección 14): AE < PV no dice nada de la eficiencia; EV − AC sí."))
+    celdas.append(code("empezadas = detalle.index[detalle['EE_i'] > 0]\n"
+                       "ratio = (detalle.loc[empezadas, 'AE'] / detalle.loc[empezadas, 'EE_i']).astype(float)\n"
+                       "exceso_pct = ', '.join(f'{a} {float(detalle.loc[a, \"AE\"]):.1f}/{float(detalle.loc[a, \"EE_i\"]):.1f} = {ratio[a]:.2f}' for a in empezadas)\n"
+                       "Markdown(f'''Se mezclan dos efectos de signo contrario, y la diferencia del borrador se descompone exactamente en ellos:\\n\\n"
+                       "AE − PE = (AE − EE) + (EE − PE) = ({AE:.1f} − {EE:.1f}) + ({EE:.1f} − {PE:.1f}) = {AE - EE:.1f} + ({EE - PE:.1f}) = **{AE - PE:.1f} t**.\\n\\n"
+                       "- **Retraso** (EE − PE = {EE - PE:.1f} t; índice de avance EE / PE = {EE:.1f} / {PE:.1f} = {EE / PE:.2f}): se ha hecho menos trabajo del previsto a la fecha, "
+                       "y por eso se ha emitido menos de lo planificado a la fecha.\\n"
+                       "- **Ineficiencia** (AE − EE = {AE - EE:.1f} t; EPI = {EPI:.2f}): por el trabajo que sí se ha hecho se ha emitido más de lo previsto. "
+                       "Cociente AE / EE de cada actividad empezada: {exceso_pct}; todas emiten entre un {100 * (ratio.min() - 1):.0f} y un {100 * (ratio.max() - 1):.0f} % más por unidad de avance que el plan.\\n\\n"
+                       "El primer efecto gana en el acumulado (AE < PE) y esconde el segundo, que es el que se proyecta al cierre. EE es la referencia correcta, exactamente como en el "
+                       "valor ganado de costes (lección 12): AC < PV no dice nada de la eficiencia; EV − AC sí.\\n\\n"
+                       "**Respuesta:** AE < PE porque el proyecto va retrasado; EAC > presupuesto porque cada unidad de trabajo emite más de lo previsto (EPI < 1). "
+                       "El acumulado mezcla el retraso y la ineficiencia.''')"))
     celdas += apartado(3)
     alcances_txt = "; ".join(f"{f}: alcance {a}" for f, a in fuentes)
     celdas.append(md(f"**S5.** El indicador está en el acta de constitución: se informa como el coste, con PE, EE, AE, el "
@@ -1134,7 +1300,9 @@ def _huella_del_proyecto(rng):
                      f"{e['EE'] / e['PE']:.2f}, causas y medidas. **S6.** Clasificación de las fuentes: {alcances_txt}. La "
                      "regla es quién controla la fuente: el combustible de lo propio es alcance 1 aunque lo queme un "
                      "camión; el mismo camión de un transportista contratado es alcance 3; la electricidad comprada es "
-                     "siempre alcance 2."))
+                     "siempre alcance 2.\n\n"
+                     f"**Respuesta:** el borrador **no cumple** S5: debe dar PE, EE, AE, el EPI ({e['EPI']:.2f}) y la previsión "
+                     f"al cierre ({e['EAC']:.0f} t frente a {presupuesto:.0f}); los alcances son los indicados arriba."))
     f3 = [f for f, a in fuentes if a == 3][0]
     f1 = [f for f, a in fuentes if a == 1]
     f1 = f1[0] if f1 else "gasóleo de la maquinaria propia"
@@ -1192,6 +1360,14 @@ def _neutro_en_carbono(rng):
     cu = medidas["coste_k"] * 1000 / medidas["reduccion_t"]
     rentables = medidas[cu <= p]
     red_rentable = float(rentables["reduccion_t"].sum()); coste_rentable = float(rentables["coste_k"].sum())
+    from itertools import combinations as _comb
+    _mejor = None
+    for _n in range(1, len(medidas) + 1):
+        for _c in _comb(medidas.index, _n):
+            _r, _k = medidas.loc[list(_c), "reduccion_t"].sum(), medidas.loc[list(_c), "coste_k"].sum()
+            if _r >= objetivo * H and (_mejor is None or _k < _mejor[1]):
+                _mejor = (_c, _k, float(_r))
+    red_combo = _mejor[2]
     celdas = [md("# Enunciado"),
               md("Antes de empezar la obra, el departamento de marketing quiere anunciar el proyecto como **«proyecto "
                  "neutro en carbono»**. El inventario de emisiones previsto (t CO₂) por fuente se adjunta, junto con las "
@@ -1219,7 +1395,7 @@ def _neutro_en_carbono(rng):
         "escalón de la pirámide queda cada propuesta?",
         "(C) ¿Qué propone al director de marketing y a la dirección? Aplique la rúbrica de la lección."]))
     celdas.append(md("# Resolución"))
-    celdas.append(code(f"precio_creditos, precio_sombra, objetivo = {q}, {p}, {objetivo}\n"
+    celdas.append(code(AUX + f"precio_creditos, precio_sombra, objetivo = {q}, {p}, {objetivo}\n"
                        "inventario = datos_enunciado.copy()\n"
                        "huella = float(inventario['t CO2'].sum())\n"
                        "medidas = medidas.copy()\n"
@@ -1233,10 +1409,16 @@ def _neutro_en_carbono(rng):
                        "display(medidas.round(1))\n"
                        "rentables = medidas[medidas['rentable al precio sombra']]\n"
                        "coste_compensar_todo = huella * precio_creditos / 1000\n"
-                       "Markdown(f'''Compensar las {huella:.0f} t a {precio_creditos} €/t cuesta **{coste_compensar_todo:.1f} k€**. "
-                       "Las medidas con coste unitario ≤ {precio_sombra} €/t son {len(rentables)}: reducen **{rentables[\"reduccion_t\"].sum():.0f} t** "
-                       "({rentables[\"reduccion_t\"].sum() / huella:.0%}) por **{rentables[\"coste_k\"].sum():.0f} k€**; al precio sombra esas toneladas valen "
-                       "{rentables[\"reduccion_t\"].sum() * precio_sombra / 1000:.1f} k€.''')"))
+                       "m0 = medidas.index[0]\n"
+                       "Markdown(f'''Huella prevista: H = {suma_txt(inventario['t CO2'])} t CO₂. Compensarla entera cuesta "
+                       "{huella:.0f} × {precio_creditos} / 1000 = **{coste_compensar_todo:.2f} k€**.\\n\\n"
+                       "Coste unitario de cada medida = coste × 1000 / reducción (€ por tonelada evitada); por ejemplo, «{m0}»: "
+                       "{medidas.loc[m0, 'coste_k']} × 1000 / {medidas.loc[m0, 'reduccion_t']} = {medidas.loc[m0, 'coste unitario (€/t)']:.1f} €/t. "
+                       "Ordenadas de menor a mayor coste unitario forman la curva de coste marginal de reducción de la tabla.\\n\\n"
+                       "**Respuesta:** compensar todo cuesta {coste_compensar_todo:.2f} k€. Las medidas con coste unitario no mayor que el precio sombra ({precio_sombra} €/t) son "
+                       "{plural(len(rentables), 'medida')}: {lista_y('«' + m + '»' for m in rentables.index)}; reducen "
+                       "{suma_txt(rentables['reduccion_t'])} t ({rentables['reduccion_t'].sum() / huella:.0%} de la huella) y cuestan "
+                       "{suma_txt(rentables['coste_k'])} k€ (al precio sombra esas toneladas valen {rentables['reduccion_t'].sum() * precio_sombra / 1000:.1f} k€).''')"))
     celdas += apartado(2)
     celdas.append(code("from itertools import combinations\n"
                        "objetivo_t = objetivo * huella\n"
@@ -1248,26 +1430,38 @@ def _neutro_en_carbono(rng):
                        "            mejor = (combo, coste, red)\n"
                        "combo, coste_combo, red_combo = mejor\n"
                        "resto = huella - red_combo\n"
+                       "display(Markdown(f'El objetivo es reducir al menos {objetivo:.0%} × {huella:.0f} = **{objetivo_t:.0f} t**. Como las medidas son indivisibles, la combinación más barata que lo alcanza se busca por enumeración '\n"
+                       "                 f'(las {2 ** len(medidas) - 1} combinaciones posibles de {len(medidas)} medidas); es la de la tabla siguiente.'))\n"
                        "display(medidas.loc[list(combo), ['reduccion_t', 'coste_k', 'coste unitario (€/t)']].round(1))\n"
-                       "Markdown(f'''Reducir al menos {objetivo_t:.0f} t ({objetivo:.0%}) cuesta como mínimo **{coste_combo:.0f} k€** con las medidas de la tabla "
-                       "({red_combo:.0f} t, {red_combo / huella:.0%}). Quedan {resto:.0f} t: compensarlas cuesta {resto * precio_creditos / 1000:.1f} k€ a precio de "
-                       "créditos y valen {resto * precio_sombra / 1000:.1f} k€ al precio sombra.''')"))
-    celdas.append(md("La combinación óptima se busca por enumeración (ocho medidas, 255 combinaciones); con medidas "
-                     "divisibles bastaría recorrer la curva de coste marginal por orden de coste unitario. Obsérvese que la "
-                     "medida más barata por tonelada no siempre entra en la combinación óptima para un objetivo dado: las "
-                     "medidas son indivisibles."))
+                       "orden = medidas.index[medidas['reducción acumulada (t)'] >= objetivo_t][0]\n"
+                       "por_curva = list(medidas.index[:list(medidas.index).index(orden) + 1])\n"
+                       "coste_curva = float(medidas.loc[por_curva, 'coste_k'].sum())\n"
+                       "fuera = [m for m in por_curva if m not in combo]; dentro = [m for m in combo if m not in por_curva]\n"
+                       "comparacion_curva = (f'Recorrer la curva por orden de coste unitario hasta alcanzar el objetivo coincide con esta combinación.' if not fuera and not dentro else\n"
+                       "                     f'Recorrer la curva por orden de coste unitario hasta alcanzar el objetivo costaría {coste_curva:.0f} k€; la combinación óptima cambia '\n"
+                       "                     + lista_y('«' + m + '»' for m in fuera) + ' por ' + lista_y('«' + m + '»' for m in dentro)\n"
+                       "                     + f' y ahorra {coste_curva - coste_combo:.0f} k€: con medidas indivisibles la más barata por tonelada no es siempre la que conviene añadir.')\n"
+                       "Markdown(f'''Reducción: {suma_txt(medidas.loc[list(combo), 'reduccion_t'])} t ≥ {objetivo_t:.0f}; coste: {suma_txt(medidas.loc[list(combo), 'coste_k'])} k€. ''' + comparacion_curva + "
+                       "f'''\\n\\nQuedan {huella:.0f} − {red_combo:.0f} = {resto:.0f} t: compensarlas cuesta {resto:.0f} × {precio_creditos} / 1000 = {resto * precio_creditos / 1000:.2f} k€ a precio de créditos, "
+                       "y al precio sombra valen {resto:.0f} × {precio_sombra} / 1000 = {resto * precio_sombra / 1000:.1f} k€.\\n\\n"
+                       "**Respuesta:** la combinación de menor coste que alcanza el {objetivo:.0%} reduce {red_combo:.0f} t ({red_combo / huella:.0%}) por **{coste_combo:.0f} k€**; "
+                       "compensar el resto ({resto:.0f} t) costaría {resto * precio_creditos / 1000:.2f} k€ a precio de créditos y {resto * precio_sombra / 1000:.1f} k€ al precio sombra.''')"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma y S7.** «Proyecto neutro en carbono» basado en compensaciones es exactamente la afirmación "
                      f"que la Directiva (UE) 2024/825 añade a la lista de prácticas prohibidas (impacto neutro, reducido o "
                      f"positivo por compensación): **no puede anunciarse** así, con independencia del precio de los "
                      f"créditos. «Construcción sostenible» es una afirmación genérica sin un desempeño reconocido que la "
                      f"respalde: **tampoco**. Lo que sí puede afirmarse es lo específico y demostrable: «el proyecto reduce "
-                     f"sus emisiones un {objetivo:.0%} respecto al diseño inicial mediante [medidas]; las {H * (1 - objetivo):.0f} t "
-                     f"restantes se compensan con créditos verificados de [proyecto y estándar]». **S1.** Compensar está en "
+                     f"sus emisiones {red_combo:.0f} t ({red_combo / H:.0%}) respecto al diseño inicial mediante [medidas]; las "
+                     f"{H - red_combo:.0f} t restantes se compensan con créditos verificados de [proyecto y estándar]», sin "
+                     f"llamarlo «neutro». **S1.** Compensar está en "
                      f"el escalón más bajo; las medidas del apartado 2 **minimizan**; cambiar el diseño para no necesitar "
                      f"el hormigón o el acero **evita**. **S2.** Con el precio sombra de {p} €/t, las medidas con coste "
                      f"unitario inferior ({red_rentable:.0f} t por {coste_rentable:.0f} k€) se ejecutan aunque no se anuncie nada: "
-                     "son decisiones rentables según la política de la organización, no publicidad."))
+                     "son decisiones rentables según la política de la organización, no publicidad.\n\n"
+                     "**Respuesta:** ni «neutro en carbono» ni «construcción sostenible»; sí la afirmación específica con las "
+                     "toneladas reducidas y las compensadas. Comprar créditos es compensar (el escalón más bajo); las medidas "
+                     "de reducción minimizan; cambiar el diseño evita."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Anunciar un proyecto como «neutro en carbono» porque se han comprado créditos de compensación es, desde el 27-9-2026…', ['una práctica comercial prohibida por la Directiva (UE) 2024/825', 'legal si los créditos están verificados', 'legal si se dice el precio pagado', 'obligatorio en los contratos públicos'],\n"
@@ -1386,13 +1580,24 @@ def _ola_de_calor(rng):
                        "tabla['exterior'] = datos_proyecto['exterior']\n"
                        "tabla['semanas en la ventana'] = [semanas_en_ventana(a) for a in tabla.index]\n"
                        "tabla['pérdida esperada'] = tabla['semanas en la ventana'] * p_episodio * perdida_episodio\n"
-                       "display(tabla.round(2))\n"
+                       "display(tabla.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'fin_mas_temprano': 'fin más temprano', 'H_total': 'holgura total'}).round(2))\n"
                        "duraciones_calor = datos_proyecto['duration'] + tabla['pérdida esperada']\n"
                        "R = proyecto.path_matrix(dummies=False)\n"
-                       "duracion_esperada_calor = float((R @ duraciones_calor[R.columns]).max())\n"
+                       "L_calor = R @ duraciones_calor[R.columns]\n"
+                       "duracion_esperada_calor = float(L_calor.max())\n"
+                       "ruta_calor = ordena_ruta(list(R.columns[R.loc[L_calor.idxmax()] == 1]), calendario)\n"
                        "criticas_exterior = [a for a in tabla.index if tabla.loc[a, 'H_total'] == 0 and tabla.loc[a, 'semanas en la ventana'] > 0]\n"
-                       "Markdown(f'''Duración esperada **{duracion_esperada_calor:.1f}** semanas con la pérdida por calor, frente a {duracion} del plan "
-                       "(+{duracion_esperada_calor - duracion:.1f}). El riesgo se concentra en las actividades exteriores críticas: {', '.join(criticas_exterior)}.''')"))
+                       "ej = tabla['semanas en la ventana'].idxmax()\n"
+                       "es_ej, ef_ej = int(tabla.loc[ej, 'inicio_mas_temprano']), int(tabla.loc[ej, 'fin_mas_temprano'])\n"
+                       "Markdown(f'''Una actividad que empieza en el instante ES y termina en EF ocupa las semanas ES + 1 a EF; las que caen en la ventana (semanas {ventana[0]} a {ventana[1]}) son "
+                       "máx(0, mín(EF, {ventana[1]}) − máx(ES, {ventana[0] - 1})), y sólo cuentan si la actividad es exterior. Por ejemplo, {ej} (semanas {es_ej + 1} a {ef_ej}): "
+                       "mín({ef_ej}, {ventana[1]}) − máx({es_ej}, {ventana[0] - 1}) = {int(tabla.loc[ej, 'semanas en la ventana'])} semanas; su pérdida esperada es "
+                       "{int(tabla.loc[ej, 'semanas en la ventana'])} × {p_episodio} × {perdida_episodio} = {tabla.loc[ej, 'pérdida esperada']:.2f} semanas.\\n\\n"
+                       "Sumando la pérdida esperada a la duración de cada actividad, la ruta más larga es {'–'.join(ruta_calor)}: "
+                       "{' + '.join(f'{duraciones_calor[a]:g}' for a in ruta_calor)} = **{duracion_esperada_calor:.1f}** semanas.\\n\\n"
+                       "**Respuesta:** duración esperada con el calor, **{duracion_esperada_calor:.1f}** semanas frente a {duracion} del plan (+{duracion_esperada_calor - duracion:.1f}). "
+                       "El riesgo se concentra en las actividades exteriores críticas, cuya pérdida va entera al plazo: {lista_y(criticas_exterior)} "
+                       "({' + '.join(f'{tabla.loc[a, \"pérdida esperada\"]:.2f}' for a in criticas_exterior)} semanas esperadas).''')"))
     celdas += apartado(2)
     celdas.append(code("sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])\n"
                        "p_sin = float(norm.cdf((plazo - duracion) / sigma))\n"
@@ -1407,18 +1612,41 @@ def _ola_de_calor(rng):
                        f"con_calor = proyecto.monte_carlo(dists, n_samples={N_MC}, seed={SEMILLA_MC})\n"
                        "tau = np.asarray(con_calor.tau_samples, dtype=float)\n"
                        "p_con = float((tau <= plazo).mean())\n"
-                       "display(con_calor.summary().round(2))\n"
-                       "Markdown(f'''P(T ≤ {plazo}) = **{p_sin:.2f}** sin el calor (PERT, σ = {sigma:.2f}) y **{p_con:.2f}** con él (Monte Carlo); "
-                       "con probabilidad 0,8 la obra termina en la semana {np.percentile(tau, 80):.1f}.''')"))
+                       "resumen_mc = con_calor.summary().rename(columns={'mean': 'media', 'std': 'desviación típica', 'q05': 'percentil 5', 'q50': 'mediana', 'q95': 'percentil 95', 'min': 'mínimo', 'max': 'máximo'})\n"
+                       "display(resumen_mc.round(2))\n"
+                       "L0 = R @ datos_proyecto['duration'][R.columns]; V0 = R @ datos_proyecto['variance'][R.columns]\n"
+                       "r0 = max([r for r in R.index if np.isclose(L0[r], L0.max())], key=lambda x: V0[x])\n"
+                       "acts0 = ordena_ruta(list(R.columns[R.loc[r0] == 1]), calendario)\n"
+                       "Markdown(f'''Sin el calor (PERT): camino crítico {'–'.join(acts0)}, μ = {duracion}; {explica_sigma_ruta(acts0, datos_proyecto['variance'])}; "
+                       "{explica_probabilidad(duracion, sigma, plazo)}.\\n\\n"
+                       "Con el calor (Monte Carlo): en cada réplica cada actividad dura una normal más {perdida_episodio} semanas por cada episodio de una binomial(semanas en la ventana; {p_episodio}); "
+                       "P(T ≤ {plazo}) es la fracción de las {miles(len(tau))} réplicas que terminan a tiempo: **{p_con:.4f}**. La duración media simulada es {tau.mean():.2f} semanas, ''' + ('prácticamente la esperada del apartado 1' if abs(tau.mean() - duracion_esperada_calor) < 0.1 else 'algo mayor que la esperada del apartado 1 (las rutas casi críticas también pueden alargar el proyecto)') + f''' ({duracion_esperada_calor:.1f}).\\n\\n"
+                       "**Respuesta:** P(T ≤ {plazo}) = **{p_sin:.2f}** sin el calor y **{p_con:.2f}** con él; con el calor, el plazo que se cumple con probabilidad 0.80 es la semana {np.percentile(tau, 80):.1f}.''')"))
     celdas.append(code('#| tbl-cap: "Actividades exteriores: desplazamiento necesario para salir de la ventana frente a la holgura total"\n#| label: tbl-desplazar\n'
                        "ext = tabla[(tabla['exterior'] == 1) & (tabla['semanas en la ventana'] > 0)].copy()\n"
                        "ext['desplazamiento para empezar en la semana ' + str(ventana[1] + 1)] = (ventana[1] - ext['inicio_mas_temprano']).clip(lower=0)\n"
                        "ext['cabe en la holgura'] = ext.iloc[:, -1] <= ext['H_total']\n"
-                       "ext[['inicio_mas_temprano', 'H_total', 'semanas en la ventana', ext.columns[-2], 'cabe en la holgura']]"))
-    celdas.append(md("Las actividades críticas no tienen margen: su pérdida va entera al plazo. Las exteriores con holgura "
-                     "pueden, a veces, salir de la ventana (o entrar menos en ella); si no cabe, la alternativa es la "
-                     "adaptación de la jornada (empezar a las 6, parar en las horas de aviso) con su productividad, no "
-                     "«trabajar igual»."))
+                       "ext['semanas en la ventana desplazando toda la holgura'] = [max(0, min(int(r['inicio_mas_temprano'] + r['H_total']) + int(datos_proyecto.loc[a, 'duration']), ventana[1]) - max(int(r['inicio_mas_temprano'] + r['H_total']), ventana[0] - 1)) for a, r in ext.iterrows()]\n"
+                       "display(limpia_tabla(ext[['inicio_mas_temprano', 'H_total', 'semanas en la ventana', ext.columns[-3], 'cabe en la holgura', ext.columns[-1]]]\n"
+                       "        .rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'H_total': 'holgura total'})))\n"
+                       "col_d = 'desplazamiento para empezar en la semana ' + str(ventana[1] + 1)\n"
+                       "criticas_ext = [a for a, r in ext.iterrows() if r['H_total'] == 0]\n"
+                       "frases = [lista_y(criticas_ext) + (' es crítica (holgura 0): no puede moverse' if len(criticas_ext) == 1 else ' son críticas (holgura 0): no pueden moverse') + ' sin retrasar el proyecto'] if criticas_ext else []\n"
+                       "for a, r in ext.iterrows():\n"
+                       "    h, d_s, n0, n1 = int(r['H_total']), int(r[col_d]), int(r['semanas en la ventana']), int(r.iloc[-1])\n"
+                       "    if h == 0:\n"
+                       "        continue\n"
+                       "    elif r['cabe en la holgura']:\n"
+                       "        frases.append(f'{a} sale de la ventana retrasando su inicio {plural(d_s, \"semana\")}, dentro de su holgura de {h}')\n"
+                       "    elif n1 < n0:\n"
+                       "        frases.append(f'{a} necesitaría {d_s} semanas y tiene {h} de holgura: no sale, pero desplazándola entera pasa de {n0} a {plural(n1, \"semana\")} en la ventana')\n"
+                       "    else:\n"
+                       "        frases.append(f'{a} necesitaría {d_s} semanas y tiene {h} de holgura: no sale de la ventana')\n"
+                       "salen = [a for a, r in ext.iterrows() if r['cabe en la holgura'] and r['H_total'] > 0]\n"
+                       "Markdown('Para no tocar la ventana una actividad exterior tendría que empezar en la semana ' + str(ventana[1] + 1) + ' (inicio en el instante ' + str(ventana[1]) + '): '\n"
+                       "         'desplazamiento = ' + str(ventana[1]) + ' − inicio más temprano, que debe caber en su holgura total. ' + '; '.join(frases) + '. '\n"
+                       "         'Desplazar una actividad consume holgura de las que la siguen; si no cabe, la alternativa es adaptar la jornada (empezar a las 6, parar en las horas de aviso), no «trabajar igual».\\n\\n'\n"
+                       "         + ('**Respuesta:** pueden salir de la ventana con su holgura total: ' + lista_y(salen) + '.' if salen else '**Respuesta:** ninguna actividad exterior puede salir de la ventana usando su holgura total.'))"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma y S10.** Cuando hay aviso naranja o rojo, la adaptación de las condiciones de trabajo es "
                      f"obligatoria, incluida la reducción o modificación de las horas y la prohibición de ciertas tareas en "
@@ -1429,7 +1657,10 @@ def _ola_de_calor(rng):
                      f"{e['p1']:.2f}) y respuestas (reordenar, adaptar la jornada, reserva dimensionada): es un riesgo del "
                      "proyecto por definición, y presentar al cliente las duraciones medias conociéndolo es retener "
                      "información (C4). Lo que el jefe de proyecto teme —una reserva «que se usa para todo»— se "
-                     "resuelve declarándola y asignándola (lección 19, C8), no ocultando el riesgo."))
+                     "resuelve declarándola y asignándola (lección 19, C8), no ocultando el riesgo.\n\n"
+                     "**Respuesta:** no: el cronograma con duraciones medias oculta un riesgo cuantificado y «se trabaja "
+                     "igual» incumple la obligación de adaptar la jornada con aviso naranja o rojo; el calor **es un riesgo "
+                     "del proyecto** (S11) y su respuesta tiene que respetar S10."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Cuando la AEMET emite un aviso naranja o rojo y las medidas preventivas no bastan, el empresario…', ['debe adaptar las condiciones de trabajo, incluidas las horas de la jornada', 'puede seguir trabajando si paga horas extra', 'sólo debe avisar a los trabajadores', 'no tiene ninguna obligación nueva'],\n"
@@ -1541,8 +1772,15 @@ def _subcontratacion_en_cadena(rng):
                        "tabla = pd.DataFrame({'carga inicial': cargas, 'exceso inicial': exceso, 'carga nivelada': cargas_niveladas, 'exceso nivelado': exceso_niv})\n"
                        "tabla.loc['Total'] = tabla.sum()\n"
                        "display(tabla.astype(int).T)\n"
-                       "Markdown(f'''Pico de **{int(cargas.max())}** operarios con inicios más tempranos y **{int(cargas_niveladas.max())}** tras nivelar, frente a {plantilla} de plantilla; "
-                       "el exceso pasa de {int(exceso.sum())} a **{int(exceso_niv.sum())} operarios-semana** sin alargar el proyecto ({duracion} semanas).''')"))
+                       "movidas = desplazamientos[desplazamientos['desplazamientos'] > 0]['desplazamientos']\n"
+                       "txt_mov = lista_y(f'{a} {plural(int(v), \"semana\")} (holgura total {int(calendario.loc[a, \"H_total\"])})' for a, v in movidas.items())\n"
+                       "sem_exc = [int(c) for c in exceso.index if exceso[c] > 0]; sem_exc_niv = [int(c) for c in exceso_niv.index if exceso_niv[c] > 0]\n"
+                       "Markdown(f'''La nivelación prueba, para cada actividad con holgura, los desplazamientos dentro de su holgura total y se queda con el que minimiza la suma de los "
+                       "cuadrados de las cargas semanales (Σc²): desplaza {txt_mov}, y Σc² baja de {int((cargas ** 2).sum())} a {int((cargas_niveladas ** 2).sum())} "
+                       "con la misma duración ({duracion} semanas) y los mismos {int(cargas.sum())} operarios-semana. El exceso de cada semana es máx(0, carga − {plantilla}).\\n\\n"
+                       "**Respuesta:** con inicios más tempranos el pico es de **{int(cargas.max())}** operarios y hay exceso en las semanas {lista_y(sem_exc)} "
+                       "({suma_txt(exceso[exceso > 0])} operarios-semana); tras nivelar el pico es de **{int(cargas_niveladas.max())}** y quedan **{int(exceso_niv.sum())} operarios-semana** de exceso''' + "
+                       "(f''' (semanas {lista_y(sem_exc_niv)}: {suma_txt(exceso_niv[exceso_niv > 0])}).''' if sem_exc_niv else '.'))"))
     celdas += apartado(2)
     celdas.append(code("proyecto_limitado = proyecto.copy()\n"
                        "datos_asignados, gantt_asignado, dibujo_asig = proyecto_limitado.asignar(data=datos_proyecto.copy(), duration_label='duration',\n"
@@ -1553,8 +1791,19 @@ def _subcontratacion_en_cadena(rng):
                        "                      'ETT para el exceso': exceso_total * coste_ett,\n"
                        "                      'sólo plantilla: retraso × penalidad': (duracion_limitada - duracion) * penalidad})\n"
                        "display(opciones.round(1).to_frame('coste (k€)'))\n"
-                       "Markdown(f'''Con sólo la plantilla el proyecto dura **{duracion_limitada}** semanas ({duracion_limitada - duracion} de retraso, {(duracion_limitada - duracion) * penalidad} k€ de penalidad). "
-                       "La cadena «ahorra» {exceso_total * (coste_ett - coste_cadena):.1f} k€ frente a la ETT: ese es el precio de los cuatro escalones.''')"))
+                       "def inicios(gantt_df):\n"
+                       "    d = gantt_df.data.drop(index='Total', errors='ignore').drop(columns='H_total', errors='ignore').apply(pd.to_numeric, errors='coerce')\n"
+                       "    return d.apply(lambda f: f[f > 0].first_valid_index(), axis=1)\n"
+                       "ini0, ini1 = inicios(gantt_inicial), inicios(gantt_asignado)\n"
+                       "retrasadas = [a for a in ini0.index if pd.notna(ini0[a]) and pd.notna(ini1.get(a)) and ini1[a] > ini0[a]]\n"
+                       "legal = opciones.drop('cadena de subcontratas (ilegal)')\n"
+                       "Markdown(f'''Costes: cadena = {exceso_total:.0f} × {coste_cadena} = {exceso_total * coste_cadena:.1f} k€; ETT = {exceso_total:.0f} × {coste_ett} = {exceso_total * coste_ett:.1f} k€; "
+                       "sólo plantilla: la asignación con límite de {plantilla} operarios (lección 11) retrasa ''' + "
+                       "(lista_y(f'{a} (de la semana {int(ini0[a])} a la {int(ini1[a])})' for a in retrasadas) if retrasadas else 'algunas actividades') + "
+                       "f''' y el proyecto dura **{duracion_limitada}** semanas: {duracion_limitada - duracion} de retraso × {penalidad} = {(duracion_limitada - duracion) * penalidad} k€ de penalidad.\\n\\n"
+                       "**Respuesta:** la opción más barata de la tabla es la cadena ({opciones.iloc[0]:.1f} k€), pero es ilegal (apartado 3); la más barata de las legales es "
+                       "**{legal.idxmin()}** ({legal.min():.1f} k€). El «ahorro» de la cadena frente a la ETT es {exceso_total:.0f} × ({coste_ett} − {coste_cadena}) = "
+                       "**{exceso_total * (coste_ett - coste_cadena):.1f} k€**: ese es el precio de los cuatro escalones.''')"))
     celdas.append(code('#| fig-cap: "Gantt con asignación limitada a la plantilla"\n#| label: fig-ganttAsignado\npinta_tikz(dibujo_asig)'))
     celdas += apartado(3)
     celdas.append(md(f"**Norma.** La Ley 32/2006 limita la cadena: contratista → primer subcontratista → segundo → "
@@ -1566,8 +1815,14 @@ def _subcontratacion_en_cadena(rng):
                      f"{coste_ett - coste_cadena:.1f} k€ sale de las condiciones de quien está al final de la cadena y de "
                      f"los riesgos de seguridad que la ley quiere evitar con el límite: no es una opción de la tabla. "
                      f"**S1.** La cadena no compensa ni minimiza: traslada el impacto a quien no está en la mesa. La "
-                     f"respuesta no depende del apartado 2; el cálculo muestra que la opción legal (ETT tras nivelar) cuesta "
-                     f"{coste_ett:.0f} k€ frente a {coste_retraso:.0f} de retraso."))
+                     f"respuesta no depende del apartado 2; el cálculo muestra que, entre las opciones legales, "
+                     + (f"la ETT tras nivelar ({coste_ett:.1f} k€) es más barata que el retraso ({coste_retraso:.0f} k€).\n\n"
+                        if coste_ett <= coste_retraso else
+                        f"aceptar el retraso ({coste_retraso:.0f} k€) es más barato que la ETT tras nivelar ({coste_ett:.1f} k€).\n\n")
+                     + 
+                     "**Respuesta:** **no** puede ejecutarse. El último nivel que puede subcontratar es el **segundo "
+                     "subcontratista** (con un tercero, que ya no puede hacerlo); un nivel más sólo excepcionalmente, con "
+                     "aprobación previa de la dirección facultativa y anotación en el Libro de Subcontratación (art. 5.3)."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('En una obra de construcción, el último nivel que puede subcontratar la ejecución es…', ['el segundo subcontratista (el tercero ya no puede)', 'el tercer subcontratista', 'cualquiera mientras se anote en el Libro de Subcontratación', 'el trabajador autónomo'],\n"
@@ -1678,9 +1933,15 @@ def _energia_en_obra(rng):
     celdas.append(code('#| fig-cap: "Diagrama de cargas eléctricas tras la nivelación"\n#| label: fig-cargasNivelado\n'
                        "plot_cargas(gantt_df=gantt_nivelado, limite_maximo_recursos=[capacidad_acometida])"))
     celdas.append(code("energia = float(cargas.sum()) * horas_semana\n"
-                       "Markdown(f'''Pico de **{int(cargas.max())} kW** con inicios más tempranos y **{int(cargas_niveladas.max())} kW** tras nivelar''' + "
-                       "(' (cabe en la acometida)' if cargas_niveladas.max() <= capacidad_acometida else ' (no cabe)') + "
-                       "f''', con la misma duración ({duracion} semanas). Energía de la obra: {energia:,.0f} kWh (la nivelación mueve la demanda, no la cambia).''')"))
+                       "movidas = desplazamientos[desplazamientos['desplazamientos'] > 0]['desplazamientos']\n"
+                       "txt_mov = lista_y(f'{a} {plural(int(v), \"semana\")} (holgura total {int(calendario.loc[a, \"H_total\"])})' for a, v in movidas.items())\n"
+                       "cabe = cargas_niveladas.max() <= capacidad_acometida\n"
+                       "Markdown(f'''Con inicios más tempranos la demanda máxima es de **{int(cargas.max())} kW** (semana {int(cargas.idxmax())}), por encima de los {capacidad_acometida} kW de la acometida. "
+                       "La nivelación desplaza {txt_mov} y deja el pico en **{int(cargas_niveladas.max())} kW** (Σc² de {int((cargas ** 2).sum())} a {int((cargas_niveladas ** 2).sum())}), "
+                       "con la misma duración ({duracion} semanas). Energía de la obra = Σ (kW de cada semana) × {horas_semana} h = {int(cargas.sum())} kW·semana × {horas_semana} h = "
+                       "**{miles(energia)} kWh**; la nivelación mueve la demanda, no la cambia.\\n\\n"
+                       "**Respuesta:** pico de {int(cargas.max())} kW con inicios más tempranos y de {int(cargas_niveladas.max())} kW tras nivelar, que ''' + "
+                       "('**cabe** en la acometida' if cabe else '**no cabe** en la acometida') + f''' de {capacidad_acometida} kW sin alargar el proyecto; energía total, {miles(energia)} kWh.''')"))
     celdas += apartado(2)
     celdas.append(code("energia_inicial = float(cargas_niveladas.iloc[:plazo_acometida].sum()) * horas_semana\n"
                        "def opcion(semanas_grupo, kwh_grupo, kwh_red, acometida):\n"
@@ -1694,20 +1955,52 @@ def _energia_en_obra(rng):
                        "comparacion = pd.DataFrame({'grupo toda la obra': opcion(duracion, energia, 0, 0),\n"
                        "                            f'grupo {plazo_acometida} semanas + acometida': opcion(plazo_acometida, energia_inicial, energia - energia_inicial, coste_acometida)})\n"
                        "display(comparacion.round(2))\n"
-                       "Markdown(f'''La opción mixta cuesta **{comparacion.iloc[5, 0] - comparacion.iloc[5, 1]:.1f} k€ menos** y emite "
-                       "**{comparacion.iloc[8, 0] - comparacion.iloc[8, 1]:.1f} t menos**; al precio sombra la diferencia total es de "
-                       "{comparacion.iloc[9, 0] - comparacion.iloc[9, 1]:.1f} k€.''')"))
+                       "c_g, c_m = comparacion.columns\n"
+                       "def explica_opcion(col, semanas_grupo, kwh_grupo, kwh_red, acometida):\n"
+                       "    t = comparacion[col]; litros = kwh_grupo * consumo_grupo\n"
+                       "    txt = (f'- **{col}**: gasóleo = {miles(kwh_grupo)} kWh × {consumo_grupo} l/kWh = {miles(litros)} l; '\n"
+                       "           f'coste = {semanas_grupo} × {alquiler_grupo} + {miles(litros)} × {precio_gasoleo} / 1000')\n"
+                       "    if acometida:\n"
+                       "        txt += f' + {acometida} + {miles(kwh_red)} × {precio_red} / 1000'\n"
+                       "    txt += f' = **{t[\"coste (k€)\"]:.2f} k€**; emisiones = {miles(litros)} × {factor_gasoleo} / 1000'\n"
+                       "    if acometida:\n"
+                       "        txt += f' + {miles(kwh_red)} × {factor_red} / 1000'\n"
+                       "    txt += f' = **{t[\"emisiones (t CO₂)\"]:.2f} t**; coste total = {t[\"coste (k€)\"]:.2f} + {t[\"emisiones (t CO₂)\"]:.2f} × {precio_sombra} / 1000 = **{t[\"coste total al precio sombra (k€)\"]:.2f} k€**'\n"
+                       "    return txt\n"
+                       "mejor = comparacion.loc['coste total al precio sombra (k€)'].idxmin()\n"
+                       "Markdown(f'''Energía de las {plazo_acometida} primeras semanas con las cargas niveladas: ({suma_txt(cargas_niveladas.iloc[:plazo_acometida])}) kW × {horas_semana} h = {miles(energia_inicial)} kWh; "
+                       "el resto, {miles(energia)} − {miles(energia_inicial)} = {miles(energia - energia_inicial)} kWh, de la red.\\n\\n''' + "
+                       "explica_opcion(c_g, duracion, energia, 0, 0) + '\\n' + explica_opcion(c_m, plazo_acometida, energia_inicial, energia - energia_inicial, coste_acometida) + "
+                       "f'''\\n\\n**Respuesta:** la opción mixta cuesta {abs(comparacion.loc['coste (k€)', c_g] - comparacion.loc['coste (k€)', c_m]):.1f} k€ ''' + "
+                       "('menos' if comparacion.loc['coste (k€)', c_m] < comparacion.loc['coste (k€)', c_g] else 'más') + "
+                       "f''' en dinero y emite {comparacion.loc['emisiones (t CO₂)', c_g] - comparacion.loc['emisiones (t CO₂)', c_m]:.1f} t menos; "
+                       "al precio sombra la de menor coste total es **{mejor}** ({comparacion.loc['coste total al precio sombra (k€)', mejor]:.2f} k€ frente a "
+                       "{comparacion.loc['coste total al precio sombra (k€)'].max():.2f}).''')"))
     celdas += apartado(3)
-    celdas.append(md(f"**S2.** Con el precio sombra la opción correcta es la de menor coste total: grupo las "
-                     f"{plazo_acometida} primeras semanas y acometida después ({coste_mixto + em_mixto * precio / 1000:.1f} k€ "
-                     f"frente a {coste_grupo + em_grupo * precio / 1000:.1f}); aquí ni siquiera hace falta el precio, porque "
-                     f"también es más barata en dinero ({coste_mixto:.1f} frente a {coste_grupo:.1f} k€). El argumento del "
+    gana_mixto = coste_mixto + em_mixto * precio / 1000 < coste_grupo + em_grupo * precio / 1000
+    celdas.append(md((f"**S2.** Con el precio sombra la opción correcta es la de menor coste total: grupo las "
+                      f"{plazo_acometida} primeras semanas y acometida después ({coste_mixto + em_mixto * precio / 1000:.1f} k€ "
+                      f"frente a {coste_grupo + em_grupo * precio / 1000:.1f})" if gana_mixto else
+                      f"**S2.** Con el precio sombra la opción de menor coste total es, con estos datos, el grupo toda la obra "
+                      f"({coste_grupo + em_grupo * precio / 1000:.1f} k€ frente a {coste_mixto + em_mixto * precio / 1000:.1f}): "
+                      "la acometida no compensa su coste fijo")
+                     + (". " if not gana_mixto else
+                        f"; aquí ni siquiera hace falta el precio, porque también es más barata en dinero ({coste_mixto:.1f} "
+                        f"frente a {coste_grupo:.1f} k€). " if coste_mixto < coste_grupo else
+                        f", aunque en dinero cueste {coste_mixto - coste_grupo:.1f} k€ más: esa diferencia es lo que la política "
+                        "de la organización decide pagar por las toneladas evitadas. ")
+                     + f"El argumento del "
                      f"pico ({e['pico']} kW) desaparece al nivelar: el pico nivelado es {C} kW y cabe. **S1.** El grupo "
-                     f"para toda la obra ni siquiera compensa; la opción mixta **minimiza** ({em_grupo - em_mixto:.1f} t "
+                     f"para toda la obra no está en ningún escalón de la pirámide (no reduce ni compensa nada); la opción mixta **minimiza** ({em_grupo - em_mixto:.1f} t "
                      f"menos); **evitar** sería pedir la acometida con la antelación suficiente para no necesitar el grupo. "
                      f"**S6.** El gasóleo del grupo es **alcance 1** (fuente controlada por la obra, aunque se alquile); la "
                      "electricidad de la acometida es **alcance 2**. Que el gasóleo «vaya a costes generales» no cambia "
-                     "el alcance ni la cuenta."))
+                     "el alcance ni la cuenta.\n\n"
+                     + (f"**Respuesta:** la correcta es grupo {plazo_acometida} semanas + acometida (minimiza); grupo toda la obra "
+                        "no está en la pirámide. " if gana_mixto else
+                        "**Respuesta:** con estos datos la de menor coste total es el grupo toda la obra; la mixta minimiza las "
+                        "emisiones. ")
+                     + "Grupo electrógeno: alcance 1; acometida: alcance 2."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Las emisiones del gasóleo de un grupo electrógeno alquilado en la obra son…', ['alcance 1', 'alcance 2', 'alcance 3', 'del arrendador'],\n"
@@ -1822,9 +2115,24 @@ def _acero_importado(rng):
                        "o['emisiones del transporte (t)'] = toneladas * (o['km por carretera'] * factor_camion + o['km por mar'] * factor_barco) / 1000\n"
                        "o['emisiones (t CO₂)'] = o['emisiones implícitas (t)'] + o['emisiones del transporte (t)']\n"
                        "display(o.iloc[:, 5:].round(2).T)\n"
-                       "Markdown(f'''Sin el CBAM la importada es {o.iloc[0, 8] - (o.iloc[1, 5] + o.iloc[1, 6]):.1f} k€ más barata; con los certificados "
-                       "({o.iloc[1, 7]:.1f} k€) ''' + ('sigue siendo' if o.iloc[1, 8] < o.iloc[0, 8] else 'pasa a ser') + f''' {abs(o.iloc[0, 8] - o.iloc[1, 8]):.1f} k€ ''' + "
-                       "('más barata' if o.iloc[1, 8] < o.iloc[0, 8] else 'más cara') + f'''. Emite {o.iloc[1, 11] - o.iloc[0, 11]:.0f} t más.''')"))
+                       "def explica_oferta(n):\n"
+                       "    f = o.loc[n]; kmc, kmm = f['km por carretera'], f['km por mar']\n"
+                       "    tr = f'{toneladas} × ({kmc:g} × {coste_camion}' + (f' + {kmm:g} × {coste_barco}' if kmm else '') + f') / 1000 = {f[\"transporte (k€)\"]:.2f}'\n"
+                       "    et = f'{toneladas} × ({kmc:g} × {factor_camion}' + (f' + {kmm:g} × {factor_barco}' if kmm else '') + f') / 1000 = {f[\"emisiones del transporte (t)\"]:.2f}'\n"
+                       "    txt = (f'- **{n}**: acero = {toneladas} × {f[\"precio (€/t)\"]:g} / 1000 = {f[\"acero (k€)\"]:.2f} k€; transporte = {tr} k€')\n"
+                       "    if f['CBAM (k€)'] > 0:\n"
+                       "        txt += f'; CBAM = {toneladas} t × {f[\"emisiones implícitas (t CO2/t)\"]} t CO₂/t × {precio_ets} €/t / 1000 = {f[\"CBAM (k€)\"]:.2f} k€'\n"
+                       "    txt += (f'; coste en obra = **{f[\"coste en obra (k€)\"]:.2f} k€**. Emisiones: implícitas {toneladas} × {f[\"emisiones implícitas (t CO2/t)\"]} = {f[\"emisiones implícitas (t)\"]:.1f} t; '\n"
+                       "            f'transporte {et} t; total **{f[\"emisiones (t CO₂)\"]:.1f} t**.')\n"
+                       "    return txt\n"
+                       "eu, imp = o.index\n"
+                       "sin_cbam = o.loc[imp, 'acero (k€)'] + o.loc[imp, 'transporte (k€)']\n"
+                       "Markdown(explica_oferta(eu) + '\\n' + explica_oferta(imp) + f'''\\n\\n**Respuesta:** sin el CBAM la importada puesta en obra ({sin_cbam:.2f} k€) es ''' + "
+                       "f'''{abs(o.loc[eu, 'coste en obra (k€)'] - sin_cbam):.1f} k€ ''' + ('más barata' if sin_cbam < o.loc[eu, 'coste en obra (k€)'] else 'más cara') + "
+                       "f''' que la europea ({o.loc[eu, 'coste en obra (k€)']:.2f} k€); con los certificados ({o.loc[imp, 'CBAM (k€)']:.2f} k€) cuesta {o.loc[imp, 'coste en obra (k€)']:.2f} k€ y ''' + "
+                       "('sigue siendo' if o.loc[imp, 'coste en obra (k€)'] < o.loc[eu, 'coste en obra (k€)'] else 'pasa a ser') + f''' {abs(o.loc[eu, 'coste en obra (k€)'] - o.loc[imp, 'coste en obra (k€)']):.1f} k€ ''' + "
+                       "('más barata' if o.loc[imp, 'coste en obra (k€)'] < o.loc[eu, 'coste en obra (k€)'] else 'más cara') + "
+                       "f'''. Emisiones: europea {o.loc[eu, 'emisiones (t CO₂)']:.1f} t, importada {o.loc[imp, 'emisiones (t CO₂)']:.1f} t ({o.loc[imp, 'emisiones (t CO₂)'] - o.loc[eu, 'emisiones (t CO₂)']:.0f} t más).''')"))
     celdas += apartado(2)
     celdas.append(code("holgura = int(calendario.loc[actividad_acero, 'H_total'])\n"
                        "duraciones_importado = datos_proyecto['duration'].copy(); duraciones_importado[actividad_acero] += ofertas.loc['acería importada', 'semanas de entrega']\n"
@@ -1835,9 +2143,15 @@ def _acero_importado(rng):
                        "o['coste total (k€)'] = o['coste en obra (k€)'] + o['penalidad (k€)']\n"
                        "o['coste total al precio sombra (k€)'] = o['coste total (k€)'] + o['emisiones (t CO₂)'] * precio_sombra / 1000\n"
                        "display(o[['coste en obra (k€)', 'retraso (semanas)', 'penalidad (k€)', 'coste total (k€)', 'emisiones (t CO₂)', 'coste total al precio sombra (k€)']].round(1).T)\n"
-                       "Markdown(f'''{actividad_acero} tiene {holgura} semana(s) de holgura total: las {int(ofertas.loc[\"acería importada\", \"semanas de entrega\"])} de entrega retrasan el proyecto "
-                       "**{retraso}** semana(s) ({retraso * penalidad} k€). Coste total: europea **{o.iloc[0, 14]:.1f} k€**, importada **{o.iloc[1, 14]:.1f} k€**; "
-                       "al precio sombra, {o.iloc[0, 15]:.1f} frente a {o.iloc[1, 15]:.1f} k€.''')"))
+                       "d_ent = int(ofertas.loc['acería importada', 'semanas de entrega'])\n"
+                       "Markdown(f'''{actividad_acero} tiene una holgura total de {plural(holgura, 'semana')} (inicio más temprano {int(calendario.loc[actividad_acero, 'inicio_mas_temprano'])}, "
+                       "más tardío {int(calendario.loc[actividad_acero, 'inicio_mas_tardio'])}): el retraso del proyecto es máx(0, entrega − holgura) = máx(0, {d_ent} − {holgura}) = "
+                       "**{plural(retraso, 'semana')}** (comprobado recalculando la duración: {duracion} → {duracion_importado}), con una penalidad de {retraso} × {penalidad} = {retraso * penalidad} k€.\\n\\n"
+                       "Coste total = coste en obra + penalidad: europea {o.iloc[0, 8]:.2f} + 0 = **{o.iloc[0, 14]:.1f} k€**; importada {o.iloc[1, 8]:.2f} + {retraso * penalidad} = **{o.iloc[1, 14]:.1f} k€**. "
+                       "Con las emisiones al precio sombra (+ emisiones × {precio_sombra} / 1000): europea {o.iloc[0, 14]:.1f} + {o.iloc[0, 11]:.1f} × {precio_sombra} / 1000 = **{o.iloc[0, 15]:.1f} k€**; "
+                       "importada {o.iloc[1, 14]:.1f} + {o.iloc[1, 11]:.1f} × {precio_sombra} / 1000 = **{o.iloc[1, 15]:.1f} k€**.\\n\\n"
+                       "**Respuesta:** la importada retrasa el proyecto {plural(retraso, 'semana')} ({retraso * penalidad} k€); coste total {o.iloc[0, 14]:.1f} k€ (europea) frente a {o.iloc[1, 14]:.1f} k€ (importada), "
+                       "y {o.iloc[0, 15]:.1f} frente a {o.iloc[1, 15]:.1f} k€ al precio sombra.''')"))
     celdas += apartado(3)
     celdas.append(md(f"**S2.** La comparación correcta es el coste total puesto en obra con el ajuste en frontera, el "
                      f"transporte, el retraso y la externalidad al precio sombra: la **acería europea** "
@@ -1849,8 +2163,11 @@ def _acero_importado(rng):
                      f"europeas. **Norma.** La importación ({Q} t) supera las 50 t anuales del umbral de minimis: la "
                      f"empresa, como declarante, compra los certificados ({cbam:.1f} k€ con el cálculo simplificado; la "
                      "liquidación real descuenta la asignación gratuita que aún reciben las acerías europeas y el precio "
-                     f"del carbono pagado en origen). Y las {delta} semanas no «las absorbe la obra»: las absorbe la "
-                     f"holgura de {X} ({e['H']} semana(s)), y lo que sobra va al plazo."))
+                     f"del carbono pagado en origen). Y las {delta} semanas no «las absorbe la obra»: la holgura de {X} "
+                     f"absorbe {_pl(min(e['H'], delta), 'semana')} y lo que sobra, {_pl(retraso, 'semana')}, va al plazo.\n\n"
+                     f"**Respuesta:** se elige la **acería europea**, más barata en coste total ya sin el carbono ({coste_eu:.1f} "
+                     f"frente a {tot_imp:.1f} k€) y más aún con él; las emisiones de la acería son alcance 3 del proyecto; y la "
+                     f"importación de {Q} t **no está exenta** del CBAM (supera las 50 t anuales)."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Las emisiones implícitas del acero comprado por el proyecto son, en su inventario…', ['alcance 3', 'alcance 1', 'alcance 2', 'de la acería, no del proyecto'],\n"
@@ -1869,7 +2186,7 @@ def _acero_importado(rng):
                      f"{em_imp - em_eu:.0f} t no desaparece por facturarla otro; prueba de publicidad: ¿explicaría al "
                      f"cliente las {retraso} semanas de retraso por un acero que, puesto en obra, salía más caro?"))
     return celdas, (f"{Q} t de acero: importado {coste_imp:.0f} k€ frente a europeo {coste_eu:.0f} k€, pero {tot_imp:.0f} k€ "
-                    f"con CBAM y {retraso} semana(s) de retraso; alcance 3")
+                    f"con CBAM y {_pl(retraso, 'semana')} de retraso; alcance 3")
 
 
 # ---------------------------------------------------------------------------
@@ -1935,15 +2252,24 @@ def _desmantelamiento(rng):
                        "detalle['VA sin'] = detalle['flujo sin fin de vida'] * detalle['factor 1/(1+k)^t']\n"
                        "detalle['VA con'] = detalle['flujo con fin de vida'] * detalle['factor 1/(1+k)^t']\n"
                        "detalle.loc['Total'] = [None, None, None, detalle['VA sin'].sum(), detalle['VA con'].sum()]\n"
-                       "display(detalle.round(2))\n"
-                       "Markdown(f'''VAN sin el fin de vida: **{van_sin:.1f} k€**; con desmantelamiento y materiales recuperados: **{van_con:.1f} k€**. ''' + "
-                       "('La decisión cambia: el proyecto deja de crear valor.' if van_con < 0 else 'El proyecto sigue siendo viable, con menos margen.'))"))
+                       "display(detalle.round({'flujo sin fin de vida': 1, 'flujo con fin de vida': 1, 'factor 1/(1+k)^t': 4, 'VA sin': 2, 'VA con': 2}))\n"
+                       "a = (1 - (1 + k) ** -anos) / k\n"
+                       "neto_final = recuperado - desmantelamiento\n"
+                       "Markdown(f'''Como los {anos} flujos de la explotación son iguales, su valor actual es flujo × factor de anualidad, a = (1 − (1 + k)^−N) / k = (1 − {1 + k:g}^−{anos}) / {k:g} = {a:.4f}:\\n\\n"
+                       "- VAN sin el fin de vida = −{inversion} + {flujo_anual} × {a:.4f} = **{van_sin:.1f} k€**.\\n"
+                       "- El año {anos} se añade el saldo del fin de vida, materiales recuperados − desmantelamiento = {recuperado} − {desmantelamiento} = {neto_final} k€, que vale hoy "
+                       "{neto_final} / {1 + k:g}^{anos} = {neto_final / (1 + k) ** anos:.1f} k€: VAN con el fin de vida = {van_sin:.1f} + ({neto_final / (1 + k) ** anos:.1f}) = **{van_con:.1f} k€**.\\n\\n"
+                       "La tabla comprueba las dos cifras año a año.\\n\\n**Respuesta:** VAN tal como lo presenta el director financiero, {van_sin:.1f} k€; con el fin de vida, {van_con:.1f} k€. ''' + "
+                       "('**La decisión cambia**: con el fin de vida el proyecto deja de crear valor (VAN < 0).' if van_con < 0 else '**La decisión no cambia** (el VAN sigue siendo positivo), pero el margen baja.'))"))
     celdas += apartado(2)
     celdas.append(code("provision = desmantelamiento / (1 + k) ** anos\n"
                        "cuota_anual = desmantelamiento * k / ((1 + k) ** anos - 1)\n"
-                       "Markdown(f'''Valor actual de la obligación: {desmantelamiento} / (1 + {k})^{anos} = **{provision:.1f} k€** ({provision / inversion:.1%} de la inversión), "
-                       "que el PGC incorpora al coste del activo con su provisión. Cuota anual que reúne los {desmantelamiento} k€ al {k:.0%}: {desmantelamiento} · k / ((1 + k)^{anos} − 1) = **{cuota_anual:.1f} k€ al año** "
-                       "({cuota_anual / flujo_anual:.1%} del flujo anual).''')"))
+                       "Markdown(f'''Valor actual de la obligación (provisión inicial): {desmantelamiento} / (1 + {k:g})^{anos} = {desmantelamiento} / {(1 + k) ** anos:.4f} = **{provision:.1f} k€**, "
+                       "que el PGC incorpora al coste del activo con su provisión: es una inversión «escondida» del {provision:.1f} / {inversion} = **{provision / inversion:.1%}** de la inversión inicial.\\n\\n"
+                       "Cuota anual que, capitalizada al {k:.0%}, reúne los {desmantelamiento} k€ en el año {anos} (factor de fondo de amortización): "
+                       "{desmantelamiento} · {k:g} / ({1 + k:g}^{anos} − 1) = {desmantelamiento * k:g} / {(1 + k) ** anos - 1:.4f} = **{cuota_anual:.1f} k€ al año** "
+                       "({cuota_anual / flujo_anual:.1%} del flujo anual de {flujo_anual} k€).\\n\\n"
+                       "**Respuesta:** provisión de {provision:.1f} k€ ({provision / inversion:.1%} de la inversión) y cuota anual de {cuota_anual:.1f} k€.''')"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma y S4.** La obligación de desmantelar nace con la inversión (el contrato y la autorización "
                      f"la imponen): el PGC incorpora al coste del inmovilizado el valor actual de esa obligación "
@@ -1959,7 +2285,11 @@ def _desmantelamiento(rng):
                      f"{N} —o, si entonces no hay nadie, al arrendador y a la comunidad, que se quedan con la instalación "
                      "abandonada—: no es compensar ni minimizar, es trasladar. Desmantelar y restaurar es el escalón de "
                      "**restaurar**; diseñar la planta para su desmontaje y reutilización (y abaratar los "
-                     f"{Dm} k€) sería **minimizar**."))
+                     f"{Dm} k€) sería **minimizar**.\n\n"
+                     "**Respuesta:** no puede presentarse sin el fin de vida (S4 y PGC); si no se provisiona, el coste se "
+                     "traslada a quien explote la planta al final o, si no hay nadie, al arrendador y a la comunidad "
+                     "(trasladar: fuera de la pirámide); desmantelar y restaurar es restaurar, y diseñar para el desmontaje, "
+                     "minimizar."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('La estimación del coste de desmantelamiento de una instalación, cuando la obligación nace de su uso…', ['forma parte del coste del activo por su valor actual, con la provisión correspondiente', 'se contabiliza cuando se desmantela', 'no se contabiliza si faltan más de 10 años', 'la paga quien explote la planta al final'],\n"
@@ -2094,7 +2424,10 @@ def _ventana_ambiental(rng):
                        "tabla['semanas en la ventana'] = [semanas_en_ventana(int(r['inicio_mas_temprano']), int(datos_proyecto.loc[a, 'duration'])) for a, r in tabla.iterrows()]\n"
                        "tabla['espera para empezar en la semana ' + str(ventana[1] + 1)] = [max(0, ventana[1] - int(r['inicio_mas_temprano'])) if r['semanas en la ventana'] > 0 else 0 for a, r in tabla.iterrows()]\n"
                        "tabla['cabe en la holgura'] = tabla.iloc[:, -1] <= tabla['H_total']\n"
-                       "tabla"))
+                       "display(limpia_tabla(tabla.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'fin_mas_temprano': 'fin más temprano', 'H_total': 'holgura total'})))\n"
+                       "Markdown(f'''Una actividad que empieza en el instante ES y dura d ocupa las semanas ES + 1 a ES + d; las que caen en la ventana (semanas {ventana[0]} a {ventana[1]}) son "
+                       "máx(0, mín(ES + d, {ventana[1]}) − máx(ES, {ventana[0] - 1})). Si ocupa alguna, para respetar la condición debe empezar en la semana {ventana[1] + 1} "
+                       "(instante {ventana[1]}): espera = {ventana[1]} − ES, que no retrasa el proyecto si cabe en su holgura total.''')"))
     celdas.append(code('#| tbl-cap: "Esperas del plan (recalculando el calendario tras cada una)"\n#| label: tbl-esperas\n'
                        "espera = pd.Series(0, index=datos_proyecto.index, dtype=int)\n"
                        "for _ in range(60):\n"
@@ -2115,8 +2448,12 @@ def _ventana_ambiental(rng):
                        "                        'fin': calendario_dia.loc[afectadas, 'fin_mas_temprano']})\n"
                        "display(resumen)\n"
                        "antes = [a for a in afectadas if espera[a] == 0 and semanas_en_ventana(int(calendario.loc[a, 'inicio_mas_temprano']), int(datos_proyecto.loc[a, 'duration'])) == 0]\n"
-                       "Markdown(f'''Terminan antes de la ventana: {', '.join(antes)}. Esperan hasta la semana {ventana[1] + 1}: {', '.join(a for a in afectadas if espera[a] > 0)}. "
-                       "Con las esperas el proyecto dura **{duracion_dia}** semanas frente a {duracion} del plan.''')"))
+                       "esperan = [a for a in afectadas if espera[a] > 0]\n"
+                       "cmp = lista_y(f'{a} espera {plural(int(espera[a]), \"semana\")} con una holgura total de {int(tabla.loc[a, \"H_total\"])} (' + ('cabe' if espera[a] <= tabla.loc[a, 'H_total'] else 'no cabe') + ')' for a in esperan)\n"
+                       "Markdown(f'''Las esperas se añaden una a una, por orden de inicio, recalculando el calendario después de cada una (una espera puede mover el inicio de otra afectada). ''' + "
+                       "f'''{cmp[0].upper() + cmp[1:]}; el proyecto pasa a durar **{duracion_dia}** semanas (camino crítico {criticas_txt(proyecto, duraciones_dia)}, contando la espera dentro de la barra de cada actividad).\\n\\n"
+                       "**Respuesta:** terminan antes de la ventana {lista_y(antes) if antes else 'ninguna'}; la ocupan {lista_y(esperan)}, que esperan hasta la semana {ventana[1] + 1} "
+                       "({lista_y(f'{a} {plural(int(espera[a]), \"semana\")}' for a in esperan)}). Con las esperas el proyecto dura **{duracion_dia}** semanas frente a {duracion} del plan.''')"))
     celdas.append(code('#| fig-cap: "Gantt del plan con las esperas (la barra incluye la espera de cada actividad afectada)"\n#| label: fig-ganttDia\n'
                        "datos_dia = datos_proyecto.copy(); datos_dia['duration'] = duraciones_dia\n"
                        "_g, _dibujo = proyecto.copy().gantt(datos_dia, 'duration', holguras=True, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))\n"
@@ -2134,14 +2471,24 @@ def _ventana_ambiental(rng):
                        "adelanto = next(x for x in range(0, 60) if inicio_valido(x))\n"
                        "retraso_inicio = next(y for y in range(0, 60) if inicio_valido(-y))\n"
                        "planes = pd.DataFrame({'esperas selectivas': [duracion_dia, retraso, retraso * penalidad],\n"
-                       "                       f'adelantar el inicio {adelanto} semanas': [duracion, -adelanto, 0],\n"
+                       "                       f'adelantar el inicio {adelanto} semanas': [duracion - adelanto, -adelanto, 0],\n"
                        "                       f'retrasar el inicio {retraso_inicio} semanas': [duracion + retraso_inicio, retraso_inicio, retraso_inicio * penalidad]},\n"
                        "                      index=['fin respecto al inicio previsto (semana)', 'retraso de la entrega (semanas)', 'penalidad (k€)'])\n"
                        "display(planes)\n"
-                       "Markdown(f'''Esperar sólo en las actividades afectadas retrasa la entrega **{retraso}** semanas ({retraso * penalidad} k€); empezar la obra "
-                       "{adelanto} semanas antes (si la autorización y el contrato lo permiten) la adelanta; empezar {retraso_inicio} semanas después, "
-                       "con todas las actividades afectadas tras la ventana, cuesta {retraso_inicio * penalidad} k€. Son los tres planes posibles; "
-                       "«hacerlo igual» no es el cuarto.''')"))
+                       "def fechas(x):\n"
+                       "    def sem(a):\n"
+                       "        i, f = int(calendario.loc[a, 'inicio_mas_temprano']) - x + 1, int(calendario.loc[a, 'fin_mas_temprano']) - x\n"
+                       "        return f'{a} (semana {i})' if i == f else f'{a} (semanas {i} a {f})'\n"
+                       "    return lista_y(sem(a) for a in afectadas) + (' —las semanas 0 o negativas son del año anterior, antes del 1 de enero—' if any(int(calendario.loc[a, 'inicio_mas_temprano']) - x + 1 <= 0 for a in afectadas) else '')\n"
+                       "Markdown(f'''Se prueba a desplazar el proyecto entero x semanas (sin esperas): con x semanas de adelanto cada afectada ocupa las semanas ES − x + 1 a EF − x, y basta con que todas "
+                       "terminen antes de la semana {ventana[0]} o empiecen después de la {ventana[1]}. El menor adelanto que lo consigue es **{plural(adelanto, 'semana')}**: {fechas(adelanto)}. "
+                       "El menor retraso del inicio es **{plural(retraso_inicio, 'semana')}**: {fechas(-retraso_inicio)}.\\n\\n"
+                       "Retraso de la entrega y penalidad: esperas, {duracion_dia} − {duracion} = {retraso} semanas × {penalidad} = {retraso * penalidad} k€; adelantar el inicio, ninguno "
+                       "(la obra termina en la semana {duracion - adelanto} contada desde el inicio previsto); retrasar el inicio, {retraso_inicio} × {penalidad} = {retraso_inicio * penalidad} k€.\\n\\n"
+                       "**Respuesta:** el plan con esperas retrasa la entrega {plural(retraso, 'semana')} ({retraso * penalidad} k€). El más barato es **adelantar el inicio {plural(adelanto, 'semana')}** "
+                       "(0 k€), si la autorización y el contrato permiten empezar antes; si no, ''' + "
+                       "(f'''las esperas ({retraso * penalidad} k€) son mejores que retrasar el inicio ({retraso_inicio * penalidad} k€)''' if retraso <= retraso_inicio else "
+                       "f'''retrasar el inicio ({retraso_inicio * penalidad} k€) es mejor que las esperas ({retraso * penalidad} k€)''') + '. «Hacerlo igual» no es un cuarto plan.')"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma.** La ventana es una condición de la DIA incorporada a la autorización: ejecutar los trabajos "
                      f"dentro de ella es incumplir la condición (infracción grave, Ley 21/2013, art. 55.3.c) con "
@@ -2151,11 +2498,14 @@ def _ventana_ambiental(rng):
                      f"cronograma** (inicio no antes de la semana {v1 + 1} o fin no después de la {v0 - 1}) de las actividades "
                      f"afectadas, no un riesgo que se acepta pagando {retraso * penal} k€. Las actividades que deben "
                      f"reprogramarse las decide el calendario, no la opinión: con inicios más tempranos ocupan la ventana "
-                     f"**{', '.join(solapan)}**; {', '.join(antes)} terminan antes y no se tocan. «No está en el contrato con "
+                     f"**{_ly(solapan)}**; {_ly(antes)} " + ("termina" if len(antes) == 1 else "terminan") + " antes y no se "
+                     + ("toca" if len(antes) == 1 else "tocan") + ". «No está en el contrato con "
                      f"el cliente» es irrelevante: está en la autorización sin la cual no hay obra, y el cliente la conoce. "
                      f"**S11.** Lo que sí es un riesgo del proyecto es que el órgano ambiental amplíe la ventana, que un nido "
                      "aparezca fuera de ella o que el tiempo retrase lo que debía terminar antes: eso entra en el registro "
-                     "con su probabilidad, su impacto y su respuesta (empezar antes, reordenar, reserva)."))
+                     "con su probabilidad, su impacto y su respuesta (empezar antes, reordenar, reserva).\n\n"
+                     f"**Respuesta:** no puede ejecutarse dentro de la ventana, con biólogo o sin él; la ventana es una "
+                     f"**restricción del cronograma**, no un riesgo que se acepta; deben reprogramarse {_ly(solapan)}."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Una condición de la DIA que prohíbe determinadas actividades en una época del año es, para el cronograma…', ['una restricción de fecha de las actividades afectadas', 'un riesgo que se acepta si la penalidad lo compensa', 'una recomendación', 'una reserva de gestión'],\n"
@@ -2278,18 +2628,26 @@ def _tierras_sobrantes(rng):
                        "c_prest = coste_prestamo + densidad * km_prestamo * coste_camion\n"
                        "e_vert = densidad * km_vertedero * factor_camion / 1000; e_prest = densidad * km_prestamo * factor_camion / 1000   # t CO₂ por m³\n"
                        "balance = pd.Series({'excavado (m³)': V_exc, 'necesario (m³)': V_nec, 'reutilizable (m³)': reutilizable, 'sobrante a vertedero (m³)': sobrante, 'déficit de préstamo (m³)': deficit})\n"
-                       "display(balance.to_frame('m³').T)\n"
+                       "display(balance.to_frame('m³').T.astype(int))\n"
                        "opciones = pd.DataFrame({'propuesta: vertedero + préstamo': [V_exc * c_vert / 1000, V_nec * c_prest / 1000, 0.0, (V_exc * e_vert + V_nec * e_prest)],\n"
                        "                         'reutilizar en obra': [sobrante * c_vert / 1000, deficit * c_prest / 1000, reutilizable * coste_interno / 1000, (sobrante * e_vert + deficit * e_prest)]},\n"
                        "                        index=['vertedero (k€)', 'préstamo (k€)', 'transporte interno (k€)', 'emisiones del transporte (t CO₂)'])\n"
                        "opciones.loc['coste de tierras (k€)'] = opciones.iloc[:3].sum()\n"
                        "display(opciones.round(1))\n"
-                       "Markdown(f'''Vertedero: {c_vert:.2f} €/m³ puesto allí; préstamo: {c_prest:.2f} €/m³ puesto en obra. La propuesta mueve {V_exc + V_nec:,.0f} m³ por carretera "
-                       "({opciones.iloc[4, 0]:.1f} k€, {opciones.iloc[3, 0]:.1f} t); reutilizar deja en {sobrante + deficit:,.0f} m³ lo que sale o entra ({opciones.iloc[4, 1]:.1f} k€, {opciones.iloc[3, 1]:.1f} t).''')"))
+                       "Markdown(f'''Balance: reutilizable = mín(excavado, necesario) = mín({miles(V_exc)}, {miles(V_nec)}) = {miles(reutilizable)} m³; sobrante = {miles(V_exc)} − {miles(reutilizable)} = {miles(sobrante)} m³; "
+                       "déficit = {miles(V_nec)} − {miles(reutilizable)} = {miles(deficit)} m³.\\n\\n"
+                       "Coste por m³ (canon más transporte, con {densidad} t/m³ y {coste_camion} €/t·km): vertedero {coste_vertedero} + {densidad} × {km_vertedero} × {coste_camion} = **{c_vert:.2f} €/m³**; "
+                       "préstamo {coste_prestamo} + {densidad} × {km_prestamo} × {coste_camion} = **{c_prest:.2f} €/m³**; dentro de la obra, {coste_interno} €/m³. "
+                       "Emisiones por m³: {densidad} × {km_vertedero} × {factor_camion} / 1000 = {e_vert:.4f} t al vertedero y {densidad} × {km_prestamo} × {factor_camion} / 1000 = {e_prest:.4f} t desde la cantera.\\n\\n"
+                       "- Propuesta: {miles(V_exc)} × {c_vert:.2f} / 1000 + {miles(V_nec)} × {c_prest:.2f} / 1000 = **{opciones.iloc[4, 0]:.1f} k€**; emisiones {miles(V_exc)} × {e_vert:.4f} + {miles(V_nec)} × {e_prest:.4f} = **{opciones.iloc[3, 0]:.1f} t**.\\n"
+                       "- Reutilizar: {miles(sobrante)} × {c_vert:.2f} / 1000 + {miles(deficit)} × {c_prest:.2f} / 1000 + {miles(reutilizable)} × {coste_interno} / 1000 = **{opciones.iloc[4, 1]:.1f} k€**; "
+                       "emisiones {miles(sobrante)} × {e_vert:.4f} + {miles(deficit)} × {e_prest:.4f} = **{opciones.iloc[3, 1]:.1f} t**.\\n\\n"
+                       "**Respuesta:** se reutilizan {miles(reutilizable)} m³ (sobrante {miles(sobrante)} m³, déficit {miles(deficit)} m³). La propuesta cuesta {opciones.iloc[4, 0]:.1f} k€ y emite {opciones.iloc[3, 0]:.1f} t; "
+                       "reutilizar, {opciones.iloc[4, 1]:.1f} k€ y {opciones.iloc[3, 1]:.1f} t (antes del acopio o del retraso, apartado 2).''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Fechas del desmonte y del terraplén"\n#| label: tbl-fechas\n'
                        "fechas = calendario.loc[[desmonte, terraplen], ['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]\n"
-                       "display(fechas)\n"
+                       "display(fechas.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'fin_mas_temprano': 'fin más temprano', 'inicio_mas_tardio': 'inicio más tardío', 'fin_mas_tardio': 'fin más tardío', 'H_total': 'holgura total'}))\n"
                        "ef_x = int(calendario.loc[desmonte, 'fin_mas_temprano']); es_y = int(calendario.loc[terraplen, 'inicio_mas_temprano']); ls_y = int(calendario.loc[terraplen, 'inicio_mas_tardio'])\n"
                        "desplazamiento = max(0, ef_x - es_y)\n"
                        "retraso = max(0, ef_x - ls_y)\n"
@@ -2299,29 +2657,39 @@ def _tierras_sobrantes(rng):
                        "comparacion = pd.DataFrame({'propuesta': [coste_propuesta, 0, 0, coste_propuesta], 'reutilizar': [opciones.loc['coste de tierras (k€)', 'reutilizar en obra'], (reutilizable * coste_acopio / 1000 if necesita_acopio else 0), retraso * penalidad, coste_reutilizar]},\n"
                        "                           index=['tierras (k€)', 'acopio (k€)', 'penalidad por retraso (k€)', 'total (k€)'])\n"
                        "display(comparacion.round(1))\n"
-                       "Markdown(f'''{desmonte} termina, como pronto, en la semana {ef_x}; {terraplen} puede empezar entre la semana {es_y} y la {ls_y}. ''' + "
-                       "(f'''Empezar {terraplen} al terminar {desmonte} exige desplazarlo {desplazamiento} semana(s), ''' + ('que caben en su holgura: **sin retraso ni acopio**.' if retraso == 0 else f'''{retraso} más de las que caben en su holgura: el proyecto se retrasa **{retraso}** semana(s) ({retraso * penalidad} k€).''') if not necesita_acopio else "
-                       "f'''{desmonte} termina antes de que {terraplen} pueda empezar: hacen falta {es_y - ef_x} semana(s) de acopio ({reutilizable * coste_acopio / 1000:.1f} k€), sin retraso.''') + "
-                       "f''' Reutilizar cuesta **{coste_reutilizar:.1f} k€** frente a **{coste_propuesta:.1f}** de la propuesta: los «montones» valen {coste_propuesta - coste_reutilizar:.1f} k€.''')"))
+                       "ventana_y = (f'sólo en el instante {es_y} (es crítica)' if es_y == ls_y else f'entre los instantes {es_y} (inicio más temprano) y {ls_y} (inicio más tardío)')\n"
+                       "Markdown(f'''Para rellenar con las tierras de la excavación, {terraplen} tiene que empezar cuando termina {desmonte}. {desmonte} termina, como pronto, en el instante {ef_x} "
+                       "(fin de la semana {ef_x}); {terraplen} puede empezar {ventana_y} sin retrasar el proyecto. ''' + "
+                       "(f'''Empezar {terraplen} en el instante {ef_x} exige desplazarlo {ef_x} − {es_y} = {plural(desplazamiento, 'semana')}; ''' + (f'''como {ef_x} ≤ {ls_y}, cabe en su holgura: **sin retraso ni acopio**.''' if retraso == 0 else f'''como {ef_x} > {ls_y}, se pasa de su holgura en {ef_x} − {ls_y} = {plural(retraso, 'semana')}: el proyecto se retrasa **{plural(retraso, 'semana')}** ({retraso} × {penalidad} = {retraso * penalidad} k€).''') if not necesita_acopio else "
+                       "f'''{desmonte} termina antes de que {terraplen} pueda empezar ({ef_x} < {es_y}): hay que acopiar las tierras {plural(es_y - ef_x, 'semana')}, a {coste_acopio} €/m³: {miles(reutilizable)} × {coste_acopio} / 1000 = {reutilizable * coste_acopio / 1000:.1f} k€, sin retraso.''') + "
+                       "f'''\\n\\n**Respuesta:** {terraplen} puede rellenarse con las tierras de {desmonte} ''' + ('sin acopio ni retraso' if (retraso == 0 and not necesita_acopio) else ('con acopio' if necesita_acopio else f'con {plural(retraso, \"semana\")} de retraso')) + "
+                       "f'''; reutilizar cuesta en total **{coste_reutilizar:.1f} k€** frente a **{coste_propuesta:.1f} k€** de la propuesta: el «no tener montones» vale {coste_propuesta:.1f} − {coste_reutilizar:.1f} = **{coste_propuesta - coste_reutilizar:.1f} k€**.''')"))
     celdas.append(code('#| fig-cap: "Gantt con holguras: la ventana en la que puede moverse el terraplén"\n#| label: fig-gantt\n'
                        "_g, _dibujo = proyecto.copy().gantt(datos_proyecto, 'duration', holguras=True, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))\n"
                        "pinta_tikz(_dibujo)"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma y S13.** Las tierras que se reutilizan en su estado natural en la misma obra **no son residuo** "
-                     f"(Ley 7/2022, art. 3.2.b); las que salen al vertedero **sí lo son** (y pagan canon e impuesto), y las "
-                     f"{sobrante:,.0f} m³ sobrantes lo serán en cualquier caso salvo que se valoricen en otra obra conforme a la "
-                     f"Orden APM/1007/2017. «No es un residuo de verdad» es cierto sólo para lo que se queda en la obra. **S8.** "
+                     f"(Ley 7/2022, art. 3.2.b); las que salen al vertedero **sí lo son** (y pagan canon e impuesto)"
+                     + (f", y los {_miles(sobrante)} m³ sobrantes lo serán en cualquier caso salvo que se valoricen en otra obra conforme a la "
+                        "Orden APM/1007/2017. " if sobrante > 0 else
+                        "; aquí, reutilizando, no sale ni un metro cúbico: todo el desmonte cabe en el terraplén. ")
+                     + "«No es un residuo de verdad» es cierto sólo para lo que se queda en la obra. **S8.** "
                      f"Reutilizar es **prevención**, el primer escalón; llevar a vertedero tierras aptas es **eliminación**, el "
                      f"último, y traer de cantera lo que ya se tenía consume un recurso natural además. **S1.** La propuesta "
                      f"ni compensa ni minimiza: traslada el impacto al vertedero, a la cantera y a la carretera. Y la "
-                     f"pregunta del calendario tiene respuesta única: {X} termina en la semana {e['ef_x']} y {Y} puede empezar "
-                     f"como tarde en la {e['ls_y']}; "
+                     f"pregunta del calendario tiene respuesta única: {X} termina en el instante {e['ef_x']} y {Y} puede empezar "
+                     f"como pronto en el {e['es_y']} y como tarde en el {e['ls_y']}; "
                      + ("se reutiliza **sin acopio ni retraso** desplazando el terraplén dentro de su holgura."
                         if (retraso == 0 and not necesita_acopio) else
-                        (f"hace falta **acopio** de {e['es_y'] - e['ef_x']} semana(s), sin retraso." if necesita_acopio else
-                         f"desplazar el terraplén supera su holgura en {retraso} semana(s): se reutiliza **con {retraso} semana(s) "
+                        (f"hace falta **acopio** durante {_pl(e['es_y'] - e['ef_x'], 'semana')}, sin retraso." if necesita_acopio else
+                         f"desplazar el terraplén supera su holgura en {_pl(retraso, 'semana')}: se reutiliza **con {_pl(retraso, 'semana')} "
                          f"de retraso** ({retraso * penal} k€), que sigue siendo más barato que la propuesta."))
-                     + " Lo que decide no es la opinión sobre los montones, sino las fechas."))
+                     + " Lo que decide no es la opinión sobre los montones, sino las fechas.\n\n"
+                     "**Respuesta:** las tierras que se reutilizan en la obra **no son residuo**; las que van al vertedero "
+                     "**sí**. Reutilizar es prevención y llevarlas al vertedero, eliminación. "
+                     + ("Con el calendario del plan se reutiliza **sin acopio ni retraso**." if (retraso == 0 and not necesita_acopio) else
+                        ("Con el calendario del plan hace falta **acopio**." if necesita_acopio else
+                         f"Con el calendario del plan **no** se puede sin retraso: cuesta {_pl(retraso, 'semana')}."))))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Los suelos no contaminados excavados que se reutilizan en su estado natural en la misma obra…', ['no son residuo (Ley 7/2022, art. 3.2.b)', 'son residuo inerte', 'son residuo no peligroso', 'son residuo salvo que lo autorice el gestor'],\n"
@@ -2335,16 +2703,17 @@ def _tierras_sobrantes(rng):
     celdas.append(_rubrica())
     celdas.append(md(f"Al jefe de obra: la tabla del apartado 2 y el plan de movimiento de tierras con fechas: {X} a su "
                      f"ritmo, {Y} desplazado "
-                     + (f"{max(0, e['ef_x'] - e['es_y'])} semana(s) dentro de su holgura" if (retraso == 0 and not necesita_acopio)
-                        else (f"con un acopio temporal de {e['es_y'] - e['ef_x']} semana(s) en una zona de la obra" if necesita_acopio
-                              else f"hasta la semana {e['ef_x']} aceptando {retraso} semana(s) de retraso, o {X} acelerado para evitarlas (lección 10)"))
-                     + f"; el sobrante ({sobrante:,.0f} m³) a vertedero o, mejor, ofrecido a otra obra con la orden de "
-                     "valorización. A la dirección facultativa: el estudio de gestión de residuos actualizado con el balance "
+                     + (f"{_pl(max(0, e['ef_x'] - e['es_y']), 'semana')} dentro de su holgura" if (retraso == 0 and not necesita_acopio)
+                        else (f"con un acopio temporal de {_pl(e['es_y'] - e['ef_x'], 'semana')} en una zona de la obra" if necesita_acopio
+                              else f"hasta el instante {e['ef_x']} aceptando {_pl(retraso, 'semana')} de retraso, o {X} acelerado para evitarlas (lección 10)"))
+                     + (f"; el sobrante ({_miles(sobrante)} m³) a vertedero o, mejor, ofrecido a otra obra con la orden de " if sobrante > 0 else
+                        "; no queda sobrante, y si lo hubiera iría a vertedero o, mejor, a otra obra con la orden de ")
+                     + "valorización. A la dirección facultativa: el estudio de gestión de residuos actualizado con el balance "
                      "de tierras. Prueba del ciclo de vida: ¿quién paga los camiones de ida al vertedero y los de vuelta de "
                      "la cantera, y qué queda en cada sitio?"))
     return celdas, (f"{V_X:,} m³ de desmonte y {V_Y:,} m³ de terraplén: vertedero + préstamo {coste_propuesta:.0f} k€ frente a "
                     f"reutilizar {coste_reut:.0f} k€"
-                    + (" sin retraso" if (retraso == 0 and not necesita_acopio) else (" con acopio" if necesita_acopio else f" con {retraso} semana(s) de retraso"))
+                    + (" sin retraso" if (retraso == 0 and not necesita_acopio) else (" con acopio" if necesita_acopio else f" con {_pl(retraso, 'semana')} de retraso"))
                     + "; art. 3.2.b Ley 7/2022")
 
 
@@ -2402,7 +2771,7 @@ def _clausula_social(rng):
     p, q, df = e["p"], e["q"], e["df"]
     penal_punto = int(rng.choice([4, 5, 6]))
     deficit0 = e["requerido"] - e["cap0"]
-    puntos0 = 100 * (e["requerido"] - e["cap0"]) / e["total"]
+    puntos0 = max(0.0, p - 100 * e["cap0"] / e["total"])        # puntos porcentuales que faltan hasta el p %
     celdas = [md("# Enunciado"),
               md("Una empresa constructora ha resultado adjudicataria de una obra pública. El pliego incluye, como "
                  "**condición especial de ejecución** de carácter social calificada de **obligación contractual "
@@ -2413,7 +2782,7 @@ def _clausula_social(rng):
                  "de cada actividad y si la actividad admite personal de inserción sin cualificación específica "
                  "(`apta` = 1: peonaje, desbroce, acopios, limpieza, ayudas) se adjuntan."),
               code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)),
-              md(f"El servicio de empleo y el plan de formación permiten incorporar como máximo **{q} persona(s) de "
+              md(f"El servicio de empleo y el plan de formación permiten incorporar como máximo **{_pl(q, 'persona')} de "
                  f"inserción por semana** (cada una necesita un tutor en la cuadrilla); cada operario-semana de inserción "
                  f"cuesta {COSTE_TUTORIA} k€ más que uno ordinario (tutoría, formación y rendimiento inicial)."),
               _mensaje("Director de producción",
@@ -2455,8 +2824,13 @@ def _clausula_social(rng):
                        "tabla.loc['Total'] = tabla.sum()\n"
                        "display(tabla.astype(int).T)\n"
                        "total = float(carga_total.sum()); requerido = int(np.ceil(porcentaje / 100 * total)); capacidad_inicial = float(capacidad.sum())\n"
-                       "Markdown(f'''Operario-semanas de la obra: **{total:.0f}**; la cláusula exige al menos {porcentaje} %: **{requerido}**. Con inicios más tempranos, las actividades aptas "
-                       "admiten como máximo **{capacidad_inicial:.0f}** operario-semanas de inserción ({capacidad_inicial / total:.1%}): ''' + ('**cumple**.' if capacidad_inicial >= requerido else '**no cumple**: las actividades aptas se solapan y el límite semanal desperdicia su carga.'))"))
+                       "solape = [int(c) for c in carga_aptas.index if carga_aptas[c] > maximo_insercion]; vacias = [int(c) for c in carga_aptas.index if carga_aptas[c] == 0]\n"
+                       "Markdown(f'''Operario-semanas de la obra = suma de la carga total = **{total:.0f}**; la cláusula exige al menos {porcentaje} % × {total:.0f} = {porcentaje / 100 * total:.1f}, "
+                       "es decir, **{requerido}** operario-semanas (redondeando hacia arriba). La capacidad de inserción de cada semana es mín({maximo_insercion}, carga de las aptas); sumada, "
+                       "**{capacidad_inicial:.0f}** operario-semanas = {capacidad_inicial:.0f} / {total:.0f} = {capacidad_inicial / total:.1%} de la obra.\\n\\n"
+                       "**Respuesta:** con inicios más tempranos el plan ''' + ('**cumple** la cláusula.' if capacidad_inicial >= requerido else "
+                       "f'''**no cumple** ({capacidad_inicial:.0f} < {requerido}): las actividades aptas se solapan: en {plural(len(solape), \"semana\")} su carga supera el máximo de {maximo_insercion} y el exceso se desperdicia, ''' "
+                       "f'''y {plural(len(vacias), \"semana\")} no ''' + ('tiene' if len(vacias) == 1 else 'tienen') + ' ninguna actividad apta.'))"))
     celdas.append(code('#| tbl-cap: "Desplazamientos de la nivelación y capacidad de inserción tras nivelar"\n#| label: tbl-nivelacion\n'
                        "proyecto_nivelado = proyecto.copy()\n"
                        "desplazamientos, cuadrados, datos_nivelados, gantt_nivelado, dibujo_niv = proyecto_nivelado.nivelar(\n"
@@ -2468,21 +2842,29 @@ def _clausula_social(rng):
                        "tabla_niv.loc['Total'] = tabla_niv.sum()\n"
                        "display(tabla_niv.astype(int).T)\n"
                        "capacidad_nivelada = float(capacidad_niv.sum())\n"
-                       "Markdown(f'''Tras nivelar (misma duración, {duracion} semanas) la capacidad de inserción es **{capacidad_nivelada:.0f}** operario-semanas ({capacidad_nivelada / total:.1%}): ''' + ('**cumple** la cláusula.' if capacidad_nivelada >= requerido else 'sigue sin cumplir.'))"))
+                       "movidas = desplazamientos[desplazamientos['desplazamientos'] > 0]['desplazamientos']\n"
+                       "txt_mov = lista_y(f'{a} {plural(int(v), \"semana\")}' + (' (apta)' if a in aptas else '') for a, v in movidas.items())\n"
+                       "Markdown(f'''La nivelación (de la carga total, dentro de las holguras) desplaza {txt_mov}: reparte la carga apta en más semanas, y la capacidad de inserción sube a "
+                       "**{capacidad_nivelada:.0f}** operario-semanas ({capacidad_nivelada / total:.1%}) con la misma duración ({duracion} semanas).\\n\\n"
+                       "**Respuesta:** tras nivelar, ''' + (f'''**cumple** la cláusula ({capacidad_nivelada:.0f} ≥ {requerido}).''' if capacidad_nivelada >= requerido else f'''sigue sin cumplir ({capacidad_nivelada:.0f} < {requerido}).'''))"))
     celdas.append(code('#| fig-cap: "Diagrama de cargas tras la nivelación"\n#| label: fig-cargasNivelado\n'
                        "plot_cargas(gantt_df=gantt_nivelado, limite_maximo_recursos=[int(carga_total.max())])"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Coste de cumplir frente a coste de no cumplir"\n#| label: tbl-coste\n'
                        "deficit_inicial = max(0, requerido - capacidad_inicial)\n"
-                       "puntos_deficit = 100 * deficit_inicial / total\n"
+                       "puntos_deficit = max(0.0, porcentaje - 100 * capacidad_inicial / total)   # puntos porcentuales que faltan hasta el porcentaje exigido\n"
                        "costes = pd.Series({'cumplir tras nivelar: sobrecoste de tutoría (k€)': requerido * coste_tutoria,\n"
                        "                    'plan inicial sin nivelar: déficit (operario-semanas)': deficit_inicial,\n"
                        "                    'plan inicial sin nivelar: déficit (puntos porcentuales)': puntos_deficit,\n"
                        "                    'plan inicial sin nivelar: penalidad (k€)': puntos_deficit * penalidad_punto})\n"
                        "display(costes.round(2).to_frame('valor'))\n"
-                       "Markdown(f'''Cumplir cuesta **{requerido * coste_tutoria:.1f} k€** de tutoría y una nivelación que no alarga la obra; no cumplir con el plan inicial deja "
-                       "{deficit_inicial:.0f} operario-semanas de déficit ({puntos_deficit:.1f} puntos), **{puntos_deficit * penalidad_punto:.1f} k€** de penalidad''' + "
-                       "(' y, por debajo de la mitad, causa de resolución.' if capacidad_inicial < requerido / 2 else '.'))"))
+                       "pct_ini = 100 * capacidad_inicial / total\n"
+                       "Markdown(f'''- Cumplir (plan nivelado): {requerido} operario-semanas de inserción × {coste_tutoria} k€ = **{requerido * coste_tutoria:.1f} k€** de tutoría, con una nivelación que no alarga la obra.\\n"
+                       "- No cumplir (plan inicial): se alcanza el {capacidad_inicial:.0f} / {total:.0f} = {pct_ini:.2f} % frente al {porcentaje} % exigido; faltan {porcentaje} − {pct_ini:.2f} = "
+                       "**{puntos_deficit:.2f} puntos** ({plural(deficit_inicial, \"operario-semana\", \"operario-semanas\")} hasta las {requerido}), y la penalidad es {puntos_deficit:.2f} × {penalidad_punto} = **{puntos_deficit * penalidad_punto:.1f} k€**''' + "
+                       "(f'''; además, {pct_ini:.2f} % es menos de la mitad del {porcentaje} %: causa de resolución.''' if pct_ini < porcentaje / 2 else f''' (no hay causa de resolución: {pct_ini:.2f} % supera la mitad del {porcentaje} %).''') + "
+                       "f'''\\n\\n**Respuesta:** la cláusula cuesta {requerido * coste_tutoria:.1f} k€ y la penalidad de no cumplirla con el plan inicial sería {puntos_deficit * penalidad_punto:.1f} k€: ''' + "
+                       "('cumplir es más barato' if requerido * coste_tutoria < puntos_deficit * penalidad_punto else 'la penalidad sería menor, pero la cláusula es una obligación esencial del contrato, no una opción que se compra (apartado 3)') + '.')"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma y S14.** La condición especial de ejecución es una **obligación del contrato** (LCSP, art. "
                      f"202): el pliego la ha calificado de esencial, de modo que su incumplimiento lleva la penalidad y, por "
@@ -2490,10 +2872,13 @@ def _clausula_social(rng):
                      f"pasarla a la subcontrata **no la traslada**, la extiende; y «cubrirla en el papel» con personal que no "
                      f"cumple la definición del pliego es una afirmación falsa en la certificación (lección 19, C1), además de "
                      f"incumplir. Si el plan la cumple es un cálculo: con inicios más tempranos la capacidad es de "
-                     f"{e['cap0']:.0f} operario-semanas frente a las {e['requerido']} exigidas (**no cumple**, {puntos0:.1f} "
+                     f"{e['cap0']:.0f} operario-semanas frente a las {e['requerido']} exigidas (**no cumple**, {puntos0:.2f} "
                      f"puntos de déficit); tras nivelar, {e['cap1']:.0f} (**cumple**), con la misma duración. **S10.** El plan "
                      "no puede apoyarse en una contratación que la norma y el contrato no permiten: la opción «en el papel» "
-                     "no está en la tabla, y la de nivelar sí."))
+                     "no está en la tabla, y la de nivelar sí.\n\n"
+                     "**Respuesta:** es una **obligación** del contrato (esencial); el plan con inicios más tempranos **no** la "
+                     "cumple y el nivelado **sí**; trasladarla a la subcontrata no la cumple (se exige también a ella) y "
+                     "«cubrirla en el papel» es falsear la certificación."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Una condición especial de ejecución de tipo social fijada en el pliego…', ['es una obligación del contrato, con penalidad o resolución si el pliego la califica de esencial', 'es una recomendación', 'sólo obliga si el contratista la aceptó expresamente en su oferta', 'se sustituye por una compensación económica'],\n"
@@ -2506,7 +2891,7 @@ def _clausula_social(rng):
     celdas += apartado(4)
     celdas.append(_rubrica())
     celdas.append(md(f"Al director de producción: la tabla del apartado 1 nivelada, con las semanas y actividades en las que "
-                     f"entran las {q} persona(s) de inserción, el calendario de incorporación con el servicio de empleo "
+                     f"entran las personas de inserción ({q} como máximo por semana), el calendario de incorporación con el servicio de empleo "
                      f"(hay que pedirlas con antelación) y el coste ({e['requerido'] * COSTE_TUTORIA:.1f} k€) frente a la "
                      f"penalidad ({puntos0 * penal_punto:.1f} k€). Al responsable del contrato: el plan de cumplimiento "
                      "con la documentación que se aportará (contratos, certificados del servicio de empleo, partes de "
@@ -2622,10 +3007,17 @@ def _hormigon_bajo_carbono(rng):
                        "h['duración del proyecto (semanas)'] = [duracion, duracion_B]\n"
                        "h['retraso (semanas)'] = [0, retraso]\n"
                        "h['coste indirecto del retraso (k€)'] = h['retraso (semanas)'] * coste_semana\n"
-                       "display(h.iloc[:, 3:].round(1))\n"
-                       "camino_B = ' / '.join('–'.join(r) for r in proyecto.critical_path(duraciones_B).values())\n"
-                       "Markdown(f'''{M:,.0f} m³ de hormigón: B cuesta {h.iloc[1, 3] - h.iloc[0, 3]:.1f} k€ más y emite **{h.iloc[0, 4] - h.iloc[1, 4]:.0f} t menos**. "
-                       "Con B el proyecto dura {duracion_B} semanas (ruta crítica {camino_B}): **{retraso}** semana(s) de retraso, {retraso * coste_semana} k€ de coste indirecto.''')"))
+                       "display(h.iloc[:, 3:].round(2))\n"
+                       "pA, pB = hormigones.iloc[0, 0], hormigones.iloc[1, 0]; fA, fB = hormigones.iloc[0, 1], hormigones.iloc[1, 1]\n"
+                       "criticas_h = [a for a in hormigonado if calendario.loc[a, 'H_total'] == 0]\n"
+                       "display(Markdown(f'''Volumen de hormigón: M = {suma_txt(datos_proyecto.loc[hormigonado, 'hormigon_m3'])} m³ (actividades {lista_y(hormigonado)}).\\n\\n"
+                       "- A: coste = {miles(M)} × {pA} / 1000 = {h.iloc[0, 3]:.2f} k€; emisiones = {miles(M)} × {fA} = {h.iloc[0, 4]:.1f} t.\\n"
+                       "- B: coste = {miles(M)} × {pB} / 1000 = {h.iloc[1, 3]:.2f} k€; emisiones = {miles(M)} × {fB} = {h.iloc[1, 4]:.1f} t.\\n\\n"
+                       "Con B cada hormigonado dura una semana más. De ellas, {lista_y(criticas_h) if criticas_h else 'ninguna'} ''' + ('es crítica' if len(criticas_h) == 1 else 'son críticas') + "
+                       "' con el hormigón A; la duración con B se recalcula con todas las semanas añadidas:'))\n"
+                       "display(explica_camino_critico(proyecto, duraciones_B, 'semanas'))\n"
+                       "Markdown(f'''**Respuesta:** B cuesta {h.iloc[1, 3] - h.iloc[0, 3]:.2f} k€ más en material y emite **{h.iloc[0, 4] - h.iloc[1, 4]:.1f} t menos**. El proyecto dura {duracion} semanas con A y "
+                       "{duracion_B} con B: **{plural(retraso, 'semana')}** de retraso, que al coste indirecto valen {retraso} × {coste_semana} = **{retraso * coste_semana} k€**.''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Ackoff-Sasieni sobre el plan con B para recuperar el retraso"\n#| label: tbl-ackoff\n'
                        "tabla_c, pasos_c, duraciones_c, margen_c = proyecto.ackoff(durations=duraciones_B, min_durations=minimos_B,\n"
@@ -2642,23 +3034,35 @@ def _hormigon_bajo_carbono(rng):
                        "opciones.loc['coste monetario (k€)'] = opciones.iloc[:3].sum()\n"
                        "opciones.loc['carbono al precio sombra (k€)'] = opciones.loc['emisiones (t CO₂)'] * precio_sombra / 1000\n"
                        "opciones.loc['coste total (k€)'] = opciones.loc['coste monetario (k€)'] + opciones.loc['carbono al precio sombra (k€)']\n"
-                       "display(opciones.round(1))\n"
+                       "display(opciones.round(2))\n"
                        "mejor = opciones.loc['coste total (k€)'].idxmin(); mas_barata = opciones.loc['coste monetario (k€)'].idxmin()\n"
-                       "Markdown(f'''Recuperar las {retraso} semana(s) cuesta **{coste_compresion:.0f} k€** (pasos: ''' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_c.items())) + "
-                       "f'''). En dinero gana **{mas_barata}**; al precio sombra de {precio_sombra} €/t gana **{mejor}** ({opciones.loc['coste total (k€)', mejor]:.1f} k€ frente a {opciones.loc['coste total (k€)', 'A']:.1f} de A).''')"))
+                       "acts_c = [a for _, paso in sorted(pasos_c.items()) for a in paso]\n"
+                       "dif_dinero = opciones.loc['coste monetario (k€)', 'B comprimido'] - opciones.loc['coste monetario (k€)', 'A']\n"
+                       "dif_t = opciones.loc['emisiones (t CO₂)', 'A'] - opciones.loc['emisiones (t CO₂)', 'B comprimido']\n"
+                       "Markdown(f'''Ackoff-Sasieni sobre las duraciones con B (los hormigonados no bajan de su mínimo + 1) recupera las {plural(retraso, 'semana')} así: {pasos_txt(pasos_c)}; "
+                       "coste de la compresión = {suma_acts(acts_c, datos_proyecto['ucr'])} k€.\\n\\n"
+                       "Coste total de cada opción = hormigón + coste indirecto del retraso + compresión + emisiones × {precio_sombra} / 1000:\\n\\n''' + "
+                       "'\\n'.join(f'- {c}: {opciones.loc[\"hormigón (k€)\", c]:.2f} + {opciones.loc[\"coste indirecto del retraso (k€)\", c]:.0f} + {opciones.loc[\"compresión (k€)\", c]:.0f} + {opciones.loc[\"emisiones (t CO₂)\", c]:.1f} × {precio_sombra} / 1000 = **{opciones.loc[\"coste total (k€)\", c]:.2f} k€**' for c in opciones.columns) + "
+                       "f'''\\n\\nB comprimido cuesta {dif_dinero:.2f} k€ más que A en dinero y evita {dif_t:.1f} t: {miles(dif_dinero * 1000)} € / {dif_t:.1f} t = {dif_dinero * 1000 / dif_t:.0f} € por tonelada evitada, ''' + "
+                       "(f'''menos que el precio sombra de {precio_sombra} €/t.''' if dif_dinero * 1000 / dif_t < precio_sombra else f'''más que el precio sombra de {precio_sombra} €/t.''') + "
+                       "f'''\\n\\n**Respuesta:** recuperar el retraso cuesta {coste_compresion:.0f} k€. En dinero gana **{mas_barata}** ({opciones.loc['coste monetario (k€)', mas_barata]:.2f} k€); "
+                       "al precio sombra gana **{mejor}** ({opciones.loc['coste total (k€)', mejor]:.2f} k€ frente a {opciones.loc['coste total (k€)', 'A']:.2f} de A y {opciones.loc['coste total (k€)', 'B con retraso']:.2f} de B con retraso).''')"))
     celdas += apartado(3)
     celdas.append(md(f"**S15.** Los dos hormigones cumplen las prestaciones del pliego (resistencia característica y clase de "
                      f"exposición); el pliego, como dice el director, no fija el cemento, y «nunca hemos trabajado con CEM "
                      f"III» no es una prestación: B **no puede rechazarse por costumbre**. Lo que sí hay que calcular es su "
-                     f"efecto en el cronograma ({r} semana(s)), y se ha calculado. **S2.** Con el precio sombra la opción "
-                     f"correcta es la de menor coste total: **{mejor}** ({e['tot'][mejor]:.1f} k€ frente a {e['tot']['A']:.1f} "
-                     f"de A); en dinero A es más barata ({e['dinero']['A']:.1f} frente a {e['dinero']['B comprimido']:.1f} de B "
+                     f"efecto en el cronograma ({_pl(r, 'semana')}), y se ha calculado. **S2.** Con el precio sombra la opción "
+                     f"correcta es la de menor coste total: **{mejor}** ({e['tot'][mejor]:.2f} k€ frente a {e['tot']['A']:.2f} "
+                     f"de A); en dinero A es más barata ({e['dinero']['A']:.2f} frente a {e['dinero']['B comprimido']:.2f} de B "
                      f"comprimido), y esa diferencia es exactamente lo que la política de la organización decide pagar por "
-                     f"{e['M'] * (e['fa'] - e['fb']):.0f} t. **S6.** Las emisiones de fabricación del cemento son **alcance 3** "
+                     f"{e['M'] * e['fa'] - e['M'] * e['fb']:.1f} t. **S6.** Las emisiones de fabricación del cemento son **alcance 3** "
                      f"del proyecto (material comprado): ser «del cementero» no las saca del inventario, igual que el acero "
-                     f"importado. **S1.** Sustituir el cemento **minimiza** ({e['M'] * (e['fa'] - e['fb']):.0f} t menos con la "
+                     f"importado. **S1.** Sustituir el cemento **minimiza** ({e['M'] * e['fa'] - e['M'] * e['fb']:.1f} t menos con la "
                      "misma estructura); **evitar** sería rediseñar para necesitar menos hormigón; A más créditos sería "
-                     "compensar."))
+                     "compensar.\n\n"
+                     f"**Respuesta:** B **no** puede rechazarse por costumbre (cumple las prestaciones); al precio sombra la "
+                     f"opción correcta es **{mejor}**; las emisiones del cemento son **alcance 3** del proyecto; B **minimiza**, "
+                     "A no reduce nada (con créditos sería compensar) y evitar exige rediseñar."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Un hormigón que cumple la resistencia característica y la clase de exposición del pliego…', ['no puede rechazarse por costumbre: se compara por coste total y ciclo de vida, con su efecto en el plazo calculado', 'puede rechazarse si el jefe de obra no lo conoce', 'sólo puede usarse si es más barato', 'sólo puede usarse en elementos no estructurales'],\n"
@@ -2676,7 +3080,7 @@ def _hormigon_bajo_carbono(rng):
                      f"facultativa: la propuesta de B con la justificación de prestaciones del Código Estructural y la "
                      f"reducción de {e['M'] * (e['fa'] - e['fb']):.0f} t para la memoria. Prueba de publicidad: ¿pondría en la "
                      "memoria que se emitieron esas toneladas de más «porque siempre se ha usado CEM I»?"))
-    return celdas, (f"{e['M']:,.0f} m³: B emite {e['M'] * (e['fa'] - e['fb']):.0f} t menos y retrasa {r} semana(s); "
+    return celdas, (f"{e['M']:,.0f} m³: B emite {e['M'] * (e['fa'] - e['fb']):.0f} t menos y retrasa {_pl(r, 'semana')}; "
                     f"recuperarlas cuesta {e['coste_crash']:.0f} k€; al precio sombra de {precio} €/t gana {mejor}")
 
 
@@ -2738,7 +3142,7 @@ def _turno_de_noche(rng):
                  "entorno del hospital no se concede salvo emergencia; el trabajo nocturno no ruidoso (interiores, "
                  "instalaciones, acabados) es libre. Según la experiencia de la empresa en obras similares, un turno de "
                  f"noche ruidoso sin autorización acaba en denuncia con probabilidad {p_denuncia:.0%}; si hay denuncia, la "
-                 f"policía municipal paraliza el turno, la multa es de {multa} k€ y la obra pierde {paralizacion} semana(s) "
+                 f"policía municipal paraliza el turno, la multa es de {multa} k€ y la obra pierde {_pl(paralizacion, 'semana')} "
                  f"hasta reorganizarse, con una penalidad de {penal} k€ por semana de retraso en la entrega."),
               _mensaje("Jefe de obra",
                        f"Turno de noche en todo lo que haga falta, que sale un 40 % más barato que doblar cuadrillas: son "
@@ -2764,6 +3168,12 @@ def _turno_de_noche(rng):
                        "    return float(sum(datos_proyecto.loc[a, columna] for paso in pasos.values() for a in paso))"))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con el camino crítico", label="fig-pert")
     celdas += apartado(1)
+    celdas.append(code('#| tbl-cap: "Costes unitarios de reducción de las actividades que pueden acortarse"\n#| label: tbl-costesUnitarios\n'
+                       "reducibles = datos_proyecto.index[datos_proyecto['cap_duration'] < datos_proyecto['duration']]\n"
+                       "display(datos_proyecto.loc[reducibles, ['ucr', 'ucr_noche', 'ruidosa', 'ucr_propuesta', 'ucr_legal']]\n"
+                       "        .rename(columns={'ucr': 'ucr diurno', 'ucr_noche': 'ucr con turno de noche', 'ucr_propuesta': 'propuesta: mín(diurno, noche)', 'ucr_legal': 'legal: noche sólo si no es ruidosa'}))\n"
+                       "Markdown('La propuesta usa en cada actividad el menor de los dos costes unitarios; el coste legal usa el de noche sólo en las actividades no ruidosas '\n"
+                       "         '(en las ruidosas, el diurno). Con cada columna se aplica el mismo algoritmo de Ackoff-Sasieni.')"))
     celdas.append(code('#| tbl-cap: "Ackoff-Sasieni con el menor coste unitario de cada actividad (propuesta)"\n#| label: tbl-ackoffPropuesta\n'
                        "tabla_1, pasos_1, duraciones_1, margen_1 = proyecto.ackoff(durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],\n"
                        "                                                         costs=datos_proyecto['ucr_propuesta'], reduction=semanas_pedidas, report=False)\n"
@@ -2773,8 +3183,10 @@ def _turno_de_noche(rng):
     celdas.append(code("acts_1 = [a for paso in pasos_1.values() for a in paso]\n"
                        "nocturnas_ruidosas = sorted(set(a for a in acts_1 if datos_proyecto.loc[a, 'ruidosa'] == 1 and datos_proyecto.loc[a, 'ucr_noche'] < datos_proyecto.loc[a, 'ucr']))\n"
                        "coste_1 = coste_plan(pasos_1, 'ucr_propuesta')\n"
-                       "Markdown('Plan 1 (propuesta): ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_1.items())) + "
-                       "f'''. Coste **{coste_1:.0f} k€**. Actividades ruidosas que se harían de noche: **{', '.join(nocturnas_ruidosas)}**.''')"))
+                       "acts_1o = [a for _, paso in sorted(pasos_1.items()) for a in paso]\n"
+                       "Markdown(f'''Plan 1 (propuesta): {pasos_txt(pasos_1)}; coste = {suma_acts(acts_1o, datos_proyecto['ucr_propuesta'])} k€.\\n\\n"
+                       "**Respuesta:** el plan más barato de la propuesta ({pasos_txt(pasos_1)}) cuesta **{coste_1:.0f} k€**; se harían de noche, siendo ruidosas, "
+                       "**{lista_y(nocturnas_ruidosas)}** (de noche cuestan menos que de día, y el algoritmo elige el menor coste).''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Ackoff-Sasieni con el coste unitario legal (noche sólo en las no ruidosas)"\n#| label: tbl-ackoffLegal\n'
                        "tabla_2, pasos_2, duraciones_2, margen_2 = proyecto.ackoff(durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],\n"
@@ -2789,21 +3201,30 @@ def _turno_de_noche(rng):
                        "                            'plan 2: legal': [coste_2, 0.0, 0.0, coste_2]},\n"
                        "                           index=['coste de la compresión (k€)', 'multa esperada (k€)', 'paralización esperada (k€)', 'coste esperado (k€)'])\n"
                        "display(comparacion.round(1))\n"
-                       "Markdown('Plan 2 (legal): ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_2.items())) + "
-                       "f'''. Coste **{coste_2:.0f} k€**, {coste_2 - coste_1:.0f} k€ más que la propuesta: ese es el «ahorro» del turno de noche. "
-                       "Con la denuncia, el coste esperado de la propuesta es de {esperado_1:.1f} k€''' + (', más que el plan legal: mal negocio además de infracción.' if esperado_1 > coste_2 else ', todavía menor que el plan legal: la respuesta B no depende de esta cuenta.'))"))
+                       "acts_2o = [a for _, paso in sorted(pasos_2.items()) for a in paso]\n"
+                       "mismas = sorted(acts_1o) == sorted(acts_2o)\n"
+                       "Markdown(f'''Plan 2 (legal): {pasos_txt(pasos_2)}; coste = {suma_acts(acts_2o, datos_proyecto['ucr_legal'])} k€''' + "
+                       "(' (acorta las mismas actividades que el plan 1, pero las ruidosas a precio diurno).' if mismas else '.') + "
+                       "f'''\\n\\nCoste esperado de la propuesta = coste de la compresión + P(denuncia) × (multa + semanas de paralización × penalidad) = "
+                       "{coste_1:.0f} + {p_denuncia} × ({multa} + {paralizacion} × {penalidad}) = **{esperado_1:.1f} k€**''' + "
+                       "(', más que el plan legal: mal negocio además de infracción.' if esperado_1 > coste_2 else ', todavía menor que el plan legal: la respuesta B no depende de esta cuenta.') + "
+                       "f'''\\n\\n**Respuesta:** el plan legal cuesta **{coste_2:.0f} k€**, {coste_2 - coste_1:.0f} k€ más que la propuesta: ese es el «ahorro» del turno de noche ruidoso; "
+                       "con la denuncia, la propuesta cuesta {esperado_1:.1f} k€ esperados.''')"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma y S12.** El horario de la ordenanza es una condición de la autorización de la obra: el turno de "
                      f"noche en actividades ruidosas junto a viviendas y un hospital, sin autorización expresa, es infracción "
                      f"(Ley 37/2003, arts. 6 y 28) y **no es una opción de la tabla**; sí lo es en las actividades no "
                      f"ruidosas. El plan correcto es el **plan 2**, con el coste unitario legal ({e['coste2']:.0f} k€ frente a "
-                     f"{e['coste1']:.0f}): se excluyen las opciones prohibidas antes de ordenar, no se usan y se paga la multa "
-                     f"como un coste. **S10.** El «ahorro» de {e['coste2'] - e['coste1']:.0f} k€ sale del sueño de los vecinos y "
+                     f"{e['coste1']:.0f}): las opciones prohibidas se excluyen antes de ordenar; no se usan pagando la multa "
+                     f"como si fuera un coste más. **S10.** El «ahorro» de {e['coste2'] - e['coste1']:.0f} k€ sale del sueño de los vecinos y "
                      f"de los pacientes del hospital, que no están en la mesa: una ventaja de plazo obtenida incumpliendo "
                      f"la norma no es una opción, y «si viene la policía se para esa noche» describe la infracción, no la "
                      f"evita. **S1.** El plan 1 ni compensa ni minimiza: traslada el impacto a la comunidad; el plan 2 "
                      f"**minimiza** (ruido sólo de día, noche en lo silencioso); **evitar** sería negociar con el cliente las "
-                     f"{r} semanas (lección 19, C13) o pedir la autorización con tiempo para lo que de verdad lo necesite."))
+                     f"{r} semanas (lección 19, C13) o pedir la autorización con tiempo para lo que de verdad lo necesite.\n\n"
+                     "**Respuesta:** el turno de noche en actividades ruidosas **no** es una opción de la tabla; el plan "
+                     f"correcto es el **plan 2** ({e['coste2']:.0f} k€); el plan 1 traslada el impacto a los vecinos (ni "
+                     "siquiera compensa) y el plan 2 minimiza."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('El turno de noche en actividades ruidosas junto a viviendas y un hospital, sin autorización del ayuntamiento…', ['no es una opción del plan: la ordenanza lo prohíbe y es infracción (Ley 37/2003)', 'es una opción si se compensa a los vecinos', 'es legal si dura menos de un mes', 'es legal si la obra es pública'],\n"
@@ -2939,8 +3360,13 @@ def _prefabricacion(rng):
                        "resumen = pd.DataFrame({'in situ': [duracion, op_in, residuo_in], 'prefabricado': [duracion_pref, op_pref, residuo_pref]},\n"
                        "                       index=['duración (semanas)', 'operario-semanas en obra', 'residuo en obra (t)'])\n"
                        "display(resumen.round(1))\n"
-                       "Markdown(f'''Prefabricar acorta el proyecto de {duracion} a **{duracion_pref}** semanas (ruta crítica {camino_pref}), quita "
-                       "{op_in - op_pref:.0f} operario-semanas de la obra y evita {residuo_in - residuo_pref:.0f} t de residuo en ella.''')"))
+                       "Markdown(f'''Con prefabricados las actividades {lista_y(f'{a} ({datos_proyecto.loc[a, \"duration\"]} → {datos_pref.loc[a, \"duration\"]})' for a in prefabricadas)} se acortan; "
+                       "el proyecto pasa de {duracion} a **{duracion_pref}** semanas (camino crítico {criticas_txt(proyecto, datos_pref['duration'])}). "
+                       "Las operario-semanas en obra son la suma de operarios × duración de cada actividad (el total del diagrama de cargas): "
+                       "{op_in:.0f} in situ y {op_pref:.0f} prefabricando, {op_in - op_pref:.0f} menos ({lista_y(f'{a}: {datos_proyecto.loc[a, \"resources\"]} × {datos_proyecto.loc[a, \"reduccion_prefabricado\"]}' for a in prefabricadas)}). "
+                       "Residuo en obra: in situ {suma_txt(datos_proyecto.loc[prefabricadas, 'residuos_t'])} t; prefabricado, el {fraccion_residuo_pref:.0%}: {residuo_in:.0f} × {fraccion_residuo_pref} = {residuo_pref:.1f} t.\\n\\n"
+                       "**Respuesta:** in situ {duracion} semanas, {op_in:.0f} operario-semanas y {residuo_in:.0f} t de residuo; prefabricado {duracion_pref} semanas, {op_pref:.0f} operario-semanas y {residuo_pref:.1f} t "
+                       "(se evitan {residuo_in - residuo_pref:.1f} t).''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Coste y emisiones de cada opción"\n#| label: tbl-opciones\n'
                        "def opcion(semanas, residuo, transporte_t_km, extra):\n"
@@ -2956,34 +3382,51 @@ def _prefabricacion(rng):
                        "    return s\n"
                        "comparacion = pd.DataFrame({'in situ': opcion(duracion, residuo_in, 0, 0),\n"
                        "                            'prefabricado': opcion(duracion_pref, residuo_pref, peso_prefabricados * km_fabrica, extra_material)})\n"
-                       "display(comparacion.round(2))\n"
+                       "display(limpia_tabla(comparacion))\n"
                        "em_camiones = comparacion.loc['transporte de prefabricados, alcance 3 (t CO₂)', 'prefabricado']\n"
                        "em_semanas = comparacion.loc['semanas de obra (t CO₂)', 'in situ'] - comparacion.loc['semanas de obra (t CO₂)', 'prefabricado']\n"
-                       "Markdown(f'''Los camiones de la fábrica emiten {em_camiones:.1f} t; las {duracion - duracion_pref} semanas de obra que se ahorran, {em_semanas:.1f} t. "
-                       "En total, prefabricar ''' + ('emite menos' if comparacion.loc['emisiones (t CO₂)', 'prefabricado'] < comparacion.loc['emisiones (t CO₂)', 'in situ'] else 'emite más') + "
+                       "tkm = peso_prefabricados * km_fabrica\n"
+                       "display(Markdown(f'''- In situ: coste = {duracion} × {coste_semana} + {residuo_in:.0f} × {coste_gestion_residuo} / 1000 = **{comparacion.loc['coste monetario (k€)', 'in situ']:.2f} k€**; "
+                       "emisiones = {duracion} × {emisiones_semana} + {residuo_in:.0f} × {km_gestor} × {factor_camion} / 1000 = **{comparacion.loc['emisiones (t CO₂)', 'in situ']:.2f} t**.\\n"
+                       "- Prefabricado: coste = {extra_material} + {duracion_pref} × {coste_semana} + {peso_prefabricados} × {km_fabrica} × {coste_camion} / 1000 + {residuo_pref:.1f} × {coste_gestion_residuo} / 1000 = "
+                       "**{comparacion.loc['coste monetario (k€)', 'prefabricado']:.2f} k€**; emisiones = {duracion_pref} × {emisiones_semana} + {peso_prefabricados} × {km_fabrica} × {factor_camion} / 1000 + "
+                       "{residuo_pref:.1f} × {km_gestor} × {factor_camion} / 1000 = **{comparacion.loc['emisiones (t CO₂)', 'prefabricado']:.2f} t**.\\n"
+                       "- Coste total = coste + emisiones × {precio_sombra} / 1000: in situ {comparacion.loc['coste total al precio sombra (k€)', 'in situ']:.2f} k€; prefabricado {comparacion.loc['coste total al precio sombra (k€)', 'prefabricado']:.2f} k€.'''))\n"
+                       "Markdown(f'''**Respuesta:** los camiones de la fábrica emiten {em_camiones:.2f} t y las {duracion - duracion_pref} semanas de obra que se ahorran, "
+                       "{duracion - duracion_pref} × {emisiones_semana} = {em_semanas:.1f} t: pesan más ''' + ('**las semanas de obra**' if em_semanas > em_camiones else '**los camiones**') + "
+                       "'. En total, prefabricar ' + ('emite menos' if comparacion.loc['emisiones (t CO₂)', 'prefabricado'] < comparacion.loc['emisiones (t CO₂)', 'in situ'] else 'emite más') + "
                        "f''' ({comparacion.loc['emisiones (t CO₂)', 'prefabricado']:.1f} frente a {comparacion.loc['emisiones (t CO₂)', 'in situ']:.1f} t) y cuesta ''' + "
                        "('**' + f'''{abs(comparacion.loc['coste total al precio sombra (k€)', 'in situ'] - comparacion.loc['coste total al precio sombra (k€)', 'prefabricado']):.1f} k€ ''' + "
                        "('menos' if comparacion.loc['coste total al precio sombra (k€)', 'prefabricado'] < comparacion.loc['coste total al precio sombra (k€)', 'in situ'] else 'más') + '**') + "
                        "f''' al precio sombra ({abs(comparacion.loc['coste monetario (k€)', 'in situ'] - comparacion.loc['coste monetario (k€)', 'prefabricado']):.1f} k€ ''' + "
                        "('menos' if comparacion.loc['coste monetario (k€)', 'prefabricado'] < comparacion.loc['coste monetario (k€)', 'in situ'] else 'más') + ' en dinero).')"))
     celdas += apartado(3)
+    em_pref_menos = em_pref < em_in
     celdas.append(md(f"**S6.** El transporte de los prefabricados por un transportista contratado es **alcance 3** del "
                      f"proyecto, y cuenta: {em_tr:.1f} t. Pero también cuentan las semanas de obra que se ahorran "
-                     f"({ahorro} × {em_semana} t) y el residuo que no se genera, y «lo contrario de sostenible» es una "
-                     f"afirmación sobre una columna de la tabla, no sobre la tabla. **S8.** Las {R * (1 - fraccion_pref):.0f} t "
-                     f"de residuo que no llegan a producirse en la obra son **prevención**, el primer escalón de la jerarquía; "
-                     f"«los gestiona el gestor» es el último. **S2.** Con el precio sombra la decisión es el coste total: "
+                     f"({ahorro} × {em_semana} = {ahorro * em_semana:.1f} t) y el residuo que no se genera, y «lo contrario de "
+                     f"sostenible» es una afirmación sobre una columna de la tabla, no sobre la tabla"
+                     + (f": con la tabla entera, prefabricar emite menos ({em_pref:.1f} frente a {em_in:.1f} t). " if em_pref_menos else
+                        f". Aquí la tabla entera le da la razón en las emisiones (prefabricar emite {em_pref:.1f} t frente a "
+                        f"{em_in:.1f}), pero porque lo dicen las cifras, no porque traer camiones sea por definición «lo contrario de sostenible». ")
+                     + f"**S8.** Las {R * (1 - fraccion_pref):.1f} t de residuo que no llegan a producirse en la obra son "
+                     "**prevención**, el primer escalón de la jerarquía; «los gestiona el gestor» no sube el residuo de "
+                     "escalón: lo que se genera queda, como mucho, en reciclado. **S2.** Con el precio sombra la decisión es el coste total: "
                      + (f"**prefabricado** ({tot_pref:.1f} k€ frente a {tot_in:.1f} in situ); "
                         + ("también es más barato en dinero. " if cost_pref < cost_in else
                            f"en dinero in situ es más barato por {cost_pref - cost_in:.1f} k€, y esa es la diferencia que la política de la organización decide pagar. ")
                         if gana_pref else
                         f"**in situ** ({tot_in:.1f} k€ frente a {tot_pref:.1f} prefabricado): con estas distancias y este precio sombra los "
-                        f"camiones pesan más que las semanas, y la respuesta es la contraria a la de otros casos; lo que no cambia es "
+                        f"camiones pesan más que las semanas y la conclusión del director acierta, aunque con un argumento incompleto; lo que no cambia es "
                         "que se decide con la tabla entera, no con la columna de los camiones. ")
                      + f"**S4.** «Lo que ahorremos en semanas no es de este presupuesto» es la orientación al proceso: las "
                      f"{ahorro} semanas de instalaciones, grúa y equipo son consecuencia de la decisión que se toma ahora, "
                      "las pague quien las pague; sacarlas de la cuenta es la misma trampa que el consumo del equipo barato "
-                     "(caso del ciclo de vida)."))
+                     "(caso del ciclo de vida).\n\n"
+                     "**Respuesta:** no es correcto decidir por los camiones: el transporte es alcance 3 y cuenta, pero se "
+                     "compara con todo lo demás; el residuo evitado es prevención; por el coste total se elige "
+                     + ("**prefabricado**" if gana_pref else "**in situ**")
+                     + ", y «no es de este presupuesto» no cambia la cuenta (S4)."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('El transporte de los elementos prefabricados por un transportista contratado es, para el proyecto…', ['alcance 3', 'alcance 1', 'alcance 2', 'no se contabiliza por ser del proveedor'],\n"
@@ -3068,7 +3511,7 @@ def _restriccion_de_agua(rng):
     esperado_hidrante = p_det * (multa + corte * penal)
     legales = {"plan inicial + cuba": c_ini, "nivelado + cuba": c_niv, f"asignación con límite de {Q} m³": c_lim}
     mejor = min(legales, key=legales.get)
-    mejor_txt = (f"**nivelar**: el plan nivelado cabe en la cuota sin cuba ni retraso (0 k€)" if exceso_niv == 0
+    mejor_txt = (f"**nivelar**, porque el plan nivelado cabe en la cuota sin cuba ni retraso (0 k€)" if exceso_niv == 0
                  else f"**{mejor}** ({legales[mejor]:.1f} k€)")
     celdas = [md("# Enunciado"),
               md("Una obra de urbanización consume agua en el curado del hormigón, el riego de compactación de los "
@@ -3082,7 +3525,7 @@ def _restriccion_de_agua(rng):
                  f"en camión cuba desde un punto de carga autorizado a {KM_CUBA} km, a {COSTE_CUBA} €/m³ (agua y porte). "
                  f"El retraso de la entrega tiene una penalidad de {penal} k€ por semana. El reglamento del servicio "
                  f"sanciona la conexión no autorizada a un hidrante con {multa} k€ y el corte del suministro de obra "
-                 f"({corte} semana(s) hasta restablecerlo); por la experiencia de la empresa, la probabilidad de que se "
+                 f"({_pl(corte, 'semana')} hasta restablecerlo); por la experiencia de la empresa, la probabilidad de que se "
                  f"detecte es del {p_det:.0%}."),
               _mensaje("Jefe de obra",
                        f"Con el plan de inicios más tempranos hay semanas en que necesitamos {e['pico']} m³ y nos dan {Q}. "
@@ -3126,9 +3569,16 @@ def _restriccion_de_agua(rng):
                        "tabla = pd.DataFrame({'consumo inicial': cargas, 'exceso inicial': exceso, 'consumo nivelado': cargas_niveladas, 'exceso nivelado': exceso_niv})\n"
                        "tabla.loc['Total'] = tabla.sum()\n"
                        "display(tabla.astype(int).T)\n"
-                       "Markdown(f'''Pico de **{int(cargas.max())} m³** con inicios más tempranos y **{int(cargas_niveladas.max())} m³** tras nivelar, frente a la cuota de {cuota}; "
-                       "el exceso pasa de {int(exceso.sum())} a **{int(exceso_niv.sum())} m³** con la misma duración ({duracion} semanas): ''' + "
-                       "('el plan nivelado **cabe** en la cuota.' if exceso_niv.sum() == 0 else 'el plan nivelado **no cabe** del todo; quedan semanas por encima de la cuota.'))"))
+                       "movidas = desplazamientos[desplazamientos['desplazamientos'] > 0]['desplazamientos']\n"
+                       "txt_mov = lista_y(f'{a} {plural(int(v), \"semana\")} (holgura total {int(calendario.loc[a, \"H_total\"])})' for a, v in movidas.items())\n"
+                       "sem_exc = [int(c) for c in exceso.index if exceso[c] > 0]; sem_exc_niv = [int(c) for c in exceso_niv.index if exceso_niv[c] > 0]\n"
+                       "Markdown(f'''El exceso de cada semana es máx(0, consumo − {cuota}). Con inicios más tempranos el consumo supera la cuota en las semanas {lista_y(sem_exc)}: "
+                       "exceso = {suma_txt(exceso[exceso > 0])} m³. La nivelación desplaza {txt_mov}, con lo que Σc² baja de {int((cargas ** 2).sum())} a {int((cargas_niveladas ** 2).sum())}, "
+                       "sin cambiar la duración ni el volumen total ({int(cargas.sum())} m³).\\n\\n"
+                       "**Respuesta:** pico de **{int(cargas.max())} m³** con inicios más tempranos y **{int(cargas_niveladas.max())} m³** tras nivelar, frente a la cuota de {cuota}; "
+                       "el exceso pasa de {int(exceso.sum())} a **{int(exceso_niv.sum())} m³**: ''' + "
+                       "(f'''el plan nivelado **cabe** en la cuota sin alargar el proyecto ({duracion} semanas).''' if exceso_niv.sum() == 0 else "
+                       "f'''el plan nivelado **no cabe** del todo: quedan {suma_txt(exceso_niv[exceso_niv > 0])} m³ por encima de la cuota en las semanas {lista_y(sem_exc_niv)}.'''))"))
     celdas += apartado(2)
     celdas.append(code("proyecto_limitado = proyecto.copy()\n"
                        "datos_asignados, gantt_asignado, dibujo_asig = proyecto_limitado.asignar(data=datos_proyecto.copy(), duration_label='duration',\n"
@@ -3143,9 +3593,17 @@ def _restriccion_de_agua(rng):
                        "opciones.loc['coste (k€)'] = opciones.loc['agua en cuba (k€)'] + opciones.loc['penalidad o sanción (k€)']\n"
                        "display(opciones.round(1))\n"
                        "legales = opciones.loc['coste (k€)'].drop('hidrante (propuesta)')\n"
-                       "Markdown(f'''Con la asignación limitada a {cuota} m³ el proyecto dura **{duracion_limitada}** semanas ({retraso} de retraso, {retraso * penalidad} k€). "
-                       "La opción legal más barata es **{legales.idxmin()}** ({legales.min():.1f} k€). El hidrante «cuesta» {opciones.loc['coste (k€)', 'hidrante (propuesta)']:.1f} k€ esperados''' + "
-                       "(', más que la opción legal: mal negocio además de infracción.' if opciones.loc['coste (k€)', 'hidrante (propuesta)'] > legales.min() else ', menos que la legal: la respuesta B no depende de esta cuenta.'))"))
+                       "mas_baratas = [c for c in legales.index if np.isclose(legales[c], legales.min())]\n"
+                       "esperado_h = opciones.loc['coste (k€)', 'hidrante (propuesta)']\n"
+                       "Markdown(f'''- Cuba con el plan inicial: {int(exceso.sum())} m³ × {coste_cuba} €/m³ / 1000 = {exceso.sum() * coste_cuba / 1000:.2f} k€.\\n"
+                       "- Cuba con el plan nivelado: {int(exceso_niv.sum())} m³ × {coste_cuba} / 1000 = {exceso_niv.sum() * coste_cuba / 1000:.2f} k€.\\n"
+                       "- Asignación con límite de {cuota} m³ por semana (lección 11): el proyecto dura **{duracion_limitada}** semanas, {plural(retraso, 'semana')} de retraso × {penalidad} = {retraso * penalidad} k€.\\n"
+                       "- Hidrante: P(detección) × (multa + semanas de corte × penalidad) = {p_deteccion} × ({multa} + {corte} × {penalidad}) = **{esperado_h:.1f} k€** esperados''' + "
+                       "(', más que la opción legal: mal negocio además de infracción.' if esperado_h > legales.min() else ', menos que la legal: la respuesta B no depende de esta cuenta.') + "
+                       "'\\n\\n**Respuesta:** la opción legal más barata es ' + "
+                       "(f'''**nivelar**: el plan nivelado cabe en la cuota sin cuba ni retraso (0 k€); la asignación con límite también termina en {duracion_limitada} semanas, sin retraso.''' if exceso_niv.sum() == 0 and retraso == 0 else "
+                       "(f'''**nivelar**: el plan nivelado cabe en la cuota sin cuba ni retraso (0 k€).''' if exceso_niv.sum() == 0 else "
+                       "f'''**{lista_y(mas_baratas)}** ({legales.min():.2f} k€).''')))"))
     celdas.append(code('#| fig-cap: "Gantt con asignación limitada a la cuota"\n#| label: fig-ganttAsignado\npinta_tikz(dibujo_asig)'))
     celdas += apartado(3)
     celdas.append(md(f"**Norma y S16.** La cuota del bando es una limitación de uso del agua en situación excepcional "
@@ -3155,7 +3613,7 @@ def _restriccion_de_agua(rng):
                      f"tras nivelar, {e['pico_niv']} m³ "
                      + ("y **cabe** en la cuota sin retraso. " if exceso_niv == 0 else
                         f"y quedan {exceso_niv:.0f} m³ por encima de la cuota: **no cabe del todo**; o se traen en cuba o se "
-                        f"programa con el límite, que retrasa {retraso} semana(s). ")
+                        f"programa con el límite, que retrasa {_pl(retraso, 'semana')}. ")
                      + f"El hidrante **no es una opción de la tabla**: una toma no autorizada es infracción (TRLA, art. "
                      f"116.3.b) y c); reglamento del servicio), y «si alguien pregunta es agua de la cuba» es una afirmación "
                      f"falsa (lección 19, C1). La opción correcta es la legal de menor coste: {mejor_txt}. "
@@ -3164,7 +3622,11 @@ def _restriccion_de_agua(rng):
                      f"registro. **S1.** El hidrante traslada el impacto a los demás usuarios de la red (ni siquiera "
                      f"compensa); la cuba **compensa** (el consumo es el mismo, pagado y traído de otra fuente); nivelar y "
                      f"asignar **minimizan** el pico sin cambiar el volumen; reducir el consumo (curado con láminas o "
-                     f"filmógenos, reutilizar el agua de lavado) **evita** parte del impacto."))
+                     f"filmógenos, reutilizar el agua de lavado) **evita** parte del impacto.\n\n"
+                     "**Respuesta:** la cuota es un **límite del plan**; "
+                     + ("tras nivelar el plan **cabe** sin retraso; " if exceso_niv == 0 else "tras nivelar el plan **no cabe** del todo; ")
+                     + "el hidrante **no** es una opción de la tabla (traslada el impacto); la cuba compensa, nivelar y asignar "
+                     "minimizan, y reducir el consumo evita."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('Una cuota semanal de agua fijada por el bando municipal de sequía es, para el cronograma de la obra…', ['un límite del plan, como el número de operarios: se nivela y, si no cabe, se asigna con límite o se compra el recurso fuera', 'un riesgo que se acepta si la penalidad por retraso es mayor que la sanción', 'una recomendación', 'una reserva de gestión'],\n"
@@ -3186,7 +3648,7 @@ def _restriccion_de_agua(rng):
                      f"hormigonado, con el diagrama de cargas como justificación. Prueba de publicidad: ¿explicaría al "
                      f"concejal, en plena sequía, la manguera del hidrante «porque el contador no lo ve»?"))
     return celdas, (f"cuota de {Q} m³/semana: pico {e['pico']} → {e['pico_niv']} m³ nivelado, exceso {exceso_ini:.0f} → {exceso_niv:.0f} m³; "
-                    + (f"asignar con límite retrasa {retraso} semana(s); " if retraso else "cabe tras nivelar; ")
+                    + (f"asignar con límite retrasa {_pl(retraso, 'semana')}; " if retraso else "cabe tras nivelar; ")
                     + f"hidrante: {esperado_hidrante:.0f} k€ esperados")
 
 
@@ -3266,7 +3728,7 @@ def _pista_de_obra(rng):
                  f"evaluación de la modificación que la empresa estima en **{W} semanas** antes de poder abrirla. "
                  f"Precio sombra del carbono de la organización: {precio} €/t."),
               _mensaje("Director de obra",
-                       f"Abrimos la pista corta por la ZEC: son {km_l - km_c} km menos por viaje y {ahorro} semana(s) "
+                       f"Abrimos la pista corta por la ZEC: son {km_l - km_c} km menos por viaje y {_pl(ahorro, 'semana')} "
                        f"menos de obra. Al acabar restauramos el trazado ({restaur} k€) y, si el órgano ambiental se pone "
                        f"serio, se paga la medida compensatoria; con los camiones y las semanas sale a cuenta. Lo de la "
                        "evaluación de la modificación lo dejamos para la documentación final."),
@@ -3304,13 +3766,21 @@ def _pista_de_obra(rng):
                        "    s['coste total al precio sombra (k€)'] = s['coste monetario (k€)'] + s['emisiones (t CO₂)'] * precio_sombra / 1000\n"
                        "    return s\n"
                        "comparacion = pd.DataFrame({'pista evaluada': opcion(km_larga, duracion, 0), 'pista corta por la ZEC': opcion(km_corta, duracion_corta, coste_restaurar)})\n"
-                       "display(comparacion.round(2))\n"
-                       "camino_c = ' / '.join('–'.join(r) for r in proyecto.critical_path(duraciones_corta).values())\n"
-                       "ahorro = comparacion.loc['coste monetario (k€)', 'pista evaluada'] - comparacion.loc['coste monetario (k€)', 'pista corta por la ZEC']\n"
-                       "Markdown(f'''La pista corta acorta el proyecto de {duracion} a **{duracion_corta}** semanas (ruta crítica {camino_c}) y, restauración incluida, "
-                       "ahorra **{ahorro:.1f} k€** en dinero y {comparacion.loc['emisiones (t CO₂)', 'pista evaluada'] - comparacion.loc['emisiones (t CO₂)', 'pista corta por la ZEC']:.1f} t: "
-                       "al precio sombra, {comparacion.loc['coste total al precio sombra (k€)', 'pista evaluada'] - comparacion.loc['coste total al precio sombra (k€)', 'pista corta por la ZEC']:.1f} k€. "
-                       "Ese es el tamaño de la tentación; la pregunta B es si está en la tabla.''')"))
+                       "display(limpia_tabla(comparacion))\n"
+                       "ev, co = comparacion.columns\n"
+                       "ahorro = comparacion.loc['coste monetario (k€)', ev] - comparacion.loc['coste monetario (k€)', co]\n"
+                       "ahorro_bruto = (comparacion.loc['transporte (k€)', ev] - comparacion.loc['transporte (k€)', co]) + (comparacion.loc['semanas de obra (k€)', ev] - comparacion.loc['semanas de obra (k€)', co])\n"
+                       "Markdown(f'''Con la pista corta, {lista_y(acarreo)} duran una semana menos y el proyecto pasa de {duracion} a **{duracion_corta}** semanas "
+                       "(camino crítico {criticas_txt(proyecto, duraciones_corta)}). Toneladas acarreadas: {suma_txt(datos_proyecto.loc[acarreo, 'toneladas_acarreo'])} t.\\n\\n"
+                       "- Transporte: {miles(toneladas)} × {km_larga} × {coste_camion} / 1000 = {comparacion.loc['transporte (k€)', ev]:.2f} k€ por la evaluada y "
+                       "{miles(toneladas)} × {km_corta} × {coste_camion} / 1000 = {comparacion.loc['transporte (k€)', co]:.2f} k€ por la corta; emisiones {miles(toneladas)} × km × {factor_camion} / 1000 = "
+                       "{comparacion.loc['emisiones del transporte, alcance 3 (t CO₂)', ev]:.2f} y {comparacion.loc['emisiones del transporte, alcance 3 (t CO₂)', co]:.2f} t.\\n"
+                       "- Semanas de obra: {duracion} × {coste_semana} = {duracion * coste_semana} k€ y {duracion_corta} × {coste_semana} = {duracion_corta * coste_semana} k€; "
+                       "emisiones {duracion} × {emisiones_semana} y {duracion_corta} × {emisiones_semana} t.\\n"
+                       "- Ahorro de la pista corta = transporte + semanas = {ahorro_bruto:.2f} k€, frente a {coste_restaurar} k€ de restauración: ahorro neto {ahorro_bruto:.2f} − {coste_restaurar} = **{ahorro:.2f} k€**.\\n\\n"
+                       "**Respuesta:** coste total al precio sombra, pista evaluada **{comparacion.loc['coste total al precio sombra (k€)', ev]:.2f} k€** y pista corta **{comparacion.loc['coste total al precio sombra (k€)', co]:.2f} k€** "
+                       "(la corta ahorra {comparacion.loc['coste total al precio sombra (k€)', ev] - comparacion.loc['coste total al precio sombra (k€)', co]:.2f} k€ y "
+                       "{comparacion.loc['emisiones (t CO₂)', ev] - comparacion.loc['emisiones (t CO₂)', co]:.1f} t). Ese es el tamaño de la tentación; la pregunta B es si está en la tabla.''')"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Calendario con la evaluación de la modificación (Z) antes de las actividades de acarreo"\n#| label: tbl-evaluacion\n'
                        "datos_ev = datos_proyecto[['predecessor']].copy()\n"
@@ -3323,11 +3793,17 @@ def _pista_de_obra(rng):
                        "proyecto_ev = prelaciones_ev.create_project()\n"
                        "calendario_ev = proyecto_ev.calendar(datos_ev['duration'])\n"
                        "duracion_ev = int(proyecto_ev.duration(datos_ev['duration']))\n"
-                       "display(calendario_ev)\n"
-                       "camino_ev = ' / '.join('–'.join(r) for r in proyecto_ev.critical_path(datos_ev['duration']).values())\n"
-                       "Markdown(f'''Con la evaluación de la modificación ({semanas_evaluacion} semanas) antes del primer acarreo, el proyecto con la pista corta dura **{duracion_ev}** semanas "
-                       "(ruta crítica {camino_ev}): **{duracion_ev - duracion}** más que con la pista evaluada, {(duracion_ev - duracion) * coste_semana} k€ de coste indirecto. "
-                       "La pista que ahorraba {duracion - duracion_corta} semana(s) cuesta {duracion_ev - duracion} si se hace como la ley manda; y si no, no se puede hacer.''')"))
+                       "display(datos_ev)\n"
+                       "display(calendario_ev.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'inicio_mas_tardio': 'inicio más tardío', 'fin_mas_temprano': 'fin más temprano', "
+                       "'fin_mas_tardio': 'fin más tardío', 'H_libre': 'holgura libre', 'H_independiente': 'holgura independiente', 'H_total': 'holgura total'}))\n"
+                       "primeros = [a for a in acarreo if int(calendario.loc[a, 'inicio_mas_temprano']) < semanas_evaluacion]\n"
+                       "Markdown(f'''Z (evaluación de la modificación, {semanas_evaluacion} semanas, sin predecesoras) pasa a ser predecesora de todas las actividades de acarreo "
+                       "({lista_y(acarreo)}), con las duraciones de la pista corta. Ninguna de ellas puede empezar antes del instante {semanas_evaluacion}, y ''' + "
+                       "(lista_y(f'{a} (antes empezaba en el {int(calendario.loc[a, \"inicio_mas_temprano\"])})' for a in primeros) + (' tiene' if len(primeros) == 1 else ' tienen') + ' que esperar' if primeros else 'ninguna empezaba antes') + "
+                       "f'''.\\n\\n''' + str(explica_camino_critico(proyecto_ev, datos_ev['duration'], 'semanas').data) + "
+                       "f'''\\n\\n**Respuesta:** con la evaluación previa, el proyecto con la pista corta dura **{duracion_ev}** semanas: {plural(duracion_ev - duracion, 'semana')} más que con la pista evaluada "
+                       "({duracion}), {(duracion_ev - duracion) * coste_semana} k€ más de coste de obra. La pista que ahorraba {plural(duracion - duracion_corta, 'semana')} cuesta {plural(duracion_ev - duracion, 'semana')} "
+                       "si se hace como la ley manda; y si no, no se puede hacer.''')"))
     celdas.append(code('#| fig-cap: "Gantt con la evaluación de la modificación delante de los acarreos"\n#| label: fig-ganttEv\n'
                        "_g, _dibujo = proyecto_ev.copy().gantt(datos_ev, 'duration', holguras=True, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))\n"
                        "pinta_tikz(_dibujo)"))
@@ -3336,8 +3812,8 @@ def _pista_de_obra(rng):
                      f"evaluación de sus repercusiones (Ley 42/2007, art. 46.4) y sólo podría autorizarse si no perjudica "
                      f"la integridad del lugar; con conclusiones negativas, la medida compensatoria del art. 46.5 sólo cabe "
                      f"**a falta de soluciones alternativas** y por razones imperiosas de interés público de primer orden. "
-                     f"La alternativa existe —es la pista evaluada, de {km_l} km, que ya está en el proyecto— y {ahorro} "
-                     f"semana(s) de obra no son una razón imperiosa de interés público: la pista por la ZEC **no es "
+                     f"La alternativa existe —es la pista evaluada, de {km_l} km, que ya está en el proyecto— y "
+                     f"{_pl(ahorro, 'semana')} de obra no son una razón imperiosa de interés público: la pista por la ZEC **no es "
                      f"autorizable**, ni con restauración ni con los {comp} k€ de compensación, y abrirla sin más es "
                      f"incumplir la DIA (Ley 21/2013, art. 55.3.c). **S17.** La evaluación de la modificación no es "
                      f"«documentación final»: es una actividad con duración ({W} semanas) y prelación (antes del primer "
@@ -3346,7 +3822,11 @@ def _pista_de_obra(rng):
                      f"con medida compensatoria, **compensar**; la pista evaluada **evita** el impacto, y aquí evitar no "
                      f"es sólo el escalón más alto: es el único que la norma admite. **S2.** El coste total al precio "
                      f"sombra del apartado 1 informa, pero no decide: la respuesta B no depende de que la pista corta "
-                     f"ahorre {ahorro_dinero - restaur:.1f} k€."))
+                     f"ahorre {ahorro_dinero - restaur:.1f} k€.\n\n"
+                     "**Respuesta:** **no** puede autorizarse: hay una alternativa (la pista evaluada), y la restauración o la "
+                     "compensación no la sustituyen; la evaluación de la modificación es una **actividad del cronograma** con "
+                     "duración y prelación; pista corta + restauración es restaurar, con medida compensatoria es compensar, y "
+                     "la pista evaluada evita."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('En un espacio de la Red Natura 2000, las medidas compensatorias de un proyecto con conclusiones negativas en su evaluación sólo caben…', ['a falta de soluciones alternativas y por razones imperiosas de interés público de primer orden', 'si el promotor restaura el lugar al terminar', 'si el ahorro del proyecto supera el coste de la medida', 'siempre que las apruebe la dirección facultativa'],\n"
@@ -3363,13 +3843,13 @@ def _pista_de_obra(rng):
     celdas.append(md(f"Al director de obra: la tabla del apartado 1 con la tentación cuantificada y la del apartado 2 con lo "
                      f"que costaría hacerla legalmente ({T_ev - T} semanas más); y lo que sí puede hacerse por la pista "
                      f"evaluada: mejorar su firme para subir la velocidad de los camiones, cargar a plena capacidad, "
-                     f"reordenar los acarreos con la nivelación (lección 11) o recuperar {ahorro} semana(s) con Ackoff en "
+                     f"reordenar los acarreos con la nivelación (lección 11) o recuperar {_pl(ahorro, 'semana')} con Ackoff en "
                      f"otras actividades críticas (lección 10), con su coste. Al cliente: por qué la pista corta no está en "
                      f"la tabla y cuánto cuesta cada semana por la vía legal. Al órgano ambiental: nada que consultar si se "
                      f"respeta la DIA; si se quisiera otra pista, la modificación con su evaluación, antes. Prueba de "
                      f"publicidad: ¿explicaría al Seprona y a la prensa local la pista de {km_c} km por la ZEC como «la "
                      f"restauramos al acabar»?"))
-    return celdas, (f"pista corta por la ZEC: {ahorro} semana(s) y {ahorro_dinero:.0f} k€ de semanas y camiones frente a {restaur} k€ de "
+    return celdas, (f"pista corta por la ZEC: {_pl(ahorro, 'semana')} y {ahorro_dinero:.0f} k€ de semanas y camiones frente a {restaur} k€ de "
                     f"restauración (neto {ahorro_dinero - restaur:.0f} k€); con la evaluación de la modificación ({W} semanas) el proyecto "
                     f"pasa de {T} a {T_ev}; art. 46.5 Ley 42/2007")
 
@@ -3433,7 +3913,7 @@ def _amianto(rng):
                  "subcontratistas, aunque la adjudicación se conoce varias semanas antes."),
               code('#| tbl-cap: "Cuadro de datos del enunciado"\n#| label: tbl-datosEnunciado\n' + literal_dataframe(df)),
               md(f"La retirada de la cubierta por una empresa inscrita en el RERA (plan de trabajo, equipos de protección, "
-                 f"embalaje y gestor de residuos peligrosos) cuesta {c_rera} k€ y dura {d_r} semana(s); el plan de trabajo "
+                 f"embalaje y gestor de residuos peligrosos) cuesta {c_rera} k€ y dura {_pl(d_r, 'semana')}; el plan de trabajo "
                  f"se presenta a la autoridad laboral cuando se contrata a la empresa y tarda **{SEMANAS_PLAN_AMIANTO} "
                  f"semanas** en quedar aprobado (45 días). Quitar las placas con la cuadrilla de peones un sábado y "
                  f"llevarlas en el contenedor de escombros costaría {c_peones} k€. La penalidad por retraso de la "
@@ -3448,11 +3928,11 @@ def _amianto(rng):
               md("Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).")]
     celdas.append(preguntas([
         f"(A) Añada al cuadro las actividades que la norma exige: P, plan de trabajo aprobado ({SEMANAS_PLAN_AMIANTO} "
-        f"semanas desde el inicio, sin predecesoras) y R, retirada de la cubierta por la empresa inscrita ({d_r} "
-        f"semana(s), después de P y de las predecesoras de {Y}), de modo que {Y} empiece tras R. Calcule la nueva "
+        f"semanas desde el inicio, sin predecesoras) y R, retirada de la cubierta por la empresa inscrita ({_pl(d_r, 'semana')}, "
+        f"después de P y de las predecesoras de {Y}), de modo que {Y} empiece tras R. Calcule la nueva "
         "duración, la ruta crítica y el retraso respecto al plan.",
         f"(A) ¿Cuántas semanas antes del inicio habría que presentar el plan de trabajo para que el retraso fuera sólo "
-        f"el de la retirada ({d_r} semana(s))? Calcule el coste de las opciones: retirada legal con el retraso, "
+        f"el de la retirada ({_pl(d_r, 'semana')})? Calcule el coste de las opciones: retirada legal con el retraso, "
         "retirada legal con el plan presentado con antelación, y la propuesta de los peones con su coste esperado.",
         "(B) Según el criterio y la norma de referencia, ¿pueden los peones retirar la cubierta? ¿Es la aprobación "
         "del plan de trabajo una actividad del cronograma o «papeleo»? ¿Dónde va el residuo? ¿En qué escalón de la "
@@ -3478,28 +3958,37 @@ def _amianto(rng):
                        "retraso = duracion_legal - duracion"))
     celdas += fig_grafo(durations="datos_legal['duration']", cap="Grafo PERT con el plan de trabajo y la retirada", label="fig-pertLegal", obj="proyecto_legal")
     celdas.append(code('#| tbl-cap: "Calendario con las actividades exigidas por la norma"\n#| label: tbl-calendarioLegal\n'
-                       "display(calendario_legal)\n"
-                       "camino = ' / '.join('–'.join(r) for r in proyecto_legal.critical_path(datos_legal['duration']).values())\n"
-                       "Markdown(f'''El proyecto pasa de {duracion} a **{duracion_legal}** semanas (ruta crítica {camino}): **{retraso}** semana(s) de retraso, "
-                       "{retraso * penalidad} k€ de penalidad. El plan de trabajo (P) entra en la ruta crítica: {demolicion} no puede empezar hasta la semana "
-                       "{int(calendario_legal.loc[demolicion, 'inicio_mas_temprano'])} en vez de la {int(calendario.loc[demolicion, 'inicio_mas_temprano'])}.''')"))
+                       "display(calendario_legal.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'inicio_mas_tardio': 'inicio más tardío', 'fin_mas_temprano': 'fin más temprano', "
+                       "'fin_mas_tardio': 'fin más tardío', 'H_libre': 'holgura libre', 'H_independiente': 'holgura independiente', 'H_total': 'holgura total'}))\n"
+                       "es_r = int(calendario_legal.loc['R', 'inicio_mas_temprano']); es_y0 = int(calendario.loc[demolicion, 'inicio_mas_temprano']); es_y1 = int(calendario_legal.loc[demolicion, 'inicio_mas_temprano'])\n"
+                       "Markdown(f'''R empieza cuando terminan P (instante {semanas_plan}) y las predecesoras de {demolicion} (instante {es_y0}): en el instante máx({semanas_plan}, {es_y0}) = {es_r}, "
+                       "y termina en el {es_r} + {semanas_retirada} = {es_y1}. {demolicion} no puede empezar hasta el instante {es_y1} en vez del {es_y0}: se retrasa {es_y1} − {es_y0} = "
+                       "{plural(es_y1 - es_y0, 'semana')}, y como era crítica, el proyecto también.\\n\\n''' + str(explica_camino_critico(proyecto_legal, datos_legal['duration'], 'semanas').data) + "
+                       "f'''\\n\\n**Respuesta:** el proyecto pasa de {duracion} a **{duracion_legal}** semanas: **{plural(retraso, 'semana')}** de retraso ({retraso} × {penalidad} = {retraso * penalidad} k€ de penalidad).''')"))
     celdas += apartado(2)
     celdas.append(code("es_y = int(calendario.loc[demolicion, 'inicio_mas_temprano'])\n"
                        "adelanto = max(0, semanas_plan - es_y)\n"
                        "opciones = pd.Series({'retirada legal, plan presentado al empezar': coste_rera + retraso * penalidad,\n"
-                       "                      f'retirada legal, plan presentado {adelanto} semana(s) antes': coste_rera + semanas_retirada * penalidad,\n"
+                       "                      f'retirada legal, plan presentado {plural(adelanto, \"semana\")} antes': coste_rera + semanas_retirada * penalidad,\n"
                        "                      'peones el sábado (propuesta): coste esperado': coste_peones + p_inspeccion * (multa + paralizacion * penalidad)})\n"
                        "display(opciones.round(1).to_frame('coste (k€)'))\n"
-                       "Markdown(f'''{demolicion} empezaría en la semana {es_y}: presentando el plan **{adelanto} semana(s) antes del inicio** (en cuanto se adjudique, con la empresa "
-                       "inscrita ya elegida) el retraso se reduce a la semana de la retirada, {semanas_retirada * penalidad} k€. La propuesta de los peones cuesta "
-                       "{opciones.iloc[2]:.1f} k€ esperados''' + (', más que la vía legal con antelación: mal negocio además de infracción.' if opciones.iloc[2] > opciones.iloc[1] else ', menos que la vía legal: la respuesta B no depende de esta cuenta.'))"))
+                       "mas_barata_legal = opciones.iloc[:2].idxmin()\n"
+                       "Markdown(f'''Para que P no retrase nada tiene que estar aprobado cuando {demolicion} podía empezar (instante {es_y}): presentarlo máx(0, {semanas_plan} − {es_y}) = "
+                       "**{plural(adelanto, 'semana')} antes del inicio** (en cuanto se conozca la adjudicación, con la empresa inscrita ya elegida). Entonces sólo queda el retraso de la retirada: "
+                       "{plural(semanas_retirada, 'semana')} de retraso.\\n\\n"
+                       "- Retirada legal, plan presentado al empezar: {coste_rera} + {retraso} × {penalidad} = **{opciones.iloc[0]:.1f} k€**.\\n"
+                       "- Retirada legal, plan presentado {plural(adelanto, 'semana')} antes: {coste_rera} + {semanas_retirada} × {penalidad} = **{opciones.iloc[1]:.1f} k€**.\\n"
+                       "- Peones el sábado: coste + P(inspección) × (sanción + semanas de paralización × penalidad) = {coste_peones} + {p_inspeccion} × ({multa} + {paralizacion} × {penalidad}) = **{opciones.iloc[2]:.1f} k€** esperados''' + "
+                       "(', más que la vía legal con antelación: mal negocio además de infracción.' if opciones.iloc[2] > opciones.iloc[1] else ', menos que la vía legal: la respuesta B no depende de esta cuenta.') + "
+                       "f'''\\n\\n**Respuesta:** hay que presentar el plan {plural(adelanto, 'semana')} antes del inicio; la opción legal más barata es la retirada con el plan presentado con antelación "
+                       "({opciones.iloc[1]:.1f} k€, frente a {opciones.iloc[0]:.1f} k€ presentándolo al empezar); la propuesta de los peones cuesta {opciones.iloc[2]:.1f} k€ esperados y, sobre todo, no es legal.''')"))
     celdas += apartado(3)
     celdas.append(md(f"**Norma y S17.** Los trabajos con riesgo de exposición al amianto sólo pueden hacerlos empresas "
                      f"inscritas en el RERA (RD 396/2006, art. 17.1) con un plan de trabajo aprobado por la autoridad "
                      f"laboral antes de empezar (arts. 11 y 12): los peones **no pueden** retirar la cubierta, con mascarilla "
                      f"o sin ella. El plan de trabajo no es papeleo: es una actividad con duración legal (45 días, art. 12.2, "
                      f"con silencio positivo) y prelación (antes de la retirada, que es antes de {Y}), y su efecto en el plazo "
-                     f"es una cuenta: {retraso} semana(s) si se presenta al empezar, {d_r} si se presenta {adelanto} semana(s) "
+                     f"es una cuenta: {_pl(retraso, 'semana')} si se presenta al empezar, {d_r} si se presenta {_pl(adelanto, 'semana')} "
                      f"antes. Que «en {Y} ya está contada la demolición» es la trampa: contaba una demolición que la ley no "
                      f"permite hacer así. **S8.** El residuo con amianto es **peligroso** (LER 17 06 05*): embalado y "
                      f"etiquetado, a gestor autorizado, sin mezclar con otros residuos (Ley 7/2022, arts. 20 y 21); «al "
@@ -3507,7 +3996,10 @@ def _amianto(rng):
                      f"apoyarse en exponer a la cuadrilla a un cancerígeno para ahorrar {c_rera - c_peones} k€: no es una opción de "
                      f"la tabla. **S1.** La propuesta traslada el impacto a los operarios (y, con el contenedor, al gestor "
                      f"y al vertedero): ni siquiera compensa. La vía legal con el plan presentado a tiempo **minimiza** el "
-                     f"efecto en el plazo; **evitar** sería haber tenido en el cronograma P y R desde el principio."))
+                     f"efecto en el plazo; **evitar** sería haber tenido en el cronograma P y R desde el principio.\n\n"
+                     "**Respuesta:** los peones **no** pueden retirarla; el plan de trabajo es una **actividad del cronograma** "
+                     "(duración legal y prelación), no papeleo; el residuo es **peligroso** y va embalado a gestor autorizado; la "
+                     "propuesta traslada el impacto a los operarios (ni siquiera compensa)."))
     celdas.append(_gift(
         "preguntas_test = [\n"
         "    ('La retirada de una cubierta de fibrocemento con amianto puede hacerla…', ['sólo una empresa inscrita en el RERA, con un plan de trabajo aprobado por la autoridad laboral antes de empezar', 'cualquier cuadrilla con mascarilla, mojando las placas', 'el contratista principal si la obra es pequeña', 'cualquier empresa si lo autoriza la dirección facultativa'],\n"
@@ -3517,7 +4009,7 @@ def _amianto(rng):
         "    ('Si un trámite obligatorio de duración d debe terminar antes de una actividad crítica que empieza en la semana ES, el proyecto se retrasa…', ['máx(0, d − ES) semanas (más la duración de lo que el trámite habilita), salvo que el trámite se lance con antelación', 'd semanas siempre', 'nada, porque los trámites van en paralelo', 'ES semanas'],\n"
         "     'S17 y lección 05: el calendario dice cuánto y con qué antelación.'),\n"
         "    ('Los residuos con amianto de una obra son…', ['residuos peligrosos: embalados, etiquetados y entregados a gestor autorizado sin mezclar', 'residuos inertes', 'residuos de construcción ordinarios si están mojados', 'residuos municipales'],\n"
-        "     'LER 17 06 05*; Ley 7/2022, arts. 20 y 21.'),\n"
+        "     'Código LER 17 06 05 (marcado con asterisco: peligroso); Ley 7/2022, arts. 20 y 21.'),\n"
         "]", "Sostenibilidad 20 — amianto"))
     celdas += apartado(4)
     celdas.append(_rubrica())
@@ -3531,7 +4023,7 @@ def _amianto(rng):
                      f"Inspección de Trabajo, con un parte de exposición de la cuadrilla encima de la mesa, que la uralita «se "
                      f"quitó mojada»?"))
     return celdas, (f"{m2} m² de fibrocemento antes de {Y}: plan de trabajo de {SEMANAS_PLAN_AMIANTO} semanas y retirada de {d_r}; "
-                    f"{T} → {T2} semanas (+{retraso}), o +{d_r} presentando el plan {adelanto} semana(s) antes; arts. 11, 12 y 17 RD 396/2006")
+                    f"{T} → {T2} semanas (+{retraso}), o +{d_r} presentando el plan {_pl(adelanto, 'semana')} antes; arts. 11, 12 y 17 RD 396/2006")
 
 
 VARIANTES = [

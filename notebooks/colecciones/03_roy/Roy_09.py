@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -278,7 +282,8 @@ pd.DataFrame(filas).set_index('actividad')
 # %%
 calendario = proyecto.calendar(duracion)
 coincide = all(calendario.loc[a, 'inicio_mas_temprano'] == ES[a] and calendario.loc[a, 'inicio_mas_tardio'] == LS[a] for a in orden)
-Markdown(f'La duración del proyecto es {duracion_proyecto} días. El cálculo coincide con el de la librería: {coincide}.')
+Markdown(f'**Respuesta:** la duración del proyecto es el mayor fin más temprano, {duracion_proyecto} días. '
+         + ('El cálculo coincide con el calendario de la librería.' if coincide else 'El cálculo NO coincide con el de la librería.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -295,8 +300,14 @@ for a in datos_proyecto.index:
         dominantes[a] = ', '.join(p for p in ps if EF[p] == maximo)
 pd.Series(dominantes).to_frame('predecesora dominante')
 
-# %% [markdown]
-# La predecesora dominante de H es G: su fin más temprano es el mayor de entre las predecesoras y por tanto el que fija el inicio de H. Las demás predecesoras terminan antes y tienen margen (holgura libre) respecto a H.
+# %%
+objetivo, dominante = 'H', 'G'
+otras = [p for p in sorted(predecesoras[objetivo]) if p != dominante]
+margen = {p: EF[dominante] - EF[p] for p in otras}
+_fines = ', '.join(f'EF({p}) = {EF[p]}' for p in sorted(predecesoras[objetivo]))
+_margenes = lista_y([f'{p} termina {plural(m, "día")} antes' for p, m in margen.items()])
+Markdown(f'**Respuesta:** la predecesora dominante de {objetivo} es **{dominante}**: de sus predecesoras '
+         f'({_fines}) es la que termina más tarde y fija ES({objetivo}) = {ES[objetivo]}; {_margenes}.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -305,9 +316,12 @@ pd.Series(dominantes).to_frame('predecesora dominante')
 display(Markdown(pregunta_4))
 
 # %%
-objetivo, dominante = 'H', 'G'
-otras = [p for p in sorted(predecesoras[objetivo]) if p != dominante]
-margen = {p: EF[dominante] - EF[p] for p in otras}
 d2 = duracion.copy(); d2[dominante] -= 1
 ES_nuevo = int(proyecto.calendar(d2).loc[objetivo, 'inicio_mas_temprano'])
-Markdown(f'''Para adelantar {objetivo} hay que acortar {dominante} (o alguna de sus antecesoras en la cadena que la hace llegar la última): acortándola un día, {objetivo} empieza en {ES_nuevo} en vez de {ES[objetivo]}. Acortar {", ".join(otras)} no sirve: terminan {", ".join(f"{p} {m} día(s)" for p, m in margen.items())} antes que {dominante} y su holgura sólo aumentaría. Sólo cuando {dominante} se acorte tanto que otra predecesora pase a ser la última cambiará la dominante.''')
+_segunda = max(EF[p] for p in otras)
+Markdown(f'**Respuesta:** hay que acortar {dominante} (o alguna de sus antecesoras en la cadena que la hace '
+         f'llegar la última). Acortándola un día, EF({dominante}) pasa de {EF[dominante]} a {EF[dominante] - 1} '
+         f'y {objetivo} empieza en máx({EF[dominante] - 1}, {_segunda}) = {ES_nuevo} en vez de {ES[objetivo]}. '
+         f'Acortar {lista_y(otras)} no sirve, porque {dominante} seguiría llegando la última ({_margenes} que ella): '
+         f'sólo aumentaría su margen. La dominante sólo cambia si {dominante} se acorta más de '
+         f'{plural(EF[dominante] - _segunda, "día")} (lo que le saca la siguiente predecesora que termina más tarde).')

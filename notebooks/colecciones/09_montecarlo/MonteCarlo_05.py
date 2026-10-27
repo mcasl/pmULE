@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -253,23 +257,37 @@ def parametros(texto):
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Fórmulas de cada distribución: normal, media $\mu$ y varianza $\sigma^2$; triangular, media $(a + m + b)/3$ y varianza $(a^2 + m^2 + b^2 - ab - am - bm)/18$; uniforme, media $(a + b)/2$ y varianza $(b - a)^2/12$; fija, media el valor dado y varianza 0.
+
 # %%
 filas = {}
+g = lambda x: f'{x:g}'
 for act, fila in distribuciones.iterrows():
     p = parametros(fila['parametros'])
     if fila['distribucion'] == 'normal':
         media, var = p[0], p[1] ** 2
+        calc_m, calc_v = f'μ = {g(p[0])}', f'σ² = {g(p[1])}² = {var:.3f}'
     elif fila['distribucion'] == 'triangular':
         a, m, b = p; media, var = (a + m + b) / 3, (a*a + m*m + b*b - a*b - a*m - b*m) / 18
+        calc_m = f'({g(a)} + {g(m)} + {g(b)})/3 = {media:g}'
+        calc_v = f'({g(a)}² + {g(m)}² + {g(b)}² − {g(a)}·{g(b)} − {g(a)}·{g(m)} − {g(b)}·{g(m)})/18 = {var:.3f}'
     elif fila['distribucion'] == 'uniforme':
         a, b = p; media, var = (a + b) / 2, (b - a) ** 2 / 12
+        calc_m, calc_v = f'({g(a)} + {g(b)})/2 = {media:g}', f'({g(b)} − {g(a)})²/12 = {var:.3f}'
     else:
         media, var = p[0], 0.0
-    filas[act] = {'distribución': fila['distribucion'], 'media': media, 'varianza': var}
+        calc_m, calc_v = f'{g(p[0])} (fija)', '0'
+    filas[act] = {'distribución': fila['distribucion'], 'media': media, 'varianza': var, 'cálculo de la media': calc_m, 'cálculo de la varianza': calc_v}
 resumen = pd.DataFrame(filas).T
 resumen['media del cuadro'] = datos_proyecto['duration']
 datos_proyecto['variance'] = resumen['varianza'].astype(float)
-resumen
+resumen[['distribución', 'cálculo de la media', 'media del cuadro', 'cálculo de la varianza']]
+
+# %%
+coinciden = all(np.isclose(float(resumen.loc[a, 'media']), float(resumen.loc[a, 'media del cuadro'])) for a in resumen.index)
+Markdown('**Respuesta:** medias y varianzas en la tabla; ' + ('todas las medias coinciden con las duraciones medias del cuadro.' if coinciden else
+         'no coinciden en ' + lista_y([a for a in resumen.index if not np.isclose(float(resumen.loc[a, "media"]), float(resumen.loc[a, "media del cuadro"]))]) + '.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -287,10 +305,19 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])
+calendario = proyecto.calendar(datos_proyecto['duration'])
 desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(datos_proyecto['duration'], datos_proyecto['variance'])
+rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])
+ruta_var = max(rutas_criticas, key=lambda r: datos_proyecto.loc[list(rutas_criticas[r]), 'variance'].sum())
+acts_var = ordena_ruta(rutas_criticas[ruta_var], calendario)
 plazo = duracion_media + 2
-p_normal = float(norm.cdf((plazo - duracion_media) / desviacion_proyecto)) if desviacion_proyecto > 0 else 1.0
-Markdown(f'Duración media {duracion_media}, σ = {desviacion_proyecto:.3f}; P(T ≤ {plazo}) = {p_normal:.3f} por la aproximación normal.')
+p_normal = float(norm.cdf(plazo, duracion_media, desviacion_proyecto)) if desviacion_proyecto > 0 else 1.0
+display(explica_camino_critico(proyecto, datos_proyecto['duration']))
+Markdown(f'''{explica_sigma_ruta(acts_var, datos_proyecto["variance"], nombre="σ_T")}.\n\n'''
+         + (f'''{explica_probabilidad(duracion_media, desviacion_proyecto, plazo)}.''' if desviacion_proyecto > 0 else
+            'La ruta crítica no tiene varianza: la duración es cierta y P = 1.')
+         + f'''\n\n**Respuesta:** ruta crítica {" – ".join(acts_var)}, duración media {plural(duracion_media, "semana")}; '''
+         f'''P(T ≤ {plazo}) = {p_normal:.4f} según la aproximación normal.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -299,7 +326,7 @@ Markdown(f'Duración media {duracion_media}, σ = {desviacion_proyecto:.3f}; P(T
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# `monte_carlo` acepta una distribución por actividad: `('normal', μ, σ)`, `('triangular', a, m, b)`, `('uniform', a, b)` o una función; una duración fija es una función que siempre devuelve el mismo valor.
+# `monte_carlo` acepta una distribución por actividad: `('normal', μ, σ)`, `('triangular', a, m, b)`, `('uniform', a, b)` o una función; una duración fija es una función que siempre devuelve el mismo valor. En cada réplica sortea la duración de cada actividad, suma las duraciones a lo largo de cada ruta y toma la ruta más larga como duración del proyecto.
 
 # %%
 dists = {}
@@ -315,9 +342,18 @@ for act, fila in distribuciones.iterrows():
         dists[act] = (lambda valor: (lambda size=None: np.full(size, valor) if size else valor))(p[0])
 resultado = proyecto.monte_carlo(dists, n_samples=20000, seed=11)
 p_mc = float((resultado.tau_samples <= plazo).mean())
-display(resultado.summary().round(2))
+cumplen = int((resultado.tau_samples <= plazo).sum())
+display(resultado.summary().round(2).rename(columns={'mean': 'media', 'std': 'desv. típica', 'q05': 'P5', 'q50': 'P50', 'q95': 'P95', 'min': 'mínimo', 'max': 'máximo'}))
 pd.DataFrame({'aproximación normal': [duracion_media, desviacion_proyecto, p_normal], 'Monte Carlo': [resultado.tau_mean, resultado.tau_std, p_mc]},
              index=['media', 'desviación típica', f'P(T ≤ {plazo})']).round(3)
+
+# %%
+dm = resultado.tau_mean - duracion_media
+Markdown(f'''Con Monte Carlo, {cumplen} de las 20000 réplicas terminan en {plazo} semanas o menos: P(T ≤ {plazo}) ≈ {cumplen}/20000 = {p_mc:.4f}.\n\n'''
+         f'''**Respuesta:** la media simulada es {resultado.tau_mean:.3f} semanas ({dm:+.3f} respecto de la media por la ruta crítica, '''
+         + ('mayor por el efecto de las rutas casi críticas' if dm > 0.02 else 'prácticamente igual') + '''), '''
+         f'''la desviación típica {resultado.tau_std:.3f} (normal: {desviacion_proyecto:.3f}) y P(T ≤ {plazo}) ≈ {p_mc:.4f} '''
+         f'''(normal: {p_normal:.4f}, {"algo menor con Monte Carlo" if p_mc < p_normal - 0.002 else ("algo mayor con Monte Carlo: las triangulares y uniformes tienen colas acotadas, más cortas que las de la normal" if p_mc > p_normal + 0.002 else "prácticamente igual")}).''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -325,12 +361,27 @@ pd.DataFrame({'aproximación normal': [duracion_media, desviacion_proyecto, p_no
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# El índice de criticidad de cada actividad (fracción de réplicas en que está en la ruta más larga) es la sensibilidad media que devuelve `monte_carlo`:
+
 # %%
-calendario = proyecto.calendar(datos_proyecto['duration'])
 crit = (resultado.sensitivity_mean * 100).round(1).rename('índice de criticidad (%)')
 tabla = pd.concat([crit, calendario['H_total'].rename('holgura'), resumen['distribución'], resumen['varianza'].astype(float).round(2)], axis=1).sort_values('índice de criticidad (%)', ascending=False)
 tabla
 
 # %%
-vigilar = tabla[tabla['holgura'] > 0]['índice de criticidad (%)'].idxmax()
-Markdown(f'''La actividad no crítica con mayor índice de criticidad es {vigilar} ({tabla.loc[vigilar, "índice de criticidad (%)"]} %). Las actividades de duración fija nunca cambian de ruta por sí mismas: su índice depende sólo de lo que hagan las demás; una ruta con muchas actividades fijas tiene poca varianza y rara vez «adelanta» a la crítica.''')
+no_criticas = tabla[tabla['holgura'] > 0]
+vigilar = no_criticas['índice de criticidad (%)'].idxmax() if len(no_criticas) else None
+fijas = list(resumen.index[resumen['distribución'] == 'fija'])
+if fijas:
+    t_fijas = ('Sí influye: las actividades fijas (' + '; '.join(f"{a}, con índice {tabla.loc[a, 'índice de criticidad (%)']} %" for a in fijas)
+               + ') no aportan varianza, así que una ruta con actividades fijas varía menos y rara vez «adelanta» a la crítica; '
+               'el índice de una actividad fija depende sólo de lo que hagan las demás actividades de sus rutas.')
+else:
+    t_fijas = 'En este proyecto no hay actividades de duración fija.'
+if vigilar is not None and tabla.loc[vigilar, 'índice de criticidad (%)'] > 0:
+    t_vig = (f'**Respuesta:** la actividad no crítica en media con mayor índice de criticidad es {vigilar} ({tabla.loc[vigilar, "índice de criticidad (%)"]} %, '
+             f'holgura {plural(int(tabla.loc[vigilar, "holgura"]), "semana")}, distribución {tabla.loc[vigilar, "distribución"]} con varianza {tabla.loc[vigilar, "varianza"]}).')
+else:
+    t_vig = '**Respuesta:** ninguna actividad no crítica llega a estar en la ruta más larga en las réplicas.'
+Markdown(t_vig + ' ' + t_fijas)

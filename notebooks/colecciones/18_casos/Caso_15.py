@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -281,16 +285,21 @@ def indicadores(seguimiento):
     return detalle, pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV': EV - AC, 'SV': EV - PV, 'CPI': EV / AC, 'SPI': EV / PV})
 def semaforo(indice):
     return 'verde' if indice >= 0.95 else ('ámbar' if indice >= 0.85 else 'rojo')
+def explica_indicadores(detalle, ind):
+    # PV, EV y AC como suma de las actividades con valor; CV, SV, CPI y SPI con los números sustituidos
+    suma = lambda col: ' + '.join(f'{a}({v:.1f})' for a, v in detalle[col].items() if v > 0)
+    return (f'- PV = {suma("PV_i")} = **{ind.PV:.1f} k€**\n'
+            f'- EV = {suma("EV_i")} = **{ind.EV:.1f} k€**\n'
+            f'- AC = {suma("AC")} = **{ind.AC:.1f} k€**\n'
+            f'- CV = EV − AC = {ind.EV:.1f} − {ind.AC:.1f} = **{ind.CV:.1f} k€**; SV = EV − PV = {ind.EV:.1f} − {ind.PV:.1f} = **{ind.SV:.1f} k€**\n'
+            f'- CPI = EV / AC = {ind.EV:.1f} / {ind.AC:.1f} = **{ind.CPI:.3f}**; SPI = EV / PV = {ind.EV:.1f} / {ind.PV:.1f} = **{ind.SPI:.3f}**')
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo PERT de la planificación"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -332,7 +341,13 @@ display(detalle_rep[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción'
 ind_rep.round(3).to_frame('informe del contratista').T
 
 # %%
-Markdown(f'''Semáforo con el informe: plazo **{semaforo(ind_rep["SPI"])}** (SPI = {ind_rep["SPI"]:.2f}), coste **{semaforo(ind_rep["CPI"])}** (CPI = {ind_rep["CPI"]:.2f}). Tal como lo cuenta el contratista, el proyecto va bien.''')
+Markdown('Notación: PV, valor planificado (lo que debía estar hecho, a precio de presupuesto); EV, valor ganado '
+         '(lo hecho, a precio de presupuesto); AC, coste real; CV y SV, variaciones de coste y de plazo; CPI y SPI, '
+         f'índices de rendimiento del coste y del plazo. Con el informe del contratista, al final de la semana {semana_control}:\n\n'
+         + explica_indicadores(detalle_rep, ind_rep) +
+         '\n\nCriterio del semáforo (adoptado aquí): verde si el índice es ≥ 0.95, ámbar si está entre 0.85 y 0.95 y rojo si es < 0.85.\n\n'
+         f'**Respuesta:** semáforo de plazo **{semaforo(ind_rep.SPI)}** (SPI = {ind_rep.SPI:.2f}) y coste **{semaforo(ind_rep.CPI)}** '
+         f'(CPI = {ind_rep.CPI:.2f}). Tal como lo cuenta el contratista, el proyecto va bien.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -351,10 +366,14 @@ comparacion.round(3)
 
 # %%
 BAC_X = float(datos_proyecto.loc[actividad_discutida, 'BAC'])
-Markdown(f'''Sólo cambia EV, en {ind_rep["EV"] - ind_real["EV"]:.1f} k€ (= {BAC_X:.0f} × (67 − 27) %), pero como PV y AC no se mueven, los dos índices caen a la vez: SPI = {ind_real["SPI"]:.2f} y CPI = {ind_real["CPI"]:.2f}; semáforo de plazo **{semaforo(ind_real["SPI"])}** y de coste **{semaforo(ind_real["CPI"])}**.''')
+Markdown(f'De los tres datos de partida sólo cambia EV, que baja {ind_rep.EV - ind_real.EV:.1f} k€ (= {BAC_X:.0f} × (67 − 27) %); '
+         'PV y AC no se mueven, así que cambian los cuatro indicadores que dependen de EV:\n\n'
+         + explica_indicadores(detalle_real, ind_real) +
+         f'\n\n**Respuesta:** CV y SV bajan {ind_rep.EV - ind_real.EV:.1f} k€ cada una; el CPI pasa de {ind_rep.CPI:.3f} a {ind_real.CPI:.3f} '
+         f'y el SPI de {ind_rep.SPI:.3f} a {ind_real.SPI:.3f}; semáforo de plazo **{semaforo(ind_real.SPI)}** y de coste **{semaforo(ind_real.CPI)}**.')
 
 # %% [markdown]
-# Un único porcentaje mueve tanto los índices porque C es una actividad grande (40 k€ de BAC, el 12% del presupuesto) y porque a mitad de proyecto el valor ganado acumulado es pequeño: 16 k€ de valor «declarado y no hecho» pesan mucho sobre 121 k€ realmente ganados. El valor ganado es tan bueno como la medida del avance físico que lo alimenta.
+# Un único porcentaje mueve tanto los índices porque CPI y SPI son cocientes con EV en el numerador: si EV baja 16.0 k€ con PV y AC fijos, el CPI baja 16.0 / 137.0 = 0.117 y el SPI 16.0 / 136.7 = 0.117. Esos 16.0 k€ (BAC de C, 40 k€, el 12% del presupuesto, por 40 puntos de avance) son el 12% del valor ganado declarado (136.8 k€), que a mitad de proyecto aún es pequeño. El valor ganado es tan bueno como la medida del avance físico que lo alimenta.
 
 # %% [markdown]
 # ## Apartado 3
@@ -374,15 +393,28 @@ prev = pd.DataFrame({nombre: {'EAC = BAC / CPI': BAC_total / ind['CPI'], 'VAC = 
 prev.round(2)
 
 # %%
+def explica_prevision(ind):
+    eac = BAC_total / ind.CPI; t = duracion_plan / ind.SPI
+    return (f'EAC = {BAC_total:.0f} / {ind.CPI:.3f} = **{eac:.1f} k€**; VAC = {BAC_total:.0f} − {eac:.1f} = **{BAC_total - eac:.1f} k€**; '
+            f'TCPI = ({BAC_total:.0f} − {ind.EV:.1f}) / ({BAC_total:.0f} − {ind.AC:.1f}) = **{(BAC_total - ind.EV) / (BAC_total - ind.AC):.3f}**; '
+            f'duración ≈ {duracion_plan} / {ind.SPI:.3f} = **{t:.1f} semanas**; penalización ≈ máx(0, {t:.1f} − {plazo}) × {penalizacion} = '
+            f'**{max(0.0, t - plazo) * penalizacion:.1f} k€**')
+Markdown('EAC (estimación del coste final), VAC (variación al final), TCPI (índice de rendimiento que haría falta en lo que '
+         'queda para acabar con el presupuesto BAC):\n\n'
+         f'- Informe del contratista: {explica_prevision(ind_rep)}.\n- Estimación del jefe de equipo: {explica_prevision(ind_real)}.')
+
+# %%
 semanas_trabajadas = int(seguimiento.loc[actividad_discutida, 'actual_duration'])
 d_plan = int(datos_proyecto.loc[actividad_discutida, 'duration'])
 semanas_ganadas = 27 / 100 * d_plan
 retraso_directo = semanas_trabajadas - semanas_ganadas                 # el resto, al ritmo planificado
 retraso_ritmo = semanas_trabajadas / (27 / 100) - d_plan           # el resto, al ritmo actual
-Markdown(f'''Estimación directa: {actividad_discutida} lleva {semanas_trabajadas} semanas y está al 27 %, es decir, ha ganado {semanas_ganadas:.1f} semanas de las {d_plan}: lleva **{retraso_directo:.1f} semanas de retraso** aunque el resto se haga al ritmo planificado, y {retraso_ritmo:.1f} si se mantiene el ritmo actual. Al ser crítica (holgura 0), ese retraso va entero al plazo si no se corrige: entre {retraso_directo * penalizacion:.0f} y {retraso_ritmo * penalizacion:.0f} k€ de penalización.''')
+Markdown(f'''Estimación directa: {actividad_discutida} lleva {semanas_trabajadas} semanas y está al 27 %, es decir, ha ganado 0.27 × {d_plan} = {semanas_ganadas:.1f} semanas de las {d_plan} planificadas:\n\n- si el resto se hace al ritmo planificado, retraso = semanas trabajadas − semanas ganadas = {semanas_trabajadas} − {semanas_ganadas:.1f} = **{retraso_directo:.1f} semanas**;\n- si se mantiene el ritmo actual, duración = {semanas_trabajadas} / 0.27 = {semanas_trabajadas / (27 / 100):.1f} semanas, retraso = {semanas_trabajadas / (27 / 100):.1f} − {d_plan} = **{retraso_ritmo:.1f} semanas**.\n\nAl ser crítica (holgura 0), ese retraso va entero al plazo si no se corrige: entre {retraso_directo:.1f} × {penalizacion} = {retraso_directo * penalizacion:.0f} y {retraso_ritmo:.1f} × {penalizacion} = {retraso_ritmo * penalizacion:.0f} k€ de penalización.''')
 
 # %% [markdown]
-# Con el informe, el proyecto termina en 22.0 semanas y cuesta 330 k€; con la estimación del jefe de equipo, 24.9 semanas y 374 k€ (VAC -44). La estimación directa por el avance de C (2.4 semanas de retraso como mínimo, 8.8 si no cambia el ritmo) es más fiable que T/SPI, que mezcla actividades críticas y no críticas y tiende a 1 al final del proyecto aunque se termine tarde. Para el comité: ámbar en plazo si se cree al jefe de equipo, y no se puede dar verde con una discrepancia así sin resolver.
+# La estimación directa por el avance de C (2.4 semanas de retraso como mínimo, 8.8 si no cambia el ritmo) es más fiable que T/SPI: el SPI mezcla actividades críticas y no críticas (un adelanto en una con holgura compensa un retraso en una crítica) y, al medirse en dinero, tiende a 1 al final del proyecto aunque se termine tarde.
+#
+# **Respuesta:** con el informe, EAC = 330.5 k€ y fin en la semana 22.0; con el jefe de equipo, EAC = 374.3 k€ (VAC = -44.3 k€) y fin en la semana 24.9. Por el ritmo de C, el retraso es de 2.4 a 8.8 semanas, con 24 a 88 k€ de penalización (10 k€/semana). Para el comité: ámbar en plazo si se cree al jefe de equipo, y no se puede dar verde con una discrepancia así sin resolver.
 
 # %% [markdown]
 # ## Apartado 4
@@ -391,7 +423,9 @@ Markdown(f'''Estimación directa: {actividad_discutida} lleva {semanas_trabajada
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# Certificar el 67 % de C supone pagar 26.8 k€ por esa actividad, de los que 16.0 k€ corresponderían a trabajo no ejecutado según el jefe de equipo. El criterio defendible frente a Dirección financiera: certificar lo verificado (27 %, 10.8 k€) y dejar documentada la discrepancia con una medición conjunta en obra esta misma semana; si la medición da la razón al contratista se certifica el resto sin demora (y sin intereses, porque la retención está motivada). Para que no vuelva a pasar: medir el avance por unidades de obra o hitos verificables (no por horas gastadas ni por «sensación»), aplicar la regla 0/100 o 50/50 a las actividades cortas, y que la medición la haga o la valide la propiedad.
+# **Respuesta:** certificar este mes el 27 % de C (40 × 0.27 = 10.8 k€), no el 67 % que pide el contratista.
+#
+# Certificar el 67 % de C supone pagar 40 × 0.67 = 26.8 k€ por esa actividad, de los que 40 × (67 − 27) % = 16.0 k€ corresponderían a trabajo no ejecutado según el jefe de equipo. El criterio defendible frente a Dirección financiera: certificar lo verificado (27 %, 10.8 k€) y dejar documentada la discrepancia con una medición conjunta en obra esta misma semana; si la medición da la razón al contratista se certifica el resto sin demora (y sin intereses, porque la retención está motivada). Para que no vuelva a pasar: medir el avance por unidades de obra o hitos verificables (no por horas gastadas ni por «sensación»), aplicar la regla 0/100 o 50/50 a las actividades cortas, y que la medición la haga o la valide la propiedad.
 
 # %% [markdown]
 # ## Apartado 5
@@ -400,13 +434,13 @@ display(Markdown(pregunta_4))
 display(Markdown(pregunta_5))
 
 # %% [markdown]
-# Decisión: informar al comité con las dos versiones, el semáforo de la peor y la fecha de la medición conjunta; certificar el 27 % de C; exigir al contratista un plan de recuperación de C (y revisar la planificación de D, F, G, que dependen de ella); avisar al cliente por escrito de un riesgo de retraso de al menos 2 semanas. Mensajes:
+# Decisión: informar al comité con las dos versiones, el semáforo de la peor y la fecha de la medición conjunta; certificar el 27 % de C; exigir al contratista un plan de recuperación de C (y revisar la planificación de D, F y G, que dependen de ella); avisar al cliente por escrito de un riesgo de retraso de al menos 2.4 semanas. Mensajes:
 #
 # - *Contratista:* «Certificaremos esta semana el 27 % de C, que es lo verificado en obra; el resto en cuanto lo comprobemos juntos el jueves. Necesito el viernes un plan de recuperación con hitos semanales medibles.»
 # - *Jefe de equipo:* «Gracias por avisar. Prepara la medición conjunta del jueves con las unidades de obra que sustentan tu 27 %; a partir de ahora validas tú cada porcentaje antes de la certificación.»
-# - *Comité:* «Plazo: ámbar (SPI 0.88 con el avance verificado; el informe del contratista daría verde). Coste: ámbar (EAC 374 k€ frente a 330). Fin previsto: semana 24 como pronto si no se corrige C. El jueves hay medición conjunta.»
+# - *Comité:* «Plazo: ámbar (SPI 0.88 con el avance verificado; el informe del contratista daría verde). Coste: ámbar (EAC 374 k€ frente a 330). Fin previsto: semana 24.4 como pronto si no se corrige C (22 + 2.4). El jueves hay medición conjunta.»
 # - *Dirección financiera:* «Criterio: se certifica el avance verificado por la propiedad. Esta certificación retiene 16.0 k€ con acta de discrepancia; no hay base para intereses de demora.»
-# - *Cliente:* «Les informamos de un riesgo de retraso de al menos 2 semanas en el hito, detectado en el control de la semana 11; el plan de recuperación se les enviará el lunes.»
+# - *Cliente:* «Les informamos de un riesgo de retraso de al menos 2.4 semanas en el hito, detectado en el control de la semana 11; el plan de recuperación se les enviará el lunes.»
 
 # %% [markdown]
 # ## Apartado 6

@@ -4,6 +4,7 @@
 # coleccion: 14_comprension
 # variante: datos-insuficientes
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -34,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -42,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -155,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -241,13 +246,21 @@ X, Y = 'D', 'C'
 display(Markdown(pregunta_1))
 
 # %% [markdown]
-# τ = ‖R·t‖∞ es creciente en cada duración, luego la cota inferior se alcanza con todas las desconocidas en su mínimo y la superior con todas en su máximo: no hace falta probar combinaciones.
+# La duración del proyecto es la de la ruta más larga: τ = ‖R·t‖∞, el máximo de las duraciones de las rutas (R·t, una fila de la matriz de rutas R por ruta). Alargar una actividad nunca acorta ninguna ruta, así que τ crece con cada duración: la cota inferior se alcanza con las dos desconocidas en su mínimo y la superior con las dos en su máximo, sin necesidad de probar otras combinaciones. La tabla da la duración de cada ruta en esos dos casos.
 
 # %%
 Rt_min = R @ minimos[R.columns]; Rt_max = R @ maximos[R.columns]
 cota_inf, cota_sup = int(Rt_min.max()), int(Rt_max.max())
-display(pd.DataFrame({'actividades': {r: ' - '.join(R.columns[R.loc[r] == 1]) for r in R.index}, 'duración mínima': Rt_min, 'duración máxima': Rt_max}))
-Markdown(f'{cota_inf} ≤ τ ≤ {cota_sup}. La cota inferior se alcanza con {X} = {minimos[X]} y {Y} = {minimos[Y]} (ruta {Rt_min.idxmax()}); la superior con {X} = {maximos[X]} y {Y} = {maximos[Y]} (ruta {Rt_max.idxmax()}).')
+_acts = {r: list(R.columns[R.loc[r] == 1]) for r in R.index}
+_suma = lambda r, t: ' + '.join(str(int(t[a])) for a in _acts[r]) + f' = {int(sum(t[a] for a in _acts[r]))}'
+display(pd.DataFrame({'actividades': {r: ' – '.join(_acts[r]) for r in R.index},
+                      f'duración con {X} = {minimos[X]}, {Y} = {minimos[Y]}': {r: _suma(r, minimos) for r in R.index},
+                      f'duración con {X} = {maximos[X]}, {Y} = {maximos[Y]}': {r: _suma(r, maximos) for r in R.index}}))
+_r_inf = [' – '.join(_acts[r]) for r in R.index if Rt_min[r] == cota_inf]
+_r_sup = [' – '.join(_acts[r]) for r in R.index if Rt_max[r] == cota_sup]
+Markdown(f'**Respuesta:** {cota_inf} ≤ τ ≤ {cota_sup} semanas. La cota inferior, {cota_inf}, se alcanza con {X} = {minimos[X]} y {Y} = {minimos[Y]} '
+         f'(la ruta más larga es entonces {lista_y(_r_inf, "o")}); la superior, {cota_sup}, con {X} = {maximos[X]} y {Y} = {maximos[Y]} '
+         f'(ruta {lista_y(_r_sup, "o")}). Ningún valor intermedio puede dar menos de {cota_inf} ni más de {cota_sup}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -256,18 +269,24 @@ Markdown(f'{cota_inf} ≤ τ ≤ {cota_sup}. La cota inferior se alcanza con {X}
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Una actividad es crítica siempre si pertenece a *toda* ruta que pueda ser la más larga para alguna combinación de valores. Como sólo hay dos duraciones inciertas, basta probar las cuatro combinaciones extremas (τ es lineal a trozos y el máximo de R·t cambia de ruta sólo en esos vértices o entre ellos) y, para estar seguros, una rejilla de valores intermedios.
+# Una actividad es crítica para un juego de duraciones si está en alguna ruta de duración máxima. Se prueban todas las combinaciones enteras de las dos duraciones desconocidas; la tabla muestra las cuatro combinaciones extremas como ejemplo:
 
 # %%
 from itertools import product
-siempre, nunca = set(R.columns), set(R.columns)
-for dX, dY in product(range(minimos[X], maximos[X] + 1), range(minimos[Y], maximos[Y] + 1)):
+def _criticas(dX, dY):
     t = minimos.copy(); t[X], t[Y] = dX, dY
     Rt = R @ t[R.columns]
-    criticas_ahora = set(R.columns[(R.loc[Rt == Rt.max()].sum() > 0)])
+    return int(Rt.max()), set(R.columns[(R.loc[Rt == Rt.max()].sum() > 0)])
+display(pd.DataFrame([{X: dX, Y: dY, 'τ': _criticas(dX, dY)[0], 'actividades críticas': ', '.join(sorted(_criticas(dX, dY)[1]))}
+                      for dX in (minimos[X], maximos[X]) for dY in (minimos[Y], maximos[Y])]).set_index([X, Y]))
+siempre, nunca = set(R.columns), set(R.columns)
+_n = 0
+for dX, dY in product(range(minimos[X], maximos[X] + 1), range(minimos[Y], maximos[Y] + 1)):
+    criticas_ahora = _criticas(dX, dY)[1]; _n += 1
     siempre &= criticas_ahora; nunca -= criticas_ahora
-Markdown(f'Críticas para cualquier valor: {", ".join(sorted(siempre)) or "ninguna"}. Nunca críticas: {", ".join(sorted(nunca)) or "ninguna"}. '
-         f'Las demás ({", ".join(sorted(set(R.columns) - siempre - nunca))}) lo son o no según los valores.')
+_depende = sorted(set(R.columns) - siempre - nunca)
+Markdown(f'Recorriendo las {_n} combinaciones posibles: **críticas para cualquier valor:** {lista_y(sorted(siempre))}; '
+         f'**nunca críticas:** {lista_y(sorted(nunca))}' + (f'; las demás ({lista_y(_depende)}) lo son o no según los valores.' if _depende else '.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -275,16 +294,29 @@ Markdown(f'Críticas para cualquier valor: {", ".join(sorted(siempre)) or "ningu
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# La holgura total de C es lo que le falta a la ruta más larga que pasa por C para igualar la duración del proyecto: H_total(C) = τ − (duración de la ruta más larga que contiene C). La tabla da esa holgura para cada duración posible de C, con D en su mínimo y en su máximo (las demás actividades con su duración conocida).
+
 # %%
 def holgura_Y(dX, dY):
     t = minimos.copy(); t[X], t[Y] = dX, dY
     return int(proyecto.calendar(t).loc[Y, 'H_total'])
 tabla = pd.DataFrame({f'{X} = {dX}': {dY: holgura_Y(dX, dY) for dY in range(minimos[Y], maximos[Y] + 1)} for dX in (minimos[X], maximos[X])})
 tabla.index.name = f'duración de {Y}'
-display(tabla.T)
+display(tabla.T.rename_axis(f'holgura total de {Y}'))
 umbrales = {col: next((dY for dY, h in tabla[col].items() if h == 0), None) for col in tabla.columns}
-Markdown(f'{Y} se vuelve crítica a partir de ' + '; '.join(f'{Y} = {u} cuando {col}' if u is not None else f'nunca cuando {col}' for col, u in umbrales.items()) + '. '
-         f'Cuanto más dura {X} (crítica), más holgura tiene {Y} y más tarde se vuelve crítica.')
+_u = list(umbrales.values())
+_txt = '; '.join(f'con {col}, a partir de {Y} = {u}' if u is not None else f'con {col}, nunca (su holgura mínima es {int(tabla[col].min())})'
+                 for col, u in umbrales.items())
+_misma_ruta = bool(((R[X] == 1) & (R[Y] == 1)).any())
+if _u[0] == _u[1]:
+    _por = (f'El umbral no depende de {X}: {X} y {Y} están en una misma ruta, de modo que alargar {X} alarga a la vez la ruta de {Y} y la duración del proyecto.'
+            if _misma_ruta and X in siempre else f'El umbral no depende de la duración de {X}.')
+elif _u[1] is None or (_u[0] is not None and _u[1] > _u[0]):
+    _por = f'Cuanto más dura {X}, más larga es la ruta crítica sin {Y} y más holgura le queda a {Y}: se vuelve crítica más tarde.'
+else:
+    _por = f'Cuanto más dura {X}, antes se vuelve crítica {Y}.'
+Markdown(f'**Respuesta:** {Y} pasa a tener holgura total 0 (se vuelve crítica) {_txt}. {_por}')
 
 # %% [markdown]
 # ## Apartado 4
@@ -292,15 +324,28 @@ Markdown(f'{Y} se vuelve crítica a partir de ' + '; '.join(f'{Y} = {u} cuando {
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Se compara el intervalo [cota inferior, cota superior] de τ que queda al conocer cada dato: fijada una de las dos duraciones en cada uno de sus valores posibles, la otra sigue variando entre su mínimo y su máximo.
+
 # %%
-def amplitud(fija):
-    # anchura del intervalo de τ cuando se conoce la actividad `fija` (promedio sobre sus valores posibles)
-    anchuras = []
+filas = []
+for fija, otra in ((X, Y), (Y, X)):
     for v in range(minimos[fija], maximos[fija] + 1):
         lo, hi = minimos.copy(), maximos.copy(); lo[fija] = hi[fija] = v
-        anchuras.append(int((R @ hi[R.columns]).max() - (R @ lo[R.columns]).max()))
-    return float(np.mean(anchuras))
-amp = pd.Series({f'conociendo {X}': amplitud(X), f'conociendo {Y}': amplitud(Y), 'sin conocer ninguna': float(cota_sup - cota_inf)})
-display(amp.to_frame('anchura del intervalo de τ').T)
-Markdown(f'Conviene averiguar primero {X if amp.iloc[0] < amp.iloc[1] else Y}: es la que más estrecha el intervalo de la duración. '
-         f'En general, la incertidumbre de una actividad crítica se traslada entera a τ; la de una actividad con holgura sólo cuenta cuando agota la holgura.')
+        a, b = int((R @ lo[R.columns]).max()), int((R @ hi[R.columns]).max())
+        filas.append({'dato conocido': f'{fija} = {v}', 'actividad conocida': fija, 'cota inferior': a, 'cota superior': b, 'anchura': b - a})
+intervalos = pd.DataFrame(filas).set_index('dato conocido')
+display(intervalos.drop(columns='actividad conocida'))
+amp = intervalos.groupby('actividad conocida')['anchura'].agg(['mean', 'max'])
+mejor = X if amp.loc[X, 'mean'] < amp.loc[Y, 'mean'] else Y if amp.loc[Y, 'mean'] < amp.loc[X, 'mean'] else None
+_txt = (f'Sin conocer ninguna, τ está entre {cota_inf} y {cota_sup} (anchura {cota_sup - cota_inf} semanas). '
+        f'Conociendo {X}, la anchura media es {amp.loc[X, "mean"]:.1f} semanas (como mucho {int(amp.loc[X, "max"])}); '
+        f'conociendo {Y}, {amp.loc[Y, "mean"]:.1f} semanas (como mucho {int(amp.loc[Y, "max"])}). ')
+if mejor:
+    otra = Y if mejor == X else X
+    display(Markdown(_txt + f'**Respuesta:** conviene averiguar primero la duración de {mejor}: es la que más estrecha el intervalo de la duración del proyecto. '
+             f'Fijado {mejor}, queda la incertidumbre de {otra} (rango de {maximos[otra] - minimos[otra]} semanas), que deja una anchura media de {amp.loc[mejor, "mean"]:.1f}; '
+             f'fijado {otra}, la de {mejor} (rango de {maximos[mejor] - minimos[mejor]} semanas) deja {amp.loc[otra, "mean"]:.1f}. '
+             'Una actividad sólo traslada a τ la parte de su rango en la que está en la ruta más larga: mientras tiene holgura, alargarla no alarga el proyecto.'))
+else:
+    display(Markdown(_txt + '**Respuesta:** los dos datos reducen la incertidumbre por igual.'))

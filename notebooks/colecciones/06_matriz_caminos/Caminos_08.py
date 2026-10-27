@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -268,7 +272,7 @@ proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
 R = proyecto.path_matrix(dummies=False)
-proyecto.display_rutas('roy')
+proyecto.display_rutas("roy")
 
 # %% [markdown]
 # ## Apartado 2
@@ -282,13 +286,20 @@ duraciones_rutas = R @ T
 from pmule import display_producto_rutas
 display_producto_rutas(R, T, duraciones_rutas)
 
+# %% [markdown]
+# Cada elemento de R·T es la suma de las duraciones, en ese escenario, de las actividades de esa ruta:
+
 # %%
-#| tbl-cap: "Duración de cada ruta en cada escenario"
+#| tbl-cap: "Duración de cada ruta en cada escenario, sumando sus actividades"
 #| label: tbl-duracionesRutas
-duraciones_rutas
+calendario = proyecto.calendar(escenarios['normal'])
+acts_ruta = {r: ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario) for r in R.index}
+pd.DataFrame({r: {'ruta': ' – '.join(acts_ruta[r]),
+                  **{e: ' + '.join(str(int(T.loc[a, e])) for a in acts_ruta[r]) + f' = {int(duraciones_rutas.loc[r, e])}'
+                     for e in T.columns}} for r in R.index}).T
 
 # %% [markdown]
-# Cada columna de R·T es el vector de duraciones de las rutas para un escenario: la fila r, columna s, es la suma de las duraciones (en el escenario s) de las actividades de la ruta r.
+# **Respuesta:** cada columna de R·T es el vector de duraciones de las rutas en un escenario: la fila r, columna s, es la duración de la ruta r cuando las actividades duran lo que indica el escenario s.
 
 # %% [markdown]
 # ## Apartado 3
@@ -297,12 +308,17 @@ duraciones_rutas
 display(Markdown(pregunta_3))
 
 # %%
-resumen = pd.DataFrame({'duración del proyecto': duraciones_rutas.max(), 'ruta crítica': duraciones_rutas.idxmax()})
-resumen['actividades'] = [' - '.join(R.columns[R.loc[r] == 1]) for r in resumen['ruta crítica']]
+_crit = {e: [r for r in R.index if duraciones_rutas.loc[r, e] == duraciones_rutas[e].max()] for e in T.columns}
+resumen = pd.DataFrame({e: {'duración del proyecto = máx de la columna': f'máx({", ".join(str(int(x)) for x in duraciones_rutas[e])}) = {int(duraciones_rutas[e].max())}',
+                            'ruta crítica': '; '.join(f'{r}: {" – ".join(acts_ruta[r])}' for r in _crit[e])}
+                        for e in T.columns}).T
 resumen
 
 # %%
-Markdown('La ruta crítica ' + ('es la misma en los tres escenarios.' if resumen['ruta crítica'].nunique() == 1 else 'cambia de un escenario a otro: la ruta más larga depende de las duraciones, no sólo de la forma del grafo.'))
+_iguales = len({tuple(v) for v in _crit.values()}) == 1
+Markdown('**Respuesta:** el proyecto dura ' + lista_y([f'{int(duraciones_rutas[e].max())} días en el escenario {e}' for e in T.columns])
+         + '. ' + ('La ruta crítica es la misma en los tres escenarios.' if _iguales else
+         'La ruta crítica cambia de un escenario a otro: la ruta más larga depende de las duraciones, no sólo de la forma del grafo.'))
 
 # %% [markdown]
 # ## Apartado 4

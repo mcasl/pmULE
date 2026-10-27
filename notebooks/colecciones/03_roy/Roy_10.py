@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -221,7 +225,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes (las duraciones del cuadro están en semanas).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -264,8 +268,13 @@ datos_proyecto
 # %%
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
-print('Iniciales (sin predecesoras):', ', '.join(sorted(prelaciones.start_activities)))
-print('Finales (sin sucesoras):     ', ', '.join(sorted(prelaciones.end_activities)))
+_ini, _fin = sorted(prelaciones.start_activities), sorted(prelaciones.end_activities)
+_v = lambda l, s, p: s if len(l) == 1 else p
+Markdown(f'**Respuesta:** {_v(_ini, "es inicial", "son iniciales")} {lista_y(_ini)}: en el cuadro de sucesoras no '
+         f'{_v(_ini, "aparece", "aparecen")} en la casilla de ninguna actividad, y en el de predecesoras '
+         f'{_v(_ini, "tiene", "tienen")} `---`. {_v(_fin, "Es final", "Son finales")} {lista_y(_fin)}: en el cuadro de '
+         f'sucesoras {_v(_fin, "tiene", "tienen")} `---`, y en el de predecesoras no {_v(_fin, "figura", "figuran")} '
+         f'como predecesora de ninguna actividad.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -290,7 +299,80 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
-Markdown(f'El PERT necesita {len(proyecto.dummies)} actividad(es) ficticia(s); el Roy, ninguna.')
+def explica_ficticias(proyecto, prelaciones):
+    """Una línea por ficticia del PERT: nodos que une, prelación que transmite y por qué no
+    basta con hacer empezar las sucesoras en el nodo donde terminan las predecesoras."""
+    G = proyecto.pert_graph
+    pred = {a: set(ps) for a, ps in prelaciones.immediate_predecessor.items()}
+    R = nx.DiGraph([(p, a) for a, ps in pred.items() for p in ps])
+    R.add_nodes_from(pred)
+    anc = {a: nx.ancestors(R, a) for a in pred}
+    def entran(nodo, salvo=None):
+        acts = set()
+        for i, _, d in G.in_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= entran(i) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def salen(nodo, salvo=None):
+        acts = set()
+        for _, j, d in G.out_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= salen(j) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def arcos_reales(nodo, sentido):
+        aristas = G.in_edges(nodo, data=True) if sentido == 'in' else G.out_edges(nodo, data=True)
+        return {(u if sentido == 'in' else v): d['activity'] for u, v, d in aristas if not d['activity'].startswith('@')}
+    pl = lambda acts, s, p: s if len(acts) == 1 else p
+    lineas = []
+    arcos = sorted(proyecto.nodes_from_edges.items(), key=lambda kv: (int(kv[1][0]), int(kv[1][1])))
+    for nombre, (i, j) in arcos:
+        if not nombre.startswith('@'):
+            continue
+        antes, despues = sorted(entran(i)), sorted(salen(j))
+        # prelaciones inmediatas del cuadro que pasan por la ficticia (las demás ya se deducen de otras)
+        pares = [(x, y) for x in antes for y in despues if x in pred[y]] or [(x, y) for x in antes for y in despues]
+        despues = sorted({y for _, y in pares})
+        grupos = {}
+        for y in despues:
+            grupos.setdefault(tuple(sorted(x for x, z in pares if z == y)), []).append(y)
+        transmite = '; '.join(f'{lista_y(xs)} {pl(xs, "precede", "preceden")} a {lista_y(ys)}' for xs, ys in grupos.items())
+        # Si los nodos i y j fueran uno solo, lo que llega a j precedería a lo que sale de i
+        llegan_j, salen_i = sorted(entran(j, salvo=nombre)), sorted(salen(i, salvo=nombre))
+        falsas = [(x, y) for y in salen_i for x in llegan_j if x not in anc[y]]
+        if falsas:
+            x_s = sorted({x for x, _ in falsas})
+            y_s = sorted({y for _, y in falsas})
+            directas_j, directas_i = set(arcos_reales(j, 'in').values()), set(arcos_reales(i, 'out').values())
+            llega = (f'{pl(x_s, "llega", "llegan")} al nodo {j}' if set(x_s) <= directas_j else
+                     f'{pl(x_s, "llega", "llegan")} al nodo {j} (directamente o por otra ficticia)')
+            sale = (f'{pl(y_s, "sale", "salen")} de ese nodo' if set(y_s) <= directas_i else
+                    f'{pl(y_s, "empieza", "empiezan")} a partir de ese nodo (directamente o tras otra ficticia)')
+            motivo = (f'{lista_y(despues)} {pl(despues, "espera", "esperan")} además a {lista_y(x_s)}, que {llega}; '
+                      f'si {lista_y(despues)} {pl(despues, "saliera", "salieran")} del nodo {i}, {lista_y(x_s)} '
+                      f'{pl(x_s, "precedería", "precederían")} también a {lista_y(y_s)}, que {sale} y no '
+                      f'{pl(y_s, "depende", "dependen")} de {pl(x_s, "ella", "ellas")}')
+        else:
+            gemelas = None
+            ini_i, ini_j = arcos_reales(i, 'in'), arcos_reales(j, 'in')
+            fin_i, fin_j = arcos_reales(i, 'out'), arcos_reales(j, 'out')
+            for u in sorted(set(ini_i) & set(ini_j)):
+                gemelas = gemelas or (ini_i[u], ini_j[u], u, j, f'empiezan en el mismo nodo ({u})')
+            for v in sorted(set(fin_i) & set(fin_j)):
+                gemelas = gemelas or (fin_i[v], fin_j[v], i, v, f'terminan en el mismo nodo ({v})')
+            if gemelas:
+                a, b, n1, n2, verbo = gemelas
+                a, b = sorted([a, b])
+                motivo = (f'{a} y {b} {verbo}; sin la ficticia irían '
+                          f'las dos del nodo {n1} al {n2}, dos arcos entre el mismo par de nodos que no se podrían distinguir')
+            else:
+                motivo = 'sin ella habría que fundir los nodos y se perdería la estructura del grafo'
+        lineas.append(f'- Ficticia {i} → {j}: transmite que {transmite}. Hace falta porque {motivo}.')
+    return lineas
+
+# %%
+_lineas = explica_ficticias(proyecto, prelaciones)
+Markdown(f'**Respuesta:** el Roy no necesita ficticias (cada prelación es un arco); el PERT necesita '
+         f'**{plural(len(_lineas), "ficticia")}**' + (':\n\n' + '\n'.join(_lineas) if _lineas else '.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -304,15 +386,29 @@ display(Markdown(pregunta_3))
 calendario = proyecto.calendar(datos_proyecto['duration'])
 proyecto.display_calendario(datos_proyecto['duration'], grafo="roy")
 
+# %% [markdown]
+# Cómo sale cada fecha (ES/EF: inicio y fin más tempranos; LS/LF: inicio y fin más tardíos): para cada actividad, la tabla muestra los fines más tempranos de sus predecesoras que se comparan (el máximo es su ES) y los inicios más tardíos de sus sucesoras (el mínimo es su LF).
+
 # %%
 #| tbl-cap: "Cálculo paso a paso de las fechas"
 #| label: tbl-fechasPaso
 detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d']]
 
+# %% [markdown]
+# El calendario incluye también las holguras. La *total* (LS − ES) es lo que puede retrasarse una actividad sin alargar el proyecto; la *libre* (mín ES de las sucesoras − EF) lo que puede retrasarse sin retrasar el inicio más temprano de ninguna sucesora; la *independiente* (máx(0, mín ES suc. − máx LF pred. − d)) la que conserva aunque sus predecesoras acaben lo más tarde posible y sus sucesoras empiecen lo antes posible. Las actividades de holgura total nula son las críticas y forman el camino crítico.
+
 # %%
 duracion_proyecto = proyecto.duration(datos_proyecto['duration'])
-camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
-Markdown(f'La duración del proyecto es {duracion_proyecto} semanas.')
+explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas')
+
+# %%
+_criticas = ordena_ruta(calendario.index[calendario['H_total'] == 0], calendario)
+_holgadas = ordena_ruta(calendario.index[calendario['H_total'] > 0], calendario)
+_txt = ', '.join(f'{a} ({int(calendario.loc[a, "H_total"])})' for a in _holgadas)
+Markdown(f'**Respuesta:** el proyecto dura {plural(duracion_proyecto, "semana")} y son críticas {lista_y(_criticas)} '
+         f'(holgura total 0). En el grafo Roy el camino crítico pasa por los nodos de esas actividades y en el '
+         f'PERT por sus arcos (en rojo en las figuras del apartado 2). '
+         + (f'Las demás tienen holgura total positiva (entre paréntesis, en semanas): {_txt}.' if _holgadas else 'No hay actividades con holgura.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -325,4 +421,5 @@ sucesoras = {a: sorted(b for b, ps in prelaciones.immediate_predecessor.items() 
 reconstruido = pd.Series({a: (','.join(s) if s else '---') for a, s in sucesoras.items()}, name='successor')
 coincide = (reconstruido == datos_enunciado['successor'].map(lambda s: ','.join(sorted(s.split(','))) if s != '---' else s)).all()
 display(pd.concat({'enunciado': datos_enunciado['successor'], 'reconstruido': reconstruido}, axis=1))
-Markdown(f'Los dos cuadros coinciden: {coincide}. Son la misma relación leída en los dos sentidos.')
+Markdown(('Los dos cuadros coinciden' if coincide else 'Los cuadros NO coinciden') + ': son la misma relación '
+         '(«A precede a B») leída en los dos sentidos, por filas en uno y por columnas en el otro.')

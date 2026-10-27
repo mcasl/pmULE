@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -210,7 +214,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la rehabilitación de una nave industrial para un taller; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+# El proyecto corresponde a la rehabilitación de una nave industrial para un taller; las actividades son las siguientes (las duraciones del cuadro están en días).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -275,29 +279,42 @@ proyecto = prelaciones.create_project()
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con las duraciones medias"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+# Cada fila de la matriz de rutas R es una ruta y cada columna una actividad: 1 si la actividad está en la ruta y 0 si no.
 
 # %%
 #| tbl-cap: "Matriz de rutas R"
 #| label: tbl-matrizRutas
 R = proyecto.path_matrix(dummies=False)
 rutas = proyecto.paths(dummies=False)
-proyecto.display_rutas('roy')
+proyecto.display_rutas("roy")
+
+# %%
+#| tbl-cap: "Rutas del proyecto y su duración con las duraciones medias"
+#| label: tbl-rutas
+tabla_rutas = explica_rutas(proyecto, datos_proyecto['duration'], unidad='días')
+tabla_rutas
+
+# %%
+Markdown(f'''**Respuesta:** hay {len(R)} rutas: ''' + '; '.join(f"{r}: {tabla_rutas.loc[r, 'ruta']}" for r in R.index)
+         + '. La matriz R es la de la tabla anterior (filas = rutas, columnas = actividades).')
 
 # %% [markdown]
 # ## Apartado 2
 
 # %%
 display(Markdown(pregunta_2))
+
+# %% [markdown]
+# La matriz de tiempos T tiene una fila por actividad y una columna por réplica (es la tabla de réplicas del enunciado). Cada elemento de R·T se obtiene multiplicando una fila de R por una columna de T, es decir, sumando las duraciones de esa réplica de las actividades marcadas con 1:
 
 # %%
 T = replicas.loc[R.columns]
@@ -306,12 +323,18 @@ from pmule import display_producto_rutas
 display_producto_rutas(R, T, RT)
 
 # %%
-#| tbl-cap: "R·T: duración de cada ruta (filas) en cada réplica (columnas)"
+#| tbl-cap: "R·T: duración de cada ruta (filas) en cada réplica (columnas), término a término"
 #| label: tbl-RT
-RT
+pd.DataFrame({j: [' + '.join(f'{T.loc[a, j]}' for a in R.columns[R.loc[r] == 1]) + f' = {RT.loc[r, j]}' for r in R.index]
+              for j in T.columns}, index=R.index)
 
-# %% [markdown]
-# El elemento (r, j) de R·T es la duración de la ruta r en la réplica j: la suma de las duraciones, en esa réplica, de las actividades que forman la ruta. Una fila de R selecciona las actividades de la ruta; una columna de T es un escenario completo.
+# %%
+r0, j0 = R.index[0], T.columns[0]
+acts0 = list(R.columns[R.loc[r0] == 1])
+Markdown(f'''**Respuesta:** el elemento (r, j) de R·T es la duración de la ruta r en la réplica j: la suma de las duraciones, en esa '''
+         f'''réplica, de las actividades que forman la ruta. Por ejemplo, {r0} en {j0}: '''
+         + ' + '.join(f'{a}({T.loc[a, j0]})' for a in acts0) + f''' = {RT.loc[r0, j0]} días. Una fila de R selecciona las actividades '''
+         '''de la ruta; una columna de T es un escenario completo.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -321,11 +344,18 @@ display(Markdown(pregunta_3))
 
 # %%
 tau = RT.max()
-pd.DataFrame({'τ = máximo de la columna': tau, 'ruta más larga': RT.idxmax()}).T
+mas_largas = {j: [r for r in RT.index if RT.loc[r, j] == tau[j]] for j in RT.columns}
+pd.DataFrame({'τ = máximo de la columna': tau, 'rutas más largas': {j: ', '.join(v) for j, v in mas_largas.items()}}).T
 
 # %%
 media = tau.mean(); desviacion = tau.std(ddof=1)
-Markdown(f'''Media = ({" + ".join(str(int(x)) for x in tau)}) / {len(tau)} = {media:.2f} días. Desviación típica muestral = √(Σ(τ − media)² / (n − 1)) = {desviacion:.2f} días. Con las duraciones medias el proyecto duraría {proyecto.duration(datos_proyecto["duration"])} días.''')
+dif2 = [(x - media) ** 2 for x in tau]
+Markdown(f'''Media = ({" + ".join(str(int(x)) for x in tau)}) / {len(tau)} = {int(tau.sum())} / {len(tau)} = {media:.2f} días.\n\n'''
+         f'''Desviación típica muestral = √(Σ(τ − media)² / (n − 1)) = √((''' + ' + '.join(f'{d:.2f}' for d in dif2)
+         + f''') / {len(tau) - 1}) = √({sum(dif2):.2f} / {len(tau) - 1}) = {desviacion:.2f} días.\n\n'''
+         f'''**Respuesta:** duraciones del proyecto en las réplicas: {", ".join(f"{j} = {int(tau[j])}" for j in tau.index)}; media {media:.2f} días '''
+         f'''y desviación típica muestral {desviacion:.2f} días (con las duraciones medias el proyecto duraría '''
+         f'''{proyecto.duration(datos_proyecto["duration"])} días).''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -333,26 +363,38 @@ Markdown(f'''Media = ({" + ".join(str(int(x)) for x in tau)}) / {len(tau)} = {me
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Una ruta es crítica en una réplica si es la más larga en ella (si hay empate, lo son todas las empatadas). El índice de criticidad de una ruta es la fracción de réplicas en que es crítica; el de una actividad, la fracción de réplicas en que está en alguna ruta crítica.
+
 # %%
-ruta_critica = RT.idxmax()
-criticidad_rutas = ruta_critica.value_counts().reindex(R.index, fill_value=0)
-criticidad_actividades = R.loc[ruta_critica].sum()
+es_critica = RT.eq(tau, axis='columns')            # rutas × réplicas: ¿es la más larga?
+criticidad_rutas = es_critica.sum(axis='columns')
+criticidad_actividades = ((R.T.astype(int) @ es_critica.astype(int)) > 0).sum(axis='columns')
 pd.DataFrame({'actividades': [' - '.join(R.columns[R.loc[r] == 1]) for r in R.index],
               'veces crítica': criticidad_rutas, 'índice de criticidad': criticidad_rutas / len(tau)}, index=R.index)
 
 # %%
-pd.DataFrame({'veces en la ruta crítica': criticidad_actividades, 'índice de criticidad': criticidad_actividades / len(tau)}).T
+pd.DataFrame({'veces en una ruta crítica': criticidad_actividades, 'índice de criticidad': criticidad_actividades / len(tau)}).T
 
 # %%
 camino_medio = proyecto.critical_path(datos_proyecto['duration'])
-Markdown(f'Con las duraciones medias la ruta crítica es {", ".join(" - ".join(a) for a in camino_medio.values())}; en las réplicas ha sido la más larga '
-         f'{int(criticidad_rutas.max())} de {len(tau)} veces. Con tan pocas réplicas los índices sólo pueden valer múltiplos de {1/len(tau):.1f}.')
+rutas_medias = [r for r in R.index if set(R.columns[R.loc[r] == 1]) in [set(a) for a in camino_medio.values()]]
+empates = [j for j, v in mas_largas.items() if len(v) > 1]
+nota_empate = (f' En {lista_y(empates)} hay empate entre rutas, que cuentan como críticas a la vez; por eso los índices de las rutas pueden sumar más de 1.'
+               if empates else '')
+Markdown(f'''**Respuesta:** rutas críticas por réplica: {"; ".join(f"{j}: {', '.join(v)}" for j, v in mas_largas.items())}.{nota_empate} '''
+         f'''Con las duraciones medias la ruta crítica es {lista_y(rutas_medias)} ({", ".join(" – ".join(a) for a in camino_medio.values())}), '''
+         f'''que en las réplicas ha sido la más larga {int(criticidad_rutas[rutas_medias].max())} de {len(tau)} veces. Con tan pocas réplicas los '''
+         f'''índices sólo pueden valer múltiplos de {1/len(tau):.1f}.''')
 
 # %% [markdown]
 # ## Apartado 5
 
 # %%
 display(Markdown(pregunta_5))
+
+# %% [markdown]
+# Se repite exactamente el mismo cálculo (R·T y máximo por columnas) con 10 000 columnas, cada una generada con duraciones normales de media la duración media y desviación típica 1.
 
 # %%
 rng = np.random.default_rng(1)
@@ -365,5 +407,9 @@ pd.DataFrame({'5 réplicas': [media, desviacion], '10 000 réplicas': [tau_grand
 # %%
 pd.DataFrame({'5 réplicas': criticidad_actividades / len(tau), '10 000 réplicas': criticidad_grande}).round(3).T
 
-# %% [markdown]
-# La operación es exactamente la misma (R·T y máximo por columnas); sólo cambia el número de columnas. Con muchas réplicas la media y la desviación típica se estabilizan (su error estadístico decrece como 1/√N) y los índices de criticidad dejan de ser múltiplos gruesos.
+# %%
+Markdown(f'''**Respuesta:** la operación es exactamente la misma (R·T y máximo por columnas); sólo cambia el número de columnas. '''
+         f'''Con 10 000 réplicas la media es {tau_grande.mean():.2f} días y la desviación típica {tau_grande.std(ddof=1):.2f} (con 5: {media:.2f} y '''
+         f'''{desviacion:.2f}). Con muchas réplicas estos valores se estabilizan (su error estadístico decrece como 1/√N: el error típico de la media '''
+         f'''pasa de unos {desviacion / np.sqrt(len(tau)):.2f} días con 5 réplicas a unos {tau_grande.std(ddof=1) / np.sqrt(N):.3f} con 10 000) y los '''
+         '''índices de criticidad dejan de ser múltiplos gruesos de 0.2.''')

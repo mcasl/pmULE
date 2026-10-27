@@ -1,9 +1,10 @@
 # ---
 # title: Viabilidad 05
-# subtitle: "una flota de vehículos eléctricos de alquiler: préstamo del 70% al 6% a 5 años; TIR proyecto 21.6%"
+# subtitle: "una flota de vehículos eléctricos de alquiler: préstamo del 70% al 6% a 5 años; TIR proyecto 21.5%"
 # coleccion: 17_viabilidad
 # variante: financiacion
 # nivel: 3
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -34,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -42,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -155,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -258,6 +263,54 @@ def anualidad_equivalente(VAN, k, n):
     '''Anualidad constante durante n años cuyo valor actual es VAN.'''
     return float(VAN * k / (1 - (1 + k) ** -n))
 
+_SUP = str.maketrans('0123456789-', '⁰¹²³⁴⁵⁶⁷⁸⁹⁻')
+def _num(x, d=1):
+    return f'{round(float(x), d) + 0.0:.{d}f}'.replace('-', '−')
+def _con_signo(x, d=1):
+    return f' − {_num(-x, d)}' if x < 0 else f' + {_num(x, d)}'
+
+def explica_van(flujos, k, unidad='k€', nombre='VAN'):
+    '''VAN término a término: Σ flujo_t / (1 + k)^t con los números sustituidos.'''
+    base = f'{1 + k:.6g}'
+    terminos = _num(flujos[0]) + ''.join(f' {"−" if f < 0 else "+"} {_num(abs(f))}/{base}{str(t).translate(_SUP)}' for t, f in enumerate(flujos) if t > 0)
+    actuales = _num(flujos[0]) + ''.join(_con_signo(f / (1 + k) ** t) for t, f in enumerate(flujos) if t > 0)
+    return f'{nombre} = Σ flujo_t/(1 + k)^t = {terminos} = {actuales} = **{_num(van(flujos, k))} {unidad}**'
+
+def explica_tir(flujos, unidad='k€'):
+    '''Cómo se obtiene la TIR: horquilla de dos tasas enteras con VAN de signo contrario, interpolación y comprobación.'''
+    r = tir(flujos)
+    a = np.floor(r * 100) / 100; b = a + 0.01
+    va, vb = van(flujos, a), van(flujos, b)
+    aprox = a + 0.01 * va / (va - vb)
+    return (f'La TIR es la tasa que anula el VAN. Probando tasas: VAN({a:.0%}) = {_num(va)} {unidad} y VAN({b:.0%}) = {_num(vb)} {unidad} tienen signo distinto, '
+            f'así que la TIR está entre {a:.0%} y {b:.0%}; interpolando linealmente, TIR ≈ {a:.0%} + 1 % × {_num(va)}/({_num(va)} − ({_num(vb)})) = {aprox:.2%}. '
+            f'Afinando (bisección, o =TIR(rango de flujos) en la hoja de cálculo): **TIR = {r:.2%}**. Comprobación: VAN({r:.2%}) = {abs(van(flujos, r)):.4f} ≈ 0.')
+
+def explica_payback(flujos, k=None, unidad='k€'):
+    '''Año en que el acumulado (simple o descontado) se hace positivo e interpolación lineal dentro de ese año.'''
+    acum, nombre = 0.0, 'acumulado' + ('' if k is None else ' descontado')
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return (f'el {nombre} pasa de {_num(acum)} (año {t - 1}) a {_num(acum + v)} (año {t}); dentro del año {t} se recuperan los {_num(-acum)} {unidad} '
+                    f'que faltaban con un flujo{"" if k is None else " descontado"} de {_num(v)}: payback = {t - 1} + {_num(-acum)}/{_num(v)} = **{t - 1 + (-acum) / v:.2f} años**')
+        acum += v
+    return f'el {nombre} no llega a ser positivo: la inversión no se recupera'
+
+def explica_van_mensual(pagos, F, N, km, unidad='k€'):
+    '''VAN mensual = VA de los ingresos (renta de N meses desde el mes T + 1) − VA de los desembolsos de los meses 1…T.'''
+    pagos = [float(x) for x in pagos]; T = len(pagos); base = f'{1 + km:.5f}'
+    va_des = sum(x / (1 + km) ** m for m, x in enumerate(pagos, 1))
+    a_N = (1 - (1 + km) ** -N) / km
+    va_ing = F * a_N * (1 + km) ** -T
+    t_des = ' + '.join(f'{_num(x)}/{base}{str(m).translate(_SUP)}' for m, x in list(enumerate(pagos, 1))[:3])
+    if T > 3:
+        t_des += f' + … + {_num(pagos[-1])}/{base}{str(T).translate(_SUP)}'
+    return (f'- VA de los desembolsos = Σ desembolso_m/(1 + k_m)^m = {t_des} = **{_num(va_des)} {unidad}**.\n'
+            f'- VA de los ingresos: renta de N = {N} meses de {_num(F)} {unidad} que empieza en el mes T + 1 = {T + 1}: '
+            f'F · [1 − (1 + k_m)^−N]/k_m · (1 + k_m)^−T = {_num(F)} × [1 − {base}^−{N}]/{km:.6f} × {base}^−{T} = {_num(F)} × {a_N:.3f} × {(1 + km) ** -T:.4f} = **{_num(va_ing)} {unidad}**.\n'
+            f'- VAN = {_num(va_ing)} − {_num(va_des)} = **{_num(va_ing - va_des)} {unidad}**.')
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -284,8 +337,8 @@ amortizacion = pd.Series([0] + [(I0 - VR) / n] * n, index=anos)
 BAI = EBITDA - amortizacion
 impuesto = BAI.clip(lower=0) * t_imp; impuesto[0] = 0
 BDI = BAI - impuesto
-circulante = pd.Series([w * ventas[1]] + [w * ventas[t] for t in range(1, n + 1)], index=anos)   # el del año 1 se aporta en t = 0
-variacion_circulante = circulante.diff().fillna(circulante[0]); variacion_circulante[n] -= circulante[n]   # se recupera al final
+circulante = pd.Series([w * ventas[t + 1] for t in range(n)] + [0], index=anos)   # saldo en el momento t: el que necesitan las ventas del año t + 1
+variacion_circulante = circulante.diff().fillna(circulante[0])   # aportaciones al principio de cada año; en t = n (saldo 0) se recupera todo
 inversion = pd.Series([I0] + [0] * n, index=anos)
 valor_residual = pd.Series([0] * n + [VR], index=anos)
 FCL = BDI + amortizacion - variacion_circulante - inversion + valor_residual
@@ -298,8 +351,24 @@ flujos = FCL.tolist()
 tabla.round(1).T
 
 # %%
+def _fcl_txt(t):
+    return (f'FCL_{t} = BDI + amortización − Δ circulante − inversión + valor residual = {_num(BDI[t])}{_con_signo(amortizacion[t])}'
+            f'{_con_signo(-variacion_circulante[t])}{_con_signo(-inversion[t])}{_con_signo(valor_residual[t])} = **{_num(FCL[t])}**')
+Markdown('Siglas: EBITDA, resultado antes de intereses, impuestos y amortizaciones; BAI, beneficio antes de impuestos; BDI, beneficio después de impuestos; '
+         'FCL, flujo de caja libre (lo que el proyecto deja disponible cada año, en k€). Cálculo detallado del año 1 y de los años 0 y n:\n\n'
+         f'- Ventas_1 = unidades × precio = {_num(unidades[1])} × {precio:g} = {_num(ventas[1])}; costes variables = {_num(unidades[1])} × {cv:g} = {_num(costes_variables[1])}; '
+         f'EBITDA_1 = {_num(ventas[1])} − {_num(costes_variables[1])} − {_num(CF)} = {_num(EBITDA[1])}.\n'
+         f'- Amortización anual = (I0 − VR)/n = ({_num(I0, 0)} − {_num(VR, 0)})/{n} = {_num(amortizacion[1])}; BAI_1 = {_num(EBITDA[1])} − {_num(amortizacion[1])} = {_num(BAI[1])}; '
+         f'impuesto_1 = {t_imp:g} × {_num(BAI[1])} = {_num(impuesto[1])}; BDI_1 = {_num(BAI[1])} − {_num(impuesto[1])} = {_num(BDI[1])}.\n'
+         f'- Circulante (se aporta al principio de cada año, es decir, al final del anterior): en t = 0 el del año 1, {w:g} × {_num(ventas[1])} = {_num(variacion_circulante[0])}; '
+         f'en cada momento t = 1…{n - 1}, el aumento que necesitan las ventas del año siguiente, {w:g} × (ventas_t+1 − ventas_t) '
+         f'(en t = 1: {w:g} × ({_num(ventas[2])} − {_num(ventas[1])}) = {_num(variacion_circulante[1])}); en t = {n} se recupera todo el circulante acumulado, {w:g} × {_num(ventas[n])} = {_num(w * ventas[n])}.\n'
+         f'- {_fcl_txt(0)}; {_fcl_txt(1)}; {_fcl_txt(n)}.')
+
+# %%
 VAN, TIR = van(flujos, k), tir(flujos)
-Markdown(f'VAN del proyecto = {VAN:.1f} k€ al {k:.0%}; TIR del proyecto = {TIR:.2%}.')
+Markdown(explica_van(flujos, k) + '.\n\n' + explica_tir(flujos)
+         + f'\n\n**Respuesta:** VAN del proyecto = {VAN:.1f} k€ al {k:.0%}; TIR del proyecto = {TIR:.2%}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -321,7 +390,11 @@ def cuadro_prestamo(P, i, n_p):
     return pd.DataFrame(filas).set_index('año')
 prestamo = alfa * I0
 cuadro = cuadro_prestamo(prestamo, i, n_p)
-display(Markdown(f'Préstamo = {alfa:.0%} × {I0:.0f} = {prestamo:.1f} k€; cuota = {prestamo:.1f} × {i} / (1 − (1 + {i})^−{n_p}) = {cuadro["cuota"].iloc[0]:.2f} k€.'))
+_c1 = cuadro.iloc[0]
+display(Markdown(f'Préstamo = {alfa:.0%} × {I0:.0f} = {prestamo:.1f} k€; cuota = {prestamo:.1f} × {i} / (1 − (1 + {i})^−{n_p}) = {_c1["cuota"]:.2f} k€. '
+                 f'Año 1: intereses = {i} × {prestamo:.2f} = {_c1["intereses"]:.2f}; amortización = {_c1["cuota"]:.2f} − {_c1["intereses"]:.2f} = {_c1["amortización"]:.2f}; '
+                 f'capital vivo = {prestamo:.2f} − {_c1["amortización"]:.2f} = {_c1["capital vivo"]:.2f}. Los años siguientes se calculan igual a partir del capital vivo del año anterior; '
+                 f'en el año {n_p} el capital vivo llega a 0 (la suma de las amortizaciones, {cuadro["amortización"].sum():.2f}, devuelve el préstamo).'))
 cuadro.round(2)
 
 # %% [markdown]
@@ -329,6 +402,9 @@ cuadro.round(2)
 
 # %%
 display(Markdown(pregunta_3))
+
+# %% [markdown]
+# El accionista recibe el préstamo en t = 0 (pone sólo el resto de la inversión), paga cada año la cuota y se ahorra el impuesto sobre los intereses (escudo fiscal = tipo impositivo × intereses). Su flujo se descuenta a la rentabilidad que exigen los socios.
 
 # %%
 def flujo_accionista(cuadro, prestamo):
@@ -344,7 +420,9 @@ detalle = pd.DataFrame({'FCL proyecto': flujos, '+ préstamo': [prestamo] + [0] 
                         'flujo del accionista': fa.tolist()}, index=pd.Index(range(n + 1), name='año'))
 display(detalle.round(1).T)
 VAN_acc, TIR_acc = van(fa.tolist(), ke), tir(fa.tolist())
-Markdown(f'VAN para el accionista (al {ke:.0%}) = {VAN_acc:.1f} k€; TIR del accionista = {TIR_acc:.2%}.')
+Markdown(f'Año 1: {flujos[1]:.1f} − {cuadro.loc[1, "cuota"]:.1f} + {t_imp} × {cuadro.loc[1, "intereses"]:.1f} = {fa[1]:.1f}. '
+         + explica_van(fa.tolist(), ke, nombre='VAN del accionista') + '.\n\n' + explica_tir(fa.tolist())
+         + f'\n\n**Respuesta:** VAN para el accionista (al {ke:.0%}) = {VAN_acc:.1f} k€; TIR del accionista = {TIR_acc:.2%}.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -356,7 +434,10 @@ display(Markdown(pregunta_4))
 i_alto = 0.31
 cuadro_alto = cuadro_prestamo(prestamo, i_alto, n_p)
 fa_alto = flujo_accionista(cuadro_alto, prestamo)
+TIR_alto = tir(fa_alto.tolist())
 coste_deuda_neto = i * (1 - t_imp); coste_alto_neto = i_alto * (1 - t_imp)
 display(pd.DataFrame({'proyecto (sin deuda)': {'TIR': TIR}, f'accionista, préstamo al {i:.0%}': {'TIR': TIR_acc},
-                      f'accionista, préstamo al {i_alto:.0%}': {'TIR': tir(fa_alto.tolist())}}).round(4))
-Markdown(f'''La deuda cuesta {i:.0%} ({coste_deuda_neto:.2%} tras impuestos), menos que la rentabilidad del proyecto ({TIR:.2%}): la diferencia se la queda el accionista, que ha puesto sólo el {1 - alfa:.0%} del capital, y su TIR sube a {TIR_acc:.2%}. Es el apalancamiento financiero positivo. Con el préstamo al {i_alto:.0%} ({coste_alto_neto:.2%} neto, por encima de la TIR del proyecto) el efecto se invierte: la TIR del accionista {"cae a" if tir(fa_alto.tolist()) < TIR else "baja a"} {tir(fa_alto.tolist()):.2%}{", por debajo de la del proyecto" if tir(fa_alto.tolist()) < TIR else ""}. La condición es que la rentabilidad del proyecto supere el coste de la deuda después de impuestos. El apalancamiento amplifica en los dos sentidos, y además concentra el riesgo: las cuotas se pagan aunque las ventas fallen.''')
+                      f'accionista, préstamo al {i_alto:.0%}': {'TIR': TIR_alto}}).style.format('{:.2%}'))
+display(Markdown(f'Con el préstamo al {i_alto:.0%}: cuota = {prestamo:.1f} × {i_alto} / (1 − (1 + {i_alto})^−{n_p}) = {cuadro_alto["cuota"].iloc[0]:.2f} k€; '
+                 'flujo del accionista = ' + ', '.join(f'{x:.1f}' for x in fa_alto) + '. ' + explica_tir(fa_alto.tolist())))
+Markdown(f'''**Respuesta:** la deuda cuesta {i:.0%}, es decir, {i} × (1 − {t_imp}) = {coste_deuda_neto:.2%} tras impuestos, menos que la rentabilidad del proyecto ({TIR:.2%}): la diferencia se la queda el accionista, que ha puesto sólo el {1 - alfa:.0%} del capital, y su TIR sube a {TIR_acc:.2%}. Es el apalancamiento financiero positivo. Con el préstamo al {i_alto:.0%} ({i_alto} × (1 − {t_imp}) = {coste_alto_neto:.2%} neto, por encima de la TIR del proyecto) el efecto se invierte: la TIR del accionista {"cae a" if TIR_alto < TIR_acc else "queda en"} {TIR_alto:.2%}{", por debajo de la del proyecto" if TIR_alto < TIR else ""}. La condición es que la rentabilidad del proyecto supere el coste de la deuda después de impuestos. El apalancamiento amplifica en los dos sentidos, y además concentra el riesgo: las cuotas se pagan aunque las ventas fallen.''')

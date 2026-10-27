@@ -25,6 +25,7 @@ from jupyter_tikz import TexFragment
 import os, sys
 from IPython.display import display, HTML, Markdown, Math
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 from scipy.stats import norm
 from handcalcs.decorator import handcalc
@@ -33,6 +34,8 @@ from handcalcs.decorator import handcalc
 sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, EarnedValue, pinta_tikz, plot_cargas, plot_curvas_valor_ganado
+from pmule import (explica_camino_critico, explica_probabilidad, explica_percentil, explica_sigma_ruta, ordena_ruta,
+                   plural, lista_y)
 
 # %%
 # %%capture
@@ -168,7 +171,11 @@ datos_proyecto = datos_enunciado.copy()
 datos_proyecto['duration'] = datos_proyecto.eval('(a + 4*m + b)/6').astype(int)
 datos_proyecto['standard_deviation'] = datos_proyecto.eval('(b - a)/6')
 datos_proyecto['variance'] = datos_proyecto['standard_deviation']**2
-datos_proyecto[['a', 'm', 'b', 'duration', 'standard_deviation', 'variance']].round(2)
+display(pd.DataFrame({
+    'D = (a + 4m + b)/6': [f"({r.a} + 4×{r.m} + {r.b})/6 = {r.duration}" for r in datos_proyecto.itertuples()],
+    'σ = (b − a)/6': [f"({r.b} − {r.a})/6 = {r.standard_deviation:.2f}" for r in datos_proyecto.itertuples()],
+    'σ²': [f"{r.standard_deviation:.2f}² = {r.variance:.2f}" for r in datos_proyecto.itertuples()],
+}, index=datos_proyecto.index))
 
 # %% [markdown]
 # Las actividades B (permisos) y E (helicóptero) tienen una estimación pesimista muy alejada de la más probable. La tramitación administrativa y los vuelos, que dependen de la meteorología, pueden retrasarse mucho, pero difícilmente adelantarse. Por eso son las actividades de mayor varianza.
@@ -178,7 +185,8 @@ datos_proyecto[['a', 'm', 'b', 'duration', 'standard_deviation', 'variance']].ro
 
 # %%
 BAC_total = int(datos_proyecto['BAC'].sum())
-Markdown(f"El presupuesto del proyecto se obtiene sumando los costes planificados de todas las actividades: **BAC = {BAC_total} k€**.")
+Markdown(f"El presupuesto del proyecto se obtiene sumando los costes planificados de todas las actividades: "
+         f"{' + '.join(str(v) for v in datos_proyecto['BAC'])} = **BAC = {BAC_total} k€**.")
 
 # %% [markdown]
 # ### Cuadro de prelaciones expandido
@@ -249,7 +257,7 @@ resultados_pert['activities'][['H_total']].T
 # Las actividades con holgura total nula forman el camino crítico:
 
 # %%
-proyecto.display_critical_path(durations=duraciones_medias)
+display(explica_camino_critico(proyecto, duraciones_medias, 'semanas'))
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -289,6 +297,11 @@ proyecto.display_calendario(duraciones_medias)
 #| label: fig-gantt
 gantt_df, dibujo = proyecto.gantt(datos_proyecto, 'duration', 'resources', total='fila', holguras=True, tikz=True)
 pinta_tikz(dibujo)
+display(Markdown(
+    f"**Respuesta:** duraciones medias y desviaciones típicas en la primera tabla; camino crítico "
+    + lista_y([' – '.join(ordena_ruta(r, proyecto.calendar(duraciones_medias))) for r in proyecto.critical_path(duraciones_medias).values()])
+    + f", con una duración media de {duracion_media_proyecto} semanas; calendario en la tabla y el Gantt anteriores; "
+    f"presupuesto BAC = {BAC_total} k€."))
 
 # %% [markdown]
 # {{< pagebreak >}}
@@ -311,7 +324,9 @@ desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=du
 varianza_caminos
 
 # %%
-Markdown(f"La duración del proyecto se modela entonces como $T \\sim N(\\mu={duracion_media_proyecto}, \\ \\sigma={desviacion_proyecto:.2f})$.")
+_rutas_crit = [ordena_ruta(r, proyecto.calendar(duraciones_medias)) for r in proyecto.critical_path(duraciones_medias).values()]
+Markdown("Desviación típica: " + "; ".join(explica_sigma_ruta(r, datos_proyecto['variance'], 2) for r in _rutas_crit) + ".\n\n"
+         f"La duración del proyecto se modela entonces como $T \\sim N(\\mu={duracion_media_proyecto}, \\ \\sigma={desviacion_proyecto:.2f})$.")
 
 # %% [markdown]
 # ### Probabilidad de terminar antes de la nevada
@@ -320,9 +335,11 @@ Markdown(f"La duración del proyecto se modela entonces como $T \\sim N(\\mu={du
 probabilidad_normal = norm.cdf(semana_nevada, loc=duracion_media_proyecto, scale=desviacion_proyecto)
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=semana_nevada)
-Markdown(f"""$P(T \\le {semana_nevada}) = \\Phi\\left(\\frac{{{semana_nevada} - {duracion_media_proyecto}}}{{{desviacion_proyecto:.2f}}}\\right) = $ **{probabilidad_normal*100:.1f}%**.
+Markdown(f"""{explica_probabilidad(duracion_media_proyecto, desviacion_proyecto, semana_nevada)}.
 
-La duración media del proyecto coincide con la semana de la nevada. Planificar así equivale a lanzar una moneda al aire.""")
+**Respuesta:** la probabilidad de terminar antes de la nevada es del **{probabilidad_normal*100:.1f}%**."""
+         + (" La duración media del proyecto coincide con la semana de la nevada. Planificar así equivale a lanzar una moneda al aire."
+            if duracion_media_proyecto == semana_nevada else ""))
 
 # %% [markdown]
 # ### Duración comprometida con un 90% de confianza
@@ -331,9 +348,10 @@ La duración media del proyecto coincide con la semana de la nevada. Planificar 
 duracion_comprometida_normal = norm.ppf(probabilidad_objetivo, loc=duracion_media_proyecto, scale=desviacion_proyecto)
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, percentil=probabilidad_objetivo)
-Markdown(f"""$T_{{{int(probabilidad_objetivo*100)}}} = \\mu + z_{{{probabilidad_objetivo}}}\\,\\sigma = {duracion_media_proyecto} + {norm.ppf(probabilidad_objetivo):.4f} \\times {desviacion_proyecto:.2f} = $ **{duracion_comprometida_normal:.2f} semanas**.
+Markdown(f"""{explica_percentil(duracion_media_proyecto, desviacion_proyecto, probabilidad_objetivo, 'semanas')}.
 
-Esa fecha cae más de dos semanas después de la nevada.""")
+**Respuesta:** con un {int(probabilidad_objetivo*100)}% de confianza puede comprometerse una duración de **{duracion_comprometida_normal:.2f} semanas**,
+{duracion_comprometida_normal - semana_nevada:.2f} semanas después de la nevada de la semana {semana_nevada}.""")
 
 # %% [markdown]
 # {{< pagebreak >}}
@@ -532,7 +550,10 @@ proyecto.display_ackoff_pasos_tikz(
     reduction=semanas_necesarias)
 
 # %%
-Markdown(f"""Reducir {semanas_necesarias - 1} semanas deja la probabilidad en {analisis[semanas_necesarias - 1]['probabilidad']*100:.1f}%, que se queda justo por debajo del objetivo. Hay que reducir **{semanas_necesarias} semanas**, acortando las actividades {opcion_90['reducidas']}. El sobrecoste es de **{opcion_90['sobrecoste']} k€** y la probabilidad de terminar antes de la nevada pasa a ser del **{opcion_90['probabilidad']*100:.1f}%**.""")
+_ant = analisis[semanas_necesarias - 1]
+Markdown(f"""Cada fila de la tabla anterior aplica una iteración más del algoritmo (se acorta una semana la combinación de actividades críticas de menor coste) y recalcula la probabilidad. Por ejemplo, con {semanas_necesarias - 1} semanas: {explica_probabilidad(_ant['duracion'], _ant['desviacion'], semana_nevada)}; con {semanas_necesarias}: {explica_probabilidad(opcion_90['duracion'], opcion_90['desviacion'], semana_nevada)}.
+
+Reducir {semanas_necesarias - 1} semanas deja la probabilidad en {analisis[semanas_necesarias - 1]['probabilidad']*100:.1f}%, que se queda justo por debajo del objetivo. Hay que reducir **{semanas_necesarias} semanas**, acortando las actividades {opcion_90['reducidas']}. El sobrecoste es de {' + '.join(format(datos_proyecto.loc[a.strip(), 'ucr'], 'g') for a in opcion_90['reducidas'].split(','))} = **{opcion_90['sobrecoste']} k€** y la probabilidad de terminar antes de la nevada pasa a ser del **{opcion_90['probabilidad']*100:.1f}%**.""")
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -571,7 +592,8 @@ plt.show()
 
 # %%
 semanas_optimas = int(coste_esperado['Coste total esperado (k€)'].astype(float).idxmin())
-Markdown(f"""El coste total esperado es mínimo con **{semanas_optimas} semanas de reducción**: {coste_esperado.loc[semanas_optimas, 'Coste total esperado (k€)']} k€.
+_r_opt = analisis[semanas_optimas]
+Markdown(f"""El coste total esperado es mínimo con **{semanas_optimas} semanas de reducción**: {_r_opt['sobrecoste']:g} + (1 − {_r_opt['probabilidad']:.4f}) × {penalizacion_nevada} = {coste_esperado.loc[semanas_optimas, 'Coste total esperado (k€)']} k€.
 
 Los dos criterios no tienen por qué coincidir. El criterio del {int(probabilidad_objetivo*100)}% impone un nivel de riesgo fijado de antemano. El criterio del coste esperado compara directamente el precio de cada semana con lo que esa semana ahorra en penalización esperada. A partir de cierto punto, cada semana adicional cuesta más de lo que ahorra en riesgo, porque la penalización esperada ya es pequeña y las actividades que quedan por reducir son cada vez más caras.""")
 
@@ -622,9 +644,15 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto original con indicación del límite de operarios"
 #| label: fig-preAsignacionBarras
 plot_cargas(gantt_df, limite_maximo_recursos)
+_carga0 = pd.to_numeric(gantt_df.data.loc['Total'].drop('H_total', errors='ignore'), errors='coerce').dropna()
+_lim = lambda p: limite_maximo_recursos[min(int(p), len(limite_maximo_recursos)) - 1]
+_exc = [(p, c, _lim(p)) for p, c in _carga0.items() if c > _lim(p)]
+display(Markdown("Con todas las actividades en su fecha más temprana, la demanda supera el límite en "
+                 + lista_y([f"la semana {p} ({c:g} > {l})" for p, c, l in _exc]) + "." if _exc else
+                 "La demanda no supera el límite en ninguna semana."))
 
 # %% [markdown]
-# La demanda supera el límite de operarios durante las primeras semanas. Es necesario aplicar el algoritmo de asignación.
+# La demanda supera el límite de operarios en las semanas indicadas debajo del diagrama de cargas. Es necesario aplicar el algoritmo de asignación.
 
 # %% [markdown]
 # ### Algoritmo de asignación de Wiest-Levy
@@ -657,6 +685,16 @@ if retraso > 0:
 La escasez de operarios al inicio es, por tanto, un riesgo serio. Las alternativas son contratar operarios adicionales durante esas semanas o combinar la asignación con la reducción del apartado 4. Esta segunda opción tiene un coste que podría compararse con el de contratar."""
 else:
     conclusion = f"""Tras la asignación, la duración media del proyecto se mantiene en **{duracion_tras_asignar} semanas**. Las actividades desplazadas han consumido holgura, así que el proyecto cumple la restricción de operarios sin retrasarse. A cambio, ahora hay más actividades críticas y el riesgo frente a la nevada aumenta, aunque la duración media no cambie."""
+_cal0 = proyecto.calendar(duraciones_medias)
+_gd = gantt_df.data
+_per = [c for c in _gd.columns if str(c) != 'H_total']
+_ini = {a: int(min(c for c in _per if pd.notna(pd.to_numeric(_gd.loc[a, c], errors='coerce')))) - 1 for a in datos_proyecto.index}
+_ret = {a: _ini[a] - int(_cal0.loc[a, 'inicio_mas_temprano']) for a in datos_proyecto.index if _ini[a] > _cal0.loc[a, 'inicio_mas_temprano']}
+display(Markdown("**Replanificación:** se retrasan "
+                 + lista_y([f"{a} {plural(r, 'semana')} (empieza en la semana {_ini[a]} en lugar de la {int(_cal0.loc[a, 'inicio_mas_temprano'])}; "
+                            f"holgura total {int(_cal0.loc[a, 'H_total'])})" for a, r in _ret.items()])
+                 + f". Probabilidad de terminar antes de la nevada: "
+                 + explica_probabilidad(duracion_tras_asignar, desviacion_proyecto, semana_nevada) + "."))
 Markdown(conclusion)
 
 # %% [markdown]
@@ -718,10 +756,11 @@ AC = float(datos_valor_ganado['AC'].sum())
 BAC = float(BAC_total)
 
 # %%
+_dv = datos_valor_ganado
 Markdown(f"""En la semana {semana_control}:
-- PV = {PV:.1f} k€ (valor acumulado de la planificación original en la semana {semana_control})
-- EV = Σ BAC · % realizado = {EV:.1f} k€
-- AC = {AC:.1f} k€
+- PV = {PV:.1f} k€ (valor acumulado de la planificación original en la semana {semana_control}: fila *Acumulado* del Gantt PV)
+- EV = Σ BAC · % realizado = {' + '.join(f"{b}×{p/100:g}" for b, p in zip(_dv['BAC'], _dv['performed']) if p > 0)} = {EV:.1f} k€
+- AC = {' + '.join(str(v) for v in _dv['AC'] if v > 0)} = {AC:.1f} k€
 - BAC = {BAC:.0f} k€  """)
 
 # %%
@@ -779,6 +818,8 @@ ES = C + (EV - PV_C) / (PV_C1 - PV_C)
 IEAC_t = PD / (ES / AT)
 Markdown(f"""El valor ganado hasta ahora ({EV:.1f} k€) se había previsto alcanzar en la semana {ES:.2f}. El proyecto acumula por tanto un retraso de **{AT - ES:.2f} semanas**. Si el ritmo actual se mantiene, la duración prevista es de **{IEAC_t:.1f} semanas**, **después de la nevada de la semana {semana_nevada}**.
 
-Aunque aún faltan once semanas, la previsión es clara: con este ritmo, el refugio no se terminará a tiempo. Conviene poner en marcha ya las medidas de reducción del apartado 4 sobre las actividades que quedan: G, J, K y L son reducibles. Además, la actividad crítica G todavía no ha empezado, porque la cimentación (F) no ha terminado.""")
+**Respuesta:** PV = {PV:.1f} k€, EV = {EV:.1f} k€, AC = {AC:.1f} k€, CPI = {CPI:.2f}, SPI = {SPI:.2f}, EAC = {EAC:.0f} k€; duración prevista {IEAC_t:.1f} semanas: {'el refugio no llegará a tiempo' if IEAC_t > semana_nevada else 'el refugio llegaría a tiempo'} si no se actúa.
+
+Aunque aún faltan {plural(semana_nevada - semana_control, 'semana')} para la nevada, la previsión es clara: con este ritmo, el refugio no se terminará a tiempo. Conviene poner en marcha ya las medidas de reducción del apartado 4 sobre las actividades que quedan sin empezar: {lista_y([a for a in datos_proyecto.index if datos_seguimiento.loc[a, 'performed'] == 0 and np.isfinite(datos_proyecto.loc[a, 'ucr']) and datos_proyecto.loc[a, 'duration'] > datos_proyecto.loc[a, 'cap_duration']])} son reducibles. Además, la actividad crítica G todavía no ha empezado, porque la cimentación (F) no ha terminado ({datos_seguimiento.loc['F', 'performed']}% realizado).""")
 
 # %%

@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -221,7 +225,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la rehabilitación de una nave industrial para un taller; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+# El proyecto corresponde a la rehabilitación de una nave industrial para un taller; las actividades son las siguientes (las duraciones del cuadro están en días).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -254,15 +258,12 @@ festivos = [np.datetime64('2026-05-12'), np.datetime64('2026-05-27')]
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con tiempos de los nodos y camino crítico"
 #| label: fig-grafo
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
@@ -270,7 +271,14 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = proyecto.duration(datos_proyecto['duration'])
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']].rename(columns={
+    'inicio_mas_temprano': 'inicio más temprano (ES)', 'fin_mas_temprano': 'fin más temprano (EF)',
+    'inicio_mas_tardio': 'inicio más tardío (LS)', 'fin_mas_tardio': 'fin más tardío (LF)', 'H_total': 'holgura total'})
+
+# %%
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'días laborables'))
+Markdown(f'**Respuesta:** el calendario es el de la tabla (en días laborables contados desde 0, el inicio del proyecto); '
+         f'el proyecto dura {duracion} días laborables.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -279,11 +287,34 @@ calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# El día laborable $k$ (contando desde 0) es `busday_offset(inicio, k)`, que salta fines de semana y festivos. Una actividad que empieza en el laborable ES y dura d ocupa los laborables ES, …, ES + d − 1: su último día trabajado es `busday_offset(inicio, EF − 1)`.
+# El calendario en días laborables cuenta los días trabajados desde 0. Para pasarlo a fechas se numeran los días laborables reales a partir de la fecha de inicio, saltando fines de semana y festivos: el día laborable $k$ es la fecha `busday_offset(inicio, k)`. Una actividad que empieza en el laborable ES y dura d ocupa los laborables ES, …, ES + d − 1: su primer día trabajado es la fecha del laborable ES y el último, la del laborable EF − 1. La tabla siguiente da esa correspondencia semana a semana (F = festivo, — = fin de semana).
 
 # %%
 def fecha(k):
     return np.busday_offset(inicio, int(k), roll='forward', holidays=festivos)
+DIAS = {'Monday': 'lunes', 'Tuesday': 'martes', 'Wednesday': 'miércoles', 'Thursday': 'jueves', 'Friday': 'viernes', 'Saturday': 'sábado', 'Sunday': 'domingo'}
+fin_proyecto = fecha(duracion - 1)
+_filas, _k = {}, 0
+_lunes = inicio
+while _lunes <= fin_proyecto:
+    fila = {}
+    for j, nombre in enumerate(['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']):
+        dia = _lunes + np.timedelta64(j, 'D')
+        if j >= 5:
+            fila[nombre] = '—'
+        elif dia in festivos:
+            fila[nombre] = f'{str(dia)[8:]}: F'
+        elif dia <= fin_proyecto:
+            fila[nombre] = f'{str(dia)[8:]}: k={_k}'; _k += 1
+        else:
+            fila[nombre] = ''
+    _filas[f'semana del {_lunes}'] = fila
+    _lunes = _lunes + np.timedelta64(7, 'D')
+pd.DataFrame(_filas).T
+
+# %%
+#| tbl-cap: "Fechas de inicio y fin (último día trabajado) de cada actividad"
+#| label: tbl-fechas
 fechas = pd.DataFrame({
     'inicio temprano': [fecha(k) for k in calendario['inicio_mas_temprano']],
     'fin temprano': [fecha(k - 1) for k in calendario['fin_mas_temprano']],
@@ -292,11 +323,13 @@ fechas = pd.DataFrame({
 fechas
 
 # %%
-DIAS = {'Monday': 'lunes', 'Tuesday': 'martes', 'Wednesday': 'miércoles', 'Thursday': 'jueves', 'Friday': 'viernes', 'Saturday': 'sábado', 'Sunday': 'domingo'}
-fin_proyecto = fecha(duracion - 1)
 dias_naturales = int((fin_proyecto - inicio).astype(int)) + 1
-Markdown(f'El proyecto termina el {fin_proyecto} ({DIAS[pd.Timestamp(fin_proyecto).day_name()]}): {duracion} días laborables son {dias_naturales} días naturales, '
-         f'{dias_naturales - duracion} de ellos no trabajados ({int(np.busday_count(inicio, fin_proyecto + np.timedelta64(1, "D"), weekmask="Sat Sun"))} de fin de semana y {len([f for f in festivos if inicio <= f <= fin_proyecto])} festivos).')
+_finde = int(np.busday_count(inicio, fin_proyecto + np.timedelta64(1, 'D'), weekmask='Sat Sun'))
+_fest = [f for f in festivos if inicio <= f <= fin_proyecto]
+Markdown(f'**Respuesta:** el proyecto termina el {fin_proyecto} ({DIAS[pd.Timestamp(fin_proyecto).day_name()]}), fecha del día laborable T − 1 = {duracion} − 1 = {duracion - 1}. '
+         f'Dura {dias_naturales} días naturales (del {inicio} al {fin_proyecto}, ambos incluidos: {fin_proyecto} − {inicio} + 1): '
+         f'{duracion} laborables + {plural(_finde, "día")} de fin de semana + {plural(len(_fest), "festivo")}'
+         + (f' ({lista_y([str(f) for f in _fest])})' if _fest else '') + '.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -304,17 +337,30 @@ Markdown(f'El proyecto termina el {fin_proyecto} ({DIAS[pd.Timestamp(fin_proyect
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Una actividad atraviesa un día no laborable si alguno cae entre su primer y su último día trabajado. Su duración en días laborables no cambia (se interrumpe ese día y sigue al siguiente laborable); sólo se estira en días naturales.
+
 # %%
-def dias_no_laborables(ini, fin):
+def no_laborables(ini, fin):
+    ini, fin = np.datetime64(pd.Timestamp(ini), 'D'), np.datetime64(pd.Timestamp(fin), 'D')
     todos = np.arange(ini, fin + np.timedelta64(1, 'D'), dtype='datetime64[D]')
-    return int(sum(1 for x in todos if not np.is_busday(x, holidays=festivos)))
+    return [x for x in todos if not np.is_busday(x, holidays=festivos)]
 criticas = calendario.index[calendario['H_total'] == 0]
+_nl = {a: no_laborables(fechas.loc[a, 'inicio temprano'], fechas.loc[a, 'fin temprano']) for a in criticas}
 cruce = pd.DataFrame({'inicio': fechas.loc[criticas, 'inicio temprano'], 'fin': fechas.loc[criticas, 'fin temprano'],
-                      'días no laborables que atraviesa': [dias_no_laborables(fechas.loc[a, 'inicio temprano'], fechas.loc[a, 'fin temprano']) for a in criticas],
-                      'incluye festivo': [any(fechas.loc[a, 'inicio temprano'] <= f <= fechas.loc[a, 'fin temprano'] for f in festivos) for a in criticas]})
+                      'duración (laborables)': datos_proyecto.loc[criticas, 'duration'],
+                      'días naturales': [(pd.Timestamp(fechas.loc[a, 'fin temprano']) - pd.Timestamp(fechas.loc[a, 'inicio temprano'])).days + 1 for a in criticas],
+                      'días no laborables que atraviesa': [len(_nl[a]) for a in criticas],
+                      'festivos que atraviesa': [', '.join(str(x) for x in _nl[a] if x in festivos) or '—' for a in criticas]})
 display(cruce)
-Markdown('La duración en días laborables no cambia: los festivos y fines de semana sólo estiran la actividad en el calendario natural. '
-         'La fecha de fin del proyecto sí depende de cuántos días no laborables caen dentro del horizonte, estén donde estén.')
+_con_finde = [a for a in criticas if any(x not in festivos for x in _nl[a])]
+_con_fest = [a for a in criticas if any(x in festivos for x in _nl[a])]
+_sin_fest = np.busday_offset(inicio, duracion - 1, roll='forward')
+Markdown(f'**Respuesta:** actividades críticas que atraviesan un fin de semana: {lista_y(_con_finde)}; un festivo: {lista_y(_con_fest)}. '
+         'Su duración en días laborables no cambia: sólo se estira en días naturales (compárense las dos columnas de duración). '
+         + (f'La fecha de fin del proyecto sí cambia: sin festivos terminaría el {_sin_fest}; con ellos, el {fin_proyecto}. '
+            'Cuenta cualquier festivo que caiga entre el inicio y el fin del proyecto, esté o no dentro de una actividad crítica, porque ese día no se trabaja en ninguna.'
+            if _sin_fest != fin_proyecto else f'La fecha de fin del proyecto ({fin_proyecto}) no cambia por los festivos porque ninguno cae entre el inicio y el fin del proyecto; los fines de semana sí la alejan.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -322,13 +368,27 @@ Markdown('La duración en días laborables no cambia: los festivos y fines de se
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Con un festivo más, el día laborable $k$ cae en otra fecha para todos los $k$ posteriores al festivo: se recalculan las fechas con la nueva lista de festivos.
+
 # %%
 festivo_extra = np.datetime64('2026-05-29')
 festivos2 = sorted(festivos + [festivo_extra])
 def fecha2(k):
     return np.busday_offset(inicio, int(k), roll='forward', holidays=festivos2)
-fechas2 = pd.DataFrame({'fin temprano (antes)': fechas['fin temprano'], 'fin temprano (con el nuevo festivo)': [fecha2(k - 1) for k in calendario['fin_mas_temprano']]})
-fechas2['cambia'] = fechas2.iloc[:, 0] != fechas2.iloc[:, 1]
+fechas2 = pd.DataFrame({'inicio temprano (antes)': fechas['inicio temprano'], 'inicio temprano (nuevo)': [fecha2(k) for k in calendario['inicio_mas_temprano']],
+                        'fin temprano (antes)': fechas['fin temprano'], 'fin temprano (nuevo)': [fecha2(k - 1) for k in calendario['fin_mas_temprano']]})
+fechas2['cambia'] = ((fechas2.iloc[:, 0] != fechas2.iloc[:, 1]) | (fechas2.iloc[:, 2] != fechas2.iloc[:, 3])).map({True: 'sí', False: 'no'})
 display(fechas2)
 fin2 = fecha2(duracion - 1)
-Markdown(f'''El nuevo festivo desplaza un día natural todas las fechas posteriores a él ({", ".join(fechas2.index[fechas2["cambia"]])}), críticas o no: la entrega pasa del {fin_proyecto} al {fin2}. No depende de la criticidad, porque el festivo no consume días laborables de ninguna actividad: desplaza el calendario entero. Sólo si el festivo cayera después del fin del proyecto no afectaría.''')
+_cambian = fechas2.index[fechas2['cambia'] == 'sí'].tolist()
+_igual = fechas2.index[fechas2['cambia'] == 'no'].tolist()
+_retraso = int((fin2 - fin_proyecto).astype(int))
+_dia = DIAS[pd.Timestamp(festivo_extra).day_name()]
+_en = [a for a in calendario.index if fechas.loc[a, 'inicio temprano'] <= festivo_extra <= fechas.loc[a, 'fin temprano']]
+Markdown(f'El nuevo festivo ({_dia} {festivo_extra}) retrasa un día laborable todas las fechas iguales o posteriores a él; las anteriores no cambian. '
+         f'**Respuesta:** cambian las fechas de {lista_y(_cambian)}' + (f'; no cambian las de {lista_y(_igual)}, que termina{"n" if len(_igual) > 1 else ""} antes del festivo' if _igual else '') + '. '
+         f'La entrega pasa del {fin_proyecto} al {fin2}: {plural(_retraso, "día natural", "días naturales")} de retraso (un día laborable'
+         + (', que en días naturales son más porque por medio hay días no laborables)' if _retraso > 1 else ')') + '. '
+         + (f'En el calendario temprano el festivo cae dentro de {lista_y(_en)}, ' if _en else 'En el calendario temprano el festivo no cae dentro de ninguna actividad, ')
+         + 'pero eso da igual: no depende de la criticidad, porque el festivo no se trabaja en ninguna actividad y desplaza todo el calendario posterior. Sólo no afectaría a la entrega si cayera después del fin del proyecto.')

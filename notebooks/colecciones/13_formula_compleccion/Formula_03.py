@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -223,7 +227,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la organización de un congreso científico; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+# El proyecto corresponde a la organización de un congreso científico; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -261,6 +265,40 @@ proyecto = prelaciones.create_project()
 R = proyecto.path_matrix(dummies=False)
 t = datos_proyecto['duration'][R.columns]
 
+# %%
+def _num(x, dec=0):
+    x = float(x)
+    return (f'{x:.{dec}f}' if dec else f'{x:g}').replace('-', '−')
+
+
+def producto_Rt(proyecto, R, t, base, decimales=0):
+    """Cada fila de R por el vector t: (R·t)_r = Σ_i R_ri·t_i, con los términos no nulos (actividades de la
+    ruta, en orden de ejecución) y el valor; marca las filas que dan el máximo."""
+    cal = proyecto.calendar(base)
+    orden = {a: k for k, a in enumerate(ordena_ruta(list(R.columns), cal))}
+    filas = {}
+    for r in R.index:
+        acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: orden.get(a, 0))
+        total = float(sum(float(t[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    'fila de R · t = suma': ' + '.join(f'{a}({_num(t[a], decimales)})' for a in acts) + f' = {_num(total, decimales)}',
+                    'R·t': total}
+    tabla = pd.DataFrame(filas).T
+    tabla['R·t'] = tabla['R·t'].astype(float)
+    tabla['máximo'] = np.where(np.isclose(tabla['R·t'], tabla['R·t'].max()), '← τ', '')
+    return tabla
+
+
+def explica_tau(tabla, unidad='', decimales=0, nombre='τ'):
+    """«τ = ‖R·t‖∞ = máx(19, 20, 17) = 20, que da la ruta Route_2 (A – C – E)»."""
+    v = tabla['R·t']
+    T = float(v.max())
+    rutas = [f"{r} ({tabla.loc[r, 'actividades']})" for r in v.index if np.isclose(v[r], T)]
+    u = f' {unidad}' if unidad else ''
+    quien = (f'que corresponde a la ruta {rutas[0]}' if len(rutas) == 1
+             else f'alcanzado a la vez por {len(rutas)} rutas: {lista_y(rutas)}')
+    return (f"{nombre} = ‖R·t‖∞ = máx({', '.join(_num(x, decimales) for x in v)}) = **{_num(T, decimales)}{u}**, {quien}")
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -278,7 +316,7 @@ u1, v1 = U[:, 0], Vt[0, :]
 if u1.sum() < 0:
     u1, v1 = -u1, -v1          # R es no negativa: u1 y v1 pueden tomarse no negativos
 display(Math(r'\Sigma = ' + bmatrix(np.diag(S), dec=2)))
-Markdown(f'σ₁ = {S[0]:.3f}, σ₂ = {S[1]:.3f}; σ₁/σ₂ = {S[0]/S[1]:.2f}.')
+Markdown(f'**Respuesta:** valores singulares {", ".join(f"{x:.3f}" for x in S)}; σ₁/σ₂ = {S[0]:.3f}/{S[1]:.3f} = **{S[0]/S[1]:.2f}**.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -293,8 +331,12 @@ apariciones = R.sum()
 display(pd.DataFrame({'v₁': peso_actividades.round(3), 'rutas en las que aparece': apariciones[peso_actividades.index]}).T)
 pd.DataFrame({'u₁': peso_rutas.round(3), 'actividades': [' - '.join(R.columns[R.loc[r] == 1]) for r in peso_rutas.index], 'nº actividades': R.loc[peso_rutas.index].sum(axis=1)})
 
-# %% [markdown]
-# Las actividades con mayor $v_1$ son las que aparecen en más rutas, sobre todo en las rutas largas y con muchas actividades compartidas (las que a su vez tienen mayor $u_1$): $v_1$ es una medida de centralidad estructural. Las actividades iniciales o finales únicas aparecen en todas las rutas y encabezan la lista.
+# %%
+en_todas = [a for a in R.columns if apariciones[a] == R.shape[0]]
+top = list(peso_actividades.index[:3])
+t_todas = (f'{lista_y(en_todas)} {"aparece" if len(en_todas) == 1 else "aparecen"} en las {R.shape[0]} rutas y '
+           f'{"encabeza" if len(en_todas) == 1 else "encabezan"} la lista. ' if en_todas else 'Ninguna actividad está en todas las rutas. ')
+Markdown(f'''**Respuesta:** las mejor situadas son {lista_y([f"{a} (v₁ = {peso_actividades[a]:.3f}, en {int(apariciones[a])} rutas)" for a in top])}: lo que tienen en común es que aparecen en muchas rutas, sobre todo en las rutas largas y con muchas actividades compartidas (las de mayor u₁: {peso_rutas.index[0]}, con {int(R.loc[peso_rutas.index[0]].sum())} actividades). {t_todas}v₁ es una medida de centralidad estructural: no depende de las duraciones.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -302,10 +344,16 @@ pd.DataFrame({'u₁': peso_rutas.round(3), 'actividades': [' - '.join(R.columns[
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# τ exacto: cada fila de $R$ por $t$ es la duración de una ruta, y τ es la mayor.
+
 # %%
+producto = producto_Rt(proyecto, R, t, datos_proyecto['duration'])
+display(producto)
 tau = float((R @ t).max())
 tau_1 = float(S[0] * u1.max() * (v1 @ t.values))
-Markdown(f'τ = {tau:.0f}; aproximación de rango 1: τ₁ = {S[0]:.3f} × {u1.max():.3f} × {v1 @ t.values:.3f} = {tau_1:.2f}; error relativo {abs(tau_1 - tau) / tau * 100:.1f} %.')
+v1t = ' + '.join(f'{x:.3f}·{int(d)}' for x, d in zip(v1, t.values))
+Markdown(f'''**Respuesta:** {explica_tau(producto)}. Aproximación de rango 1: v₁ᵀt = {v1t} = {v1 @ t.values:.3f}, y τ₁ = σ₁ · máx(u₁) · (v₁ᵀ t) = {S[0]:.3f} × {u1.max():.3f} × {v1 @ t.values:.3f} = **{tau_1:.2f}**. Error relativo = |τ₁ − τ|/τ = |{tau_1:.2f} − {tau:.0f}|/{tau:.0f} = **{abs(tau_1 - tau) / tau * 100:.1f} %**.''')
 
 # %% [markdown]
 # La aproximación sustituye cada fila de $R$ por un múltiplo de $v_1$: funciona bien cuando las rutas se parecen entre sí (σ₁ ≫ σ₂) y peor cuando el proyecto tiene varias ramas muy distintas. El τ exacto es siempre la norma infinito de $R\,t$; la SVD es un resumen.
@@ -321,7 +369,12 @@ criticas = set(a for acts in proyecto.critical_path(datos_proyecto['duration']).
 k = len(criticas)
 top_k = list(peso_actividades.index[:k])
 precision = len(set(top_k) & criticas) / k
-pd.DataFrame({'ranking por v₁': peso_actividades.index, 'crítica': [a in criticas for a in peso_actividades.index]}).set_index('ranking por v₁').T
+pd.DataFrame({'ranking por v₁': peso_actividades.index, 'v₁': peso_actividades.round(3).values,
+              'crítica': ['sí' if a in criticas else 'no' for a in peso_actividades.index]}).set_index('ranking por v₁').T
 
 # %%
-Markdown(f'''La actividad mejor clasificada, {peso_actividades.index[0]}, {"es" if peso_actividades.index[0] in criticas else "no es"} crítica. Entre las {k} primeras hay {len(set(top_k) & criticas)} críticas (precisión {precision:.2f}). La SVD sólo ve la estructura: una actividad por la que pasan muchas rutas tiene muchas ocasiones de estar en la más larga, sea cual sea el vector de duraciones; por eso acierta a menudo, pero no siempre, porque la ruta crítica concreta la fijan las duraciones.''')
+corte = peso_actividades.iloc[k - 1]
+empate_corte = k < len(peso_actividades) and np.isclose(peso_actividades.iloc[k], corte)
+nota = (f' Ojo: en el puesto {k} hay un empate de v₁ ({corte:.3f}) con actividades que quedan fuera, así que la precisión depende de cómo se ordenen los empatados.'
+        if empate_corte else '')
+Markdown(f'''**Respuesta:** la actividad mejor clasificada, {peso_actividades.index[0]}, {"es" if peso_actividades.index[0] in criticas else "no es"} crítica. Hay k = {k} actividades críticas ({lista_y(ordena_ruta(sorted(criticas), proyecto.calendar(datos_proyecto['duration'])))}); entre las {k} primeras del ranking ({lista_y(top_k)}) hay {len(set(top_k) & criticas)} críticas: precisión {len(set(top_k) & criticas)}/{k} = **{precision:.2f}**.{nota} La SVD sólo ve la estructura: una actividad por la que pasan muchas rutas tiene muchas ocasiones de estar en la más larga, sea cual sea el vector de duraciones; por eso acierta a menudo, pero no siempre, porque la ruta crítica concreta la fijan las duraciones.''')

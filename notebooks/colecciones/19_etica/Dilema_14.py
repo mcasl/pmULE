@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -243,6 +247,65 @@ def indicadores(vg):
     t.loc['Total'] = t.sum(); t.loc['Total', 'CPI'] = t.loc['Total', 'EV'] / t.loc['Total', 'AC']
     return t
 coste_horas = horas * tarifa / 1000
+pA, pB = vg.index[0], vg.index[1]
+nA, nB = pA.split()[0], pB.split()[0]
+
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
 
 # %% [markdown]
 # ## Apartado 1
@@ -250,12 +313,23 @@ coste_horas = horas * tarifa / 1000
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Notación: BAC, presupuesto; PV, EV y AC, valor planificado, valor ganado y coste real en la fecha de control; CV = EV − AC; CPI = EV / AC; EAC = BAC / CPI (coste final previsto si se mantiene el CPI); VAC = BAC − EAC. En la fila «Total», EAC y VAC son la suma de las previsiones de los dos proyectos.
+
 # %%
 #| tbl-cap: "Indicadores con los datos reales"
 #| label: tbl-reales
 reales = indicadores(vg)
-display(reales.round(2))
-Markdown(f'''Horas a reimputar: {horas} × {tarifa} € = **{coste_horas:.1f} k€**. A: CPI {reales.iloc[0]["CPI"]:.2f}, previsión de coste final {reales.iloc[0]["EAC = BAC / CPI"]:.0f} k€ sobre {reales.iloc[0]["BAC"]:.0f} de subvención.''')
+reales.round(3)
+
+# %%
+Markdown(f'''{explica_indicadores(dict(PV=vg.loc[pA, 'PV'], EV=vg.loc[pA, 'EV'], AC=vg.loc[pA, 'AC']), float(vg.loc[pA, 'BAC']), '**' + pA + ':**')}
+
+{explica_indicadores(dict(PV=vg.loc[pB, 'PV'], EV=vg.loc[pB, 'EV'], AC=vg.loc[pB, 'AC']), float(vg.loc[pB, 'BAC']), '**' + pB + ':**')}
+
+Importe de las horas que se quieren reimputar: {horas} h × {tarifa} €/h = {horas * tarifa} € = **{coste_horas:.1f} k€**.
+
+**Respuesta.** {nA}: CV = {reales.loc[pA, 'CV']:.1f} k€, CPI = {reales.loc[pA, 'CPI']:.3f}, EAC = {reales.loc[pA, 'EAC = BAC / CPI']:.1f} k€ y VAC = {reales.loc[pA, 'VAC']:.1f} k€ (la subvención cubre hasta {vg.loc[pA, 'BAC']:g} k€). {nB}: CV = {reales.loc[pB, 'CV']:.1f} k€, CPI = {reales.loc[pB, 'CPI']:.3f}, EAC = {reales.loc[pB, 'EAC = BAC / CPI']:.1f} k€ y VAC = {reales.loc[pB, 'VAC']:.1f} k€. Las horas a reimputar valen {coste_horas:.1f} k€.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -266,12 +340,20 @@ display(Markdown(pregunta_2))
 # %%
 #| tbl-cap: "Indicadores tras reimputar las horas de A a B"
 #| label: tbl-reimputado
-vg2 = vg.copy(); vg2.iloc[0, vg2.columns.get_loc('AC')] -= coste_horas; vg2.iloc[1, vg2.columns.get_loc('AC')] += coste_horas
+vg2 = vg.copy(); vg2.loc[pA, 'AC'] -= coste_horas; vg2.loc[pB, 'AC'] += coste_horas
 reimputado = indicadores(vg2)
-comparacion = pd.DataFrame({'CPI real': reales['CPI'], 'CPI reimputado': reimputado['CPI'], 'AC real': reales['AC'], 'AC reimputado': reimputado['AC']})
-display(comparacion.round(3))
-horas_cpi_1 = (vg.iloc[0]['AC'] - vg.iloc[0]['EV']) * 1000 / tarifa
-Markdown(f'''El total de la empresa no cambia (AC {reales.loc["Total", "AC"]:.1f} k€ y CPI {reales.loc["Total", "CPI"]:.2f} en los dos casos): sólo cambia quién paga. Para que A saliera a CPI = 1 habría que mover {horas_cpi_1:.0f} horas.''')
+comparacion = pd.DataFrame({'AC real': reales['AC'], 'AC reimputado': reimputado['AC'], 'CPI real': reales['CPI'], 'CPI reimputado': reimputado['CPI'],
+                            'EAC real': reales['EAC = BAC / CPI'], 'EAC reimputado': reimputado['EAC = BAC / CPI']})
+comparacion.round(3)
+
+# %%
+horas_cpi_1 = (vg.loc[pA, 'AC'] - vg.loc[pA, 'EV']) * 1000 / tarifa
+Markdown(f'''- {nA}: AC = {vg.loc[pA, 'AC']:g} − {coste_horas:.1f} = {vg2.loc[pA, 'AC']:.1f} k€; CPI = {vg.loc[pA, 'EV']:g} / {vg2.loc[pA, 'AC']:.1f} = **{reimputado.loc[pA, 'CPI']:.3f}** (antes {reales.loc[pA, 'CPI']:.3f}, {reimputado.loc[pA, 'CPI'] - reales.loc[pA, 'CPI']:+.3f}).
+- {nB}: AC = {vg.loc[pB, 'AC']:g} + {coste_horas:.1f} = {vg2.loc[pB, 'AC']:.1f} k€; CPI = {vg.loc[pB, 'EV']:g} / {vg2.loc[pB, 'AC']:.1f} = **{reimputado.loc[pB, 'CPI']:.3f}** (antes {reales.loc[pB, 'CPI']:.3f}, {reimputado.loc[pB, 'CPI'] - reales.loc[pB, 'CPI']:+.3f}).
+- Total de la empresa: AC = {reales.loc['Total', 'AC']:.1f} k€ en los dos casos y CPI = {reales.loc['Total', 'EV']:.1f} / {reales.loc['Total', 'AC']:.1f} = **{reales.loc['Total', 'CPI']:.3f}** en los dos casos.
+- Para que {nA} saliera exactamente a CPI = 1 habría que mover AC − EV = {vg.loc[pA, 'AC']:g} − {vg.loc[pA, 'EV']:g} = {vg.loc[pA, 'AC'] - vg.loc[pA, 'EV']:.1f} k€, es decir, {vg.loc[pA, 'AC'] - vg.loc[pA, 'EV']:.1f} × 1000 / {tarifa} = **{horas_cpi_1:.0f} horas**.
+
+**Respuesta.** El CPI de {nA} pasa de {reales.loc[pA, 'CPI']:.3f} a {reimputado.loc[pA, 'CPI']:.3f} y el de {nB} de {reales.loc[pB, 'CPI']:.3f} a {reimputado.loc[pB, 'CPI']:.3f}; el de la empresa no cambia ({reales.loc['Total', 'CPI']:.3f}): sólo cambia a quién se carga el coste. Con {horas_cpi_1:.0f} horas {nA} quedaría a CPI = 1; las {horas} propuestas lo dejan {'por encima de 1' if horas > horas_cpi_1 else 'por debajo de 1'}.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -279,8 +361,12 @@ Markdown(f'''El total de la empresa no cambia (AC {reales.loc["Total", "AC"]:.1f
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **Norma.** Sólo es subvencionable el gasto que responde de manera indubitada a la actividad subvencionada (Ley 38/2003, art. 31): las horas de A son gasto de A, y presentarlas como gasto de B —o, lo que es lo mismo, presentar A «a presupuesto» ocultando que parte de su coste se ha cargado a otro proyecto— no hace que A cueste menos: hace que la justificación sea falsa. La consecuencia es el reintegro de lo indebidamente justificado con intereses y, según el importe y la intención, la infracción o el fraude de subvenciones. **C1.** La justificación afirma un coste que se sabe falso. **C5.** Y el beneficio (cobrar la subvención completa) se obtiene a costa del financiador público y, de paso, del cliente de B, cuyo proyecto aparece más caro de lo que es.
+# %%
+Markdown(f'''**Norma** (Ley 38/2003, arts. 31 y 37). Sólo es subvencionable el gasto que responde de manera indubitada a la actividad subvencionada. Las {horas} horas se trabajaron en {nA}: son gasto de {nA}. Imputarlas a {nB} no hace que {nA} cueste menos ({reales.loc[pA, 'AC']:g} k€ reales), sino que la justificación presente {vg2.loc[pA, 'AC']:.1f} k€, una cifra falsa. La consecuencia es el **reintegro** de lo indebidamente justificado con intereses y, según el importe y la intención, una infracción o un delito de fraude de subvenciones.
+
+**Criterio C1 (afirmación falsa).** La justificación de la subvención afirma un coste de {nA} que quien la firma sabe que no es el real. **Criterio C5 (beneficio propio a costa de otro).** La empresa obtiene una ventaja (que {nA} salga «a presupuesto», CPI {reimputado.loc[pA, 'CPI']:.3f}) trasladando el riesgo al financiador público y falseando además la información de {nB} (su CPI baja de {reales.loc[pB, 'CPI']:.3f} a {reimputado.loc[pB, 'CPI']:.3f}); si {nB} se factura por costes, el perjudicado es también su cliente.
+
+**Respuesta.** No: el coste reimputado no es gasto subvencionable de {nB} ni deja de serlo de {nA}. La propuesta incumple la norma, **C1** y **C5**, y expone a la empresa al reintegro con intereses y a sanciones.''')
 
 # %%
 preguntas_test = [
@@ -318,5 +404,14 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Alternativas reales: asumir el sobrecoste de A con fondos propios (es lo que significa una subvención a presupuesto cerrado); solicitar al órgano concedente una modificación o ampliación si la causa lo justifica y el programa lo permite; reducir el alcance restante de A de acuerdo con el financiador; revisar por qué A se ha desviado para que la siguiente justificación sea limpia. Al director: la reimputación no ahorra nada a la empresa (apartado 2), convierte un sobrecoste en un fraude y pone en riesgo la subvención entera y las siguientes. Prueba de publicidad: ¿cómo se leería la justificación en una auditoría que cruce los partes de horas de A y de B?
+# %%
+rubrica_caso(
+    [('Financiador público', f'recibe una justificación falsa: {nA} aparece con AC {vg2.loc[pA, "AC"]:.1f} k€ y CPI {reimputado.loc[pA, "CPI"]:.3f}, cuando su coste real es {vg.loc[pA, "AC"]:g} k€ y su previsión {reales.loc[pA, "EAC = BAC / CPI"]:.1f} k€ sobre {vg.loc[pA, "BAC"]:g}; no puede controlar el uso de los fondos'),
+     ('Empresa', f'no ahorra nada (el CPI total sigue en {reales.loc["Total", "CPI"]:.3f}) y arriesga el reintegro, sanciones y futuras subvenciones'),
+     (f'Cliente y equipo de {nB}', f'su proyecto aparece con CPI {reimputado.loc[pB, "CPI"]:.3f} en vez de {reales.loc[pB, "CPI"]:.3f}'),
+     ('Quien firma los partes de horas y la justificación', 'firma un documento falso')],
+    [(f'Reimputar {horas} h de {nA} a {nB} (propuesta)', 'no: gasto no subvencionable justificado como si lo fuera', 'no: no resiste una auditoría que cruce los partes de horas', 'no: el financiador no lo aceptaría'),
+     (f'Asumir el sobrecoste de {nA} con fondos propios', 'sí', 'sí', 'sí'),
+     ('Pedir al órgano concedente una modificación o ampliación, si la causa lo justifica y las bases lo permiten', 'sí', 'sí', 'sí'),
+     (f'Reducir el alcance restante de {nA} de acuerdo con el financiador y revisar por qué se ha desviado', 'sí', 'sí', 'sí')],
+    f'''al director: la reimputación no ahorra nada a la empresa (CPI total {reales.loc['Total', 'CPI']:.3f} en los dos casos), convierte un sobrecoste de {-reales.loc[pA, 'VAC']:.1f} k€ previsto en un fraude y pone en riesgo la subvención entera; la propuesta es asumir el sobrecoste o pedir una modificación al financiador, y analizar la desviación de {nA}.''')

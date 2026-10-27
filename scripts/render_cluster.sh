@@ -8,8 +8,10 @@
 #   scripts/render_cluster.sh --grep '\.roy('     # cuadernos cuyo .py contiene el patrón
 #   scripts/render_cluster.sh --all               # ejercicios, colecciones y exámenes
 #   scripts/render_cluster.sh --build             # (re)construye el contenedor
-# Variable: PMULE_MEM=12G sube la memoria de cada tarea (por defecto 4G, para cuadernos pesados)
-# Opciones: -m N  limita las tareas simultáneas (por defecto sin límite: el array
+# Variables: PMULE_MEM=12G sube la memoria de cada tarea (por defecto 4G, para cuadernos pesados)
+#            PMULE_PARTITION=gvisResearch elige la partición SLURM (por defecto, la del clúster)
+# Opciones: -p PARTICIÓN  partición SLURM (equivale a PMULE_PARTITION)
+#           -m N  limita las tareas simultáneas (por defecto sin límite: el array
 #           corre al máximo que permita el gestor SLURM)
 #
 # Pasos: comprobar conexión (si falla: VPN) → jupytext --sync local → rsync de
@@ -22,6 +24,7 @@ cd "$(dirname "$0")/.."
 HOST="${PMULE_CLUSTER:-legio2}"
 REMOTO="pmule_render"           # ~/pmule_render en el clúster
 MAX=
+PARTICION="${PMULE_PARTITION:-}"
 BUILD=0
 cuadernos=()
 
@@ -34,6 +37,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --build) BUILD=1 ;;
         -m) MAX="$2"; shift ;;
+        -p) PARTICION="$2"; shift ;;
         --all) while IFS= read -r nb; do cuadernos+=("$nb"); done < <(todos) ;;
         --grep)
             while IFS= read -r nb; do
@@ -76,9 +80,9 @@ lista="lista_$(date +%Y%m%d_%H%M%S).txt"
 printf '%s\n' "${cuadernos[@]}" | ssh "$HOST" "cat > ~/$REMOTO/$lista"
 ssh "$HOST" "rm -rf ~/$REMOTO/out/docs"
 n=${#cuadernos[@]}
-echo "→ sbatch: $n tarea(s), ${MAX:+máx. $MAX a la vez}${MAX:-sin límite de simultáneas}"
+echo "→ sbatch: $n tarea(s), ${MAX:+máx. $MAX a la vez}${MAX:-sin límite de simultáneas}${PARTICION:+, partición $PARTICION}"
 t0=$(date +%s)
-if ssh "$HOST" "cd ~/$REMOTO && sbatch --wait --parsable${PMULE_MEM:+ --mem=$PMULE_MEM} --array=1-$n${MAX:+%$MAX} repo/scripts/cluster/render_array.sbatch $lista"; then
+if ssh "$HOST" "cd ~/$REMOTO && sbatch --wait --parsable${PARTICION:+ --partition=$PARTICION}${PMULE_MEM:+ --mem=$PMULE_MEM} --array=1-$n${MAX:+%$MAX} repo/scripts/cluster/render_array.sbatch $lista"; then
     estado=0
 else
     estado=1

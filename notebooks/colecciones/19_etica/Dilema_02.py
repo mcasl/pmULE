@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -213,7 +217,7 @@ datos_enunciado
 
 # %% [markdown]
 # > **De: Director comercial**
-# > Contéstale que «según la planificación, la ruta crítica termina en la semana 22», que es verdad y es antes de la 22. No le des probabilidades: si le hablas de un 60 % se pone nervioso y empieza a pedir penalizaciones.
+# > Contéstale que «según la planificación, la ruta crítica termina en la semana 22», que es verdad y es justo la 22. No le des probabilidades: si le hablas de un 60 % se pone nervioso y empieza a pedir penalizaciones.
 
 # %% [markdown]
 # ## Criterio de referencia
@@ -249,8 +253,64 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 duracion = float(proyecto.duration(datos_proyecto['duration']))
 sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])
-z = (fecha_cliente - duracion) / sigma
-p_pert = float(norm.cdf(z))
+p_pert = float(norm.cdf(fecha_cliente, duracion, sigma))
+
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -266,6 +326,9 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cada actividad tiene duración media D = (a + 4m + b)/6 y varianza σ² = ((b − a)/6)² (a: optimista, m: más probable, b: pesimista). La duración esperada del proyecto es la de la ruta más larga con esas medias, y su varianza es la suma de las varianzas de esa ruta.
+
 # %%
 #| tbl-cap: "Media y varianza PERT de cada actividad"
 #| label: tbl-estimaciones
@@ -279,7 +342,12 @@ display(detalle_rutas(R, datos_proyecto['duration'], 'duración', 2))
 detalle_rutas(R, datos_proyecto['variance'], 'varianza', 3)
 
 # %%
-Markdown(f'''Duración esperada **{duracion:.2f}** semanas, σ del camino crítico **{sigma:.2f}**; z = ({fecha_cliente} − {duracion:.2f}) / {sigma:.2f} = {z:.2f} y **P(T ≤ {fecha_cliente}) = {p_pert:.2f}** con la aproximación normal del PERT.''')
+camino, _ = camino_critico_sigma(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])
+Markdown(f'''Camino crítico: **{' – '.join(camino)}**, con duración esperada {' + '.join(f"{datos_proyecto.loc[a, 'duration']:.2f}" for a in camino)} = **{duracion:.2f}** semanas y {explica_sigma_ruta(camino, datos_proyecto['variance'])} semanas.
+
+Con la aproximación normal del PERT: {explica_probabilidad(duracion, sigma, fecha_cliente)}.
+
+**Respuesta.** Duración esperada {duracion:.2f} semanas, σ = {sigma:.3f} semanas y P(T ≤ {fecha_cliente}) = **{p_pert:.3f}** con el PERT.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -294,15 +362,23 @@ tau = np.asarray(resultado.tau_samples, dtype=float)
 p_mc = float((tau <= fecha_cliente).mean())
 p50, p80 = np.percentile(tau, 50), np.percentile(tau, 80)
 display(resultado.summary().round(2))
-Markdown(f'''Monte Carlo: **P(T ≤ {fecha_cliente}) = {p_mc:.2f}** (PERT: {p_pert:.2f}); mediana {p50:.1f} semanas; con probabilidad 0,8 se termina en **{p80:.1f}** semanas.''')
+Markdown(f'''Monte Carlo ({len(tau)} réplicas, semilla 2024): en {int((tau <= fecha_cliente).sum())} réplicas el proyecto termina en la semana {fecha_cliente} o antes, luego **P(T ≤ {fecha_cliente}) = {int((tau <= fecha_cliente).sum())} / {len(tau)} = {p_mc:.3f}** (PERT: {p_pert:.3f}). Semana que se cumple con probabilidad 0,5 (mediana de las réplicas): **{p50:.2f}**; con probabilidad 0,8 (percentil 80): **{p80:.2f}**. Con el PERT serían {explica_percentil(duracion, sigma, 0.5, 'semanas')} y {explica_percentil(duracion, sigma, 0.8, 'semanas')}.''')
 
 # %%
-#| tbl-cap: "Índice de criticidad de las actividades"
+#| tbl-cap: "Índice de criticidad de las actividades (porcentaje de réplicas en que la actividad está en la ruta más larga)"
 #| label: tbl-criticidad
 (resultado.sensitivity_mean * 100).round(1).to_frame('criticidad (%)').T
 
-# %% [markdown]
-# La simulación da menos probabilidad porque hay rutas casi críticas: el PERT sólo mira la ruta de mayor media, pero en muchas réplicas la más larga es otra (sesgo de fusión). Cuanto más parecidas son las rutas, más optimista es el PERT.
+# %%
+rutas = rutas_media_varianza(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])
+segunda = rutas.iloc[1]
+p_segunda = float(norm.cdf(fecha_cliente, segunda['media'], segunda['varianza'] ** 0.5))
+criticidad = resultado.sensitivity_mean * 100
+fuera = [a for a in criticidad.index if a not in camino and criticidad[a] >= 1]
+crit_min = float(min(criticidad[a] for a in camino))
+Markdown(f'''La simulación da menos probabilidad que el PERT ({p_mc:.3f} frente a {p_pert:.3f}) porque el PERT sólo mira la ruta {' – '.join(camino)} y supone que es siempre la más larga. No lo es: la siguiente ruta, {segunda['ruta']}, tiene media {segunda['media']:.2f} semanas y varianza {segunda['varianza']:.3f}, y por sí sola cumpliría la semana {fecha_cliente} con probabilidad {p_segunda:.3f}. El proyecto termina en plazo sólo si **todas** las rutas terminan a tiempo, y eso es menos probable que lo que da una sola ruta (sesgo de fusión). En la tabla de criticidad se ve: las actividades del camino crítico PERT están en la ruta más larga en un {crit_min:.1f} % de las réplicas como mínimo, y {lista_y(fuera) if fuera else 'ninguna otra actividad'} {'lo están en ' + lista_y([f"{criticidad[a]:.1f} %" for a in fuera]) + ' de las réplicas' if fuera else 'aparece'}.
+
+**Respuesta.** P(T ≤ {fecha_cliente}) = {p_mc:.3f} con la simulación (PERT {p_pert:.3f}); se cumplen {p50:.2f} semanas con probabilidad 0,5 y {p80:.2f} con probabilidad 0,8 (la semana entera que se puede comprometer con al menos un 80 % es la **{int(np.ceil(p80))}**).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -310,8 +386,11 @@ Markdown(f'''Monte Carlo: **P(T ≤ {fecha_cliente}) = {p_mc:.2f}** (PERT: {p_pe
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C2 (verdad a medias).** La frase es cierta y, aun así, no responde a lo que el cliente pregunta: él quiere saber si puede contar con la semana 22, y la respuesta honesta es «con una probabilidad de 45% (50% con el PERT)». Dar la duración media sin la dispersión lleva al cliente a concluir que la fecha está asegurada; el dato que falta es la **probabilidad** (o la semana que sí se puede comprometer con un 80 %: la 24). Omitirlo a sabiendas, como pide el director comercial, es además **C4**. No es C1: no se afirma nada falso.
+# %%
+semana_80 = int(np.ceil(p80))
+Markdown(f'''**Criterio C2 (verdad a medias).** La frase «la ruta crítica termina en la semana {duracion:.0f}» es cierta: es la duración esperada. Pero el cliente no pregunta por la media, sino si puede contar con la semana {fecha_cliente}, y la respuesta es que eso ocurre con probabilidad {p_mc:.3f} ({porc(p_mc)}; {p_pert:.3f} con el PERT): **{porc(1 - p_mc)} de no llegar**. Dar la media sin la dispersión lleva al cliente a creer que la fecha está asegurada; la parte omitida cambia la interpretación del dato, que es justo lo que define C2. **Criterio C4 (retención de información).** Además, el director comercial pide callar la probabilidad a sabiendas («no le des probabilidades») y es el dato que el cliente necesita para decidir sobre su apertura. No es C1: no se afirma nada falso.
+
+**Respuesta.** No cumple el criterio: es una **verdad a medias (C2)** y, al ocultar el dato a propósito, **retención de información (C4)**. El dato que falta es la **probabilidad de cumplir la semana {fecha_cliente}** ({p_mc:.3f}) o, equivalentemente, la semana que sí se puede comprometer con un 80 % de confianza: la {semana_80}.''')
 
 # %%
 preguntas_test = [
@@ -349,5 +428,12 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Respuesta al cliente (modelo): «La planificación da una duración esperada de 22 semanas; la probabilidad de terminar en la semana 22 es del 45%. La semana que podemos comprometer con un 80 % de confianza es la 24. Si la apertura exige la 22, podemos estudiar qué actividades acortar y a qué coste.» Nota interna: el cliente que descubre después que la fecha tenía un 55% de riesgo pedirá las penalizaciones igualmente, y con razón; la probabilidad no es una debilidad comercial sino la base para vender la reducción de plazo (lección 10).
+# %%
+rubrica_caso(
+    [('Cliente', f'organiza la apertura en la semana {fecha_cliente} creyendo que es segura, cuando hay un {porc(1 - p_mc)} de no llegar'),
+     ('Director comercial', 'evita hoy una conversación sobre penalizaciones; la tendrá después, y con la confianza del cliente perdida'),
+     ('Empresa y equipo', f'cargan con la reclamación si la obra acaba después de la {fecha_cliente}; pierden la ocasión de vender una reducción de plazo')],
+    [('Responder sólo «la ruta crítica termina en la semana ' + f'{duracion:.0f}»' + ' (propuesta)', 'sí', 'no: el cliente no la aceptaría si supiera la probabilidad', 'no: nadie querría recibir esa respuesta'),
+     (f'Dar la probabilidad ({p_mc:.2f}) y la semana comprometible con un 80 % ({semana_80})', 'sí', 'sí', 'sí'),
+     (f'Ofrecer además acortar actividades para cumplir la {fecha_cliente}, con su coste (lección 10)', 'sí', 'sí', 'sí')],
+    f'''al cliente: «La planificación da una duración esperada de {duracion:.0f} semanas; la probabilidad de terminar en la semana {fecha_cliente} es del {porc(p_mc, 0)}. La semana que podemos comprometer con un 80 % de confianza es la {semana_80}. Si la apertura exige la {fecha_cliente}, podemos estudiar qué actividades acortar y a qué coste.» Nota interna al director comercial: si el cliente descubre después que la fecha tenía un {porc(1 - p_mc, 0)} de riesgo pedirá las penalizaciones igualmente, y con razón; la probabilidad no es una debilidad comercial sino la base para vender la reducción de plazo.''')

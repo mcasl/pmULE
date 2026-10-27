@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -212,7 +216,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# La actividad crítica B va retrasada y el jefe de proyecto pide a los responsables de las actividades que se solapan con ella que cedan a alguien de su equipo durante 1 semana, lo que retrasaría la actividad cedente otras tantas. Al responsable de C le pregunta si puede.
+# La actividad crítica B va retrasada y el jefe de proyecto pide a los responsables de las actividades no críticas que cedan a alguien de su equipo durante 1 semana, lo que retrasaría la actividad cedente otras tantas. Al responsable de C le pregunta si puede.
 
 # %% [markdown]
 # > **De: Responsable de C (al jefe de proyecto)**
@@ -255,14 +259,68 @@ calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
 
 # %%
-#| fig-cap: "Grafo Roy con el camino crítico"
-#| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
 
 # %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
+#| fig-cap: "Grafo Roy con el camino crítico"
+#| label: fig-pert
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -271,19 +329,22 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Notación: ES y EF, inicio y fin más tempranos (*early start/finish*); LS y LF, inicio y fin más tardíos (*late start/finish*). Holgura total = LS − ES (lo que la actividad puede retrasarse sin retrasar el proyecto); holgura libre = mín ES de las sucesoras − EF (lo que puede retrasarse sin retrasar el inicio más temprano de ninguna sucesora); holgura independiente = máx(0, mín ES de las sucesoras − máx LF de las predecesoras − d) (la que tiene aunque las predecesoras acaben lo más tarde posible y las sucesoras empiecen lo antes posible).
+
 # %%
 #| tbl-cap: "Calendario del proyecto"
 #| label: tbl-calendario
-calendario
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
-#| tbl-cap: "Cómo se obtiene cada fecha y cada holgura"
+#| tbl-cap: "Cómo se obtiene cada fecha y cada holgura de la actividad X"
 #| label: tbl-detalleHolguras
 detalle_holguras(calendario, prelaciones).loc[[X]].T
 
 # %%
 Ht, Hl, Hi = (int(calendario.loc[X, c]) for c in ('H_total', 'H_libre', 'H_independiente'))
-Markdown(f'''{X}: holgura total **{Ht}**, libre **{Hl}**, independiente **{Hi}**. «No tiene ningún margen» es falso: puede retrasarse {Hl} semana(s) sin afectar a nadie y {Ht} sin retrasar el proyecto.''')
+Markdown(f'''**Respuesta.** {X}: ES = {int(calendario.loc[X, 'inicio_mas_temprano'])}, EF = {int(calendario.loc[X, 'fin_mas_temprano'])}, LS = {int(calendario.loc[X, 'inicio_mas_tardio'])}, LF = {int(calendario.loc[X, 'fin_mas_tardio'])}; holgura total **{Ht}**, libre **{Hl}** e independiente **{Hi}** (semanas). «No tiene ningún margen» es falso: {X} puede retrasarse {plural(Hl, 'semana')} sin afectar a ninguna otra actividad y {plural(Ht, 'semana')} sin retrasar el proyecto.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -292,18 +353,28 @@ Markdown(f'''{X}: holgura total **{Ht}**, libre **{Hl}**, independiente **{Hi}**
 display(Markdown(pregunta_2))
 
 # %%
-#| tbl-cap: "Holguras de las demás actividades si X se retrasa lo que se le pide y si consume toda su holgura total"
+#| tbl-cap: "Holgura total de cada actividad en el plan, si X se retrasa lo que se le pide y si consume toda su holgura total"
 #| label: tbl-escenarios
 def holguras_si_X_dura(extra):
     d = datos_proyecto['duration'].copy(); d[X] = d[X] + extra
     return proyecto.calendar(d)['H_total'], int(proyecto.duration(d))
 H_ceder, T_ceder = holguras_si_X_dura(semanas_cedidas)
 H_toda, T_toda = holguras_si_X_dura(Ht)
-escenarios = pd.DataFrame({'plan': calendario['H_total'], f'X +{semanas_cedidas}': H_ceder, f'X +{Ht}': H_toda})
-display(escenarios.T)
+escenarios = pd.DataFrame({'plan': calendario['H_total'], f'{X} + {semanas_cedidas}': H_ceder, f'{X} + {Ht}': H_toda})
+escenarios.T
+
+# %%
 afectadas_ceder = [a for a in escenarios.index if a != X and H_ceder[a] < calendario.loc[a, 'H_total']]
 afectadas_toda = [a for a in escenarios.index if a != X and H_toda[a] < calendario.loc[a, 'H_total']]
-Markdown(f'''Retrasar {X} {semanas_cedidas} semana(s): duración {T_ceder} (= {duracion}); actividades que pierden holgura: {', '.join(afectadas_ceder) or 'ninguna'} (dentro de la holgura libre nadie se entera). Consumir toda la holgura total ({Ht}): duración {T_toda}, pero {', '.join(afectadas_toda)} {"pasa" if len(afectadas_toda) == 1 else "pasan"} a ser crítica(s): el margen que «era mío» era también de ellas.''')
+nuevas_criticas = [a for a in afectadas_toda if H_toda[a] == 0]
+def cambios(H):
+    return lista_y([f'{a} ({int(calendario.loc[a, "H_total"])} → {int(H[a])})' for a in escenarios.index if a != X and H[a] < calendario.loc[a, 'H_total']])
+txt_ceder = ('ninguna otra actividad pierde holgura: el retraso cabe en la holgura libre de ' + X + f' ({Hl})' if not afectadas_ceder
+             else 'pierden holgura ' + cambios(H_ceder))
+Markdown(f'''- **{X} se retrasa {plural(semanas_cedidas, 'semana')}**: la duración del proyecto es {T_ceder} semanas ({'no cambia' if T_ceder == duracion else 'cambia'}); {X} pasa de holgura total {Ht} a {int(H_ceder[X])}, y {txt_ceder}.
+- **{X} consume toda su holgura total ({plural(Ht, 'semana')})**: la duración sigue siendo {T_toda} semanas, pero {X} se vuelve crítica y {'pierden holgura ' + cambios(H_toda) if afectadas_toda else 'ninguna otra actividad pierde holgura'}{'; ' + lista_y(nuevas_criticas) + (' pasa' if len(nuevas_criticas) == 1 else ' pasan') + ' a ser ' + ('crítica' if len(nuevas_criticas) == 1 else 'críticas') if nuevas_criticas else ''}.
+
+**Respuesta.** Retrasar {X} {plural(semanas_cedidas, 'semana')} {'no afecta a ninguna otra actividad' if not afectadas_ceder else 'reduce la holgura de ' + lista_y(afectadas_ceder)}, y la duración {'sigue siendo' if T_ceder == duracion else 'pasa a'} {T_ceder} semanas. Consumir las {Ht} semanas de holgura total no retrasa el proyecto ({T_toda} semanas), pero deja sin margen a {lista_y(afectadas_toda) if afectadas_toda else 'nadie más'}: la parte de la holgura que excede la libre ({Ht} − {Hl} = {Ht - Hl}) era compartida con {'ellas' if len(afectadas_toda) > 1 else 'ella'}.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -311,8 +382,14 @@ Markdown(f'''Retrasar {X} {semanas_cedidas} semana(s): duración {T_ceder} (= {d
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C1 y C4.** «C no tiene ningún margen» es una **afirmación falsa** (C1): el responsable sabe que tiene 5 semanas de holgura total. Si sólo hubiera callado, sería C4, retención de información: el jefe de proyecto necesita las holguras para decidir y las holguras no son un dato privado del responsable, sino del plan. Sobre a quién pertenece la holgura el criterio de la lección es el de la holgura libre: hasta 2 semanas C puede usarla sin afectar a nadie; entre 2 y 5 la usa a costa de las actividades siguientes (D se vuelven críticas); y la decisión de a quién se asigna la holgura compartida es del jefe de proyecto, no de quien la «descubre» primero. Lo que no es objetivo —si es justo que quien planifica bien pierda su margen— se trata en C.
+# %%
+Markdown(f'''**Criterio C1 (afirmación falsa).** «{X} no tiene ningún margen» es falso, y su responsable lo sabe («{X} tiene margen de sobra», dice en privado): {X} tiene {plural(Ht, 'semana')} de holgura total y {Hl} de libre, y ceder {plural(semanas_cedidas, 'semana')} no retrasaría el proyecto.
+
+**Criterio C4 (retención de información).** Si sólo hubiera callado el margen, sería C4: el jefe de proyecto necesita las holguras para decidir de dónde sacar recursos para {Y}, y la holgura no es un dato privado del responsable sino del plan. Afirmar lo contrario es más grave que callar: es C1.
+
+**A quién pertenece la holgura.** La holgura libre ({plural(Hl, 'semana')}) puede usarla {X} sin afectar a nadie; las {Ht - Hl} semanas restantes hasta la total son compartidas con {lista_y(afectadas_toda) if afectadas_toda else 'las actividades siguientes'}. Repartir la holgura compartida es decisión del jefe de proyecto, no de quien la «descubre» primero. Si es justo que quien planifica bien pierda su margen no se resuelve con un criterio objetivo: es materia del bloque C.
+
+**Respuesta.** Incumple **C1** (afirma que no hay margen sabiendo que hay {Ht} semanas); no mencionarlo habría sido **C4**. La holgura es del proyecto: la libre ({Hl}) la usa la actividad sin afectar a nadie y la compartida ({Ht - Hl}) la asigna el jefe de proyecto.''')
 
 # %%
 preguntas_test = [
@@ -320,8 +397,8 @@ preguntas_test = [
      'Se afirma algo que se sabe falso; callar habría sido C4.'),
     ('La holgura que una actividad puede consumir sin afectar a ninguna otra es la…', ['libre', 'total', 'independiente', 'de la ruta'],
      'Holgura libre: mín ES de las sucesoras − EF.'),
-    ('Si una actividad consume toda su holgura total…', ['sus sucesoras en la misma ruta se vuelven críticas', 'el proyecto se retrasa', 'no pasa nada', 'la ruta crítica desaparece'],
-     'La duración del proyecto no cambia, pero la ruta queda sin margen.'),
+    ('Si una actividad consume toda su holgura total…', ['la ruta más larga que pasa por ella se vuelve crítica, sin retrasar el proyecto', 'el proyecto se retrasa', 'no pasa nada', 'la ruta crítica desaparece'],
+     'La duración del proyecto no cambia, pero esa ruta queda sin margen.'),
 ]
 import os
 def a_gift(preguntas_test, titulo, semilla=1):
@@ -350,5 +427,14 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Lo que depende de la buena voluntad falla; lo que está en el procedimiento no: el calendario con las tres holguras lo publica el jefe de proyecto cada semana a partir de los datos de todos, de modo que el margen de cada actividad es visible y la pregunta no es «¿tienes margen?» sino «el plan dice que tienes 2 semanas libres: te pido 1». Para el incentivo perverso («si lo digo me quitan gente»): reconocer explícitamente a quien cede, y ceder sólo dentro de la holgura libre salvo decisión del jefe de proyecto. Prueba de reversibilidad para el responsable: ¿aceptaría que el responsable de B le escondiera su margen cuando fuera él quien lo necesitara?
+# %%
+rubrica_caso(
+    [(f'Proyecto y responsable de {Y}', f'{Y} es crítica y va retrasada: cada semana que no se recupera es una semana más de proyecto'),
+     (f'Responsable de {X}', f'teme que le quiten gente «cada vez que alguien va mal»; ceder {plural(semanas_cedidas, "semana")} no le cuesta plazo (holgura libre {Hl})'),
+     ((('Responsable de ' if len(afectadas_toda) == 1 else 'Responsables de ') + lista_y(afectadas_toda)) if afectadas_toda else 'Resto del equipo', 'su margen desaparece si alguien consume la holgura compartida sin decirlo'),
+     ('Jefe de proyecto', 'decide a ciegas si las holguras dependen de lo que cada uno quiera contar')],
+    [('Que cada responsable informe de su margen si quiere (situación actual)', 'sí', 'no: nadie defendería en público un «no tengo margen» falso', 'no'),
+     ('Publicar cada semana el calendario con las tres holguras, calculado con los datos de todos', 'sí', 'sí', 'sí'),
+     ('Regla de cesión: dentro de la holgura libre sin consulta; la compartida, por decisión del jefe de proyecto', 'sí', 'sí', 'sí'),
+     ('Reconocer a quien cede (no penalizar con más cesiones a quien planifica bien)', 'sí', 'sí', 'sí')],
+    f'''el calendario con las tres holguras lo publica el jefe de proyecto a partir de los datos de todos, de modo que la pregunta no es «¿tienes margen?» sino «el plan dice que {X} tiene {plural(Hl, 'semana')} de holgura libre: te pido {semanas_cedidas}». Para el incentivo perverso, reconocer a quien cede y limitar las cesiones a la holgura libre salvo decisión expresa. Prueba de reversibilidad para el responsable de {X}: ¿aceptaría que el de {Y} le escondiera su margen cuando fuera él quien lo necesitara?''')

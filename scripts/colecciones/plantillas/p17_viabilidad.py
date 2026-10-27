@@ -48,7 +48,55 @@ FINANZAS = (
     "\n"
     "def anualidad_equivalente(VAN, k, n):\n"
     "    '''Anualidad constante durante n años cuyo valor actual es VAN.'''\n"
-    "    return float(VAN * k / (1 - (1 + k) ** -n))\n")
+    "    return float(VAN * k / (1 - (1 + k) ** -n))\n"
+    "\n"
+    "_SUP = str.maketrans('0123456789-', '⁰¹²³⁴⁵⁶⁷⁸⁹⁻')\n"
+    "def _num(x, d=1):\n"
+    "    return f'{round(float(x), d) + 0.0:.{d}f}'.replace('-', '−')\n"
+    "def _con_signo(x, d=1):\n"
+    "    return f' − {_num(-x, d)}' if x < 0 else f' + {_num(x, d)}'\n"
+    "\n"
+    "def explica_van(flujos, k, unidad='k€', nombre='VAN'):\n"
+    "    '''VAN término a término: Σ flujo_t / (1 + k)^t con los números sustituidos.'''\n"
+    "    base = f'{1 + k:.6g}'\n"
+    "    terminos = _num(flujos[0]) + ''.join(f' {\"−\" if f < 0 else \"+\"} {_num(abs(f))}/{base}{str(t).translate(_SUP)}' for t, f in enumerate(flujos) if t > 0)\n"
+    "    actuales = _num(flujos[0]) + ''.join(_con_signo(f / (1 + k) ** t) for t, f in enumerate(flujos) if t > 0)\n"
+    "    return f'{nombre} = Σ flujo_t/(1 + k)^t = {terminos} = {actuales} = **{_num(van(flujos, k))} {unidad}**'\n"
+    "\n"
+    "def explica_tir(flujos, unidad='k€'):\n"
+    "    '''Cómo se obtiene la TIR: horquilla de dos tasas enteras con VAN de signo contrario, interpolación y comprobación.'''\n"
+    "    r = tir(flujos)\n"
+    "    a = np.floor(r * 100) / 100; b = a + 0.01\n"
+    "    va, vb = van(flujos, a), van(flujos, b)\n"
+    "    aprox = a + 0.01 * va / (va - vb)\n"
+    "    return (f'La TIR es la tasa que anula el VAN. Probando tasas: VAN({a:.0%}) = {_num(va)} {unidad} y VAN({b:.0%}) = {_num(vb)} {unidad} tienen signo distinto, '\n"
+    "            f'así que la TIR está entre {a:.0%} y {b:.0%}; interpolando linealmente, TIR ≈ {a:.0%} + 1 % × {_num(va)}/({_num(va)} − ({_num(vb)})) = {aprox:.2%}. '\n"
+    "            f'Afinando (bisección, o =TIR(rango de flujos) en la hoja de cálculo): **TIR = {r:.2%}**. Comprobación: VAN({r:.2%}) = {abs(van(flujos, r)):.4f} ≈ 0.')\n"
+    "\n"
+    "def explica_payback(flujos, k=None, unidad='k€'):\n"
+    "    '''Año en que el acumulado (simple o descontado) se hace positivo e interpolación lineal dentro de ese año.'''\n"
+    "    acum, nombre = 0.0, 'acumulado' + ('' if k is None else ' descontado')\n"
+    "    for t, f in enumerate(flujos):\n"
+    "        v = f if k is None else f / (1 + k) ** t\n"
+    "        if t > 0 and acum < 0 <= acum + v:\n"
+    "            return (f'el {nombre} pasa de {_num(acum)} (año {t - 1}) a {_num(acum + v)} (año {t}); dentro del año {t} se recuperan los {_num(-acum)} {unidad} '\n"
+    "                    f'que faltaban con un flujo{\"\" if k is None else \" descontado\"} de {_num(v)}: payback = {t - 1} + {_num(-acum)}/{_num(v)} = **{t - 1 + (-acum) / v:.2f} años**')\n"
+    "        acum += v\n"
+    "    return f'el {nombre} no llega a ser positivo: la inversión no se recupera'\n"
+    "\n"
+    "def explica_van_mensual(pagos, F, N, km, unidad='k€'):\n"
+    "    '''VAN mensual = VA de los ingresos (renta de N meses desde el mes T + 1) − VA de los desembolsos de los meses 1…T.'''\n"
+    "    pagos = [float(x) for x in pagos]; T = len(pagos); base = f'{1 + km:.5f}'\n"
+    "    va_des = sum(x / (1 + km) ** m for m, x in enumerate(pagos, 1))\n"
+    "    a_N = (1 - (1 + km) ** -N) / km\n"
+    "    va_ing = F * a_N * (1 + km) ** -T\n"
+    "    t_des = ' + '.join(f'{_num(x)}/{base}{str(m).translate(_SUP)}' for m, x in list(enumerate(pagos, 1))[:3])\n"
+    "    if T > 3:\n"
+    "        t_des += f' + … + {_num(pagos[-1])}/{base}{str(T).translate(_SUP)}'\n"
+    "    return (f'- VA de los desembolsos = Σ desembolso_m/(1 + k_m)^m = {t_des} = **{_num(va_des)} {unidad}**.\\n'\n"
+    "            f'- VA de los ingresos: renta de N = {N} meses de {_num(F)} {unidad} que empieza en el mes T + 1 = {T + 1}: '\n"
+    "            f'F · [1 − (1 + k_m)^−N]/k_m · (1 + k_m)^−T = {_num(F)} × [1 − {base}^−{N}]/{km:.6f} × {base}^−{T} = {_num(F)} × {a_N:.3f} × {(1 + km) ** -T:.4f} = **{_num(va_ing)} {unidad}**.\\n'\n"
+    "            f'- VAN = {_num(va_ing)} − {_num(va_des)} = **{_num(va_ing - va_des)} {unidad}**.')\n")
 
 CASOS = [
     dict(tema="una planta fotovoltaica para autoconsumo industrial", unidad="MWh", producto="energía",
@@ -104,10 +152,10 @@ def _flujos(p):
     imp = [max(0.0, b) * p["impuesto"] for b in bai]
     imp[0] = 0.0
     bdi = [b - i for b, i in zip(bai, imp)]
-    circ = [p["circulante"] * v for v in ventas]
-    circ_total = [p["circulante"] * ventas[1]] + circ[1:]       # el circulante del año 1 se aporta en t = 0
-    var_circ = [circ_total[0]] + [circ_total[t] - circ_total[t - 1] for t in range(1, n + 1)]
-    var_circ[n] = var_circ[n] - circ_total[n]                     # recuperación al final
+    # saldo de circulante invertido en el momento t: el que necesitan las ventas del año t + 1
+    # (se aporta al principio de cada año); al final de la vida (t = n) se recupera todo: saldo 0
+    saldo = [p["circulante"] * ventas[t + 1] for t in range(n)] + [0.0]
+    var_circ = [saldo[0]] + [saldo[t] - saldo[t - 1] for t in range(1, n + 1)]
     inv = [p["inversion"]] + [0.0] * n
     vr = [0.0] * n + [p["valor_residual"]]                         # vendido por su valor contable: sin impuesto
     fcl = [b + a - c - i + v for b, a, c, i, v in zip(bdi, amort, var_circ, inv, vr)]
@@ -185,8 +233,8 @@ MODELO = ("anos = list(range(0, n + 1))\n"
           "BAI = EBITDA - amortizacion\n"
           "impuesto = BAI.clip(lower=0) * t_imp; impuesto[0] = 0\n"
           "BDI = BAI - impuesto\n"
-          "circulante = pd.Series([w * ventas[1]] + [w * ventas[t] for t in range(1, n + 1)], index=anos)   # el del año 1 se aporta en t = 0\n"
-          "variacion_circulante = circulante.diff().fillna(circulante[0]); variacion_circulante[n] -= circulante[n]   # se recupera al final\n"
+          "circulante = pd.Series([w * ventas[t + 1] for t in range(n)] + [0], index=anos)   # saldo en el momento t: el que necesitan las ventas del año t + 1\n"
+          "variacion_circulante = circulante.diff().fillna(circulante[0])   # aportaciones al principio de cada año; en t = n (saldo 0) se recupera todo\n"
           "inversion = pd.Series([I0] + [0] * n, index=anos)\n"
           "valor_residual = pd.Series([0] * n + [VR], index=anos)\n"
           "FCL = BDI + amortizacion - variacion_circulante - inversion + valor_residual\n"
@@ -196,6 +244,23 @@ MODELO = ("anos = list(range(0, n + 1))\n"
           "                      '+ valor residual': valor_residual, 'FCL': FCL})\n"
           "tabla.index.name = 'año'\n"
           "flujos = FCL.tolist()")
+
+
+EJEMPLO_FCL = r"""
+def _fcl_txt(t):
+    return (f'FCL_{t} = BDI + amortización − Δ circulante − inversión + valor residual = {_num(BDI[t])}{_con_signo(amortizacion[t])}'
+            f'{_con_signo(-variacion_circulante[t])}{_con_signo(-inversion[t])}{_con_signo(valor_residual[t])} = **{_num(FCL[t])}**')
+Markdown('Siglas: EBITDA, resultado antes de intereses, impuestos y amortizaciones; BAI, beneficio antes de impuestos; BDI, beneficio después de impuestos; '
+         'FCL, flujo de caja libre (lo que el proyecto deja disponible cada año, en k€). Cálculo detallado del año 1 y de los años 0 y n:\n\n'
+         f'- Ventas_1 = unidades × precio = {_num(unidades[1])} × {precio:g} = {_num(ventas[1])}; costes variables = {_num(unidades[1])} × {cv:g} = {_num(costes_variables[1])}; '
+         f'EBITDA_1 = {_num(ventas[1])} − {_num(costes_variables[1])} − {_num(CF)} = {_num(EBITDA[1])}.\n'
+         f'- Amortización anual = (I0 − VR)/n = ({_num(I0, 0)} − {_num(VR, 0)})/{n} = {_num(amortizacion[1])}; BAI_1 = {_num(EBITDA[1])} − {_num(amortizacion[1])} = {_num(BAI[1])}; '
+         f'impuesto_1 = {t_imp:g} × {_num(BAI[1])} = {_num(impuesto[1])}; BDI_1 = {_num(BAI[1])} − {_num(impuesto[1])} = {_num(BDI[1])}.\n'
+         f'- Circulante (se aporta al principio de cada año, es decir, al final del anterior): en t = 0 el del año 1, {w:g} × {_num(ventas[1])} = {_num(variacion_circulante[0])}; '
+         f'en cada momento t = 1…{n - 1}, el aumento que necesitan las ventas del año siguiente, {w:g} × (ventas_t+1 − ventas_t) '
+         f'(en t = 1: {w:g} × ({_num(ventas[2])} − {_num(ventas[1])}) = {_num(variacion_circulante[1])}); en t = {n} se recupera todo el circulante acumulado, {w:g} × {_num(ventas[n])} = {_num(w * ventas[n])}.\n'
+         f'- {_fcl_txt(0)}; {_fcl_txt(1)}; {_fcl_txt(n)}.')
+"""
 
 
 def _celdas_modelo(celdas, con_explicacion=True):
@@ -209,6 +274,7 @@ def _celdas_modelo(celdas, con_explicacion=True):
     celdas.append(code('#| tbl-cap: "Flujos de caja libre del proyecto (k€)"\n#| label: tbl-flujos\n'
                        + MODELO + "\n"
                        "tabla.round(1).T"))
+    celdas.append(code(EJEMPLO_FCL))
 
 
 def _caso_base(rng):
@@ -240,17 +306,21 @@ def _caso_base(rng):
     celdas += apartado(1)
     _celdas_modelo(celdas)
     celdas += apartado(2)
+    celdas.append(md("VAN (valor actual neto): cada flujo se lleva al momento 0 dividiéndolo por (1 + k)^t, o "
+                     "multiplicándolo por el factor de descuento (1 + k)^−t, y se suman todos. La tabla da el factor y "
+                     "el valor actual de cada año (las dos últimas columnas se usan en el apartado 4)."))
     celdas.append(code('#| tbl-cap: "Descuento de los flujos"\n#| label: tbl-descuento\n'
                        "descuento = tabla_descuento(flujos, k)\n"
-                       "descuento.round(2)"))
+                       "descuento.round({'flujo': 1, '(1 + k)^-t': 4, 'valor actual': 1, 'acumulado': 1, 'acumulado descontado': 1})"))
     celdas.append(code("VAN = van(flujos, k)\n"
-                       "Markdown(f'''VAN = Σ FCL_t / (1 + {k})^t = ''' + ' + '.join(f'{f:.1f}/{(1 + k) ** t:.3f}' for t, f in enumerate(flujos)) + f''' = **{VAN:.1f} k€**. "
-                       "{(\"Es positivo: el proyecto devuelve la inversión, remunera el capital al \" + f\"{k:.0%}\" + \" y además crea \" + f\"{VAN:.0f}\" + \" k€ de valor; es viable.\") if VAN > 0 else \"Es negativo: no es viable a esa tasa.\"}''')"))
+                       "Markdown(explica_van(flujos, k) + '. **Respuesta:** ' + (f'el VAN es positivo ({VAN:.1f} k€): el proyecto recupera la inversión, remunera el capital al {k:.0%} y además crea {VAN:.0f} k€ de valor; es viable.'\n"
+                       "         if VAN > 0 else f'el VAN es negativo ({VAN:.1f} k€): no es viable a esa tasa.'))"))
     celdas += apartado(3)
     celdas.append(code("TIR = tir(flujos)\n"
-                       "comprobacion = van(flujos, TIR)\n"
-                       "Markdown(f'TIR = {TIR:.2%} (VAN a esa tasa: {comprobacion:.4f} ≈ 0). Es la rentabilidad del proyecto; como supera la tasa de descuento ({k:.0%}), '\n"
-                       "         'el VAN es positivo: las dos reglas coinciden en un proyecto aislado con flujos convencionales (un desembolso y luego cobros).')"))
+                       "Markdown(explica_tir(flujos) + f' **Respuesta:** la TIR ({TIR:.2%}) es la rentabilidad anual que da el propio proyecto; '\n"
+                       "         + (f'como supera la tasa de descuento ({k:.0%}), el proyecto rinde más de lo que se exige al dinero y el VAN es positivo' if TIR > k else\n"
+                       "            f'como no llega a la tasa de descuento ({k:.0%}), el VAN es negativo')\n"
+                       "         + ': las dos reglas coinciden en un proyecto aislado con flujos convencionales (un desembolso y luego cobros). El gráfico muestra el VAN para cada tasa: corta el eje en la TIR.')"))
     celdas.append(code('#| fig-cap: "Perfil del VAN frente a la tasa de descuento"\n#| label: fig-perfil\n'
                        "from matplotlib import pyplot as plt\n"
                        "ks = np.linspace(0, max(0.4, TIR + 0.1), 200)\n"
@@ -260,12 +330,16 @@ def _caso_base(rng):
                        "ax.axvline(TIR * 100, color='tab:red', linestyle=':', label=f'TIR = {TIR:.1%}')\n"
                        "ax.set_xlabel('tasa de descuento (%)'); ax.set_ylabel('VAN (k€)'); ax.legend(); plt.show()"))
     celdas += apartado(4)
+    celdas.append(md("El periodo de recuperación (*payback*) es el momento en que el flujo acumulado deja de ser "
+                     "negativo; dentro del año en que cambia de signo se interpola linealmente (se supone que el flujo "
+                     "de ese año llega repartido de forma uniforme). El descontado hace lo mismo con los valores actuales."))
     celdas.append(code("pb, pbd = payback(flujos), payback(flujos, k)\n"
                        "display(descuento[['flujo', 'acumulado', 'valor actual', 'acumulado descontado']].round(1))\n"
-                       "Markdown(f'''Payback simple: el acumulado cambia de signo en el año {int(np.ceil(pb))}; interpolando, {pb:.2f} años. "
-                       "Payback descontado: {pbd:.2f} años (mayor, porque los flujos descontados son menores y tardan más en cubrir la inversión). "
-                       "El payback mide liquidez y riesgo de plazo (cuánto tiempo está el dinero expuesto), pero ignora los flujos posteriores a la recuperación "
-                       "y, en su versión simple, el valor del tiempo; por eso se usa como criterio complementario, nunca único.''')"))
+                       "Markdown(f'Payback simple: {explica_payback(flujos)}. Payback descontado: {explica_payback(flujos, k)}. '\n"
+                       "         f'**Respuesta:** {pb:.2f} años el simple y {pbd:.2f} el descontado. El descontado es mayor porque cada flujo descontado es menor que el nominal (se divide por (1 + k)^t > 1), '\n"
+                       "         'así que hace falta más tiempo para cubrir la inversión. El payback informa de la liquidez y del riesgo de plazo (cuánto tiempo está el dinero expuesto), que no dan el VAN ni la TIR; '\n"
+                       "         f'pero ignora los flujos posteriores a la recuperación (aquí, los de los años {int(np.ceil(pb)) + 1} a {n}, con el valor residual y la recuperación del circulante) y, en su versión simple, el valor del tiempo; '\n"
+                       "         'por eso se usa como criterio complementario, nunca único.')"))
     celdas += apartado(5)
     celdas.append(code("u1_bajo = u1 * 0.85\n"
                        "def modelo(u1, precio, cv, CF, g=g, I0=I0, n=n, VR=VR, w=w, t_imp=t_imp):\n"
@@ -273,13 +347,17 @@ def _caso_base(rng):
                        "    ventas = unidades * precio; EBITDA = ventas - unidades * cv - pd.Series([0] + [CF] * n)\n"
                        "    amort = pd.Series([0] + [(I0 - VR) / n] * n); BAI = EBITDA - amort\n"
                        "    imp = BAI.clip(lower=0) * t_imp; imp[0] = 0\n"
-                       "    circ = pd.Series([w * ventas[1]] + [w * ventas[t] for t in range(1, n + 1)])\n"
-                       "    dcirc = circ.diff().fillna(circ[0]); dcirc[n] -= circ[n]\n"
+                       "    circ = pd.Series([w * ventas[t + 1] for t in range(n)] + [0])\n"
+                       "    dcirc = circ.diff().fillna(circ[0])\n"
                        "    return (BAI - imp + amort - dcirc - pd.Series([I0] + [0] * n) + pd.Series([0] * n + [VR])).tolist()\n"
-                       "VAN_bajo = van(modelo(u1_bajo, precio, cv, CF), k)\n"
-                       "Markdown(f'''Con un 15 % menos de unidades el VAN pasa de {VAN:.1f} a {VAN_bajo:.1f} k€ ({(VAN_bajo - VAN) / VAN:+.0%}): "
-                       "{\"sigue siendo viable\" if VAN_bajo > 0 else \"deja de ser viable\"}. Las unidades vendidas (y el precio) son el supuesto más frágil: "
-                       "son previsiones de mercado, mientras que la inversión y los costes fijos están casi cerrados por contrato.''')"))
+                       "flujos_bajo = modelo(u1_bajo, precio, cv, CF)\n"
+                       "VAN_bajo = van(flujos_bajo, k)\n"
+                       "display(pd.DataFrame({'FCL caso base': flujos, f'FCL con {u1_bajo:g} unidades el año 1': flujos_bajo}, index=pd.Index(range(n + 1), name='año')).T.round(1))\n"
+                       "Markdown(f'Con las unidades del año 1 un 15 % menores ({u1:g} × 0.85 = {u1_bajo:g}; las de los años siguientes bajan en la misma proporción) se repite el modelo: '\n"
+                       "         + explica_van(flujos_bajo, k) + f'. **Respuesta:** el VAN pasa de {VAN:.1f} a {VAN_bajo:.1f} k€ ({(VAN_bajo - VAN) / VAN:+.0%}): '\n"
+                       "         + ('sigue siendo viable. ' if VAN_bajo > 0 else 'deja de ser viable. ')\n"
+                       "         + 'Las unidades vendidas (y el precio) son el supuesto más frágil: son previsiones de mercado, mientras que la inversión y los costes fijos están casi cerrados por contrato; '\n"
+                       "         + f'un 15 % menos de volumen se lleva el {abs(VAN_bajo - VAN) / VAN:.0%} del VAN.')"))
     return celdas, f"{caso['tema']}: I0 = {p['inversion']:.0f} k€, {p['vida']} años, k = {p['tasa']:.0%}; VAN {res['van']:.0f}, TIR {res['tir']:.1%}"
 
 
@@ -367,10 +445,12 @@ def _vinculo_proyecto(rng):
                        "pagos = desembolsos(calendario, duracion)\n"
                        "fila_total = gantt_costes.data.loc['Total'].drop('Total', errors='ignore').astype(float)\n"
                        "display(pd.DataFrame({'desembolso (k€)': pagos, 'fila Total del Gantt': fila_total.values[:len(pagos)]}).round(1).T)\n"
-                       "Markdown(f'La fase de inversión dura {duracion} meses y suma {pagos.sum():.0f} k€ (= Σ BAC = {I0:.0f}).')"))
+                       "Markdown(f'**Respuesta:** la fase de inversión dura {duracion} meses; el desembolso de cada mes es la fila *desembolso* de la tabla (suma de la columna del Gantt) y en total suma {pagos.sum():.0f} k€ (= Σ BAC = {I0:.0f}).')"))
     celdas += apartado(2)
     celdas.append(md("Cada mes es un periodo: en los meses 1…T el flujo es −desembolso; en los T+1…T+N, +F. La "
-                     "tasa mensual equivalente cumple $(1 + k_m)^{12} = 1 + k$."))
+                     "tasa mensual equivalente cumple $(1 + k_m)^{12} = 1 + k$. El VAN se separa en el valor actual "
+                     "(VA) de los ingresos, una renta constante de N meses que empieza en el mes T + 1, y el de los "
+                     "desembolsos."))
     celdas.append(code("def flujo_mensual(pagos, inicio_ingresos, sobrecoste=0.0):\n"
                        "    T = len(pagos)\n"
                        "    f = [0.0] + [-float(x) for x in pagos] + [0.0] * (inicio_ingresos - T) + [F] * N\n"
@@ -380,38 +460,54 @@ def _vinculo_proyecto(rng):
                        "VAN = van(flujos, k_mensual)\n"
                        "resumen = pd.DataFrame({'mes': range(len(flujos)), 'flujo (k€)': flujos}).set_index('mes')\n"
                        "display(resumen.T.iloc[:, :duracion + 4].round(1))\n"
-                       "Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. VAN = {VAN:.1f} k€ (valor actual de los ingresos {van([0] * (duracion + 1) + [F] * N, k_mensual):.1f} '\n"
-                       "         f'menos valor actual de los desembolsos {-van([0] + [-x for x in pagos], k_mensual):.1f}): {\"viable\" if VAN > 0 else \"no viable\"}.')"))
+                       "va_ingresos = van([0.0] * (duracion + 1) + [F] * N, k_mensual)\n"
+                       "Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}.\\n\\n' + explica_van_mensual(pagos, F, N, k_mensual)\n"
+                       "         + f'\\n\\n**Respuesta:** VAN = {VAN:.1f} k€: ' + ('positivo, el proyecto es viable.' if VAN > 0 else 'negativo, el proyecto no es viable.'))"))
     celdas += apartado(3)
+    celdas.append(md("Si los ingresos empiezan m meses más tarde, la misma renta se descuenta m meses más: su valor "
+                     "actual se multiplica por (1 + k_m)^−m. Los desembolsos no cambian, así que el VAN perdido es "
+                     "VA ingresos × [1 − (1 + k_m)^−m]."))
     celdas.append(code("VAN_retraso = van(flujo_mensual(pagos, duracion + retraso), k_mensual)\n"
                        "perdida = VAN - VAN_retraso\n"
                        "valor_mes = [VAN - van(flujo_mensual(pagos, duracion + m), k_mensual) for m in range(1, retraso + 1)]\n"
-                       "display(pd.DataFrame({'meses de retraso': range(1, retraso + 1), 'VAN perdido (k€)': valor_mes}).set_index('meses de retraso').T.round(1))\n"
-                       "Markdown(f'''Con {retraso} meses de retraso el VAN baja de {VAN:.1f} a {VAN_retraso:.1f} k€: se pierden {perdida:.1f} k€, "
-                       "unos {perdida / retraso:.1f} k€ por mes. Cada mes de adelanto vale aproximadamente lo mismo (algo más los primeros, porque los ingresos "
-                       "que se desplazan son los más cercanos): es el precio máximo que merece la pena pagar por acortar el proyecto un mes.''')"))
+                       "display(pd.DataFrame({'meses de retraso': range(1, retraso + 1),\n"
+                       "                      'VAN perdido = VA ingresos × [1 − (1 + k_m)^−m]': [f'{va_ingresos:.1f} × [1 − {1 + k_mensual:.5f}^−{m}] = {va_ingresos * (1 - (1 + k_mensual) ** -m):.1f}' for m in range(1, retraso + 1)]}).set_index('meses de retraso'))\n"
+                       "Markdown(f'''**Respuesta:** con {retraso} meses de retraso el VAN baja de {VAN:.1f} a {VAN_retraso:.1f} k€: se pierden {perdida:.1f} k€, "
+                       "unos {perdida / retraso:.1f} k€ por mes. Por tanto, cada mes de adelanto vale aproximadamente {valor_mes[0]:.1f} k€ (el primero; los siguientes, algo menos, "
+                       "porque cada mes se descuenta sobre un valor ya descontado): es el precio máximo que merece la pena pagar por acortar el proyecto un mes.''')"))
     celdas += apartado(4)
     celdas.append(code('#| tbl-cap: "Algoritmo de Ackoff-Sasieni (hasta tres meses)"\n#| label: tbl-ackoff\n'
                        "tabla_ackoff, pasos, duraciones_reducidas, margen = proyecto.ackoff(\n"
                        "    durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],\n"
                        "    costs=datos_proyecto['ucr'], reduction=3, report=False)\n"
                        "tabla_ackoff"))
+    celdas.append(md("Para cada mes acortado se recalcula el calendario con las nuevas duraciones, los desembolsos "
+                     "(el BAC no cambia, pero se reparte en menos meses) y el VAN, restando el sobrecoste de reducción "
+                     "acumulado en el mes 1. La *ganancia del mes* es lo que añade ese mes al VAN del anterior."))
     celdas.append(code("filas = []\n"
                        "acumulado = 0.0\n"
                        "d = datos_proyecto['duration'].copy()\n"
+                       "van_previo = VAN\n"
                        "for paso, acts in sorted(pasos.items()):\n"
                        "    coste = float(sum(datos_proyecto.loc[a, 'ucr'] for a in acts)); acumulado += coste\n"
                        "    for a in acts: d[a] -= 1\n"
                        "    p2 = proyecto.copy(); cal2 = p2.calendar(d); dur2 = int(p2.duration(d))\n"
                        "    VAN2 = van(flujo_mensual(desembolsos(cal2, dur2, d), dur2, sobrecoste=acumulado), k_mensual)\n"
                        "    filas.append({'meses acortados': paso + 1, 'actividades': ', '.join(acts), 'sobrecoste del mes (k€)': coste,\n"
-                       "                  'sobrecoste acumulado': acumulado, 'duración': dur2, 'VAN (k€)': VAN2, 'ganancia de VAN frente a no acortar': VAN2 - VAN})\n"
+                       "                  'sobrecoste acumulado': acumulado, 'duración': dur2, 'VAN (k€)': VAN2, 'ganancia del mes': VAN2 - van_previo,\n"
+                       "                  'ganancia de VAN frente a no acortar': VAN2 - VAN})\n"
+                       "    van_previo = VAN2\n"
                        "decision = pd.DataFrame(filas).set_index('meses acortados')\n"
                        "display(decision.round(1))\n"
-                       "mejor = decision['VAN (k€)'].idxmax() if decision['VAN (k€)'].max() > VAN else 0\n"
-                       "Markdown(f'''Conviene acortar {mejor} mes(es): el VAN máximo es {max(VAN, decision[\"VAN (k€)\"].max()):.1f} k€. "
-                       "Cada mes de reducción compensa mientras su sobrecoste (pagado al principio) sea menor que el VAN que gana adelantar un mes los ingresos; "
-                       "como el sobrecoste de Ackoff-Sasieni crece paso a paso y el valor de un mes de adelanto es casi constante, hay un punto de corte.''')"))
+                       "mejor = int(decision['VAN (k€)'].idxmax()) if decision['VAN (k€)'].max() > VAN else 0\n"
+                       "_txt = (f'Cada mes acortado cuesta su sobrecoste ({\", \".join(f\"{c:.0f}\" for c in decision[\"sobrecoste del mes (k€)\"])} k€) y gana adelantar un mes los ingresos (≈ {valor_mes[0]:.1f} k€), aunque también adelanta algo los desembolsos: la ganancia neta del mes es la columna *ganancia del mes*. ')\n"
+                       "if len(decision) < 3:\n"
+                       "    _txt += f'Ackoff-Sasieni sólo permite acortar {plural(len(decision), \"mes\", \"meses\")}: después no queda ninguna actividad (o combinación) que acorte todas las rutas críticas sin pasar de su duración tope. '\n"
+                       "_txt += f'**Respuesta:** conviene acortar {plural(mejor, \"mes\", \"meses\")}: el VAN máximo es {max(VAN, decision[\"VAN (k€)\"].max()):.1f} k€ (sin acortar, {VAN:.1f}). '\n"
+                       "_no = decision.index[decision['ganancia del mes'] <= 0].tolist()\n"
+                       "_txt += (f'A partir del mes {_no[0]} el sobrecoste supera lo que vale adelantar los ingresos.' if _no else\n"
+                       "         'Todos los meses posibles compensan: su sobrecoste es menor que lo que vale adelantar un mes los ingresos.')\n"
+                       "Markdown(_txt)"))
     return celdas, f"{len(D)} actividades, {T} meses de inversión (I0 = {I0:.0f} k€), {F:.0f} k€/mes durante {N} meses, k = {k:.0%}"
 
 
@@ -458,20 +554,30 @@ def _alternativas(rng):
                        "A, B = datos_enunciado['A'].tolist(), datos_enunciado['B'].tolist()\n"
                        "C = datos_enunciado['C'].tolist()[:m + 1]"))
     celdas += apartado(1)
+    celdas.append(md("VAN (valor actual neto) a la tasa de descuento, TIR (tasa interna de rentabilidad, la que anula "
+                     "el VAN) y periodo de recuperación (payback) de cada proyecto, con los cálculos:"))
+    celdas.append(code("Markdown('\\n'.join(f'**{p}.** ' + explica_van(f, k) + '. ' + explica_tir(f) + f' Payback: {explica_payback(f)}; descontado: {explica_payback(f, k)}.\\n'\n"
+                       "                   for p, f in (('A', A), ('B', B))))"))
     celdas.append(code('#| tbl-cap: "Criterios para A y B"\n#| label: tbl-criterios\n'
                        "criterios = pd.DataFrame({p: {'VAN (k€)': van(f, k), 'TIR': tir(f), 'payback (años)': payback(f), 'payback descontado': payback(f, k)}\n"
                        "                          for p, f in (('A', A), ('B', B))}).T\n"
-                       "criterios.round(3)"))
-    celdas.append(code("Markdown(f'El VAN prefiere {criterios[\"VAN (k€)\"].idxmax()} y la TIR prefiere {criterios[\"TIR\"].idxmax()}: los criterios discrepan.')"))
+                       "criterios.style.format({'VAN (k€)': '{:.1f}', 'TIR': '{:.2%}', 'payback (años)': '{:.2f}', 'payback descontado': '{:.2f}'})"))
+    celdas.append(code("_v, _t, _p = criterios['VAN (k€)'].idxmax(), criterios['TIR'].idxmax(), criterios['payback (años)'].idxmin()\n"
+                       "Markdown(f'**Respuesta:** el VAN prefiere {_v} ({criterios.loc[_v, \"VAN (k€)\"]:.1f} frente a {criterios[\"VAN (k€)\"].min():.1f} k€); '\n"
+                       "         f'la TIR prefiere {_t} ({criterios.loc[_t, \"TIR\"]:.2%} frente a {criterios[\"TIR\"].min():.2%}); '\n"
+                       "         f'el payback prefiere {_p} (recupera la inversión en {criterios.loc[_p, \"payback (años)\"]:.2f} años frente a {criterios[\"payback (años)\"].max():.2f}). '\n"
+                       "         + ('VAN y TIR discrepan.' if _v != _t else 'VAN y TIR coinciden.'))"))
     celdas += apartado(2)
     celdas.append(md("La TIR es una medida *relativa* (rentabilidad por euro y año) y supone la reinversión de los "
                      "flujos a la propia TIR; el VAN es *absoluto* (euros de valor creado a la tasa de descuento). "
                      "Cuando los proyectos tienen distinto perfil temporal (A cobra tarde, B cobra pronto) sus "
-                     "perfiles de VAN se cruzan: a la tasa de Fisher ambos valen lo mismo."))
+                     "perfiles de VAN se cruzan: a la tasa de Fisher ambos valen lo mismo. Como VAN_A − VAN_B es el "
+                     "VAN de los flujos diferenciales A − B, la tasa de Fisher es la TIR de esos flujos."))
     celdas.append(code("diferencial = [a - b for a, b in zip(A, B)]\n"
                        "fisher = tir(diferencial)\n"
                        "display(pd.DataFrame({'A': A, 'B': B, 'A − B': diferencial}, index=pd.Index(range(n + 1), name='año')).T)\n"
-                       "Markdown(f'Tasa de Fisher: TIR de los flujos A − B = {fisher:.2%}; a esa tasa VAN_A = {van(A, fisher):.1f} = VAN_B = {van(B, fisher):.1f}.')"))
+                       "Markdown('Flujos A − B: ' + explica_tir(diferencial).replace('La TIR es la tasa que anula el VAN', 'Su TIR es la tasa que anula su VAN') + '\\n\\n'\n"
+                       "         + f'**Respuesta:** tasa de Fisher = {fisher:.2%}; a esa tasa VAN_A = {van(A, fisher):.1f} k€ = VAN_B = {van(B, fisher):.1f} k€ (los perfiles se cortan en el gráfico).')"))
     celdas.append(code('#| fig-cap: "Perfiles de VAN de A y B"\n#| label: fig-perfiles\n'
                        "from matplotlib import pyplot as plt\n"
                        "ks = np.linspace(0, 0.4, 200)\n"
@@ -482,22 +588,29 @@ def _alternativas(rng):
                        "ax.axvline(k * 100, color='tab:green', linestyle='--', label=f'tasa de descuento {k:.0%}')\n"
                        "ax.set_xlabel('tasa (%)'); ax.set_ylabel('VAN (k€)'); ax.legend(); plt.show()"))
     celdas += apartado(3)
-    celdas.append(code("Markdown(f'''Para tasas por debajo de la de Fisher ({fisher:.1%}) se prefiere A (sus flujos tardíos valen más cuando el descuento es suave); "
-                       "por encima, B. A la tasa dada ({k:.0%} < {fisher:.1%}) la decisión correcta es **A**, la de mayor VAN: el objetivo es maximizar el valor "
-                       "creado en euros, y la TIR, al ser relativa e implicar reinversión a la propia TIR, no compara bien proyectos de distinto perfil.''')"))
+    celdas.append(code("Markdown(f'''**Respuesta:** para tasas por debajo de la de Fisher ({fisher:.2%}) se prefiere A (sus flujos tardíos valen más cuando el descuento es suave); "
+                       "por encima, B (hasta su TIR, {tir(B):.2%}; por encima de ambas TIR ninguno es viable). A la tasa dada ({k:.0%} < {fisher:.2%}) la decisión correcta es **A**, la de mayor VAN "
+                       "({van(A, k):.1f} frente a {van(B, k):.1f} k€): el objetivo es maximizar el valor creado en euros, y la TIR, al ser relativa e implicar reinversión a la propia TIR, "
+                       "no compara bien proyectos de distinto perfil temporal.''')"))
     celdas += apartado(4)
+    celdas.append(md("Un VAN de 4 años y uno de 6 no son comparables: el de menor vida deja libre el dinero antes y "
+                     "puede repetirse. La anualidad equivalente reparte cada VAN en una renta constante durante su "
+                     "vida, AE = VAN · k / [1 − (1 + k)^−n]; la cadena de repeticiones suma el VAN de cada repetición "
+                     "descontado hasta una vida común (el mínimo común múltiplo de las vidas)."))
     celdas.append(code("VAN_C = van(C, k)\n"
                        "AE = {'A': anualidad_equivalente(van(A, k), k, n), 'B': anualidad_equivalente(van(B, k), k, n), 'C': anualidad_equivalente(VAN_C, k, m)}\n"
-                       "# cadena de repeticiones de C hasta igualar la vida de A (mínimo común múltiplo)\n"
                        "import math\n"
                        "L = math.lcm(n, m)\n"
                        "VAN_C_cadena = sum(VAN_C / (1 + k) ** (j * m) for j in range(L // m))\n"
                        "VAN_A_cadena = sum(van(A, k) / (1 + k) ** (j * n) for j in range(L // n))\n"
-                       "display(pd.DataFrame({'VAN (k€)': {'A': van(A, k), 'B': van(B, k), 'C': VAN_C}, 'vida': {'A': n, 'B': n, 'C': m}, 'anualidad equivalente (k€/año)': AE}).round(2))\n"
-                       "Markdown(f'''El VAN de C ({VAN_C:.1f}) no es comparable directamente con el de A ({van(A, k):.1f}) porque dura {m} años en vez de {n}. "
-                       "La anualidad equivalente convierte cada VAN en una renta anual constante durante su vida: {\", \".join(f\"{p}: {v:.1f}\" for p, v in AE.items())} k€/año. "
-                       "Comprobación con cadenas de repeticiones hasta {L} años: A {VAN_A_cadena:.1f} frente a C {VAN_C_cadena:.1f} k€. "
-                       "{\"C pasa a ser la mejor opción.\" if AE[\"C\"] > max(AE[\"A\"], AE[\"B\"]) else \"La decisión no cambia: sigue siendo \" + max(AE, key=AE.get) + \".\"}''')"))
+                       "display(pd.DataFrame({'VAN (k€)': {'A': van(A, k), 'B': van(B, k), 'C': VAN_C}, 'vida': {'A': n, 'B': n, 'C': m},\n"
+                       "                      'AE = VAN · k / [1 − (1 + k)^−n]': {p: f'{v:.1f} × {k} / [1 − {1 + k:g}^−{vida}] = {AE[p]:.2f}' for p, v, vida in (('A', van(A, k), n), ('B', van(B, k), n), ('C', VAN_C, m))}}).round({'VAN (k€)': 1}))\n"
+                       "_cad = lambda v, vida: ' + '.join([f'{v:.1f}'] + [f'{v:.1f}/{1 + k:g}{str(j * vida).translate(_SUP)}' for j in range(1, L // vida)])\n"
+                       "mejor_AB = 'A' if van(A, k) >= van(B, k) else 'B'\n"
+                       "Markdown(f'VAN de C: ' + explica_van(C, k) + f'. Cadenas de repeticiones hasta {L} años: A, {_cad(van(A, k), n)} = {VAN_A_cadena:.1f} k€; '\n"
+                       "         f'C, {_cad(VAN_C, m)} = {VAN_C_cadena:.1f} k€. '\n"
+                       "         + (f'**Respuesta:** C pasa a ser la mejor opción: su anualidad equivalente ({AE[\"C\"]:.1f} k€/año) supera la de {mejor_AB} ({AE[mejor_AB]:.1f}), aunque su VAN aislado sea menor.' if AE['C'] > max(AE['A'], AE['B']) else\n"
+                       "            f'**Respuesta:** la decisión no cambia, sigue siendo {max(AE, key=AE.get)}: su anualidad equivalente ({max(AE.values()):.1f} k€/año) supera la de C ({AE[\"C\"]:.1f}); la cadena de repeticiones da la misma conclusión.'))"))
     return celdas, f"A y B ({n} años) con conflicto VAN/TIR (Fisher {fisher:.1%}), C de {m} años; k = {k:.0%}"
 
 
@@ -536,25 +649,42 @@ def _sensibilidad(rng):
                        "    ventas = unidades * precio * infl; EBITDA = ventas - unidades * cv * infl - pd.Series([0] + [CF] * n) * infl\n"
                        "    amort = pd.Series([0] + [(I0 - VR) / n] * n); BAI = EBITDA - amort\n"
                        "    imp = BAI.clip(lower=0) * t_imp; imp[0] = 0\n"
-                       "    circ = pd.Series([w * ventas[1]] + [w * ventas[t] for t in range(1, n + 1)])\n"
-                       "    dcirc = circ.diff().fillna(circ[0]); dcirc[n] -= circ[n]\n"
+                       "    circ = pd.Series([w * ventas[t + 1] for t in range(n)] + [0])\n"
+                       "    dcirc = circ.diff().fillna(circ[0])\n"
                        "    return (BAI - imp + amort - dcirc - pd.Series([I0] + [0] * n) + pd.Series([0] * n + [VR])).tolist()\n"
                        "VAN = van(modelo(), k)\n"
-                       "Markdown(f'VAN del caso base: {VAN:.1f} k€ (TIR {tir(modelo()):.2%}).')"))
+                       "Markdown(explica_van(modelo(), k) + '.\\n\\n' + explica_tir(modelo())\n"
+                       "         + f'\\n\\n**Respuesta:** VAN del caso base = {VAN:.1f} k€ (TIR {tir(modelo()):.2%}): ' + ('viable.' if VAN > 0 else 'no viable.'))"))
     celdas += apartado(2)
-    celdas.append(md("Cada umbral se obtiene resolviendo VAN(x) = 0 en la variable x (bisección), con las demás "
-                     "fijas. La sensibilidad se lee en la variación porcentual que anula el VAN: cuanto menor, "
-                     "más frágil es el proyecto frente a esa variable."))
+    celdas.append(md("Cada umbral es el valor de la variable x que hace VAN(x) = 0 con las demás fijas. El VAN "
+                     "es casi lineal en cada variable, así que el umbral se aproxima bien con una regla de tres: "
+                     "VAN(x) ≈ VAN_base + (x − x_base) · ΔVAN/Δx, donde ΔVAN/Δx se mide cambiando la variable un 1 %; "
+                     "después se afina por bisección y se comprueba que el VAN en el umbral es 0. La sensibilidad se "
+                     "lee en la variación porcentual que anula el VAN: cuanto menor, más frágil es el proyecto frente "
+                     "a esa variable."))
     celdas.append(code("from scipy.optimize import brentq\n"
                        "precio_umbral = brentq(lambda x: van(modelo(precio=x), k), precio * 0.2, precio * 2)\n"
                        "u1_umbral = brentq(lambda x: van(modelo(u1=x), k), u1 * 0.2, u1 * 2)\n"
                        "cv_umbral = brentq(lambda x: van(modelo(cv=x), k), cv * 0.2, max(cv * 5, precio * 0.99))\n"
-                       "umbrales = pd.DataFrame({'caso base': [precio, u1, cv], 'umbral (VAN = 0)': [precio_umbral, u1_umbral, cv_umbral]},\n"
-                       "                        index=['precio', 'unidades año 1', 'coste variable'])\n"
-                       "umbrales['variación admisible'] = umbrales['umbral (VAN = 0)'] / umbrales['caso base'] - 1\n"
-                       "display(umbrales.round(3))\n"
-                       "mas_sensible = umbrales['variación admisible'].abs().idxmin()\n"
-                       "Markdown(f'La variable más sensible es **{mas_sensible}**: basta una variación del {umbrales.loc[mas_sensible, \"variación admisible\"]:+.1%} para anular el VAN.')"))
+                       "_base = {'precio': precio, 'unidades año 1': u1, 'coste variable': cv}\n"
+                       "_arg = {'precio': 'precio', 'unidades año 1': 'u1', 'coste variable': 'cv'}\n"
+                       "_umb = {'precio': precio_umbral, 'unidades año 1': u1_umbral, 'coste variable': cv_umbral}\n"
+                       "filas = {}\n"
+                       "for v, x0 in _base.items():\n"
+                       "    pend = (van(modelo(**{_arg[v]: x0 * 1.01}), k) - VAN) / (x0 * 0.01)\n"
+                       "    filas[v] = {'caso base': x0, 'ΔVAN por unidad de la variable': pend,\n"
+                       "                'umbral ≈ base − VAN / pendiente': f'{x0:g} − {VAN:.1f}/({_num(pend, 2)}) = {x0 - VAN / pend:.3f}',\n"
+                       "                'umbral exacto (VAN = 0)': _umb[v], 'VAN en el umbral': van(modelo(**{_arg[v]: _umb[v]}), k),\n"
+                       "                'variación admisible': _umb[v] / x0 - 1}\n"
+                       "umbrales = pd.DataFrame(filas).T\n"
+                       "for c in umbrales.columns.drop('umbral ≈ base − VAN / pendiente'):\n"
+                       "    umbrales[c] = umbrales[c].astype(float)\n"
+                       "display(umbrales.style.format({'caso base': '{:.3f}', 'ΔVAN por unidad de la variable': '{:.2f}', 'umbral exacto (VAN = 0)': '{:.3f}',\n"
+                       "                               'VAN en el umbral': '{:.4f}', 'variación admisible': '{:+.1%}'}))\n"
+                       "mas_sensible = umbrales['variación admisible'].astype(float).abs().idxmin()\n"
+                       "Markdown('**Respuesta:** ' + '; '.join(f'{v}: {\"mínimo\" if v != \"coste variable\" else \"máximo\"} {float(umbrales.loc[v, \"umbral exacto (VAN = 0)\"]):.3f} ({float(umbrales.loc[v, \"variación admisible\"]):+.1%} respecto a {_base[v]:g})' for v in umbrales.index)\n"
+                       "         + f'. El proyecto es más sensible a la variable **{mas_sensible}**: basta una variación del {float(umbrales.loc[mas_sensible, \"variación admisible\"]):+.1%} para anular el VAN. '\n"
+                       "         'El diagrama de araña muestra lo mismo: la recta más inclinada (en % de variación) es la de la variable más sensible.')"))
     celdas.append(code('#| fig-cap: "VAN frente a la variación de cada variable (diagrama de araña)"\n#| label: fig-arana\n'
                        "from matplotlib import pyplot as plt\n"
                        "xs = np.linspace(-0.3, 0.3, 25)\n"
@@ -566,23 +696,36 @@ def _sensibilidad(rng):
                        "ax.plot(xs * 100, [van(modelo(I0=I0 * (1 + x)), k) for x in xs], label='inversión')\n"
                        "ax.axhline(0, color='grey'); ax.set_xlabel('variación respecto al caso base (%)'); ax.set_ylabel('VAN (k€)'); ax.legend(); plt.show()"))
     celdas += apartado(3)
+    celdas.append(md("Cada escenario repite el modelo completo con los tres datos cambiados a la vez; la tabla da "
+                     "sus flujos de caja libre y, debajo, el VAN término a término y la TIR."))
     celdas.append(code("escenarios = {'pesimista': dict(precio=precio * 0.9, u1=u1 * 0.9, CF=CF * 1.1), 'base': {}, 'optimista': dict(precio=precio * 1.1, u1=u1 * 1.1, CF=CF * 0.9)}\n"
+                       "display(pd.DataFrame({e: modelo(**kw) for e, kw in escenarios.items()}, index=pd.Index(range(n + 1), name='año')).T.round(1))\n"
                        "tabla_esc = pd.DataFrame({e: {'VAN (k€)': van(modelo(**kw), k), 'TIR': tir(modelo(**kw))} for e, kw in escenarios.items()}).T\n"
-                       "display(tabla_esc.round(3))\n"
-                       "Markdown(f'''El escenario pesimista {\"mantiene\" if tabla_esc.loc[\"pesimista\", \"VAN (k€)\"] > 0 else \"destruye\"} la viabilidad (VAN {tabla_esc.loc[\"pesimista\", \"VAN (k€)\"]:.1f}). "
-                       "Los escenarios combinan desviaciones simultáneas, que es lo que ocurre en la práctica (un mal año afecta a precio y volumen a la vez); "
-                       "el análisis de una variable cada vez las subestima.''')"))
+                       "display(tabla_esc.style.format({'VAN (k€)': '{:.1f}', 'TIR': '{:.2%}'}))\n"
+                       "Markdown('\\n'.join(f'- {e} (precio {kw.get(\"precio\", precio):g}, unidades {kw.get(\"u1\", u1):g}, costes fijos {kw.get(\"CF\", CF):g}): ' + explica_van(modelo(**kw), k) + f'; TIR = {tir(modelo(**kw)):.2%}.'\n"
+                       "                   for e, kw in escenarios.items() if e != 'base')\n"
+                       "         + f'\\n\\n**Respuesta:** VAN y TIR: pesimista {tabla_esc.loc[\"pesimista\", \"VAN (k€)\"]:.1f} k€ y {tabla_esc.loc[\"pesimista\", \"TIR\"]:.2%}; '\n"
+                       "         f'base {VAN:.1f} k€ y {tabla_esc.loc[\"base\", \"TIR\"]:.2%}; optimista {tabla_esc.loc[\"optimista\", \"VAN (k€)\"]:.1f} k€ y {tabla_esc.loc[\"optimista\", \"TIR\"]:.2%}. '\n"
+                       "         f'El escenario pesimista {\"mantiene\" if tabla_esc.loc[\"pesimista\", \"VAN (k€)\"] > 0 else \"destruye\"} la viabilidad'\n"
+                       "         f'{\" (su TIR queda por encima\" if tabla_esc.loc[\"pesimista\", \"TIR\"] > k else \" (su TIR queda por debajo\"} de la tasa del {k:.0%}). '\n"
+                       "         'Los escenarios combinan desviaciones simultáneas, que es lo que ocurre en la práctica (un mal año afecta a precio y volumen a la vez); '\n"
+                       "         'el análisis de una variable cada vez las subestima.')"))
     celdas += apartado(4)
+    celdas.append(md("En euros corrientes, todo importe que sigue a los precios se multiplica en el año t por "
+                     "(1 + π)^t (ventas, costes variables y fijos y, con ellas, el circulante); la amortización y el "
+                     "valor residual, que dependen del precio de compra, no cambian. Esos flujos se descuentan a la "
+                     "tasa nominal, que incluye la inflación: relación de Fisher, (1 + k_nominal) = (1 + k_real)(1 + π)."))
     celdas.append(code(f"inflacion = {inflacion}\n"
                        "k_nominal = (1 + k) * (1 + inflacion) - 1\n"
                        "flujos_corrientes = modelo(inflacion=inflacion)\n"
                        "VAN_corriente = van(flujos_corrientes, k_nominal)\n"
                        "VAN_corriente_mal = van(flujos_corrientes, k)\n"
                        "display(pd.DataFrame({'euros constantes': modelo(), 'euros corrientes': flujos_corrientes}, index=pd.Index(range(n + 1), name='año')).T.round(1))\n"
-                       "Markdown(f'''Relación de Fisher: (1 + k_nominal) = (1 + k_real)(1 + π) → k_nominal = (1 + {k})(1 + {inflacion}) − 1 = {k_nominal:.2%}. "
-                       "Flujos corrientes descontados a la tasa nominal: VAN = {VAN_corriente:.1f} k€, frente a {VAN:.1f} con flujos constantes y tasa real. "
-                       "No coinciden porque no todo crece con la inflación: la amortización (y su ahorro fiscal) y el valor residual son importes nominales fijos, y el "
-                       "circulante crece con las ventas nominales; la inflación perjudica al proyecto vía impuestos y circulante. "
+                       "Markdown(f'''k_nominal = (1 + {k})(1 + {inflacion}) − 1 = {k_nominal:.2%}. Flujos corrientes descontados a la tasa nominal: ''' + explica_van(flujos_corrientes, k_nominal) + f'''. "
+                       "**Respuesta:** los flujos corrientes se construyen inflando cada año precios y costes con (1 + {inflacion})^t y se descuentan al {k_nominal:.2%}. "
+                       "Con ello el VAN es {VAN_corriente:.1f} k€, frente a {VAN:.1f} con flujos constantes y tasa real: no coinciden exactamente porque no todo crece con la inflación: "
+                       "la amortización (y su ahorro fiscal) y el valor residual son importes nominales fijos, y el circulante crece con las ventas nominales; "
+                       "{\"la inflación perjudica al proyecto\" if VAN_corriente < VAN else \"la inflación favorece ligeramente al proyecto\"} vía impuestos y circulante ({VAN_corriente - VAN:+.1f} k€). "
                        "El error grave sería mezclar: flujos corrientes con tasa real daría {VAN_corriente_mal:.1f} k€, un VAN inflado.''')"))
     return celdas, f"{caso['tema']}: umbrales de precio, volumen y coste variable; escenarios; inflación {inflacion:.0%}"
 
@@ -618,7 +761,8 @@ def _financiacion(rng):
     celdas += apartado(1)
     _celdas_modelo(celdas, con_explicacion=False)
     celdas.append(code("VAN, TIR = van(flujos, k), tir(flujos)\n"
-                       "Markdown(f'VAN del proyecto = {VAN:.1f} k€ al {k:.0%}; TIR del proyecto = {TIR:.2%}.')"))
+                       "Markdown(explica_van(flujos, k) + '.\\n\\n' + explica_tir(flujos)\n"
+                       "         + f'\\n\\n**Respuesta:** VAN del proyecto = {VAN:.1f} k€ al {k:.0%}; TIR del proyecto = {TIR:.2%}.')"))
     celdas += apartado(2)
     celdas.append(md("Cuota constante $C = P \\cdot \\dfrac{i}{1 - (1 + i)^{-n_p}}$; cada año los intereses son "
                      "$i$ por el capital vivo al inicio y la amortización es la cuota menos los intereses."))
@@ -632,9 +776,16 @@ def _financiacion(rng):
                        "    return pd.DataFrame(filas).set_index('año')\n"
                        "prestamo = alfa * I0\n"
                        "cuadro = cuadro_prestamo(prestamo, i, n_p)\n"
-                       "display(Markdown(f'Préstamo = {alfa:.0%} × {I0:.0f} = {prestamo:.1f} k€; cuota = {prestamo:.1f} × {i} / (1 − (1 + {i})^−{n_p}) = {cuadro[\"cuota\"].iloc[0]:.2f} k€.'))\n"
+                       "_c1 = cuadro.iloc[0]\n"
+                       "display(Markdown(f'Préstamo = {alfa:.0%} × {I0:.0f} = {prestamo:.1f} k€; cuota = {prestamo:.1f} × {i} / (1 − (1 + {i})^−{n_p}) = {_c1[\"cuota\"]:.2f} k€. '\n"
+                       "                 f'Año 1: intereses = {i} × {prestamo:.2f} = {_c1[\"intereses\"]:.2f}; amortización = {_c1[\"cuota\"]:.2f} − {_c1[\"intereses\"]:.2f} = {_c1[\"amortización\"]:.2f}; '\n"
+                       "                 f'capital vivo = {prestamo:.2f} − {_c1[\"amortización\"]:.2f} = {_c1[\"capital vivo\"]:.2f}. Los años siguientes se calculan igual a partir del capital vivo del año anterior; '\n"
+                       "                 f'en el año {n_p} el capital vivo llega a 0 (la suma de las amortizaciones, {cuadro[\"amortización\"].sum():.2f}, devuelve el préstamo).'))\n"
                        "cuadro.round(2)"))
     celdas += apartado(3)
+    celdas.append(md("El accionista recibe el préstamo en t = 0 (pone sólo el resto de la inversión), paga cada año "
+                     "la cuota y se ahorra el impuesto sobre los intereses (escudo fiscal = tipo impositivo × "
+                     "intereses). Su flujo se descuenta a la rentabilidad que exigen los socios."))
     celdas.append(code("def flujo_accionista(cuadro, prestamo):\n"
                        "    f = pd.Series(flujos, index=range(n + 1)).astype(float)\n"
                        "    f[0] += prestamo\n"
@@ -648,18 +799,23 @@ def _financiacion(rng):
                        "                        'flujo del accionista': fa.tolist()}, index=pd.Index(range(n + 1), name='año'))\n"
                        "display(detalle.round(1).T)\n"
                        "VAN_acc, TIR_acc = van(fa.tolist(), ke), tir(fa.tolist())\n"
-                       "Markdown(f'VAN para el accionista (al {ke:.0%}) = {VAN_acc:.1f} k€; TIR del accionista = {TIR_acc:.2%}.')"))
+                       "Markdown(f'Año 1: {flujos[1]:.1f} − {cuadro.loc[1, \"cuota\"]:.1f} + {t_imp} × {cuadro.loc[1, \"intereses\"]:.1f} = {fa[1]:.1f}. '\n"
+                       "         + explica_van(fa.tolist(), ke, nombre='VAN del accionista') + '.\\n\\n' + explica_tir(fa.tolist())\n"
+                       "         + f'\\n\\n**Respuesta:** VAN para el accionista (al {ke:.0%}) = {VAN_acc:.1f} k€; TIR del accionista = {TIR_acc:.2%}.')"))
     celdas += apartado(4)
     celdas.append(code(f"i_alto = {i_alto}\n"
                        "cuadro_alto = cuadro_prestamo(prestamo, i_alto, n_p)\n"
                        "fa_alto = flujo_accionista(cuadro_alto, prestamo)\n"
+                       "TIR_alto = tir(fa_alto.tolist())\n"
                        "coste_deuda_neto = i * (1 - t_imp); coste_alto_neto = i_alto * (1 - t_imp)\n"
                        "display(pd.DataFrame({'proyecto (sin deuda)': {'TIR': TIR}, f'accionista, préstamo al {i:.0%}': {'TIR': TIR_acc},\n"
-                       "                      f'accionista, préstamo al {i_alto:.0%}': {'TIR': tir(fa_alto.tolist())}}).round(4))\n"
-                       "Markdown(f'''La deuda cuesta {i:.0%} ({coste_deuda_neto:.2%} tras impuestos), menos que la rentabilidad del proyecto ({TIR:.2%}): la diferencia se la queda el accionista, "
+                       "                      f'accionista, préstamo al {i_alto:.0%}': {'TIR': TIR_alto}}).style.format('{:.2%}'))\n"
+                       "display(Markdown(f'Con el préstamo al {i_alto:.0%}: cuota = {prestamo:.1f} × {i_alto} / (1 − (1 + {i_alto})^−{n_p}) = {cuadro_alto[\"cuota\"].iloc[0]:.2f} k€; '\n"
+                       "                 'flujo del accionista = ' + ', '.join(f'{x:.1f}' for x in fa_alto) + '. ' + explica_tir(fa_alto.tolist())))\n"
+                       "Markdown(f'''**Respuesta:** la deuda cuesta {i:.0%}, es decir, {i} × (1 − {t_imp}) = {coste_deuda_neto:.2%} tras impuestos, menos que la rentabilidad del proyecto ({TIR:.2%}): la diferencia se la queda el accionista, "
                        "que ha puesto sólo el {1 - alfa:.0%} del capital, y su TIR sube a {TIR_acc:.2%}. Es el apalancamiento financiero positivo. "
-                       "Con el préstamo al {i_alto:.0%} ({coste_alto_neto:.2%} neto, por encima de la TIR del proyecto) el efecto se invierte: la TIR del accionista "
-                       "{\"cae a\" if tir(fa_alto.tolist()) < TIR else \"baja a\"} {tir(fa_alto.tolist()):.2%}{\", por debajo de la del proyecto\" if tir(fa_alto.tolist()) < TIR else \"\"}. "
+                       "Con el préstamo al {i_alto:.0%} ({i_alto} × (1 − {t_imp}) = {coste_alto_neto:.2%} neto, por encima de la TIR del proyecto) el efecto se invierte: la TIR del accionista "
+                       "{\"cae a\" if TIR_alto < TIR_acc else \"queda en\"} {TIR_alto:.2%}{\", por debajo de la del proyecto\" if TIR_alto < TIR else \"\"}. "
                        "La condición es que la rentabilidad del proyecto supere el coste de la deuda después de impuestos. El apalancamiento amplifica en los dos sentidos, "
                        "y además concentra el riesgo: las cuotas se pagan aunque las ventas fallen.''')"))
     return celdas, f"{caso['tema']}: préstamo del {alfa:.0%} al {i:.0%} a {n_p} años; TIR proyecto {res['tir']:.1%}"
@@ -748,8 +904,10 @@ def _van_montecarlo(rng):
                        "flujos = [0.0] + [-float(x) for x in pagos] + [F] * N\n"
                        "VAN_det = van(flujos, k_mensual)\n"
                        "criticas = calendario.index[calendario['H_total'] == 0].tolist()\n"
-                       "Markdown(f'Duración {duracion} meses; actividades críticas: {\", \".join(criticas)}. Inversión Σ BAC = {I0:.0f} k€. '\n"
-                       "         f'Con k mensual = {k_mensual:.4%}, el VAN determinista es {VAN_det:.1f} k€.')"))
+                       "display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'meses'))\n"
+                       "Markdown(f'Desembolso de cada mes (BAC/duración de cada actividad en curso, con los inicios más tempranos): ' + ', '.join(f'{x:.1f}' for x in pagos) + f' k€ (Σ = Σ BAC = {I0:.0f} k€). '\n"
+                       "         f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}.\\n\\n' + explica_van_mensual(pagos, F, N, k_mensual)\n"
+                       "         + f'\\n\\n**Respuesta:** duración {duracion} meses; camino crítico {\" – \".join(ordena_ruta(criticas, calendario))}; VAN determinista = {VAN_det:.1f} k€.')"))
     celdas += apartado(2)
     celdas.append(code("distribuciones = {act: ('triangular', float(f['a']), float(f['m']), float(f['b'])) for act, f in datos_proyecto.iterrows()}\n"
                        "ingreso = ('triangular', F - delta, F, F + delta)\n"
@@ -765,7 +923,9 @@ def _van_montecarlo(rng):
                        "ejes[1].axvline(VAN_det, color='k', ls='--', label='VAN determinista'); ejes[1].axvline(0, color='#c44', label='VAN = 0')\n"
                        "ejes[1].set_xlabel('VAN (k€)'); ejes[1].legend(); plt.tight_layout()"))
     celdas.append(code("Markdown(f'La duración media es {mc.tau_samples.mean():.2f} meses frente a {duracion} del plan; el VAN medio es {mc.van_mean:.1f} k€ '\n"
-                       "         f'(determinista {VAN_det:.1f}), con desviación {mc.van_std:.1f}. P(VAN < 0) = {mc.prob_negativo:.1%} y el percentil 5 % es {mc.cuantil(0.05):.1f} k€.')"))
+                       "         f'(determinista {VAN_det:.1f}), con desviación {mc.van_std:.1f}. P(VAN < 0) = {mc.prob_negativo:.1%} y el percentil 5 % es {mc.cuantil(0.05):.1f} k€. '\n"
+                       "         f'Las probabilidades salen de contar réplicas: P(VAN < 0) = (réplicas con VAN < 0)/5000 = {int(round(mc.prob_negativo * 5000))}/5000; el percentil 5 % deja por debajo el 5 % de los VAN simulados (250 réplicas). '\n"
+                       "         f'**Respuesta:** media {mc.van_mean:.1f} k€, desviación típica {mc.van_std:.1f} k€, P(VAN < 0) = {mc.prob_negativo:.1%}, percentil 5 % = {mc.cuantil(0.05):.1f} k€.')"))
     celdas += apartado(3)
     celdas.append(code("fijas = {act: ('uniform', float(f['duration']), float(f['duration'])) for act, f in datos_proyecto.iterrows()}\n"
                        "solo_duraciones = proyecto.monte_carlo_van(distribuciones, datos_proyecto['BAC'], F, N, k, n_samples=5000, seed=2025)\n"
@@ -780,17 +940,25 @@ def _van_montecarlo(rng):
                        "         f'{solo_ingreso.van_mean:.1f} ± {ee_ing:.1f} (dos errores estándar de simulación) frente a {VAN_det:.1f}. Las duraciones sí la bajan, hasta '\n"
                        "         f'{solo_duraciones.van_mean:.1f} ± {ee_dur:.1f}: el proyecto termina cuando termina el último camino, así que la duración media es '\n"
                        "         f'{solo_duraciones.tau_samples.mean():.2f} > {duracion} (caminos casi críticos que se fusionan) y cada mes de retraso retrasa un flujo descontado. '\n"
-                       "         'Es el mismo sesgo de la aproximación normal, ahora medido en k€.')"))
+                       "         'Es el mismo sesgo de la aproximación normal, ahora medido en k€. '\n"
+                       "         f'**Respuesta:** la media simulada ({mc.van_mean:.1f}) queda por debajo del VAN determinista ({VAN_det:.1f}) por las duraciones (el proyecto dura de media más de lo planificado y los ingresos llegan más tarde); '\n"
+                       "         'la incertidumbre del ingreso sólo añade dispersión.')"))
     celdas += apartado(4)
     celdas.append(code("tornado = mc.tornado()\n"
                        "criticidad = proyecto.monte_carlo(distribuciones, n_samples=5000, seed=2025).sensitivity_mean\n"
                        "comparacion = pd.DataFrame({'Spearman con el VAN': tornado['Spearman con el VAN']})\n"
                        "comparacion['índice de criticidad'] = [criticidad.get(v.split()[-1], np.nan) if v.startswith('duración') else np.nan for v in comparacion.index]\n"
                        "display(comparacion.round(3))\n"
-                       "positivas = [v for v, r in tornado['Spearman con el VAN'].items() if r > 0.02 and v.startswith('duración')]\n"
-                       "Markdown(f'Mandan el ingreso y las actividades con alto índice de criticidad (su retraso retrasa el cobro). '\n"
-                       "         f'Con correlación positiva apreciable: {positivas or \"ninguna\"}. Una actividad con holgura que se alarga no retrasa el cobro y '\n"
-                       "         'desplaza el pago de su BAC hacia meses más descontados, por lo que puede mejorar ligeramente el VAN; el efecto es pequeño.')"))
+                       "_dur = comparacion.loc[[v for v in comparacion.index if v.startswith('duración')]]\n"
+                       "positivas = [v.split()[-1] for v, r in _dur['Spearman con el VAN'].items() if r > 0]\n"
+                       "_top = _dur['Spearman con el VAN'].abs().idxmax().split()[-1]\n"
+                       "Markdown(f'Manda el ingreso mensual (Spearman {tornado.loc[\"ingreso mensual\", \"Spearman con el VAN\"]:.3f}); entre las duraciones, la de más peso es {_top} '\n"
+                       "         f'(Spearman {_dur.loc[\"duración \" + _top, \"Spearman con el VAN\"]:.3f}, índice de criticidad {_dur.loc[\"duración \" + _top, \"índice de criticidad\"]:.3f}): las actividades que más veces son críticas son las que, al alargarse, retrasan el cobro. '\n"
+                       "         + (f'**Respuesta:** tienen correlación positiva (su demora mejora el VAN) {lista_y(positivas)}, con índices de criticidad '\n"
+                       "            + ', '.join(f'{a}: {_dur.loc[\"duración \" + a, \"índice de criticidad\"]:.3f}' for a in positivas)\n"
+                       "            + '. Son actividades que casi nunca son críticas: si se alargan no retrasan el cobro y desplazan el pago de su BAC hacia meses más descontados, '\n"
+                       "              f'así que el VAN mejora ligeramente; el efecto es pequeño (|Spearman| ≤ {max(abs(_dur.loc[\"duración \" + a, \"Spearman con el VAN\"]) for a in positivas):.3f}).'\n"
+                       "            if positivas else '**Respuesta:** ninguna duración tiene correlación positiva con el VAN: toda demora lo empeora o no lo afecta.'))"))
     celdas += apartado(5)
     celdas.append(code("influyente = tornado.index[[v.startswith('duración') for v in tornado.index]][0].split()[-1]\n"
                        "centrada = dict(distribuciones); centrada[influyente] = ('uniform', float(datos_proyecto.loc[influyente, 'duration']), float(datos_proyecto.loc[influyente, 'duration']))\n"
@@ -805,7 +973,11 @@ def _van_montecarlo(rng):
                        "Markdown(f'La actividad más influyente es {influyente}. Fijar el ingreso o una duración cambia poco el VAN medio '\n"
                        "         f'({tabla_op.loc[\"sin hacer nada\", \"VAN medio\"]:.1f} → entre {tabla_op[\"VAN medio\"].drop(\"sin hacer nada\").min():.1f} y {tabla_op[\"VAN medio\"].drop(\"sin hacer nada\").max():.1f}): '\n"
                        "         f'lo que compra es seguridad. La opción que más reduce P(VAN < 0) es {mejor_riesgo}. Si la empresa es neutral al riesgo, solo vale la pena pagar '\n"
-                       "         'por lo que sube la media; si le preocupa la cola (P(VAN < 0), CVaR), se paga por reducir dispersión.')"))
+                       "         'por lo que sube la media; si le preocupa la cola (P(VAN < 0), CVaR, el VAN medio del 5 % de peores réplicas), se paga por reducir dispersión. '\n"
+                       "         f'**Respuesta:** (a) deja la desviación en {tabla_op.loc[\"(a) fijar el ingreso\", \"desviación\"]:.1f} k€ y P(VAN < 0) en {tabla_op.loc[\"(a) fijar el ingreso\", \"P(VAN < 0)\"]:.1%}; '\n"
+                       "         f'(b) en {tabla_op.iloc[2][\"desviación\"]:.1f} k€ y {tabla_op.iloc[2][\"P(VAN < 0)\"]:.1%}; las dos, en {tabla_op.loc[\"(a) y (b)\", \"desviación\"]:.1f} k€ y {tabla_op.loc[\"(a) y (b)\", \"P(VAN < 0)\"]:.1%} '\n"
+                       "         f'(sin hacer nada: {tabla_op.loc[\"sin hacer nada\", \"desviación\"]:.1f} k€ y {tabla_op.loc[\"sin hacer nada\", \"P(VAN < 0)\"]:.1%}). Ninguna sube apreciablemente el VAN medio: lo que se compra es reducción del riesgo'\n"
+                       "         + (f'; (b) apenas lo reduce, porque la duración de {influyente} pesa poco frente al ingreso.' if tabla_op.iloc[2]['desviación'] > 0.9 * tabla_op.loc['sin hacer nada', 'desviación'] else '.'))"))
     return celdas, f"{len(D)} actividades, {T} meses, I0 = {I0:.0f} k€, ingreso {F:.0f} ± {delta:.0f} k€/mes durante {N} meses, k = {k:.0%}; distribución del VAN"
 
 
@@ -903,9 +1075,8 @@ def _recursos_van(rng):
                        "flujos_libre = flujo_mensual(pagos_libre)\n"
                        "VAN_libre = van(flujos_libre, k_mensual)\n"
                        "display(pd.DataFrame({'desembolso (k€)': pagos_libre}).T.round(1))\n"
-                       "Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin límite: {duracion_libre} meses de inversión ({pagos_libre.sum():.0f} k€ = Σ BAC) y '\n"
-                       "         f'VAN = {VAN_libre:.1f} k€ (valor actual de los ingresos {van([0.0] * (duracion_libre + 1) + [F] * N, k_mensual):.1f} menos el de los desembolsos '\n"
-                       "         f'{-van([0.0] + [-float(x) for x in pagos_libre], k_mensual):.1f}).')"))
+                       "Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin límite: {duracion_libre} meses de inversión ({pagos_libre.sum():.0f} k€ = Σ BAC).\\n\\n'\n"
+                       "         + explica_van_mensual(pagos_libre, F, N, k_mensual) + f'\\n\\n**Respuesta:** sin límite de operarios el proyecto dura {duracion_libre} meses y su VAN es {VAN_libre:.1f} k€.')"))
     celdas.append(code('#| tbl-cap: "VAN sin y con límite de operarios (van_recursos)"\n#| label: tbl-escenarios\n'
                        "res = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, F, N, k, ampliaciones=3)\n"
                        "escenarios = res['escenarios'].round(2)\n"
@@ -934,23 +1105,35 @@ def _recursos_van(rng):
                        "Markdown(f'Con {L} operarios el proyecto dura {res_lim.duracion} meses (+{res_lim.duracion - duracion_libre}): los ingresos empiezan en el mes {res_lim.duracion + 1} en vez del {duracion_libre + 1}. '\n"
                        "         f'VAN = {VAN_lim:.1f} k€ (la librería: {escenarios.loc[\"con límite\", \"VAN\"]:.1f}) frente a {VAN_libre:.1f} sin límite: {dif[\"VAN\"]:.1f} k€. '\n"
                        "         f'Efecto en los ingresos: {dif[\"VAN ingresos\"]:.1f} k€ (se cobran más tarde); en los costes: {-dif[\"VAN costes\"]:.1f} k€ '\n"
-                       "         '(las actividades que esperan se pagan más tarde y el coste se descuenta más). El retraso de los ingresos domina.')"))
+                       "         '(las actividades que esperan se pagan más tarde y el coste se descuenta más). '\n"
+                       "         f'Los ingresos son la misma renta desplazada {res_lim.duracion - duracion_libre} meses: VA = {van([0.0] * (duracion_libre + 1) + [F] * N, k_mensual):.1f} × {1 + k_mensual:.5f}^−{res_lim.duracion - duracion_libre} = {van([0.0] * (res_lim.duracion + 1) + [F] * N, k_mensual):.1f} k€. '\n"
+                       "         + (f'**Respuesta:** el proyecto se alarga {plural(res_lim.duracion - duracion_libre, \"mes\", \"meses\")} y pierde {-dif[\"VAN\"]:.1f} k€ de VAN; domina el retraso de los ingresos ({dif[\"VAN ingresos\"]:.1f} k€ frente a +{-dif[\"VAN costes\"]:.1f} k€ de ahorro en costes).'\n"
+                       "            if abs(dif['VAN ingresos']) > abs(dif['VAN costes']) else\n"
+                       "            f'**Respuesta:** el proyecto se alarga {plural(res_lim.duracion - duracion_libre, \"mes\", \"meses\")} y su VAN cambia {dif[\"VAN\"]:+.1f} k€; domina el efecto de los costes.'))"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Duración y VAN al ampliar el límite de operarios"\n#| label: tbl-ampliaciones\n'
                        "amp = res['ampliaciones'].copy()\n"
                        "amp['coste de contratar'] = amp.index * coste_operario * amp['duración']\n"
+                       "amp['coste = operarios × coste mensual × duración'] = [f'{u} × {coste_operario:g} × {d:.0f} = {u * coste_operario * d:.1f}' for u, d in zip(amp.index, amp['duración'])]\n"
                        "amp['VAN neto de contratar'] = amp['VAN'] - amp['coste de contratar']\n"
                        "amp.round(2)"))
     celdas.append(code("mejor = amp['VAN neto de contratar'].idxmax()\n"
-                       "Markdown(f'La mejor opción es ampliar el límite en {mejor} operario(s): VAN neto {amp.loc[mejor, \"VAN neto de contratar\"]:.1f} k€ '\n"
-                       "         f'frente a {amp.loc[0, \"VAN neto de contratar\"]:.1f} k€ sin ampliar. Se compara la mejora del VAN por adelantar los ingresos '\n"
-                       "         'con lo que cuesta mantener a los operarios todo el proyecto.')"))
+                       "_m1 = amp.loc[1, 'VAN'] - amp.loc[0, 'VAN']\n"
+                       "Markdown(f'Un operario más mejora el VAN en {amp.loc[1, \"VAN\"]:.1f} − {amp.loc[0, \"VAN\"]:.1f} = {_m1:.1f} k€ y cuesta {amp.loc[1, \"coste de contratar\"]:.1f} k€: '\n"
+                       "         + ('compensa. ' if _m1 > amp.loc[1, 'coste de contratar'] else 'no compensa. ')\n"
+                       "         + ('**Respuesta:** la mejor opción es no ampliar el límite' if mejor == 0 else f'**Respuesta:** la mejor opción es ampliar el límite en {plural(mejor, \"operario\")}')\n"
+                       "         + (f': VAN neto {amp.loc[mejor, \"VAN neto de contratar\"]:.1f} k€ frente a {amp.loc[0, \"VAN neto de contratar\"]:.1f} k€ sin ampliar' if mejor else f' (VAN {amp.loc[0, \"VAN\"]:.1f} k€): ninguna ampliación tiene un VAN neto mayor')\n"
+                       "         + '. Se compara la mejora del VAN por adelantar los ingresos con lo que cuesta mantener a los operarios todo el proyecto'\n"
+                       "         + (f'; con más de {plural(amp[\"duración\"].idxmin(), \"operario extra\", \"operarios extra\")} el proyecto ya no se acorta y sólo se suma coste.' if amp['duración'].idxmin() < amp.index.max() else '.'))"))
     celdas += apartado(4)
     celdas.append(code("e0 = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, 0.0, N, k, ampliaciones=0)['escenarios']['VAN']\n"
                        "e1 = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, 1.0, N, k, ampliaciones=0)['escenarios']['VAN']\n"
                        "umbral = -e0 / (e1 - e0)          # el VAN es lineal en F\n"
-                       "Markdown(f'Flujo mensual mínimo: {umbral[\"sin límite\"]:.2f} k€ sin límite y {umbral[\"con límite\"]:.2f} k€ con límite '\n"
-                       "         f'(+{umbral[\"con límite\"] - umbral[\"sin límite\"]:.2f} k€ al mes): el límite exige más ingresos para recuperar lo mismo.')"))
+                       "Markdown('El VAN es lineal en el flujo mensual: VAN(F) = −VA desembolsos + F · VA de una renta de 1 k€/mes durante N meses desde el mes T + 1. '\n"
+                       "         'Por tanto el umbral es F* = VA desembolsos / VA de la renta unitaria: '\n"
+                       "         + '; '.join(f'{e}: {-e0[e]:.1f}/{e1[e] - e0[e]:.3f} = {umbral[e]:.2f} k€/mes' for e in ('sin límite', 'con límite'))\n"
+                       "         + f'. **Respuesta:** flujo mensual mínimo {umbral[\"sin límite\"]:.2f} k€ sin límite y {umbral[\"con límite\"]:.2f} k€ con límite; '\n"
+                       "         f'el límite lo sube {umbral[\"con límite\"] - umbral[\"sin límite\"]:.2f} k€ al mes: al retrasar los ingresos, hacen falta más para recuperar la inversión.')"))
     return celdas, f"límite de {L} operarios, ingresos de {F:.0f} k€/mes durante {N} meses"
 
 
@@ -1043,13 +1226,13 @@ def _crashing_van(rng):
                        "pagos0 = desembolsos(datos_proyecto['duration'])\n"
                        "VAN0 = van(flujo_mensual(pagos0), k_mensual)\n"
                        "display(pd.DataFrame({'desembolso (k€)': pagos0}).T.round(1))\n"
-                       "Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin reducir: {duracion_normal} meses de inversión ({pagos0.sum():.0f} k€ = Σ BAC) y '\n"
-                       "         f'VAN = {VAN0:.1f} k€ (valor actual de los ingresos {van([0.0] * (duracion_normal + 1) + [F] * N, k_mensual):.1f} menos el de los desembolsos '\n"
-                       "         f'{-van([0.0] + [-float(x) for x in pagos0], k_mensual):.1f}).')"))
+                       "Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin reducir: {duracion_normal} meses de inversión ({pagos0.sum():.0f} k€ = Σ BAC).\\n\\n'\n"
+                       "         + explica_van_mensual(pagos0, F, N, k_mensual))"))
     celdas.append(code("tabla = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, F, N, k, reduccion_max=8)\n"
-                       "Markdown(f'`crashing_van` da lo mismo: sin reducir, {tabla.loc[0, \"duración\"]:.0f} meses y VAN {tabla.loc[0, \"VAN\"]:.1f} k€.')"))
+                       "Markdown(f'`crashing_van` da lo mismo: sin reducir, {tabla.loc[0, \"duración\"]:.0f} meses y VAN {tabla.loc[0, \"VAN\"]:.1f} k€. '\n"
+                       "         f'**Respuesta:** sin reducir, el proyecto dura {duracion_normal} meses y su VAN es {VAN0:.1f} k€.')"))
     celdas += apartado(2)
-    celdas.append(md("En cada paso del algoritmo de Ackoff-Sasieni se acorta un mes la ruta (o rutas) crítica(s) "
+    celdas.append(md("En cada paso del algoritmo de Ackoff-Sasieni se acorta un mes la ruta crítica (o las rutas críticas) "
                      "eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce "
                      "*todas* las rutas críticas a la vez. La tabla muestra, para cada ruta, el CUR de sus actividades y "
                      "su duración tras cada paso; las últimas filas, el margen que le queda a cada actividad."))
@@ -1080,19 +1263,29 @@ def _crashing_van(rng):
                      "coincide con la columna VAN de `crashing_van`."))
     celdas += apartado(3)
     celdas.append(code("optimo = int(tabla['VAN'].idxmax())\n"
-                       "Markdown(f'Conviene recortar {optimo} mes(es): duración {tabla.loc[optimo, \"duración\"]:.0f} meses, '\n"
-                       "         f'VAN {tabla.loc[optimo, \"VAN\"]:.1f} k€ (sin recortar {tabla.loc[0, \"VAN\"]:.1f}; recortando al máximo '\n"
-                       "         f'{tabla[\"VAN\"].iloc[-1]:.1f}). El óptimo no es la duración de mínimo coste directo ni la mínima: es donde lo que '\n"
-                       "         'cuesta el siguiente mes recortado iguala lo que vale cobrarlo un mes antes.')"))
+                       "_sig = optimo + 1 if optimo + 1 in tabla.index else None\n"
+                       "Markdown(f'**Respuesta:** conviene recortar {plural(optimo, \"mes\", \"meses\")}: duración {tabla.loc[optimo, \"duración\"]:.0f} meses, '\n"
+                       "         f'VAN {tabla.loc[optimo, \"VAN\"]:.1f} k€ (sin recortar {tabla.loc[0, \"VAN\"]:.1f}; recortando al máximo, {tabla.index[-1]} meses, '\n"
+                       "         f'{tabla[\"VAN\"].iloc[-1]:.1f}). El óptimo no es la duración de mínimo coste directo (no recortar) ni la mínima: es el recorte con mayor VAN acumulado. '\n"
+                       "         'Ganancia marginal de cada mes recortado (lo que vale cobrar un mes antes menos lo que cuesta el recorte): '\n"
+                       "         + ', '.join(f'mes {r}: {tabla.loc[r, \"ganancia marginal\"]:+.1f}' for r in tabla.index[1:])\n"
+                       "         + (f'; el mes {_sig} ya resta {-tabla.loc[_sig, \"ganancia marginal\"]:.1f} k€ (su recorte, {\", \".join(pasos[_sig - 1])}, cuesta {sum(float(ucr[a]) for a in pasos[_sig - 1]):.0f} k€).' if _sig and tabla.loc[_sig, 'ganancia marginal'] < 0 else '.'))"))
     celdas += apartado(4)
     celdas.append(code("t0 = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, 0.0, N, k, reduccion_max=8)['VAN']\n"
                        "t1 = proyecto.crashing_van(datos_proyecto, 'duration', tope, ucr, BAC, 1.0, N, k, reduccion_max=8)['VAN']\n"
                        "pend = t1 - t0                      # el VAN es lineal en F\n"
                        "umbral = ((t0.loc[0] - t0) / (pend - pend.loc[0])).drop(0).rename('flujo mínimo (k€/mes)')\n"
-                       "display(umbral.round(2).to_frame())\n"
+                       "display(pd.DataFrame({'flujo mínimo (k€/mes)': umbral,\n"
+                       "                      'F* = [VAN₀(0) − VAN_r(0)] / [a_r − a₀]': [f'({t0.loc[0]:.1f} − ({t0.loc[r]:.1f}))/({pend.loc[r]:.3f} − {pend.loc[0]:.3f}) = {umbral[r]:.2f}' for r in umbral.index]}))\n"
                        "v2 = t0 + 0.7 * F * pend\n"
-                       "Markdown(f'Con un flujo un 30 % menor ({0.7 * F:.1f} k€/mes) conviene recortar {int(v2.idxmax())} mes(es): '\n"
-                       "         'cuanto menor es el ingreso, menos vale adelantarlo y antes se detiene la reducción.')"))
+                       "_opt2 = int(v2.idxmax())\n"
+                       "Markdown('El VAN de cada opción es lineal en el flujo mensual: VAN_r(F) = VAN_r(0) + F · a_r, donde VAN_r(0) es el VAN sólo con los desembolsos (y el sobrecoste) '\n"
+                       "         'y a_r el valor actual de una renta de 1 k€/mes que empieza al terminar el proyecto recortado r meses. Recortar r meses compensa frente a no recortar si VAN_r(F) ≥ VAN₀(F), '\n"
+                       "         'es decir, si F ≥ F* de la tabla. '\n"
+                       "         f'**Respuesta:** con el flujo actual ({F:.0f} k€/mes), recortar compensa frente a no recortar para r = {lista_y([str(r) for r in umbral.index if umbral[r] <= F])} (umbral ≤ {F:.0f}) y el óptimo es {plural(optimo, \"mes\", \"meses\")}; '\n"
+                       "         f'con un flujo un 30 % menor ({0.7 * F:.1f} k€/mes) conviene recortar {plural(_opt2, \"mes\", \"meses\")}'\n"
+                       "         + (f' en vez de {optimo}: cuanto menor es el ingreso, menos vale adelantarlo y antes se detiene la reducción.' if _opt2 < optimo else\n"
+                       "            f', igual que con el flujo actual: la decisión no cambia.' if _opt2 == optimo else f' en vez de {optimo}.'))"))
     return celdas, f"ingresos de {F:.0f} k€/mes durante {N} meses; reducción mes a mes con Ackoff"
 
 

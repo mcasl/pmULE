@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -249,7 +253,64 @@ proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
 sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])
-p_pert = float(norm.cdf((plazo - duracion) / sigma))
+p_pert = float(norm.cdf(plazo, duracion, sigma))
+
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -275,8 +336,15 @@ detalle_rutas(R, datos_proyecto['variance'], 'varianza', 3)
 # %%
 dists = {act: ('normal', fila['duration'], fila['standard_deviation']) for act, fila in datos_proyecto.iterrows()}
 sin_riesgo = proyecto.monte_carlo(dict(dists), n_samples=20000, seed=2024)
-p_mc0 = float((np.asarray(sin_riesgo.tau_samples) <= plazo).mean())
-Markdown(f'''Sin el riesgo: duración esperada {duracion}, σ = {sigma:.2f}, **P(T ≤ {plazo}) = {p_pert:.2f}** (PERT) y **{p_mc0:.2f}** (Monte Carlo). Supera el umbral del {umbral:.0%}: el comité autorizaría.''')
+tau0 = np.asarray(sin_riesgo.tau_samples, dtype=float)
+p_mc0 = float((tau0 <= plazo).mean())
+camino, _ = camino_critico_sigma(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])
+Markdown(f'''Camino crítico **{' – '.join(camino)}**: duración esperada {' + '.join(str(int(datos_proyecto.loc[a, 'duration'])) for a in camino)} = **{duracion}** semanas; {explica_sigma_ruta(camino, datos_proyecto['variance'])} semanas.
+
+- PERT (aproximación normal): {explica_probabilidad(duracion, sigma, plazo)}.
+- Monte Carlo ({len(tau0)} réplicas con duraciones normales, semilla 2024): el proyecto termina en {plazo} semanas o menos en {int((tau0 <= plazo).sum())} réplicas: P(T ≤ {plazo}) = {int((tau0 <= plazo).sum())} / {len(tau0)} = **{p_mc0:.3f}**.
+
+**Respuesta.** Sin el riesgo, P(T ≤ {plazo}) = {p_pert:.3f} con el PERT y {p_mc0:.3f} con la simulación; {'las dos superan' if min(p_pert, p_mc0) >= umbral else 'no superan las dos'} el umbral del comité ({porc(umbral, 0)}), {'así que el comité autorizaría' if min(p_pert, p_mc0) >= umbral else 'así que la autorización ya sería dudosa'}.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -292,13 +360,23 @@ def duracion_X_con_riesgo(size=None):
     return rng_mc.normal(mu_X, sd_X, size) + delta * (rng_mc.random(size) < p_riesgo)
 dists_riesgo = dict(dists); dists_riesgo[X] = duracion_X_con_riesgo
 con_riesgo = proyecto.monte_carlo(dists_riesgo, n_samples=20000, seed=2024)
-p_mc1 = float((np.asarray(con_riesgo.tau_samples) <= plazo).mean())
-comparacion = pd.DataFrame({'sin el riesgo': sin_riesgo.summary().iloc[:, 0], 'con el riesgo': con_riesgo.summary().iloc[:, 0]})
-display(comparacion.round(2))
-Markdown(f'''Con el riesgo: **P(T ≤ {plazo}) = {p_mc1:.2f}**, por debajo del umbral del {umbral:.0%}. La decisión del comité cambia: con la información del lunes no autorizaría (o exigiría un plan de mitigación antes).''')
+tau1 = np.asarray(con_riesgo.tau_samples, dtype=float)
+p_mc1 = float((tau1 <= plazo).mean())
+comparacion = pd.DataFrame({'sin el riesgo': sin_riesgo.summary().iloc[0], 'con el riesgo': con_riesgo.summary().iloc[0]}).T
+comparacion[f'P(T ≤ {plazo})'] = [p_mc0, p_mc1]
+comparacion.round(3)
 
-# %% [markdown]
-# Comprobación a mano: G es crítica, así que las 2 semanas van enteras al plazo cuando el riesgo se materializa; la probabilidad es aproximadamente 70% · P(T ≤ 23) + 30% · P(T ≤ 21) = 0.64 con el PERT, en línea con la simulación.
+# %%
+cambia = p_mc0 >= umbral > p_mc1
+p_menos = float(norm.cdf(plazo - delta, duracion, sigma))
+aprox = (1 - p_riesgo) * p_pert + p_riesgo * p_menos
+Markdown(f'''La tabla resume la duración simulada (media, desviación típica, percentiles 5, 50 y 95, mínimo y máximo). Con el riesgo, el proyecto termina en {plazo} semanas o menos en {int((tau1 <= plazo).sum())} de {len(tau1)} réplicas: **P(T ≤ {plazo}) = {p_mc1:.3f}**, {'por debajo' if p_mc1 < umbral else 'por encima'} del umbral del {porc(umbral, 0)}.
+
+Comprobación a mano con el PERT: {X} es crítica, así que cuando el riesgo se materializa las {delta} semanas van enteras al plazo y el proyecto debe acabar en {plazo} − {delta} = {plazo - delta} semanas «de las normales». Por la probabilidad total:
+
+P(T ≤ {plazo}) ≈ (1 − {p_riesgo}) · P(T ≤ {plazo}) + {p_riesgo} · P(T ≤ {plazo - delta}) = {1 - p_riesgo:.2f} · {p_pert:.4f} + {p_riesgo:.2f} · {p_menos:.4f} = **{aprox:.3f}**, con P(T ≤ {plazo - delta}) = `=DISTR.NORM.N({plazo - delta}; {duracion}; {str(round(sigma, 4)).replace('.', ',')}; VERDADERO)`; en línea con la simulación ({p_mc1:.3f}).
+
+**Respuesta.** Con el riesgo la probabilidad baja de {p_mc0:.3f} a **{p_mc1:.3f}**. {'**La decisión cambia**: según su regla, el comité no autorizaría con la información del lunes (o exigiría antes un plan de mitigación).' if cambia else 'La decisión del comité no cambia según su regla, aunque el dato sigue siendo relevante.'}''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -306,8 +384,12 @@ Markdown(f'''Con el riesgo: **P(T ≤ {plazo}) = {p_mc1:.2f}**, por debajo del u
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C4 (retención de información).** El comité decide con una regla explícita sobre una cifra, y el jefe de proyecto sabe un hecho que la mueve de 0.83 a 0.62, de un lado al otro del umbral. Que el riesgo pueda gestionarse en ejecución no cambia nada: la decisión de autorizar es del comité, y se le estaría quitando la posibilidad de tomarla con los datos. La omisión es **material** precisamente porque la decisión cambia con el dato; ese es el test objetivo (si el riesgo dejara la probabilidad por encima del umbral, seguiría siendo obligatorio informar —5.2.3— pero no cambiaría la decisión).
+# %%
+Markdown(f'''**Criterio C4 (retención de información).** El comité decide con una regla escrita (autorizar si P ≥ {porc(umbral, 0)}) sobre una cifra, y el jefe de proyecto conoce desde el lunes un hecho —la quiebra del único proveedor de {X}, con un {porc(p_riesgo, 0)} de añadir {delta} semanas— que mueve esa cifra de {p_mc0:.3f} a {p_mc1:.3f}. Callarlo el jueves es callar un hecho conocido que la otra parte necesita para decidir.
+
+Que el riesgo pueda «gestionarse en ejecución» no es relevante: la decisión de autorizar con ese riesgo es del comité, no del jefe de proyecto, y omitirlo le quita la posibilidad de tomarla con los datos. Que el informe estuviera «cerrado desde el viernes» tampoco: la información llegó antes de la decisión.
+
+**Respuesta.** Incumple **C4**. La omisión es **material** porque la decisión cambia con el dato: la probabilidad pasa {'de un lado al otro' if cambia else 'cerca'} del umbral ({p_mc0:.3f} → {p_mc1:.3f} frente a {porc(umbral, 0)}). Ese es el test objetivo; si el riesgo dejara la probabilidad por encima del umbral, informar seguiría siendo exigible (proporcionar información exacta a tiempo, cf. PMI 5.2.3), pero no cambiaría la decisión.''')
 
 # %%
 preguntas_test = [
@@ -345,5 +427,14 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Antes del jueves: recalcular (dos horas de trabajo), redactar una página con las dos probabilidades y un plan de mitigación (proveedor alternativo precalificado, acopio anticipado, acortar otra actividad crítica) con su coste, y llevarla al jefe de proyecto. Al jefe de proyecto: «el informe tiene una cifra que sabemos que ya no es cierta; si el comité lo descubre después, el problema no es el proveedor sino nosotros». Al comité, con o sin el acuerdo del jefe de proyecto: la actualización y el plan; el criterio 2.3.2 del Código del PMI pide elevar la cuestión a quien corresponde cuando no se resuelve en el nivel propio. Lo que no cabe: callar el jueves y «gestionarlo en ejecución».
+# %%
+rubrica_caso(
+    [('Comité de inversión', f'autoriza con P = {p_mc0:.2f} creyendo que cumple su regla, cuando con el dato del lunes es {p_mc1:.2f}'),
+     ('Jefe de proyecto', 'evita reabrir el informe y quizá un retraso en la autorización; se expone a que el comité lo descubra después'),
+     ('Responsable de riesgos', 'si calla, comparte la omisión; si habla, se enfrenta al jefe de proyecto'),
+     ('Cliente del contrato', f'soporta el riesgo de no tener la obra en {plazo} semanas sin que nadie haya preparado una mitigación')],
+    [('Callar el jueves y «gestionarlo en ejecución» (propuesta)', 'no hay norma legal directa', 'no: el comité no lo aceptaría si lo supiera', 'no'),
+     ('Llevar al comité las dos probabilidades y un plan de mitigación con su coste', 'sí', 'sí', 'sí'),
+     ('Pedir al comité que aplace la decisión hasta tener un proveedor alternativo precalificado', 'sí', 'sí', 'sí'),
+     ('Si el jefe de proyecto se niega, elevarlo a quien corresponda en la organización', 'sí', 'sí', 'sí')],
+    f'''antes del jueves, recalcular (este apartado) y redactar una página con P = {p_mc0:.2f} sin el riesgo y {p_mc1:.2f} con él, y un plan de mitigación (proveedor alternativo precalificado, acopio anticipado o acortar otra actividad crítica) con su coste; llevarla primero al jefe de proyecto: «el informe tiene una cifra que sabemos que ya no es cierta». Al comité, con o sin su acuerdo: la actualización y el plan. Lo que no cabe: callar el jueves.''')

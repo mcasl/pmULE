@@ -28,7 +28,29 @@ from IPython.display import display, HTML, Markdown, Math
 sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, pinta_tikz, colorea_minimo_fila, plot_cargas
+from pmule import explica_camino_critico, explica_intervalo, explica_probabilidad, ordena_ruta, lista_y, plural
 
+def _cargas(gantt, limites=None):
+    """Carga de recursos por periodo (y, si se da, frente al límite, que se prolonga con su último valor)."""
+    import numpy as _np, pandas as _pd
+    _c = gantt.data.loc['Total'].drop('H_total').astype(float)
+    _t = _pd.DataFrame({'Periodo': range(1, len(_c) + 1), 'Carga': _c.astype(int).values})
+    if limites is not None:
+        _l = list(limites) if isinstance(limites, (list, tuple)) else [limites]
+        _t['Límite'] = (_l + [_l[-1]] * len(_c))[:len(_c)]
+        _t['¿Supera?'] = _np.where(_t['Carga'] > _t['Límite'], 'sí', 'no')
+    return _t.set_index('Periodo').T
+
+def _tabla_varianzas(caminos, varianzas, calendario):
+    """Varianza de cada ruta crítica, con las actividades en orden de ejecución y la suma término a término."""
+    import pandas as _pd
+    _f = {}
+    for _r, _acts in caminos.items():
+        _acts = ordena_ruta(_acts, calendario)
+        _f[_r] = {'Ruta': ' – '.join(_acts),
+                  'Varianza = suma': ' + '.join(f"σ²({a})" for a in _acts) + ' = '
+                                     + ' + '.join(f"{varianzas[a]:g}" for a in _acts) + f" = {sum(varianzas[a] for a in _acts):g}"}
+    return _pd.DataFrame(_f).T
 # %%
 # %%capture
 # %mkdir -p ~/temp
@@ -59,6 +81,7 @@ from IPython.display import display, HTML
 display(HTML("<style>.container { width:80% !important; }</style>"))
 
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 
 datos_enunciado = pd.DataFrame([
@@ -166,15 +189,14 @@ proyecto.display_calendario(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Holgura total de las actividades"
 #| label: tbl-holguras
-resultados_pert['activities']
-
+display(resultados_pert['activities'].rename(columns={'H_total': 'Holgura total'}))
+display(Markdown('(Las filas que empiezan por @ son actividades ficticias.) Actividades con holgura total nula: **'
+                 + lista_y([a for a in ordena_ruta(datos_proyecto.index, calendario) if resultados_pert['activities'].loc[a, 'H_total'] == 0]) + '**.'))
 # %% [markdown]
 # #### Camino crítico
-# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas, cuyas actividades se listan en orden alfabético:
-
+# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas (actividades en orden de ejecución):
 # %%
-camino_critico = proyecto.display_critical_path(durations=datos_proyecto['duration'])
-
+camino_critico = display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas'))
 # %% [markdown]
 # #### Grafo PERT con indicación del camino crítico
 
@@ -205,14 +227,13 @@ desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=da
 # %%
 #| tbl-cap: "Varianza de las rutas del camino crítico"
 #| label: tbl-varianzaRutas
-varianza_caminos
-
+_cc1 = proyecto.critical_path(datos_proyecto['duration'])
+_tabla_varianzas(_cc1, datos_proyecto['variance'], calendario)
 # %%
-display(Markdown(f"""La varianza de la duración del proyecto es la máxima varianza de las rutas críticas. Para este proyecto es {round(desviacion_proyecto**2,2)}.  
-Habitualmente será útil calcular su raiz cuadrada, la desviación típica, para ser utilizada como parámetro de la ley de distribución normal.  """))
-display(Markdown(f"La desviación típica es {round(desviacion_proyecto,2)}"""))
-
-
+_v = varianza_caminos.data['Variance'].astype(float)
+display(Markdown(f"""La varianza de la duración del proyecto es, por prudencia, la máxima varianza de las rutas críticas:
+σ² = máx({", ".join(f"{x:g}" for x in _v)}) = **{desviacion_proyecto**2:g}**.
+Su raíz cuadrada, la desviación típica, es el parámetro de la ley normal: σ = √{desviacion_proyecto**2:g} = **{desviacion_proyecto:.2f}** semanas."""))
 # %% [markdown]
 # #### Probabilidad de terminar en el periodo solicitado
 
@@ -227,9 +248,10 @@ probabilidad_de_terminar_antes_de_a = norm.cdf(periodo_probabilidad_a, loc=durac
 probabilidad_de_terminar_entre_a_y_b = round(float(probabilidad_de_terminar_antes_de_b - probabilidad_de_terminar_antes_de_a), 2)
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, entre=(periodo_probabilidad_a, periodo_probabilidad_b))
-
-Markdown(f"Para un proyecto con duración media {duracion_media_proyecto} y desviación típica {round(desviacion_proyecto, 2)} el valor de la probabilidad de terminar en el periodo comprendido entre {periodo_probabilidad_a} y {periodo_probabilidad_b} periodos es {round(probabilidad_de_terminar_entre_a_y_b * 100, 2)} por ciento.")
-
+display(Markdown(explica_intervalo(duracion_media_proyecto, desviacion_proyecto, periodo_probabilidad_a, periodo_probabilidad_b)
+                 + f"\n\n**Respuesta:** con duración media {duracion_media_proyecto:g} semanas y desviación típica {desviacion_proyecto:.2f}, "
+                   f"la probabilidad de terminar el proyecto entre {periodo_probabilidad_a} y {periodo_probabilidad_b} semanas es "
+                   f"**{probabilidad_de_terminar_entre_a_y_b:.2f}** (≈ {probabilidad_de_terminar_antes_de_b - probabilidad_de_terminar_antes_de_a:.1%})."))
 # %% [markdown]
 # ## Apartado 2
 #
@@ -258,19 +280,26 @@ proyecto.display_ackoff_pasos_tikz(
     reduction=2)
 
 # %% [markdown]
-# Los desplazamientos indicados al aplicar el algoritmo de reducción con mínimo coste son:
+# Las reducciones indicadas en cada iteración del algoritmo de reducción con mínimo coste, y su coste, son:
 
 # %%
 for iteracion, actividades in best_option.items():
-    display(Markdown(f"Iteración {iteracion}: " + ", ".join(actividades)))
-
+    pass
+_costes_it = {it: sum(datos_proyecto.loc[a, 'ucr'] for a in acts) for it, acts in best_option.items()}
+display(Markdown(
+    'Cada iteración acorta un periodo la combinación de actividades de menor coste unitario de reducción que reduce '
+    'todas las rutas críticas:\n\n'
+    + '\n'.join(f"- Iteración {it}: " + ' + '.join(f"{a}({datos_proyecto.loc[a, 'ucr']:g})" for a in acts)
+                 + f" = {_costes_it[it]:g}" for it, acts in best_option.items())
+    + f"\n\n**Respuesta (reducción):** se reduce un periodo " + lista_y(sorted({a for acts in best_option.values() for a in acts}))
+    + f"; la duración media pasa de {proyecto.duration(datos_proyecto['duration']):g} a {proyecto.duration(duration):g} semanas, con un coste de "
+    + ' + '.join(f"({c:g})" for c in _costes_it.values()) + f" = **{sum(_costes_it.values()):g}** unidades monetarias "
+    + "(el coste unitario negativo de A, dato del enunciado, significa que reducirla ahorra dinero)."))
 # %% [markdown]
-# ### Probabilidad de terminar antes de 18 periodos
-# Al ser 18 el valor de la media de la duración, la probabilidad pedida es del 50%.
-
+# ### Probabilidad de terminar antes de 18 semanas
+# Al ser 18 semanas la nueva duración media, y ser la ley normal simétrica respecto de su media, la probabilidad de terminar en 18 semanas es del 50 %, sea cual sea la desviación típica (se comprueba numéricamente más abajo, una vez calculada la nueva desviación típica).
 # %% [markdown]
-# ### Probabilidad de terminar entre 19 y 17 semanas
-
+# ### Probabilidad de terminar entre 17 y 19 semanas
 # %% [markdown]
 # #### Duración media del proyecto
 
@@ -284,8 +313,7 @@ Markdown(f"Nótese como al haber reducido la duración del proyecto, la duració
 # #### Varianza de la duración del proyecto
 
 # %% [markdown]
-# Al proyecto le ha surgido una nueva rama. Debemos calcular la varianza de esta nueva rama y actualizar el valor de la varianza del proyecto si fuera menor que la de esta rama.
-
+# Al reducir la duración pueden aparecer nuevas rutas críticas. Debemos calcular su varianza y actualizar la varianza del proyecto si alguna de ellas tuviera una varianza mayor.
 # %%
 # duration ha sido calculada en el Ackoff Sasieni
 desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=duration,
@@ -294,14 +322,15 @@ desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=du
 # %%
 #| tbl-cap: "Varianza de las rutas del camino crítico"
 #| label: tbl-varianzaRutas2
-varianza_caminos
-
+_cc2 = proyecto.critical_path(duration)
+_nuevas = [r for r in _cc2 if r not in _cc1]
+display(Markdown(('Nuevas rutas críticas tras la reducción: ' + lista_y([f"{r} ({' – '.join(ordena_ruta(_cc2[r], calendario))})" for r in _nuevas]) + '.')
+                 if _nuevas else 'No aparecen nuevas rutas críticas.'))
+_tabla_varianzas(_cc2, datos_proyecto['variance'], calendario)
 # %%
-display(Markdown(f"""La varianza de la duración del proyecto es la máxima varianza de las rutas críticas. Para este proyecto es {round(desviacion_proyecto**2,2)}.  
-Habitualmente será útil calcular su raiz cuadrada, la desviación típica, para ser utilizada como parámetro de la ley de distribución normal.  """))
-display(Markdown(f"La desviación típica es {round(desviacion_proyecto,2)}"""))
-
-
+_v = varianza_caminos.data['Variance'].astype(float)
+display(Markdown(f"""La varianza de la duración del proyecto es la máxima varianza de las rutas críticas:
+σ² = máx({", ".join(f"{x:g}" for x in _v)}) = **{desviacion_proyecto**2:g}**, y la desviación típica σ = √{desviacion_proyecto**2:g} = **{desviacion_proyecto:.2f}** semanas."""))
 # %% [markdown]
 # #### Probabilidad de terminar en el periodo solicitado
 
@@ -315,9 +344,13 @@ probabilidad_de_terminar_antes_de_a = norm.cdf(periodo_probabilidad_a, loc=durac
 probabilidad_de_terminar_entre_a_y_b = probabilidad_de_terminar_antes_de_b - probabilidad_de_terminar_antes_de_a
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, entre=(periodo_probabilidad_a, periodo_probabilidad_b))
-
-Markdown(f"Para un proyecto con duración media {duracion_media_proyecto} y desviación típica {round(desviacion_proyecto, 2)} el valor de la probabilidad de terminar en el periodo comprendido entre {periodo_probabilidad_a} y {periodo_probabilidad_b} periodos es {round(probabilidad_de_terminar_entre_a_y_b * 100, 2)} por ciento.")
-
+_T18 = 18
+display(Markdown(explica_probabilidad(duracion_media_proyecto, desviacion_proyecto, _T18) + "\n\n"
+                 + explica_intervalo(duracion_media_proyecto, desviacion_proyecto, periodo_probabilidad_a, periodo_probabilidad_b)
+                 + f"\n\n**Respuesta:** tras la reducción, la probabilidad de terminar en {_T18} semanas es "
+                   f"**{norm.cdf(_T18, duracion_media_proyecto, desviacion_proyecto):.0%}**, porque {_T18} semanas es exactamente la duración media "
+                   f"y la normal es simétrica. La probabilidad de terminar entre {periodo_probabilidad_a} y {periodo_probabilidad_b} semanas sube a "
+                   f"**{probabilidad_de_terminar_entre_a_y_b:.2%}** porque el intervalo queda ahora centrado en la media."))
 # %% [markdown]
 # ## Apartado 3
 
@@ -342,10 +375,12 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto de acuerdo a su definición original"
 #| label: fig-preNivelacionBarras
 plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=None)
-
+_c3 = _cargas(gantt_df)
+display(_c3)
+display(Markdown('Suma de cuadrados de las cargas: ' + ' + '.join(f"{c}²" for c in _c3.loc['Carga'])
+                 + f" = **{int((_c3.loc['Carga'] ** 2).sum())}**."))
 # %% [markdown]
-# La demanda de recursos actual no se encuentra nivelada. Se procede a aplicar el algoritmo de nivelación.
-
+# Para saber si la demanda está nivelada se aplica el algoritmo de nivelación por mínimos cuadrados: si algún desplazamiento de las actividades no críticas dentro de su holgura reduce la suma de cuadrados de las cargas, la demanda inicial no estaba nivelada.
 # %% [markdown]
 # ### Nivelación
 
@@ -388,7 +423,16 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto tras realizar la nivelación"
 #| label: fig-postNivelacionBarras
 plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=None)
-
+_sc = cuadrados.data if hasattr(cuadrados, 'data') else cuadrados
+_sc0 = float(_sc.iloc[0, 0])
+_scf = float(_sc.iloc[-1].min())
+_mov = {a: int(v) for a, v in desplazamientos.iloc[:, 0].items() if v != 0}
+display(Markdown(
+    (f"**Respuesta:** los recursos **no** estaban nivelados: la suma de cuadrados inicial es {_sc0:g} y desplazando "
+     + lista_y([f"{a} {plural(d, 'periodo')}" for a, d in _mov.items()])
+     + f" baja a **{_scf:g}**. Las demás actividades no críticas no se desplazan por sí mismas (solo lo que las arrastren sus predecesoras) porque ningún desplazamiento reduce más la suma de cuadrados; "
+     "como solo se mueven actividades dentro de su holgura, la duración del proyecto no cambia.")
+    if _mov else f"**Respuesta:** los recursos ya estaban nivelados: ningún desplazamiento reduce la suma de cuadrados ({_sc0:g})."))
 # %% [markdown]
 # ## Apartado 4
 
@@ -414,7 +458,12 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto de acuerdo a su definición original, con indicación del límite máximo de recursos"
 #| label: fig-preNivelacionBarras2
 plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=limite_maximo_recursos)
-
+_c4 = _cargas(gantt_df, limite_maximo_recursos)
+display(_c4)
+_exc = [p for p in _c4.columns if _c4.loc['¿Supera?', p] == 'sí']
+display(Markdown((f"Con la programación más temprana se supera el límite en {plural(len(_exc), 'periodo')}: "
+                  + lista_y([f"periodo {p} (carga {_c4.loc['Carga', p]} > {_c4.loc['Límite', p]})" for p in _exc])
+                  + "; hay que aplicar el algoritmo de asignación.") if _exc else "La carga no supera el límite en ningún periodo."))
 # %% [markdown]
 # ### Algoritmo de asignación de Wiest-Levy
 
@@ -443,7 +492,15 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto tras el algoritmo de asignación, con indicación del límite máximo de recursos"
 #| label: fig-postAsignacionBarras
 plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=limite_maximo_recursos)
-
+_c4b = _cargas(gantt_df, limite_maximo_recursos)
+_Ta = int(proyecto_asignacion.duration(datos_proyecto_tras_asignar['duration']))
+_desp = {a[1:]: int(d) for a, d in datos_proyecto_tras_asignar['duration'].items() if str(a).startswith('💤')}
+display(Markdown(
+    "**Respuesta:** el algoritmo de asignación retrasa " + lista_y([f"{a} {plural(d, 'periodo')}" for a, d in _desp.items()])
+    + f" respecto de su inicio más temprano; con esta planificación la carga de los tres primeros periodos es "
+    + lista_y([str(c) for c in _c4b.loc['Carga'].iloc[:3]]) + f" (≤ {limite_maximo_recursos[0]}) y la máxima posterior es "
+    + f"{_c4b.loc['Carga'].iloc[3:].max()} (≤ {limite_maximo_recursos[-1]}). El precio es el plazo: el proyecto pasa de "
+    + f"{proyecto.duration(datos_enunciado['duration']):g} a **{plural(_Ta, 'semana')}**."))
 # %%
 
 # %%

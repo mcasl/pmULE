@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -251,6 +255,181 @@ plazo = 21
 dists = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrows()}
 tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']
 
+# %%
+from itertools import product as _product
+
+
+def _num(x):
+    return f'{float(x):g}'.replace('-', '−')
+
+
+def rangos(numeros):
+    """[1, 2, 3, 5] → «1 a 3 y 5»."""
+    ns, partes = sorted(int(x) for x in numeros), []
+    for x in ns:
+        if partes and x == partes[-1][1] + 1:
+            partes[-1][1] = x
+        else:
+            partes.append([x, x])
+    return lista_y([f'{a}' if a == b else (f'{a} y {b}' if b == a + 1 else f'{a} a {b}') for a, b in partes])
+
+
+def tabla_rutas(proyecto, valores, nombre='duración', decimales=0, base=None):
+    """Cada ruta con sus actividades en orden de ejecución y su duración como suma término a término."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(base if base is not None else valores)
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        total = float(sum(float(valores[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    f'{nombre} = suma': ' + '.join(f'{a}({float(valores[a]):.{decimales}f})' for a in acts)
+                                        + f' = {total:.{decimales}f}',
+                    nombre: total}
+    t = pd.DataFrame(filas).T
+    t[nombre] = t[nombre].astype(float)
+    return t
+
+
+def opciones_ackoff(conjuntos, d, topes, cur):
+    """Combinaciones mínimas (una actividad con margen por ruta crítica, sin sobrantes) y su coste."""
+    elegibles = [[a for a in sorted(s) if d[a] > topes[a] and np.isfinite(cur[a])] for s in conjuntos]
+    if any(not e for e in elegibles):
+        return []
+    combos = {frozenset(c) for c in _product(*elegibles)}
+    minimos = [c for c in combos if not any(o < c for o in combos)]
+    return sorted(((tuple(sorted(c)), float(sum(cur[a] for a in c))) for c in minimos),
+                  key=lambda x: (x[1], len(x[0]), x[0]))
+
+
+def info_ackoff(proyecto, duraciones, topes, cur, pasos):
+    """Estado de cada paso: duración, rutas críticas, opciones, elegidas y duraciones tras el paso."""
+    R = proyecto.path_matrix(dummies=False)
+    d = pd.Series(duraciones, dtype=float).copy()
+    topes, cur = pd.Series(topes, dtype=float), pd.Series(cur, dtype=float)
+    info = []
+    for k in sorted(pasos):
+        L = R @ d[R.columns]
+        T = float(L.max())
+        crit = [r for r in L.index if np.isclose(L[r], T)]
+        conj = [set(R.columns[R.loc[r] == 1]) for r in crit]
+        info.append(dict(T=T, crit=crit, opciones=opciones_ackoff(conj, d, topes, cur),
+                         elegidas=tuple(sorted(pasos[k])), d_antes=d.copy()))
+        for a in pasos[k]:
+            d[a] -= 1
+        info[-1]['d_despues'] = d.copy()
+    return info
+
+
+def describe_ruta(proyecto, r, base):
+    """«Route_3 (A – C – F)»: actividades de la ruta en orden de ejecución."""
+    R = proyecto.path_matrix(dummies=False)
+    return f"{r} ({' – '.join(ordena_ruta(list(R.columns[R.loc[r] == 1]), proyecto.calendar(base)))})"
+
+
+def rutas_sin_margen(proyecto, d, topes, cur):
+    """Rutas críticas (con las duraciones d) en las que ninguna actividad puede acortarse más."""
+    R = proyecto.path_matrix(dummies=False)
+    d = pd.Series(d, dtype=float)
+    L = R @ d[R.columns]
+    crit = [r for r in L.index if np.isclose(L[r], L.max())]
+    return [r for r in crit if not any(d[a] > topes[a] and np.isfinite(cur[a]) for a in R.columns[R.loc[r] == 1])]
+
+
+def narra_ackoff(proyecto, duraciones, topes, cur, pasos, unidad='semana', moneda='k€', max_opciones=5):
+    """Markdown con el razonamiento de cada paso (o grupo de pasos iguales) de Ackoff-Sasieni."""
+    R = proyecto.path_matrix(dummies=False)
+    topes, cur = pd.Series(topes, dtype=float), pd.Series(cur, dtype=float)
+    orden = ordena_ruta(list(R.columns), proyecto.calendar(pd.Series(duraciones)))
+    pos = {a: i for i, a in enumerate(orden)}
+    ruta = lambda r: f"{r} ({' – '.join(sorted(R.columns[R.loc[r] == 1], key=pos.get))})"
+
+    def criticas(dd):
+        L = R @ dd[R.columns]
+        return float(L.max()), [r for r in L.index if np.isclose(L[r], L.max())]
+
+    def opc(acts, coste):
+        if len(acts) == 1:
+            return f'{acts[0]} ({_num(coste)})'
+        return f"{' + '.join(acts)} ({' + '.join(_num(cur[a]) for a in acts)} = {_num(coste)})"
+
+    info = info_ackoff(proyecto, duraciones, topes, cur, pasos)
+    if not info:
+        return Markdown('No se ha dado ningún paso: ninguna combinación de actividades con margen acorta todas las rutas críticas.')
+    grupos = []
+    for x in info:
+        if grupos and grupos[-1][-1]['elegidas'] == x['elegidas'] and grupos[-1][-1]['crit'] == x['crit']:
+            grupos[-1].append(x)
+        else:
+            grupos.append([x])
+    lineas, acum, paso = [], 0.0, 1
+    for g in grupos:
+        x0, n = g[0], len(g)
+        el = x0['elegidas']
+        c = float(sum(cur[a] for a in el))
+        acum += n * c
+        crit, ops = x0['crit'], x0['opciones']
+        cab = (f'**Paso {paso}**' if n == 1 else f'**Pasos {paso} y {paso + 1}**' if n == 2
+               else f'**Pasos {paso} a {paso + n - 1}**')
+        cab += f" ({plural(x0['T'], unidad)} → {plural(x0['T'] - n, unidad)})."
+        t_rutas = (f'Ruta crítica: {ruta(crit[0])}.' if len(crit) == 1
+                   else f'Rutas críticas: {lista_y([ruta(r) for r in crit])}.')
+        t_ops = '; '.join(opc(a, cc) for a, cc in ops[:max_opciones])
+        if len(ops) > max_opciones:
+            t_ops += f' y {len(ops) - max_opciones} más, de coste igual o mayor'
+        quien = 'la ruta crítica' if len(crit) == 1 else 'todas las rutas críticas a la vez'
+        t_ops = f'Opciones que acortan {quien} (CUR en {moneda}/{unidad}): {t_ops}.'
+        if len(crit) == 1:
+            tipo = 'la actividad de la ruta crítica con margen y menor CUR'
+        elif len(el) == 1:
+            tipo = 'actividad común a todas las rutas críticas'
+        else:
+            tipo = 'una combinación que acorta todas las rutas críticas'
+        t_el = f"Se elige **{' + '.join(el)}** ({tipo}), la opción más barata: {_num(c)} {moneda} por {unidad}"
+        empates = [' + '.join(a) for a, cc in ops if np.isclose(cc, c) and a != el]
+        if empates:
+            t_el += (f" (empata con {lista_y(empates)}: cuestan lo mismo en este paso y el algoritmo "
+                     "toma la primera que encuentra)")
+        if len(crit) > 1 and len(el) > 1:
+            comunes = [(a, cc) for a, cc in ops if len(a) == 1]
+            if comunes:
+                t_el += f"; la actividad común más barata, {comunes[0][0][0]}, cuesta {_num(comunes[0][1])}"
+            else:
+                t_el += '; no hay ninguna actividad común a todas las rutas críticas que tenga margen'
+        d_fin = g[-1]['d_despues']
+        motivos = []
+        llegan = [a for a in el if d_fin[a] <= topes[a]]
+        if llegan:
+            motivos.append(f"{lista_y(f'{a} llega a su duración tope ({plural(topes[a], unidad)})' for a in llegan)}")
+        T_n, crit_n = criticas(d_fin)
+        nuevas = [r for r in crit_n if r not in crit]
+        if nuevas:
+            motivos.append(f"{lista_y([ruta(r) for r in nuevas])} {'alcanza' if len(nuevas) == 1 else 'alcanzan'} "
+                           f"la duración del proyecto ({plural(T_n, unidad)}) y {'pasa' if len(nuevas) == 1 else 'pasan'} "
+                           "a ser crítica" + ('' if len(nuevas) == 1 else 's'))
+        dejan = [r for r in crit if r not in crit_n]
+        if dejan:
+            motivos.append(f"{lista_y(dejan)} se acorta{'' if len(dejan) == 1 else 'n'} dos {unidad}s en el paso "
+                           f"y deja{'' if len(dejan) == 1 else 'n'} de ser crítica" + ('' if len(dejan) == 1 else 's'))
+        if g is grupos[-1] and not motivos:
+            motivos.append('se alcanza la reducción pedida')
+        t_red = f"Se {'reduce' if n == 1 else 'reducen'} {plural(n, unidad)}" + (f": {'; '.join(motivos)}." if motivos else '.')
+        t_coste = f"Sobrecoste: {n} × {_num(c)} = {_num(n * c)} {moneda}; acumulado: **{_num(acum)} {moneda}**."
+        lineas.append(f'- {cab} {t_rutas} {t_ops} {t_el}. {t_red} {t_coste}')
+        paso += n
+    T_ini, T_fin = info[0]['T'], info[-1]['T'] - 1
+    costes = [_num(sum(cur[a] for a in x['elegidas'])) for x in info]
+    cierre = (f"**Resultado:** la duración pasa de {plural(T_ini, unidad)} a {plural(T_fin, unidad)} con un sobrecoste "
+              f"de {' + '.join(costes)} = **{_num(acum)} {moneda}**.")
+    T_n, crit_n = criticas(info[-1]['d_despues'])
+    conj = [set(R.columns[R.loc[r] == 1]) for r in crit_n]
+    if not opciones_ackoff(conj, info[-1]['d_despues'], topes, cur):
+        bloq = [r for r, s in zip(crit_n, conj)
+                if not any(info[-1]['d_despues'][a] > topes[a] and np.isfinite(cur[a]) for a in s)]
+        cierre += (f" No puede reducirse más: en {lista_y([ruta(r) for r in bloq])} ninguna actividad tiene margen "
+                   "(todas están en su duración tope o no son acelerables), así que esa ruta fija la duración mínima.")
+    return Markdown('\n'.join(lineas) + '\n\n' + cierre)
+
 # %% [markdown]
 # La duración esperada de una triangular es $(a + m + b)/3$; el cuadro la da ya redondeada en *duration*. Con esas duraciones esperadas se calcula el calendario determinista.
 
@@ -260,22 +439,19 @@ tope, ucr = datos_proyecto['cap_duration'], datos_proyecto['ucr']
 pd.DataFrame({'(a + m + b)/3': [f"({r['a']:g} + {r['m']:g} + {r['b']:g})/3 = {(r['a'] + r['m'] + r['b']) / 3:.2f}" for _, r in datos_proyecto.iterrows()],
               'duration': datos_proyecto['duration']}, index=datos_proyecto.index).T
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con las duraciones esperadas y el camino crítico"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Duración esperada de cada ruta"
 #| label: tbl-rutas
 R = proyecto.path_matrix(dummies=False)
-detalle_rutas(R, datos_proyecto['duration'][R.columns])
+tabla_rutas(proyecto, datos_proyecto['duration'])
 
 # %% [markdown]
 # ## Apartado 1
@@ -304,8 +480,8 @@ ax.set_xlabel('duración del proyecto (semanas)'); ax.legend(); plt.show()
 # %%
 tabla = proyecto.monte_carlo_crashing(dists, datos_proyecto, 'duration', tope, ucr, plazo=plazo,
                                        reduccion_max=8, n_samples=5000, seed=7)
-Markdown(f'`monte_carlo_crashing` hace lo mismo para cada número de semanas recortadas, con los mismos números aleatorios: '
-         f'sin recortar, duración media {tabla.loc[0, "τ media"]:.2f} y P(τ ≤ {plazo}) = {tabla.loc[0, "P(τ ≤ plazo)"]:.3f}.')
+p0_ent = float(tabla.loc[0, 'P(τ ≤ plazo)'])
+Markdown(f'''**Respuesta:** sin acelerar, la probabilidad de entregar en {plazo} semanas es P(τ ≤ {plazo}) ≈ **{p0:.3f}** ({100 * p0:.1f} % de las 5 000 réplicas), con una duración media simulada de {mc0.tau_mean:.2f} semanas frente a las {proyecto.duration(datos_proyecto["duration"])} deterministas. Para los apartados siguientes se usa `monte_carlo_crashing`, que repite la simulación para cada número de semanas recortadas con los mismos números aleatorios y **redondea cada duración sorteada a semanas enteras** (mínimo 1), como el resto del curso; con ese redondeo, sin recortar sale una media de {tabla.loc[0, "τ media"]:.2f} semanas y P(τ ≤ {plazo}) = {p0_ent:.3f}. La diferencia con {p0:.3f} se debe al redondeo: una duración simulada de {plazo}.4 semanas, por ejemplo, cuenta como {plazo} y cumple el plazo.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -315,22 +491,30 @@ display(Markdown(pregunta_2))
 
 # %%
 r_det = int(tabla.index[tabla['duración determinista'] <= plazo].min())
-Markdown(f'Con las duraciones esperadas hay que recortar {r_det} semana(s) para llegar a {plazo}.')
+Markdown(f'Con las duraciones esperadas el proyecto dura {proyecto.duration(datos_proyecto["duration"])} semanas: hay que recortar '
+         f'{proyecto.duration(datos_proyecto["duration"])} − {plazo} = {plural(r_det, "semana")} para llegar a {plazo}.')
 
 # %% [markdown]
-# En cada paso del algoritmo de Ackoff-Sasieni se acorta una semana la ruta (o rutas) crítica(s) eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a la vez.
+# En cada paso del algoritmo de Ackoff-Sasieni se acorta una semana la ruta crítica (o las rutas críticas) eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a la vez.
 
 # %%
 #| tbl-cap: "Algoritmo de Ackoff-Sasieni con las duraciones esperadas hasta el plazo"
 #| label: tbl-ackoff
 tabla_ackoff, pasos, duraciones_reducidas, margen_restante = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=r_det, report=False)
-tabla_ackoff
+proyecto.display_ackoff_pasos_tikz(
+    durations=datos_proyecto['duration'],
+    min_durations=tope,
+    costs=ucr,
+    reduction=r_det)
 
 # %%
 #| tbl-cap: "Opciones consideradas en cada paso"
 #| label: tbl-ackoffPaso
 detalle_ackoff(proyecto, datos_proyecto['duration'], tope, ucr, pasos)
+
+# %%
+narra_ackoff(proyecto, datos_proyecto['duration'], tope, ucr, pasos)
 
 # %%
 resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos.values()],
@@ -340,10 +524,14 @@ resumen['sobrecoste acumulado'] = resumen['coste del paso'].cumsum()
 resumen
 
 # %%
-Markdown(f'Reducir las duraciones esperadas hasta {plazo} semanas exige {r_det} semana(s) de reducción y {tabla.loc[r_det, "coste"]:.0f} k€ '
-         f'(duración determinista {proyecto.duration(duraciones_reducidas)}); pero la probabilidad real de cumplir es {tabla.loc[r_det, "P(τ ≤ plazo)"]:.3f}: '
-         'con la duración esperada justo en el plazo se cumple poco más de la mitad de las veces (y menos, por el sesgo de fusión de las rutas), '
-         'muy lejos del 90 % que suele exigirse.')
+p_det = float(tabla.loc[r_det, 'P(τ ≤ plazo)'])
+if p_det < 0.5:
+    matiz = 'menos de la mitad de las veces: con la duración esperada justo en el plazo, el sesgo de fusión (en cada réplica manda la ruta que más se alarga) empuja la media por encima del plazo'
+elif p_det < 0.75:
+    matiz = 'poco más de la mitad de las veces: la duración esperada queda justo en el plazo y, por el sesgo de fusión de las rutas, muchas réplicas lo superan'
+else:
+    matiz = 'algo más de lo esperable al poner la media justo en el plazo, por el redondeo a semanas enteras, pero aún por debajo de lo que suele exigirse'
+Markdown(f'''**Respuesta:** reducir las duraciones esperadas hasta {plazo} semanas exige {plural(r_det, "semana")} de reducción y {' + '.join(_num(c) for c in resumen['coste del paso'])} = {tabla.loc[r_det, "coste"]:.0f} k€ (duración determinista {proyecto.duration(duraciones_reducidas)} semanas); pero, simulando, la probabilidad de cumplir es solo P(τ ≤ {plazo}) = **{p_det:.3f}**: se cumple {matiz}. Está lejos del 90 % que suele exigirse.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -352,7 +540,7 @@ Markdown(f'Reducir las duraciones esperadas hasta {plazo} semanas exige {r_det} 
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# Para cada número de semanas recortadas $r$, la tabla da las reducciones que aplica Ackoff-Sasieni (paso a paso, separadas por |), el coste, la duración determinista, la media y el percentil 90 simulados y la probabilidad de cumplir, siempre con las mismas 5 000 réplicas de duraciones (a cada réplica se le restan las semanas recortadas, sin bajar de la duración tope).
+# Para cada número de semanas recortadas $r$, la tabla da las reducciones que aplica Ackoff-Sasieni (una por paso, separadas por «;»), el coste acumulado, la duración determinista, la media y el percentil 90 simulados y la probabilidad de cumplir, siempre con las mismas 5 000 réplicas de duraciones redondeadas a semanas enteras (a cada réplica se le restan las semanas recortadas a cada actividad, sin bajar de 1 semana).
 
 # %%
 #| tbl-cap: "Probabilidad de cumplir el plazo según las semanas recortadas"
@@ -360,7 +548,7 @@ display(Markdown(pregunta_3))
 acortadas = {0: '—'}
 for r in tabla.index[1:]:
     _, p_r, _, _ = proyecto.ackoff(durations=datos_proyecto['duration'], min_durations=tope, costs=ucr, reduction=int(r), report=False)
-    acortadas[r] = ' | '.join(', '.join(p_r[j]) for j in sorted(p_r))
+    acortadas[r] = '; '.join(' + '.join(p_r[j]) for j in sorted(p_r))
 tabla.insert(0, 'actividades acortadas (paso a paso)', pd.Series(acortadas))
 tabla.round(3)
 
@@ -373,16 +561,40 @@ ax.set_xlabel('semanas recortadas'); ax.set_ylabel('probabilidad')
 ax2 = ax.twinx(); ax2.plot(tabla.index, tabla['coste'], marker='s', color='tab:red', label='coste (k€)'); ax2.set_ylabel('k€')
 ax.legend(loc='upper left'); ax2.legend(loc='lower right'); plt.show()
 
+# %%
+r_max = int(tabla.index.max())
+tope_txt = '' if r_max >= 8 else (f' No se puede recortar más de {plural(r_max, "semana")}: después no queda ninguna combinación con margen que acorte '
+                                   'todas las rutas críticas (Ackoff-Sasieni se detiene).')
+P_ = tabla['P(τ ≤ plazo)']; C_ = tabla['coste']; M_ = tabla['τ media']
+Markdown(f'**Respuesta:** la tabla anterior. Al recortar, la probabilidad de cumplir sube de {P_[0]:.3f} (sin recortar) a {P_[r_max]:.3f} '
+         f'({plural(r_max, "semana")} recortadas, {C_[r_max]:.0f} k€) y la duración media simulada baja de {M_[0]:.2f} a {M_[r_max]:.2f} semanas,'
+         + (' siempre algo por encima de la determinista (sesgo de fusión).' if (M_ >= tabla['duración determinista'] - 1e-9).all() else '.') + tope_txt)
+
 # %% [markdown]
 # ## Apartado 4
 
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Coste de cada punto porcentual de probabilidad en cada tramo: lo que cuesta recortar esa semana dividido entre los puntos que gana la probabilidad, $\Delta\text{coste} / (100\,\Delta P)$.
+
 # %%
 r90 = int(tabla.index[tabla['P(τ ≤ plazo)'] >= 0.9].min())
-marginal = (tabla['coste'].diff() / (100 * tabla['P(τ ≤ plazo)'].diff())).rename('k€ por punto de probabilidad')
-display(marginal.round(2).to_frame())
-Markdown(f'Para el 90 % hay que recortar {r90} semanas ({tabla.loc[r90, "coste"]:.0f} k€) en vez de las {r_det} deterministas '
-         f'({tabla.loc[r_det, "coste"]:.0f} k€): la diferencia, {tabla.loc[r90, "coste"] - tabla.loc[r_det, "coste"]:.0f} k€, es lo que cuesta '
-         'la seguridad. Los últimos puntos de probabilidad son los más caros.')
+P_ = tabla['P(τ ≤ plazo)']; C_ = tabla['coste']
+filas = {}
+for r in tabla.index[1:]:
+    dc, dp = C_[r] - C_[r - 1], 100 * (P_[r] - P_[r - 1])
+    filas[f'{r - 1} → {r}'] = {'Δcoste (k€)': f'{_num(C_[r])} − {_num(C_[r - 1])} = {_num(dc)}',
+                               'Δprobabilidad (puntos)': f'{100 * P_[r]:.1f} − {100 * P_[r - 1]:.1f} = {dp:.1f}',
+                               'k€ por punto': (f'{_num(dc)} / {dp:.1f} = {dc / dp:.2f}' if dp > 0 else 'no gana probabilidad')}
+marginal = pd.DataFrame(filas).T
+marginal.index.name = 'semanas recortadas'
+display(marginal)
+por_punto = {k: (C_[int(k.split(' → ')[1])] - C_[int(k.split(' → ')[0])]) / (100 * (P_[int(k.split(' → ')[1])] - P_[int(k.split(' → ')[0])]))
+             for k in filas if P_[int(k.split(' → ')[1])] > P_[int(k.split(' → ')[0])]}
+caro = max(por_punto, key=por_punto.get)
+fin_txt = (': los últimos puntos, cuando la probabilidad ya está cerca de 1, son los más caros.' if caro == list(por_punto)[-1]
+           else '. En general los últimos puntos, cuando la probabilidad ya está cerca de 1, son los más caros.')
+barato = min(por_punto, key=por_punto.get)
+Markdown(f'''**Respuesta:** para tener al menos un 90 % de probabilidad hay que recortar **{plural(r90, "semana")}** (P = {P_[r90]:.3f}), con un coste de **{C_[r90]:.0f} k€**, frente a {plural(r_det, "semana")} y {C_[r_det]:.0f} k€ de la reducción determinista hasta el plazo (P = {P_[r_det]:.3f}): la diferencia, {C_[r90] - C_[r_det]:.0f} k€, es lo que cuesta la seguridad. El punto de probabilidad más barato se compra en el tramo {barato} ({por_punto[barato]:.2f} k€) y el más caro en el tramo {caro} ({por_punto[caro]:.2f} k€){fin_txt}''')

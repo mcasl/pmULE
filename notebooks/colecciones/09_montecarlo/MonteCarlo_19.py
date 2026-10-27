@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -231,40 +235,69 @@ datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 
+# %%
+def tabla_rutas(R, medias, varianzas=None, calendario=None, dec=0, dec_var=3, nombre='media'):
+    """Media (y varianza) de cada ruta con la suma término a término; actividades en orden de ejecución."""
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        m = float(sum(float(medias[a]) for a in acts))
+        fila = {'actividades': ' – '.join(acts),
+                f'{nombre} = suma': ' + '.join(f'{a}({float(medias[a]):.{dec}f})' for a in acts) + f' = {m:.{dec}f}',
+                nombre: m}
+        if varianzas is not None:
+            v = float(sum(float(varianzas[a]) for a in acts))
+            fila['varianza = suma'] = ' + '.join(f'{a}({float(varianzas[a]):.{dec_var}f})' for a in acts) + f' = {v:.{dec_var}f}'
+            fila['varianza'] = v
+            fila['σ = √varianza'] = v ** 0.5
+        filas[r] = fila
+    t = pd.DataFrame(filas).T
+    for c in (nombre, 'varianza', 'σ = √varianza'):
+        if c in t:
+            t[c] = t[c].astype(float)
+    return t
+
 # %% [markdown]
 # ## Apartado 1
 
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con las duraciones medias"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
-proyecto.display_pert_pasos(datos_proyecto['duration'])
+# La matriz de caminos tiene una fila por ruta y una columna por actividad (1 si la actividad está en la ruta):
 
 # %%
 #| tbl-cap: "Matriz de caminos"
 #| label: tbl-matrizCaminos
-path_matrix = proyecto.path_matrix(dummies=False)
-proyecto.display_rutas('pert')
+path_matrix = proyecto.path_matrix(dummies=False).drop_duplicates()   # rutas que sólo difieren en ficticias, una vez
+proyecto.display_rutas("pert")
+
+# %% [markdown]
+# Duración media y varianza de cada ruta (producto de la matriz de caminos por las medias y por las varianzas de las actividades):
 
 # %%
+calendario = proyecto.calendar(datos_proyecto['duration'])
 duraciones = datos_proyecto['duration'][path_matrix.columns]
 duraciones_rutas_medias = path_matrix @ duraciones
 duracion_media = int(duraciones_rutas_medias.max())
 ruta_critica = duraciones_rutas_medias.idxmax()
 desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])
-pd.concat([duraciones_rutas_medias.rename('duración media'),
-           (path_matrix @ datos_proyecto['variance'][path_matrix.columns]).rename('varianza')], axis=1)
+rutas = tabla_rutas(path_matrix, datos_proyecto['duration'], datos_proyecto['variance'], calendario)
+limpia_tabla(rutas, decimales=3)
 
 # %%
-Markdown(f'Con las duraciones medias el proyecto dura {duracion_media} semanas; la ruta crítica es {ruta_critica} y su desviación típica {desviacion_proyecto:.3f}.')
+acts_critica = ordena_ruta(list(path_matrix.columns[path_matrix.loc[ruta_critica] == 1]), calendario)
+Markdown(f'''{explica_sigma_ruta(acts_critica, datos_proyecto["variance"], nombre="σ_T")}.\n\n'''
+         f'''**Respuesta:** con las duraciones medias el proyecto dura {plural(duracion_media, "semana")}; la ruta crítica es '''
+         f'''{" – ".join(acts_critica)}, con desviación típica σ_T = {desviacion_proyecto:.3f} semanas.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -282,6 +315,9 @@ duraciones_mc = pd.DataFrame({act: np.clip(rng.normal(fila['duration'], fila['st
                               for act, fila in datos_proyecto.iterrows()})
 duraciones_mc = duraciones_mc[path_matrix.columns]
 
+# %% [markdown]
+# Comprobación de que las muestras reproducen la media y la dispersión de cada actividad:
+
 # %%
 #| tbl-cap: "Medias y desviaciones típicas muestrales frente a las teóricas"
 #| label: tbl-comprobacionMuestras
@@ -289,17 +325,29 @@ pd.DataFrame({'media teórica': datos_proyecto['duration'], 'media muestral': du
               'σ teórica': datos_proyecto['standard_deviation'], 'σ muestral': duraciones_mc.std()}).round(2).T
 
 # %% [markdown]
-# La duración de cada ruta en cada réplica es el producto de las duraciones por la traspuesta de la matriz de caminos; la del proyecto, el máximo por filas.
+# La duración de cada ruta en cada réplica es la suma de las duraciones de sus actividades (producto de las duraciones por la traspuesta de la matriz de caminos), y la del proyecto es la de la ruta más larga: el máximo por filas. Las cinco primeras réplicas:
 
 # %%
 duraciones_rutas_mc = duraciones_mc @ path_matrix.T
 duracion_proyecto_mc = duraciones_rutas_mc.max(axis='columns')
-pd.concat([duraciones_rutas_mc, duracion_proyecto_mc.rename('Proyecto')], axis=1).head().round(2)
+pd.concat([duraciones_rutas_mc, duracion_proyecto_mc.rename('Proyecto (máximo)')], axis=1).head().round(2)
+
+# %% [markdown]
+# Los descriptores se calculan sobre las réplicas de la duración del proyecto. El percentil $p$ es el valor que deja por debajo la proporción $p$ de las réplicas: se ordenan de menor a mayor y se toma la que ocupa la posición $p\cdot N$ (interpolando entre las dos vecinas).
 
 # %%
 #| tbl-cap: "Descriptores de la duración simulada del proyecto"
 #| label: tbl-descriptores
-duracion_proyecto_mc.describe(percentiles=[0.05, 0.5, 0.95]).round(2).to_frame('Duración del proyecto').T
+descriptores = duracion_proyecto_mc.describe(percentiles=[0.05, 0.5, 0.95])
+descriptores.index = ['réplicas', 'media', 'desviación típica', 'mínimo', 'P5', 'P50', 'P95', 'máximo']
+descriptores.round(2).to_frame('Duración del proyecto (semanas)').T
+
+# %%
+ordenadas = np.sort(duracion_proyecto_mc.values)
+Markdown(f'''Por ejemplo, el P95 está entre la réplica {int(0.95 * (N - 1)) + 1} y la {int(0.95 * (N - 1)) + 2} de las {N} ordenadas '''
+         f'''({ordenadas[int(0.95 * (N - 1))]:.2f} y {ordenadas[int(0.95 * (N - 1)) + 1]:.2f}).\n\n'''
+         f'''**Respuesta:** media {descriptores["media"]:.2f} semanas, desviación típica {descriptores["desviación típica"]:.2f}; '''
+         f'''percentiles P5 = {descriptores["P5"]:.2f}, P50 = {descriptores["P50"]:.2f} y P95 = {descriptores["P95"]:.2f} semanas.''')
 
 # %%
 #| fig-cap: "Distribución simulada de la duración frente a la aproximación normal"
@@ -318,18 +366,61 @@ ax.set_xlabel('Duración del proyecto (semanas)'); ax.legend(); plt.show()
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Con las réplicas, la probabilidad de cumplir el plazo es la proporción de réplicas que no lo superan, y la duración que se cumple con una probabilidad dada es el percentil empírico correspondiente. Con la aproximación normal, $T \sim N(\mu, \sigma_T)$ con la media y la desviación típica de la ruta crítica (apartado 1).
+
 # %%
 plazo, probabilidad_objetivo = 32, 0.9
+cumplen = int((duracion_proyecto_mc <= plazo).sum())
 p_mc = float((duracion_proyecto_mc <= plazo).mean())
 t_mc = float(duracion_proyecto_mc.quantile(probabilidad_objetivo))
-p_normal = float(norm.cdf((plazo - duracion_media) / desviacion_proyecto))
-t_normal = float(duracion_media + norm.ppf(probabilidad_objetivo) * desviacion_proyecto)
+p_normal = float(norm.cdf(plazo, duracion_media, desviacion_proyecto))
+t_normal = float(norm.ppf(probabilidad_objetivo, duracion_media, desviacion_proyecto))
+pct = int(probabilidad_objetivo * 100)
+Markdown(f'''Monte Carlo: {cumplen} de las {N} réplicas duran {plazo} semanas o menos, luego P(T ≤ {plazo}) ≈ {cumplen}/{N} = **{p_mc:.4f}**; '''
+         f'''el percentil {pct} de las réplicas (posición ≈ {int(probabilidad_objetivo * N)} de {N} ordenadas) es **{t_mc:.2f}** semanas.\n\n'''
+         f'''Aproximación normal:\n\n- {explica_probabilidad(duracion_media, desviacion_proyecto, plazo)}\n'''
+         f'''- {explica_percentil(duracion_media, desviacion_proyecto, probabilidad_objetivo, "semanas")}''')
+
+# %%
+#| tbl-cap: "Aproximación normal frente a Monte Carlo"
+#| label: tbl-comparacion
 pd.DataFrame({'Aproximación normal': [duracion_media, desviacion_proyecto, p_normal * 100, t_normal],
               'Monte Carlo': [duracion_proyecto_mc.mean(), duracion_proyecto_mc.std(), p_mc * 100, t_mc]},
-             index=['Duración media', 'Desviación típica', f'P(T ≤ {plazo}) (%)', f'Duración para {int(probabilidad_objetivo*100)}%']).round(2)
+             index=['Duración media', 'Desviación típica', f'P(T ≤ {plazo}) (%)', f'Duración para {pct}%']).round(2)
 
-# %% [markdown]
-# La aproximación normal sólo mira la ruta crítica. En cada réplica, sin embargo, la duración del proyecto es el máximo de todas las rutas, y el máximo de varias variables aleatorias tiene una media mayor que cualquiera de ellas: las rutas casi críticas empujan la duración hacia arriba (*sesgo de fusión*). Por eso Monte Carlo da una duración media algo mayor y una probabilidad de cumplir el plazo algo menor: el método PERT clásico es optimista. La desviación típica simulada suele ser menor, porque cuando una ruta sale corta otra ocupa su lugar y la cola izquierda se recorta.
+# %%
+ruta_critica_mc = duraciones_rutas_mc.idxmax(axis='columns')
+criticidad_rutas = (ruta_critica_mc.value_counts(normalize=True) * 100).reindex(path_matrix.index, fill_value=0.0)
+dm = duracion_proyecto_mc.mean() - duracion_media
+ds = duracion_proyecto_mc.std() - desviacion_proyecto
+otras = 100 - criticidad_rutas[ruta_critica]
+if dm > 0.05:
+    t_media = (f'Monte Carlo da una duración media {dm:.2f} semanas mayor. En cada réplica la duración del proyecto es el máximo de todas '
+               f'las rutas y en el {otras:.1f} % de las réplicas manda otra ruta distinta de la crítica: las rutas casi críticas empujan la '
+               'duración hacia arriba (*sesgo de fusión*), algo que la aproximación normal, que sólo mira la ruta crítica, no recoge.')
+else:
+    t_media = (f'Las medias casi coinciden (diferencia {dm:+.2f} semanas): la ruta crítica es la más larga en el {100 - otras:.1f} % de las '
+               'réplicas, así que el máximo de las rutas apenas se separa de ella y el sesgo de fusión es pequeño.')
+if p_mc < p_normal:
+    t_prob = (f'La probabilidad de cumplir el plazo es menor con Monte Carlo ({p_mc:.4f} frente a {p_normal:.4f}) y la duración al {pct} % '
+              f'mayor ({t_mc:.2f} frente a {t_normal:.2f}): la aproximación normal por el camino crítico es optimista.')
+else:
+    t_prob = (f'La probabilidad de cumplir el plazo es {"igual" if np.isclose(p_mc, p_normal, atol=5e-4) else "algo mayor"} con Monte Carlo ({p_mc:.4f} frente a {p_normal:.4f}): '
+              'con una sola ruta dominante la diferencia queda dentro del error de muestreo y de la forma de las distribuciones.')
+dist_pert = False
+if dist_pert and ds > 0.02:
+    t_sd = (f'La desviación típica simulada es mayor ({duracion_proyecto_mc.std():.2f} frente a {desviacion_proyecto:.2f}) porque la aproximación '
+            'PERT σ = (b − a)/6 subestima la dispersión real de la Beta-PERT (ver la comprobación de las muestras).')
+elif ds < -0.02:
+    t_sd = (f'La desviación típica simulada es menor ({duracion_proyecto_mc.std():.2f} frente a {desviacion_proyecto:.2f}): cuando la ruta '
+            'crítica sale corta otra ocupa su lugar y la cola izquierda se recorta.')
+else:
+    t_sd = (f'Las desviaciones típicas son parecidas ({duracion_proyecto_mc.std():.2f} frente a {desviacion_proyecto:.2f}).')
+Markdown(f'''{t_media} {t_prob} {t_sd}\n\n'''
+         f'''**Respuesta:** P(T ≤ {plazo}) ≈ {p_mc:.4f} con Monte Carlo y {p_normal:.4f} con la aproximación normal; la duración que se cumple con un '''
+         f'''{pct} % de probabilidad es {t_mc:.2f} semanas con Monte Carlo y {t_normal:.2f} con la normal (en semanas enteras, '''
+         f'''{int(np.ceil(round(t_mc, 2)))} y {int(np.ceil(round(t_normal, 2)))}).''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -343,17 +434,14 @@ display(Markdown(pregunta_4))
 # %%
 #| tbl-cap: "Índice de criticidad de las rutas"
 #| label: tbl-criticidadRutas
-ruta_critica_mc = duraciones_rutas_mc.idxmax(axis='columns')
-criticidad_rutas = (ruta_critica_mc.value_counts(normalize=True) * 100).reindex(path_matrix.index, fill_value=0.0)
-actividades_ruta = path_matrix.apply(lambda fila: ' - '.join(fila.index[fila == 1]), axis=1)
-pd.DataFrame({'actividades': actividades_ruta, 'duración media': duraciones_rutas_medias,
+pd.DataFrame({'actividades': rutas['actividades'], 'duración media': duraciones_rutas_medias,
+              'veces la más larga': ruta_critica_mc.value_counts().reindex(path_matrix.index, fill_value=0),
               'criticidad (%)': criticidad_rutas}).sort_values('criticidad (%)', ascending=False).round(1)
 
 # %%
 #| tbl-cap: "Índice de criticidad de las actividades frente a su holgura total"
 #| label: tbl-criticidadActividades
 criticidad_actividades = path_matrix.loc[ruta_critica_mc].mean() * 100
-calendario = proyecto.calendar(datos_proyecto['duration'])
 pd.DataFrame({'holgura total': calendario['H_total'], 'criticidad (%)': criticidad_actividades}).round(1).T
 
 # %% [markdown]
@@ -361,9 +449,18 @@ pd.DataFrame({'holgura total': calendario['H_total'], 'criticidad (%)': criticid
 
 # %%
 resultado = proyecto.monte_carlo({act: ('normal', fila['duration'], fila['standard_deviation']) for act, fila in datos_proyecto.iterrows()}, n_samples=N, seed=4908)
-display(resultado.summary().round(2))
+display(resultado.summary().round(2).rename(columns={'mean': 'media', 'std': 'desv. típica', 'q05': 'P5', 'q50': 'P50', 'q95': 'P95', 'min': 'mínimo', 'max': 'máximo'}))
 (resultado.sensitivity_mean * 100).round(1).to_frame('criticidad (%) según monte_carlo').T
 
 # %%
 vigilar = criticidad_actividades[calendario['H_total'] > 0].sort_values(ascending=False)
-Markdown(f'''La actividad no crítica con mayor índice de criticidad es **{vigilar.index[0]}** ({vigilar.iloc[0]:.1f} % de las réplicas en la ruta más larga, con holgura {int(calendario.loc[vigilar.index[0], "H_total"])}). El análisis determinista la da por holgada, pero un retraso pequeño la convierte en crítica: es la que conviene vigilar.''')
+rutas_txt = '; '.join(f"{rutas.loc[r, 'actividades']}: {criticidad_rutas[r]:.1f} %" for r in criticidad_rutas.sort_values(ascending=False).index if criticidad_rutas[r] > 0)
+if len(vigilar) and vigilar.iloc[0] > 0:
+    x = vigilar.index[0]
+    t_vig = (f'La actividad no crítica que convendría vigilar es **{x}**: está en la ruta más larga en el {vigilar.iloc[0]:.1f} % de las réplicas '
+             f'aunque tiene {plural(int(calendario.loc[x, "H_total"]), "semana")} de holgura total. El análisis determinista la da por holgada, '
+             'pero un retraso pequeño la convierte en crítica.')
+else:
+    t_vig = 'Ninguna actividad no crítica llega a estar en la ruta más larga en las réplicas: no hay ninguna que vigilar especialmente.'
+Markdown(f'''**Respuesta:** índices de criticidad de las rutas (las que alguna vez son la más larga): {rutas_txt}. Los de las actividades '''
+         f'''son los de la tabla. {t_vig}''')

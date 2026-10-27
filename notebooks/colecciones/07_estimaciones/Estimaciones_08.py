@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -249,19 +253,26 @@ descripciones.to_frame()
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Con las tres estimaciones $a$, $m$, $b$ del cuadro, el método PERT da para cada actividad $D = (a + 4m + b)/6$ y $\sigma^2 = ((b - a)/6)^2$:
+
 # %%
 datos_proyecto = datos_enunciado.copy()
 datos_proyecto['duration'] = datos_proyecto.eval('(a + 4 * m + b) / 6').round().astype(int)
 datos_proyecto['variance'] = datos_proyecto.eval('((b - a) / 6) ** 2')
-datos_proyecto
 
 # %%
 #| tbl-cap: "Media y varianza PERT de cada actividad con los números sustituidos"
 #| label: tbl-estimaciones
 detalle_estimaciones(datos_proyecto)
 
-# %% [markdown]
-# Cuando $a = m = b$ la varianza es $(b-a)^2/36 = 0$: la actividad no aporta incertidumbre, aunque sí aporta duración.
+# %%
+fijas = [x for x in datos_proyecto.index if datos_proyecto.loc[x, 'a'] == datos_proyecto.loc[x, 'b']]
+Markdown(f'''Cuando $a = m = b$ la varianza es $((b - a)/6)^2 = 0$: la actividad no aporta incertidumbre, aunque sí aporta duración.
+
+**Respuesta:** las actividades de duración fija son {lista_y(fijas)} y su varianza es 0 ('''
+         + lista_y([f'{x} dura siempre {plural(datos_proyecto.loc[x, "duration"], "semana")}' for x in fijas])
+         + '''). La media y la varianza de las demás actividades son las de la tabla.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -283,8 +294,10 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])
-camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
-Markdown(f'La duración media del proyecto es {duracion_media} semanas.')
+calendario = proyecto.calendar(datos_proyecto['duration'])
+criticas = ordena_ruta(sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts)), calendario)
+display(explica_camino_critico(proyecto, datos_proyecto['duration']))
+Markdown(f'**Respuesta:** camino crítico {" – ".join(criticas)}; duración media del proyecto {plural(duracion_media, "semana")}.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -292,16 +305,37 @@ Markdown(f'La duración media del proyecto es {duracion_media} semanas.')
 # %%
 display(Markdown(pregunta_3))
 
-# %%
-desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(datos_proyecto['duration'], datos_proyecto['variance'])
-display(varianza_rutas)
-criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts))
-contribuyen = datos_proyecto.loc[criticas, 'variance']
-mas_variable_no_critica = datos_proyecto['variance'].drop(criticas).idxmax()
-pd.DataFrame({'crítica': datos_proyecto.index.isin(criticas), 'varianza': datos_proyecto['variance']}).T
+# %% [markdown]
+# La varianza del proyecto se aproxima por la de la ruta crítica: la suma de las varianzas de sus actividades (que se suponen independientes).
 
 # %%
-Markdown(f'''La varianza del proyecto, {desviacion_proyecto**2:.3f}, es la suma de las varianzas de las actividades críticas: sólo contribuyen {", ".join(a for a in criticas if datos_proyecto.loc[a, "variance"] > 0)}. La actividad no crítica más variable, {mas_variable_no_critica} (varianza {datos_proyecto.loc[mas_variable_no_critica, "variance"]:.3f}), no cuenta en la aproximación PERT porque no está en la ruta crítica, aunque Monte Carlo mostraría que sí influye si su holgura es pequeña. Las críticas de duración fija ({", ".join(a for a in criticas if datos_proyecto.loc[a, "variance"] == 0) or "ninguna"}) aportan duración pero no varianza.''')
+#| tbl-cap: "Varianza de la ruta crítica"
+#| label: tbl-varianzaRuta
+desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(datos_proyecto['duration'], datos_proyecto['variance'])
+varianza_rutas.relabel_index(['actividades', 'varianza', 'suma de varianzas'], axis='columns')
+
+# %%
+#| tbl-cap: "Varianza de cada actividad y si es crítica"
+#| label: tbl-varianzas
+contribuyen = datos_proyecto.loc[criticas, 'variance']
+mas_variable_no_critica = datos_proyecto['variance'].drop(criticas).idxmax()
+limpia_tabla(pd.DataFrame({'crítica': datos_proyecto.index.isin(criticas), 'holgura total': calendario['H_total'],
+                           'varianza': datos_proyecto['variance']}, index=datos_proyecto.index), decimales=3).T
+
+# %%
+varianza_proyecto = float(contribuyen.sum())
+aportan = [a for a in criticas if contribuyen[a] > 0]
+fijas_criticas = [a for a in criticas if contribuyen[a] == 0]
+h_nc = int(calendario.loc[mas_variable_no_critica, 'H_total'])
+if h_nc <= 2:
+    matiz = (f'Sin embargo su holgura total es sólo de {plural(h_nc, "semana")}: en la realidad (y en una simulación de Monte Carlo) '
+             'un retraso de ese tamaño la haría crítica, así que conviene vigilarla.')
+else:
+    matiz = (f'Con {plural(h_nc, "semana")} de holgura total es poco probable que llegue a ser crítica, '
+             'así que despreciar su varianza es razonable.')
+Markdown(f'''{explica_sigma_ruta(criticas, datos_proyecto["variance"], nombre="σ_T")} semanas, es decir, σ²_T = {varianza_proyecto:.3f}.
+
+**Respuesta:** la varianza del proyecto es {varianza_proyecto:.3f} (σ = {np.sqrt(varianza_proyecto):.3f} semanas). Contribuyen {lista_y(aportan)}, las críticas con varianza no nula. La no crítica más variable, {mas_variable_no_critica} (σ² = {datos_proyecto.loc[mas_variable_no_critica, "variance"]:.3f}), no contribuye en la aproximación PERT porque no está en la ruta crítica. {matiz} {('Las críticas de duración fija (' + lista_y(fijas_criticas) + ') aportan duración pero no varianza.') if fijas_criticas else 'Ninguna crítica es de duración fija.'}''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -310,7 +344,32 @@ Markdown(f'''La varianza del proyecto, {desviacion_proyecto**2:.3f}, es la suma 
 display(Markdown(pregunta_4))
 
 # %%
-mas_variable_critica = contribuyen.idxmax()
-mas_larga_critica = datos_proyecto.loc[criticas, 'duration'].idxmax()
-Markdown(f'Para hacer el plazo más predecible conviene atacar la varianza de {mas_variable_critica} (la crítica de mayor varianza); '
-         f'para acortarlo, la duración de alguna crítica, por ejemplo {mas_larga_critica}, la más larga. Reducir la varianza de una no crítica no cambia nada en el análisis PERT.')
+maxima = contribuyen.max()
+mas_variables = [a for a in criticas if np.isclose(contribuyen[a], maxima)]
+# si la actividad se hiciera de duración fija igual a su valor más probable m
+efecto = {}
+for x in criticas:
+    d2 = datos_proyecto['duration'].copy(); d2[x] = int(datos_proyecto.loc[x, 'm'])
+    efecto[x] = int(proyecto.duration(d2))
+mejor = min(efecto, key=lambda x: (efecto[x], -contribuyen[x]))
+tabla_efecto = limpia_tabla(pd.DataFrame({'m': datos_proyecto.loc[criticas, 'm'], 'media D': datos_proyecto.loc[criticas, 'duration'],
+                                          'varianza': contribuyen,
+                                          'σ²_T sin su varianza': varianza_proyecto - contribuyen,
+                                          'duración si se fija en m': pd.Series(efecto)}), decimales=3)
+display(tabla_efecto.T)
+if len(mas_variables) == 1:
+    quien = f'{mas_variables[0]} (la crítica de mayor varianza, {maxima:.3f}): sin ella'
+else:
+    quien = f'{lista_y(mas_variables, "o")} (empatadas como críticas de mayor varianza, {maxima:.3f} cada una): sin la de cualquiera de ellas'
+texto_pred = (f'{quien} σ²_T bajaría de {varianza_proyecto:.3f} '
+              f'a {varianza_proyecto - maxima:.3f} (σ_T = {np.sqrt(varianza_proyecto - maxima):.3f} semanas)')
+if efecto[mejor] < duracion_media:
+    texto_acortar = (f'Anular la varianza manteniendo la media no cambia la duración media ({duracion_media}). Si anularla supone fijar la '
+                     f'actividad en su valor más probable m, la que más acorta es {mejor}: m = {int(datos_proyecto.loc[mejor, "m"])} < D = '
+                     f'{datos_proyecto.loc[mejor, "duration"]}, y el proyecto pasaría a durar {efecto[mejor]} semanas.')
+else:
+    texto_acortar = (f'Anular la varianza manteniendo la media no cambia la duración media ({duracion_media}), y fijar una crítica en su '
+                     f'valor más probable tampoco la acorta (ninguna crítica tiene m < D): para acortar el plazo hay que reducir la duración '
+                     f'de alguna crítica, no su varianza.')
+Markdown(f'''**Respuesta:** para hacer el plazo más predecible elegiría {texto_pred}. {texto_acortar} '''
+         'Reducir la varianza de una no crítica no cambia nada en el análisis PERT.')

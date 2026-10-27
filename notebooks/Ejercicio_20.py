@@ -27,7 +27,7 @@ from IPython.display import display, HTML, Markdown, Math
 # To find local version of the library
 sys.path.append('../src')
 
-from pmule import PredecessorTable, ProjectGraph, pinta_tikz
+from pmule import PredecessorTable, ProjectGraph, pinta_tikz, explica_camino_critico, plural, lista_y, limpia_tabla
 
 # %%
 # %%capture
@@ -52,6 +52,7 @@ display(Markdown(pregunta_2))
 #| label: tbl-datosEnunciado
 
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 
 datos_enunciado = pd.DataFrame([
@@ -127,7 +128,26 @@ proyecto.pert(ranksep=1.0)
 #| label: tbl-precalculos
 datos_proyecto['duracion'] = datos_proyecto.eval('(b + 4*m +a)/6')
 datos_proyecto['cur'] = datos_proyecto.eval('(coste_duracion_tope - coste_duracion_pert)/(duracion - duracion_tope)')
-datos_proyecto[['b', 'm', 'a', 'duracion', 'cur']]
+_dp = datos_proyecto
+_no_red = list(_dp.index[_dp['duracion'] == _dp['duracion_tope']])
+_gratis = list(_dp.index[_dp['cur'] == 0])
+display(Markdown(
+    "- Duración media PERT: $d = (b + 4m + a)/6$, p. ej. A: "
+    f"({_dp.loc['A', 'b']:g} + 4 × {_dp.loc['A', 'm']:g} + {_dp.loc['A', 'a']:g}) / 6 = {_dp.loc['A', 'duracion']:g}.\n"
+    "- Coste unitario de reducción: cur = (coste a duración tope − coste a duración PERT) / (d − duración tope), "
+    f"p. ej. A: ({_dp.loc['A', 'coste_duracion_tope']} − {_dp.loc['A', 'coste_duracion_pert']}) / "
+    f"({_dp.loc['A', 'duracion']:g} − {_dp.loc['A', 'duracion_tope']}) = {_dp.loc['A', 'cur']:g}.\n"
+    + (f"- {lista_y(_no_red)} ya están en su duración tope (0/0): no se pueden acortar (aparecen como «—»).\n" if _no_red else "")
+    + (f"- {lista_y(_gratis)} pueden acortarse sin coste (cur = 0).\n" if _gratis else "")
+    + "\nCálculo para cada actividad:"))
+_tabla_pre = pd.DataFrame({
+    'b': _dp['b'], 'm': _dp['m'], 'a': _dp['a'],
+    'd = (b + 4m + a)/6': [f"({r.b:g} + 4×{r.m:g} + {r.a:g})/6 = {r.duracion:g}" for r in _dp.itertuples()],
+    'duración tope': _dp['duracion_tope'],
+    'cur = Δcoste/Δd': [f"({r.coste_duracion_tope} − {r.coste_duracion_pert})/({r.duracion:g} − {r.duracion_tope}) = "
+                        + ("—" if np.isnan(r.cur) else f"{r.cur:.2f}") for r in _dp.itertuples()],
+}, index=_dp.index)
+display(_tabla_pre)
 
 # %% [markdown]
 # ### Matriz de Zaderenko
@@ -164,7 +184,10 @@ resultados_pert['activities']
 # ### Camino crítico
 
 # %%
-proyecto.display_critical_path(datos_proyecto['duracion'])
+display(explica_camino_critico(proyecto, datos_proyecto['duracion'], 'unidades de tiempo'))
+_criticas = list(resultados_pert['activities'].index[np.isclose(resultados_pert['activities']['H_total'].astype(float), 0)])
+display(Markdown(f"**Respuesta:** las actividades críticas (holgura total nula en la tabla anterior) son "
+                 f"{lista_y([a for a in _criticas if not a.startswith('@')])}."))
 
 # %% [markdown]
 # ### Grafo PERT con indicación de tiempos y rutas del camino crítico
@@ -221,8 +244,21 @@ proyecto.display_ackoff_pasos_tikz(
 # Las actividades a recortar en cada iteración son:
 
 # %%
+_lineas = []
+_d_actual = proyecto.duration(datos_proyecto['duracion'])
 for item, value in best_option.items():
-    print(f"Actividades a recortar en iteración {item}: {value}")
+    _c = datos_proyecto.loc[value, 'cur']
+    _lineas.append(f"- Iteración {item}: se acortan una unidad {lista_y(value)}, con coste "
+                   f"{' + '.join(format(x, 'g') for x in _c)} = **{_c.sum():g}**; la duración pasa de {_d_actual:g} a {_d_actual - 1:g}.")
+    _d_actual -= 1
+_incremento = sum(datos_proyecto.loc[v, 'cur'].sum() for v in best_option.values())
+display(Markdown("\n".join(_lineas) + "\n\n"
+                 f"**Respuesta:** para reducir el proyecto de {proyecto.duration(datos_proyecto['duracion']):g} a "
+                 f"{proyecto.duration(duration):g} unidades de tiempo hay que acortar "
+                 + lista_y([f"{a} {plural(n, 'unidad', 'unidades')}" for a, n in
+                            (datos_proyecto['duracion'] - duration).loc[lambda x: x > 0].items()])
+                 + f"; el incremento de coste mínimo es {' + '.join(format(datos_proyecto.loc[v, 'cur'].sum(), 'g') for v in best_option.values())} "
+                 f"= **{_incremento:g}** unidades monetarias."))
 
 # %% [markdown]
 # El grafo Roy con indicación de tiempos y rutas críticas tras la reducción de la duración es el siguiente:
@@ -234,5 +270,6 @@ for item, value in best_option.items():
 #| fig-cap: "Grafo Roy con indicación de tiempos tras la reducción del proyecto"
 #| label: fig-RoyReduccionTiempos
 proyecto.display_roy_pasos(duration)
+display(explica_camino_critico(proyecto, duration, 'unidades de tiempo'))
 
 # %%

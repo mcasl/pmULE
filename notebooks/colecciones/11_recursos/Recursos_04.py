@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -230,6 +234,87 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 suministro = 70
 
+# %%
+def semanas_txt(lista):
+    """«la semana 6», «las semanas 1, 2 y 5» o «ninguna semana»."""
+    lista = [str(int(x)) for x in lista]
+    if not lista:
+        return 'ninguna semana'
+    return ('la semana ' if len(lista) == 1 else 'las semanas ') + lista_y(lista)
+
+
+def explica_cuadrados(cargas):
+    """Σ c² agrupando las semanas de igual carga: «6·3² + 4·5² = 54 + 100 = 154»."""
+    c = pd.Series(cargas).astype(int)
+    cuenta = c.value_counts().sort_index()
+    terminos = [f'{n}·{v}²' if n > 1 else f'{v}²' for v, n in cuenta.items()]
+    parciales = [f'{n * v * v}' for v, n in cuenta.items()]
+    return f'Σ c² = {" + ".join(terminos)} = {" + ".join(parciales)} = **{int((c ** 2).sum())}**'
+
+
+def explica_nivelacion(cuadrados, calendario):
+    """Una línea por actividad recorrida: desplazamientos probados, suma mínima y elección."""
+    tabla = getattr(cuadrados, 'data', cuadrados)
+    lineas, elegidos = [], {}
+    for a, fila in tabla.iterrows():
+        v = fila.dropna()
+        k = int(v.index.max())
+        H = int(calendario.loc[a, 'H_total'])
+        minimo = v.min()
+        mejor = int(v.idxmin())
+        empates = [int(x) for x in v.index[v == minimo]]
+        if k == 0:
+            probado = 'solo puede probarse 0'
+        else:
+            probado = f'se prueban 0 a {k}'
+        if k < H:
+            probado += (f' (no {H}: los desplazamientos ya aplicados a actividades que comparten su holgura '
+                        f'le han dejado {plural(k, "semana")})')
+        empate = (f'; empatan {lista_y([str(x) for x in empates])} y se toma el menor' if len(empates) > 1 else '')
+        lineas.append(f'- {a} (holgura total {H}): {probado}; suma mínima {int(minimo)} con {mejor}{empate} → '
+                      + (f'se desplaza **{plural(mejor, "semana")}**' if mejor > 0 else 'no se desplaza'))
+        elegidos[a] = mejor
+    return '\n'.join(lineas), {a: d for a, d in elegidos.items() if d > 0}
+
+
+def tabla_asignacion(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """Semanas en que la demanda supera el límite: orden de prioridad, qué entra y qué se aplaza y por qué."""
+    pasos, finales, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    filas = []
+    for ps in pasos:
+        if ps['total'] <= ps['limite']:
+            continue
+        t, L = ps['periodo'], int(ps['limite'])
+        orden, aplazadas, acum = [], [], 0
+        for a, f in ps['candidatas'].iterrows():
+            r = int(f[t])
+            orden.append(f'{a} (en curso, {r})' if f['Empezadas'] else f'{a} (H={int(f["H_total"])}, d={int(f[duracion])}, {r})')
+            if a in ps['se_programan']:
+                acum += r
+            else:
+                aplazadas.append(f'{a}: {acum} + {r} = {acum + r} > {L}')
+        filas.append({'semana': t, 'límite': L, 'demanda': int(ps['total']),
+                      'orden de prioridad (holgura, duración, recurso)': ' › '.join(orden),
+                      'entran': lista_y(sorted(ps['se_programan'])) if ps['se_programan'] else '—',
+                      'se aplazan una semana (no caben)': '; '.join(aplazadas)})
+    return pd.DataFrame(filas).set_index('semana') if filas else Markdown('En ninguna semana la demanda supera el límite: no hay que aplazar nada.')
+
+
+def primera_critica_aplazada(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """(semana, actividad) de la primera actividad sin holgura que la asignación tiene que aplazar, o None."""
+    pasos, _, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    for ps in pasos:
+        for a in ps['candidatas'].index:
+            if a in ps['se_retrasan'] and float(ps['candidatas'].loc[a, 'H_total']) == 0:
+                return ps['periodo'], a
+    return None
+
+
+def esperas_asignacion(datos_asignados):
+    """{actividad: semanas de espera} a partir de las filas 💤 que añade la asignación."""
+    e = datos_asignados[datos_asignados.index.str.startswith('💤')]
+    return {i[1:]: int(f.duration) for i, f in e.iterrows()}
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -250,6 +335,9 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 calendario = proyecto.calendar(datos_proyecto['duration'])
 proyecto.display_calendario(datos_proyecto['duration'])
 
+# %% [markdown]
+# En el Gantt cada actividad ocupa sus semanas desde su inicio más temprano con su consumo semanal; la fila *Total* es el consumo de cada semana.
+
 # %%
 #| fig-cap: "Diagrama de Gantt con el consumo semanal"
 #| label: fig-ganttInicial
@@ -264,7 +352,8 @@ plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[suministro])
 # %%
 consumo = gantt_inicial.data.loc['Total'].drop('H_total').astype(float)
 exceso = consumo[consumo > suministro]
-Markdown(f'Se supera el suministro en las semanas {", ".join(str(t) for t in exceso.index)} (máximo {int(consumo.max())} litros).')
+detalle = '; '.join(f'semana {int(t)}: {int(c)} > {suministro}' for t, c in exceso.items())
+Markdown(f'**Respuesta:** se supera el suministro en {semanas_txt(exceso.index)} ({detalle}); el consumo máximo es de {int(consumo.max())} litros.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -273,11 +362,20 @@ Markdown(f'Se supera el suministro en las semanas {", ".join(str(t) for t in exc
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# El algoritmo de asignación recorre las semanas; cuando el consumo supera el suministro aplaza una semana las actividades con más holgura (primero las que aún no han empezado) y, si no basta, también las críticas. Traza semana a semana:
+# Sin depósito, el suministro es un límite semanal como el de los operarios, y se aplica el algoritmo de asignación.
+#
+# Regla del algoritmo: en cada semana se toman las actividades que el calendario vigente sitúa en ella y se ordenan así: primero las ya empezadas (no se interrumpen); después, menor holgura total (recalculada tras los aplazamientos anteriores) y, a igualdad, menor duración. Se admiten en ese orden mientras la suma de recursos no supere el límite; las que no caben se aplazan una semana (y con ellas sus sucesoras, si no tienen holgura). En la traza, *Total* es la demanda de esa semana antes de aplazar.
+#
+# Traza semana a semana:
 
 # %%
 _ = proyecto.copy().asignar(data=datos_proyecto.copy(), duration_label='duration', resource_label='resources',
                            maximo=[suministro], report=True)
+
+# %%
+#| tbl-cap: "Semanas con conflicto: orden de prioridad, qué entra y qué se aplaza"
+#| label: tbl-conflictos
+tabla_asignacion(proyecto, datos_proyecto, [suministro])
 
 # %%
 #| fig-cap: "Diagrama de Gantt tras la asignación"
@@ -291,7 +389,10 @@ pinta_tikz(dibujo)
 # %%
 duracion_inicial = proyecto.duration(datos_proyecto['duration'])
 duracion_asignada = len(gantt_asignado.data.columns.drop('H_total'))
-Markdown(f'Sin almacenamiento el proyecto pasa de {duracion_inicial} a {duracion_asignada} semanas.')
+esperas = esperas_asignacion(datos_asignados)
+txt_esperas = lista_y([f"{a} {plural(e, 'semana')}" for a, e in esperas.items()]) if esperas else 'ninguna'
+Markdown(f'**Respuesta:** sin almacenamiento el proyecto pasa de {duracion_inicial} a {duracion_asignada} semanas '
+         f'(se alarga {plural(duracion_asignada - duracion_inicial, "semana")}); esperas introducidas: {txt_esperas}.')
 
 # %%
 #| fig-cap: "Consumo semanal tras la asignación frente al suministro"
@@ -304,10 +405,14 @@ plot_cargas(gantt_df=gantt_asignado, limite_maximo_recursos=[suministro])
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Con depósito, lo no consumido una semana queda disponible para las siguientes: basta con que el consumo acumulado hasta cada semana no supere lo entregado hasta entonces ($\sum_{s \le t} c_s \le t \cdot S$). La fila *margen* es la diferencia, es decir, lo que hay en el depósito al final de cada semana.
+
 # %%
 acumulado = pd.DataFrame({'consumo acumulado': consumo.cumsum(), 'suministro acumulado': suministro * np.arange(1, len(consumo) + 1)})
-acumulado['cumple'] = acumulado['consumo acumulado'] <= acumulado['suministro acumulado']
-acumulado.T
+acumulado['margen'] = acumulado['suministro acumulado'] - acumulado['consumo acumulado']
+acumulado['cumple'] = (acumulado['margen'] >= 0).map({True: 'sí', False: 'no'})
+limpia_tabla(acumulado).T
 
 # %%
 #| fig-cap: "Consumo y suministro acumulados"
@@ -315,7 +420,18 @@ acumulado.T
 ax = acumulado[['consumo acumulado', 'suministro acumulado']].plot(figsize=(7, 4)); ax.set_xlabel('semana'); ax.set_ylabel('litros');
 
 # %%
-Markdown('Con depósito la programación original ' + ('es viable: el depósito absorbe los picos con lo sobrante de las semanas de menos consumo.' if acumulado['cumple'].all() else f'tampoco es viable: en la semana {acumulado.index[~acumulado["cumple"]][0]} el consumo acumulado supera lo entregado hasta entonces.'))
+t_min = int(acumulado['margen'].idxmin())
+fila = acumulado.loc[t_min]
+if (acumulado['margen'] >= 0).all():
+    texto = (f'es viable: en todas las semanas lo entregado cubre lo consumido. La semana más ajustada es la {t_min}: '
+             f'{int(fila["suministro acumulado"])} − {int(fila["consumo acumulado"])} = {int(fila["margen"])} litros de margen. '
+             'El depósito absorbe los picos con lo sobrante de las semanas de menos consumo.')
+else:
+    t0 = int(acumulado.index[acumulado['margen'] < 0][0])
+    f0 = acumulado.loc[t0]
+    texto = (f'tampoco es viable: en la semana {t0} el consumo acumulado ({int(f0["consumo acumulado"])}) supera lo entregado hasta entonces '
+             f'({int(f0["suministro acumulado"])}).')
+Markdown('**Respuesta:** con depósito la programación original ' + texto)
 
 # %% [markdown]
 # ## Apartado 4
@@ -323,5 +439,6 @@ Markdown('Con depósito la programación original ' + ('es viable: el depósito 
 # %%
 display(Markdown(pregunta_4))
 
-# %% [markdown]
-# Un recurso no almacenable (mano de obra, maquinaria, un suministro que no cabe en depósito) impone una restricción semana a semana; uno almacenable impone una restricción acumulada, mucho menos exigente. Los operarios son del primer tipo: las horas de un operario que no se usan esta semana no se guardan para la siguiente. Por eso los recursos renovables se tratan con asignación y los consumibles con balances acumulados (y, si hace falta, un depósito dimensionado con la diferencia máxima entre las dos curvas).
+# %%
+viable = bool((acumulado['margen'] >= 0).all())
+Markdown(f'''Sin depósito el proyecto dura {duracion_asignada} semanas; con depósito, {str(duracion_inicial) + ' (la programación original es viable)' if viable else 'tampoco basta la programación original'}. Un recurso no almacenable (mano de obra, maquinaria, un suministro que no cabe en depósito) impone una restricción semana a semana; uno almacenable impone una restricción acumulada, mucho menos exigente. **Respuesta:** los operarios son recursos no almacenables (renovables): las horas de un operario que no se usan esta semana no se guardan para la siguiente. Por eso se tratan con asignación, y los consumibles almacenables con balances acumulados (y un depósito con capacidad para el mayor margen acumulado que haya que guardar).''')

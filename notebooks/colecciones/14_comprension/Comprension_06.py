@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -195,7 +199,7 @@ def muestra_formula(nombre, expresion, valor, unidades=''):
 # Diseñe un proyecto de **6 actividades** (A, B, …) con duraciones enteras que cumpla *todas* estas condiciones:
 #
 # - exactamente 2 actividades iniciales;
-# - su grafo PERT con el mínimo número de ficticias tiene exactamente 1 ficticia(s);
+# - su grafo PERT con el mínimo número de ficticias tiene exactamente 1 ficticia;
 # - tiene exactamente 2 rutas críticas;
 # - al menos una actividad con holgura total positiva;
 # - ninguna prelación redundante.
@@ -267,9 +271,21 @@ comprobacion
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
-for nombre, acts in rutas_criticas.items():
-    print(f'{nombre}: {" - ".join(acts)}')
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'días'))
+display(Markdown('Duración de cada ruta del grafo (suma de las duraciones de sus actividades):'))
+display(explica_rutas(proyecto, datos_proyecto['duration'], 'días'))
 proyecto.display_calendario(datos_proyecto['duration'])
+
+# %%
+_holgadas = calendario.index[calendario['H_total'] > 0].tolist()
+_ini = sorted(prelaciones.start_activities)
+Markdown(f'**Respuesta:** el proyecto del apartado 1 cumple todas las condiciones: '
+         f'{plural(len(datos_proyecto), "actividad", "actividades")}; '
+         f'{plural(len(_ini), "actividad inicial", "actividades iniciales")} ({lista_y(_ini)}); '
+         f'{plural(len(proyecto.dummies), "ficticia")} en el grafo PERT; '
+         f'{plural(len(rutas_criticas), "ruta crítica", "rutas críticas")} (las de duración {proyecto.duration(datos_proyecto["duration"])} días de la tabla de rutas); '
+         'holgura total positiva en ' + lista_y([f'{a} ({int(calendario.loc[a, "H_total"])})' for a in _holgadas]) + '; '
+         'y ninguna prelación redundante (ninguna predecesora inmediata lo es también de forma indirecta, a través de otra).')
 
 # %% [markdown]
 # ## Apartado 3
@@ -281,15 +297,29 @@ display(Markdown(pregunta_3))
 R = proyecto.path_matrix(dummies=False)
 Rt = R @ datos_proyecto['duration'][R.columns]
 criticas = Rt.index[Rt == Rt.max()].tolist()
-# actividad que está en una ruta crítica pero no en todas: alargarla 1 deja una sola crítica
-solo_en_una = [a for a in R.columns if 0 < R.loc[criticas, a].sum() < len(criticas)]
-a_cambiar = solo_en_una[0] if solo_en_una else None
+_nombre = lambda r: ' – '.join(ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario))
+# actividad que está en una sola ruta crítica: alargarla un día deja esa ruta como única crítica
+en_una = [a for a in R.columns if R.loc[criticas, a].sum() == 1]
+a_cambiar = en_una[0] if en_una else None
+display(Markdown('La condición más exigente suele ser el número exacto de rutas críticas: hay que conseguir que '
+                 f'{len(criticas)} rutas sumen exactamente lo mismo y que ninguna otra las supere; '
+                 'un cambio de una unidad en una duración basta para romper el empate.'))
 if a_cambiar:
     d2 = datos_proyecto['duration'].copy(); d2[a_cambiar] += 1
-    n_crit2 = len(proyecto.critical_path(d2))
-    display(Markdown(f'La condición más exigente suele ser el número exacto de rutas críticas (hay que igualar sumas). Alargando {a_cambiar} un día quedan {n_crit2} ruta(s) crítica(s).'))
+    Rt2 = R @ d2[R.columns]
+    n_crit2 = int((Rt2 == Rt2.max()).sum())
+    display(pd.DataFrame({'ruta crítica': [_nombre(r) for r in criticas],
+                          f'contiene {a_cambiar}': ['sí' if R.loc[r, a_cambiar] else 'no' for r in criticas],
+                          'duración actual': [int(Rt[r]) for r in criticas],
+                          f'duración con {a_cambiar} = {int(d2[a_cambiar])}': [int(Rt2[r]) for r in criticas]}).set_index('ruta crítica'))
+    _sin = [_nombre(r) for r in criticas if not R.loc[r, a_cambiar]]
+    display(Markdown(f'**Respuesta:** basta alargar {a_cambiar} un día (de {int(datos_proyecto.loc[a_cambiar, "duration"])} a {int(d2[a_cambiar])}). '
+                     f'{a_cambiar} sólo está en la ruta crítica {_nombre([r for r in criticas if R.loc[r, a_cambiar]][0])}, que pasa a durar {int(Rt2.max())} días, '
+                     f'mientras {lista_y(_sin)} se {"queda" if len(_sin) == 1 else "quedan"} en {int(Rt.max())}: '
+                     f'queda {plural(n_crit2, "ruta crítica", "rutas críticas")}.'))
 else:
-    display(Markdown('Todas las actividades críticas están en todas las rutas críticas; habría que acortar una actividad común y alargar otra.'))
+    display(Markdown('**Respuesta:** ninguna actividad está en una sola de las rutas críticas; habría que alargar una '
+                     'actividad de una de ellas y acortar a la vez otra común a las demás.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -298,11 +328,15 @@ else:
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# No es único: en general hay muchísimos proyectos que cumplen las condiciones. Por ejemplo, multiplicar todas las duraciones por 2 conserva las rutas críticas, las holguras positivas, las ficticias y las iniciales; o permutar los nombres de las actividades. Una solución *estructuralmente* distinta se obtiene cambiando una prelación y recomprobando.
+# No es único: en general hay muchísimos proyectos que cumplen las condiciones. Por ejemplo, multiplicar todas las duraciones por 2 multiplica por 2 la duración de todas las rutas, así que las mismas rutas siguen empatadas como críticas y las mismas actividades conservan holgura positiva (doblada); las prelaciones, y con ellas las iniciales y las ficticias, no cambian. También vale permutar los nombres de las actividades. Una solución *estructuralmente* distinta se obtiene cambiando una prelación y recomprobando.
 
 # %%
 datos_otro = datos_proyecto.copy()
 datos_otro['duration'] = datos_otro['duration'] * 2
 p2 = PredecessorTable.from_dataframe_of_strings(datos_otro, activity='activity', predecessor='predecessor').create_project()
-Markdown(f'Con las duraciones dobladas: {len(p2.critical_path(datos_otro["duration"]))} rutas críticas, {len(p2.dummies)} ficticias, '
-         f'{int((p2.calendar(datos_otro["duration"])["H_total"] > 0).sum())} actividades con holgura: las mismas condiciones.')
+_n_crit, _n_fic = len(p2.critical_path(datos_otro['duration'])), len(p2.dummies)
+_n_hol = int((p2.calendar(datos_otro['duration'])['H_total'] > 0).sum())
+Markdown('**Respuesta:** no es único. Otro proyecto válido: las mismas prelaciones con las duraciones '
+         + ', '.join(f'{a} = {int(d)}' for a, d in datos_otro['duration'].items())
+         + f' (duración {p2.duration(datos_otro["duration"])} días). Comprobación: {plural(_n_crit, "ruta crítica", "rutas críticas")}, '
+         f'{plural(_n_fic, "ficticia")} y {plural(_n_hol, "actividad", "actividades")} con holgura positiva: cumple las mismas condiciones.')

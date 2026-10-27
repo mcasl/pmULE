@@ -1,6 +1,6 @@
 # ---
 # title: CadenaCritica 05
-# subtitle: "1 equipo; la cadena pasa por 1 enlace(s) de recurso; 37 frente a 36 días sin recursos"
+# subtitle: "1 equipo; la cadena pasa por 1 enlace de recurso; 37 frente a 36 días sin recursos"
 # coleccion: 21_cadena_critica
 # variante: cadena-con-recursos
 # nivel: 2
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -268,6 +272,11 @@ def tabla_alimentacion(plan):
     filas = {}
     for nombre, fila in plan.alimentacion.iterrows():
         ms = [int(x) for x in str(fila['margenes']).split(' + ')]
+        acts = str(fila['cadena_alimentacion']).split(' - ')
+        if len(acts) == len(ms):
+            marg = '; '.join(f"{a}: {int(plan.segura[a])} − {int(plan.agresiva[a])} = {m}" for a, m in zip(acts, ms))
+        else:
+            marg = ' + '.join(map(str, ms))
         if plan.metodo_alimentacion == 'cortar_pegar':
             calc = f"0,5·({' + '.join(map(str, ms))}) = {0.5 * sum(ms):g} → {int(fila['requerido'])}"
         else:
@@ -276,6 +285,7 @@ def tabla_alimentacion(plan):
         fin_p = int(plan.inicio_temprano[fila['desde']] + plan.agresiva[fila['desde']])
         filas[nombre] = {'arco': f"{fila['desde']} → {fila['antes_de']}",
                          'cadena de alimentación': fila['cadena_alimentacion'],
+                         'márgenes = segura − agresiva': marg,
                          'colchón requerido': calc,
                          'holgura disponible = inicio de la cadena − fin más temprano': f"{entrada} − {fin_p} = {int(fila['disponible'])}",
                          'colchón adoptado = mín(requerido, disponible)': int(fila['adoptado'])}
@@ -317,6 +327,8 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
+        partes_c = ([f"{min(r, d):g} ({a})" for a, r, d in zip(curso.index, curso['restante'], curso['agresiva'])]
+                    + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()])
         hecho = float(inf['avance'])
         largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
                   for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
@@ -324,13 +336,42 @@ def resumen_informes(plan, informes):
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
-                                  + (f" ({'; '.join(largas)})" if largas else '')),
+            'cadena completada = (T − restante)/T': ((f"({T} − ({' + '.join(partes_c)}))/{T} = ({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                                      if len(partes_c) > 1 else
+                                                      f"({T} − {partes_c[0]})/{T} = {pa:.1f} %" if partes_c else f"{T}/{T} = {pa:.1f} %")
+                                                     + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
-            'zona': inf['zona']}
+            'zona': zona_txt(pc, inf['limite_verde'], inf['limite_roja'], inf['zona'])}
     return pd.DataFrame(columnas)
+
+
+def zona_txt(pc, lv, lr, zona):
+    """Comparación del consumo con los dos límites que decide la zona."""
+    if zona == 'verde':
+        return f'{pc:.1f} % < {lv:.1f} % (límite verde) → verde'
+    nota = ' (justo en la frontera: cuenta como la zona superior)' if min(abs(pc - lv), abs(pc - lr)) < 1e-6 else ''
+    if zona == 'roja':
+        return f'{pc:.1f} % ≥ {lr:.1f} % (límite rojo) → roja' + nota
+    return f'{lv:.1f} % ≤ {pc:.1f} % < {lr:.1f} % → amarilla' + nota
+
+
+def tabla_rutas(proyecto, R, valores):
+    """Rutas con sus actividades en orden de ejecución y su duración como suma término a término."""
+    filas, cal = {}, proyecto.calendar(valores)
+    for i, r in enumerate(R.index, 1):
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        total = int(sum(int(valores[a]) for a in acts))
+        filas[f'ruta {i}'] = {'actividades': ' - '.join(acts),
+                              'duración = suma': ' + '.join(f'{a}({int(valores[a])})' for a in acts) + f' = {total}'}
+    return pd.DataFrame(filas).T
+
+
+def margenes_txt(plan, acts):
+    """«4 + 2 + 3 = 9» con los márgenes de las actividades dadas."""
+    ms = [int(plan.margen[a]) for a in acts]
+    return f"{' + '.join(map(str, ms))} = {sum(ms)}" if len(ms) > 1 else f'{sum(ms)}'
 
 
 def solapes(calendario, datos):
@@ -349,15 +390,32 @@ def solapes(calendario, datos):
     return pd.DataFrame(filas, columns=['equipo', 'actividades', 'intervalos', 'días de solape']).rename(index=lambda i: i + 1)
 
 
-def esperas_por_recurso(asignacion):
-    """Actividades que esperan a un equipo: desde cuándo están listas, cuándo empiezan y quién las bloquea."""
+def esperas_por_recurso(asignacion, calendario, datos):
+    """Actividades que esperan a un equipo: desde cuándo están listas, cuándo empiezan, quién las bloquea y
+    por qué (la que ocupa el equipo ya estaba en curso o entró antes por la regla de prioridad)."""
     t = asignacion.traza
     esp = t[t['decision'] == 'espera']
+    ls = calendario['inicio_mas_tardio']
     filas = {}
     for a, g in esp.groupby('actividad'):
-        filas[a] = {'lista desde el día': int(g['periodo'].min()) - 1, 'empieza el día': int(asignacion.inicios[a]),
-                    'espera (días)': int(asignacion.inicios[a]) - int(g['periodo'].min()) + 1,
-                    'equipo que la bloquea': ', '.join(sorted(set(g['bloqueada_por'])))}
+        lista, empieza = int(g['periodo'].min()) - 1, int(asignacion.inicios[a])
+        equipo = ', '.join(sorted(set(g['bloqueada_por'])))
+        ocupan = sorted((b for b in datos.index[datos['recurso'] == datos.loc[a, 'recurso']]
+                         if b != a and int(asignacion.inicios[b]) < empieza and int(asignacion.fines[b]) > lista),
+                        key=lambda b: int(asignacion.inicios[b]))
+        motivos = []
+        for b in ocupan:
+            ib, fb = int(asignacion.inicios[b]), int(asignacion.fines[b])
+            if ib < lista:
+                motivos.append(f'{b} [{ib}, {fb}) ya estaba en curso')
+            else:
+                regla = f'inicio más tardío {int(ls[b])} frente a {int(ls[a])}'
+                if int(ls[b]) == int(ls[a]):
+                    da, db = int(datos.loc[a, 'duration']), int(datos.loc[b, 'duration'])
+                    regla += f'; a igualdad, duración {db} frente a {da}' if da != db else '; a igualdad de duración, orden alfabético'
+                motivos.append(f'{b} [{ib}, {fb}) entró antes por prioridad ({regla})')
+        filas[a] = {'lista desde el día': lista, 'empieza el día': empieza, 'espera (días)': empieza - lista,
+                    'equipo': equipo, 'ocupado por': '; '.join(motivos)}
     return pd.DataFrame(filas).T
 
 # %% [markdown]
@@ -366,15 +424,12 @@ def esperas_por_recurso(asignacion):
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con las estimaciones agresivas, sin tener en cuenta los equipos"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
@@ -407,7 +462,7 @@ Markdown(f'Sin tener en cuenta los equipos el proyecto dura {T_libre} días y su
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Se programa día a día con un equipo de cada tipo (límite 1). La prioridad usa el inicio más tardío del calendario anterior. La tabla recoge las actividades que tienen que esperar a su equipo.
+# Se programa día a día con un equipo de cada tipo (límite 1). Cuando varias actividades del mismo equipo pueden empezar, entra la de menor inicio más tardío del calendario anterior (a igualdad, la más corta y, después, por orden alfabético); una vez empezada, no se interrumpe. La tabla recoge las actividades que tienen que esperar a su equipo y qué actividad lo ocupa.
 
 # %%
 demanda = pd.DataFrame({e: (datos_proyecto['recurso'] == e).astype(int) for e in equipos})
@@ -418,7 +473,7 @@ Markdown(f'Duración con los equipos: **{asignacion.duracion} días** (sin ellos
 # %%
 #| tbl-cap: "Esperas por falta de equipo"
 #| label: tbl-esperas
-esperas_por_recurso(asignacion)
+esperas_por_recurso(asignacion, calendario, datos_proyecto)
 
 # %%
 plan = proyecto.plan_cadena_critica(datos_proyecto, agresiva='agresiva', segura='segura', recurso='recurso', metodo=METODO)
@@ -438,9 +493,18 @@ proyecto_nivelado = PredecessorTable.from_dataframe_of_strings(red, activity='ac
 red[['predecessor']].T
 
 # %%
+Markdown(f'**Respuesta:** ' + '; '.join(f'el equipo {e} atiende {" → ".join(plan.secuencias[e])}' for e in equipos) + '. '
+         f'Con los enlaces de recurso, la ruta más larga de la red nivelada es {" - ".join(plan.cadena)}: '
+         f'{" + ".join(str(int(plan.agresiva[a])) for a in plan.cadena)} = **{plan.duracion_cadena} días**, la duración del proyecto con los equipos '
+         f'(sin ellos, {T_libre}).')
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
+# %%
 #| fig-cap: "Red nivelada (prelaciones y enlaces de recurso) con las estimaciones agresivas: su camino crítico es la cadena crítica"
 #| label: fig-pertNivelado
-proyecto_nivelado.pert(durations=red['agresiva'], ranksep=1)
+proyecto_nivelado.display_pert_pasos(red['agresiva'])
 
 # %%
 #| fig-cap: "Gantt de la red nivelada (inicios más tempranos)"
@@ -474,18 +538,26 @@ Markdown(f'Cadena crítica: **{" - ".join(plan.cadena)}**, de {plan.duracion_cad
 display(Markdown(pregunta_4))
 
 # %%
+#| tbl-cap: "Margen retirado de las actividades de la cadena"
+#| label: tbl-margenes
+tabla_margenes(datos_proyecto, plan.cadena)
+
+# %%
 #| tbl-cap: "Colchón del proyecto"
 #| label: tbl-colchon
 detalle_colchon(plan.margen[plan.cadena], 'colchón del proyecto').loc[['cortar y pegar = 0,5·Σ márgenes']]
 
 # %%
-Markdown(f'Colchón del proyecto: **{plan.colchon_proyecto} días**; fecha comprometida {plan.duracion_cadena} + '
+Markdown(f'**Respuesta:** colchón del proyecto **{plan.colchon_proyecto} días**; fecha comprometida {plan.duracion_cadena} + '
          f'{plan.colchon_proyecto} = **{plan.compromiso} días**.')
 
 # %%
 #| tbl-cap: "Colchones de recursos (avisos)"
 #| label: tbl-avisos
-plan.colchones_recursos.rename(columns={'antes_de': 'antes de', 'recursos': 'equipo al que se avisa', 'despues_de': 'mientras termina', 'inicio_previsto': 'inicio previsto'}).rename(index=lambda i: i + 1)
+plan.colchones_recursos.rename(columns={'antes_de': 'antes de', 'recursos': 'equipo al que se avisa', 'despues_de': 'mientras termina', 'inicio_previsto': 'inicio previsto de la actividad'}).rename(index=lambda i: i + 1)
+
+# %%
+Markdown('**Respuesta:** hay que avisar ' + lista_y([f'al equipo {f.recursos} antes de {f.antes_de} (que empieza el día {int(f.inicio_previsto)}), mientras termina {f.despues_de}' for f in plan.colchones_recursos.itertuples()]) + '.')
 
 # %% [markdown]
 # Un colchón de recursos no es tiempo en el cronograma: es un **aviso** al equipo que va a entrar en la cadena crítica, unos días antes de que termine la actividad anterior, para que esté libre y preparado en cuanto reciba el testigo. Se pone antes de cada actividad de la cadena que usa un equipo que no usaba su predecesora en la cadena; si la cadena sigue con el mismo equipo, no hace falta.

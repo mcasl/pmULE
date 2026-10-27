@@ -1,6 +1,6 @@
 # ---
 # title: Probabilidad 10
-# subtitle: "9 actividades, 2 ruta(s) crítica(s), σ = 1.47"
+# subtitle: "9 actividades, 2 rutas críticas, σ = 1.47"
 # coleccion: 08_probabilidad
 # variante: dos-rutas-criticas
 # nivel: 2
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -265,18 +269,29 @@ display(Markdown(pregunta_1))
 #| label: fig-pert
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
+# %% [markdown]
+# Holgura total de cada actividad (sin las ficticias), leída del grafo resuelto:
+
 # %%
 #| tbl-cap: "Holgura total de las actividades"
 #| label: tbl-holguras
 resultados_pert = proyecto.calculate_pert(durations=datos_proyecto['duration'])
-resultados_pert['activities'].T
+holguras = resultados_pert['activities'].T
+holguras = holguras[[c for c in holguras.columns if not str(c).startswith('@')]]   # sin las ficticias @i→j
+holguras.loc[['H_total']].rename(index={'H_total': 'holgura total'})
 
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])
 rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])
-for nombre, acts in rutas_criticas.items():
-    print(f'{nombre}: {" - ".join(acts)}')
-Markdown(f'La duración media del proyecto es {duracion_media} semanas y tiene {len(rutas_criticas)} ruta(s) crítica(s).')
+calendario = proyecto.calendar(datos_proyecto['duration'])
+actividades_criticas = ordena_ruta(holguras.columns[holguras.loc['H_total'] == 0], calendario)
+rutas_criticas_txt = [' – '.join(ordena_ruta(acts, calendario)) for acts in rutas_criticas.values()]
+display(Markdown(f'Las actividades con holgura total nula son {lista_y(actividades_criticas)}; el resto puede retrasarse '
+                 'hasta su holgura total sin alargar el proyecto.'))
+display(explica_camino_critico(proyecto, datos_proyecto['duration']))
+Markdown(f'**Respuesta:** la duración media del proyecto es {plural(duracion_media, "semana")}; '
+         + (f'el camino crítico es {rutas_criticas_txt[0]}.' if len(rutas_criticas_txt) == 1 else
+            f'hay {len(rutas_criticas_txt)} caminos críticos: {lista_y(rutas_criticas_txt)}.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -285,28 +300,40 @@ Markdown(f'La duración media del proyecto es {duracion_media} semanas y tiene {
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Por el teorema central del límite, la duración de una ruta es aproximadamente normal con media la suma de las medias y varianza la suma de las varianzas de sus actividades. Para el proyecto se toma la ruta crítica; si hay varias, la de mayor varianza, que es la hipótesis más prudente (la verdadera distribución del máximo de varias rutas no es normal, y el método PERT la aproxima así).
+# Por el teorema central del límite, la duración de una ruta es aproximadamente normal con media la suma de las medias y varianza la suma de las varianzas de sus actividades ($\sigma_i^2$ = desviación típica al cuadrado). Para el proyecto se toma la ruta crítica; si hay varias, la de mayor varianza, que es la hipótesis más prudente (la verdadera distribución del máximo de varias rutas no es normal, y el método PERT la aproxima así).
+
+# %% [markdown]
+# Varianza de cada ruta crítica, suma de las varianzas de sus actividades (resaltada la mayor):
 
 # %%
 #| tbl-cap: "Varianza de las rutas críticas"
 #| label: tbl-varianzaRutas
 desviacion_proyecto, varianza_rutas = proyecto.standard_deviation(durations=datos_proyecto['duration'],
                                                                    variances=datos_proyecto['variance'])
-varianza_rutas
-
-# %% [markdown]
-# Sumando actividad a actividad a lo largo de cada ruta (la media de una ruta es la suma de las medias; su varianza, la suma de las varianzas):
+varianza_rutas.relabel_index(['actividades', 'varianza', 'suma de varianzas'], axis='columns')   # Styler: resalta la mayor varianza
 
 # %%
-#| tbl-cap: "Media y varianza de cada ruta, sumando sus actividades"
-#| label: tbl-rutasPaso
-R = proyecto.path_matrix(dummies=False)
-detalle_medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')
-detalle_varianzas = detalle_rutas(R, datos_proyecto['variance'][R.columns], 'varianza', 3)
-pd.concat([detalle_medias, detalle_varianzas.drop(columns='actividades')], axis=1)
-
-# %%
-Markdown(f'La varianza del proyecto es {desviacion_proyecto**2:.3f} y su desviación típica {desviacion_proyecto:.3f} semanas.')
+var_criticas = {r: float(datos_proyecto.loc[list(acts), 'variance'].sum()) for r, acts in rutas_criticas.items()}
+ruta_var = max(var_criticas, key=var_criticas.get)
+acts_var = ordena_ruta(rutas_criticas[ruta_var], calendario)
+txt_var = ' – '.join(acts_var)
+varianza_proyecto = var_criticas[ruta_var]
+if len(var_criticas) == 1:
+    eleccion = f'Sólo hay una ruta crítica, {txt_var}; su varianza es la del proyecto.'
+else:
+    otras = [r for r in var_criticas if r != ruta_var]
+    comparacion_txt = lista_y([f"{var_criticas[r]:.3f} de {' – '.join(ordena_ruta(rutas_criticas[r], calendario))}" for r in otras])
+    if all(np.isclose(var_criticas[r], varianza_proyecto) for r in otras):
+        eleccion = (f'Las rutas críticas tienen la misma varianza ({varianza_proyecto:.3f}), así que da igual cuál se use: '
+                    f'por ejemplo {txt_var}.')
+    else:
+        eleccion = (f'Hay {len(var_criticas)} rutas críticas con la misma media ({duracion_media} semanas) pero distinta varianza: '
+                    f'{txt_var} tiene varianza {varianza_proyecto:.3f}, frente a {comparacion_txt}. Se usa la de mayor varianza, {txt_var}, '
+                    'porque es la hipótesis más prudente: da la normal más dispersa y, para plazos por encima de la media, '
+                    'la menor probabilidad de cumplirlos.')
+Markdown(f'''{eleccion}\n\n{explica_sigma_ruta(acts_var, datos_proyecto["variance"], nombre="σ_T")} semanas.\n\n'''
+         f'''**Respuesta:** varianza del proyecto σ²_T = {varianza_proyecto:.3f} y desviación típica σ_T = {desviacion_proyecto:.3f} semanas'''
+         + (f''' (ruta {txt_var}).''' if len(var_criticas) > 1 else '.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -315,13 +342,13 @@ Markdown(f'La varianza del proyecto es {desviacion_proyecto**2:.3f} y su desviac
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# Con $T \sim N(\mu, \sigma)$: $P(T \le t) = \Phi\left(\frac{t - \mu}{\sigma}\right)$.
+# La duración del proyecto se modela como $T \sim N(\mu, \sigma_T)$, con la media y la desviación típica de los apartados 1 y 2. La probabilidad se obtiene directamente con la función de distribución normal de la hoja de cálculo (o de la calculadora), sin tipificar.
 
 # %%
 plazo = 21
-z = (plazo - duracion_media) / desviacion_proyecto
-probabilidad_plazo = norm.cdf(z)
-Markdown(f'z = ({plazo} − {duracion_media}) / {desviacion_proyecto:.3f} = {z:.3f}, luego P(T ≤ {plazo}) = Φ({z:.3f}) = {probabilidad_plazo:.4f} ({probabilidad_plazo*100:.1f} %).')
+probabilidad_plazo = norm.cdf(plazo, duracion_media, desviacion_proyecto)
+Markdown(f'''{explica_probabilidad(duracion_media, desviacion_proyecto, plazo)}.\n\n'''
+         f'''**Respuesta:** la probabilidad de terminar en {plazo} semanas o menos es {probabilidad_plazo:.4f} ({probabilidad_plazo:.1%}).''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -329,12 +356,15 @@ Markdown(f'z = ({plazo} − {duracion_media}) / {desviacion_proyecto:.3f} = {z:.
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Terminar entre las dos semanas es terminar después de la primera y no más tarde de la segunda: la probabilidad es la diferencia de las dos funciones de distribución.
+
 # %%
 t_a, t_b = 18, 21
-p_b = norm.cdf((t_b - duracion_media) / desviacion_proyecto)
-p_a = norm.cdf((t_a - duracion_media) / desviacion_proyecto)
-Markdown(f'P({t_a} < T ≤ {t_b}) = Φ({(t_b - duracion_media) / desviacion_proyecto:.3f}) − Φ({(t_a - duracion_media) / desviacion_proyecto:.3f}) '
-         f'= {p_b:.4f} − {p_a:.4f} = {p_b - p_a:.4f} ({(p_b - p_a)*100:.1f} %).')
+p_b = norm.cdf(t_b, duracion_media, desviacion_proyecto)
+p_a = norm.cdf(t_a, duracion_media, desviacion_proyecto)
+Markdown(f'''{explica_intervalo(duracion_media, desviacion_proyecto, t_a, t_b)}.\n\n'''
+         f'''**Respuesta:** la probabilidad de terminar entre las semanas {t_a} y {t_b} es {p_b - p_a:.4f} ({p_b - p_a:.1%}).''')
 
 # %% [markdown]
 # ## Apartado 5
@@ -343,14 +373,17 @@ Markdown(f'P({t_a} < T ≤ {t_b}) = Φ({(t_b - duracion_media) / desviacion_proy
 display(Markdown(pregunta_5))
 
 # %% [markdown]
-# Se busca $t$ tal que $P(T \le t) = p$, es decir, $t = \mu + z_p\,\sigma$ con $z_p = \Phi^{-1}(p)$.
+# Se busca el plazo $t$ que se cumple con la probabilidad pedida, $P(T \le t) = p$: es el percentil $p$ de la normal, que da la inversa de la función de distribución.
 
 # %%
 probabilidad_objetivo = 0.9
-z_p = norm.ppf(probabilidad_objetivo)
-duracion_comprometida = duracion_media + z_p * desviacion_proyecto
-Markdown(f'z = {z_p:.3f}; t = {duracion_media} + {z_p:.3f} × {desviacion_proyecto:.3f} = {duracion_comprometida:.2f} semanas. '
-         f'Como el calendario se mide en semanas enteras, se comprometerían {int(np.ceil(duracion_comprometida))} semanas.')
+duracion_comprometida = norm.ppf(probabilidad_objetivo, duracion_media, desviacion_proyecto)
+semanas_enteras = int(np.ceil(duracion_comprometida))
+Markdown(f'''{explica_percentil(duracion_media, desviacion_proyecto, probabilidad_objetivo, 'semanas')}.\n\n'''
+         f'''Como el calendario se mide en semanas enteras, se redondea hacia arriba a {semanas_enteras} semanas: '''
+         f'''{explica_probabilidad(duracion_media, desviacion_proyecto, semanas_enteras)} ≥ {probabilidad_objetivo:g}.\n\n'''
+         f'''**Respuesta:** puede comprometerse una duración de {plural(semanas_enteras, "semana")} '''
+         f'''({duracion_comprometida:.2f} semanas sin redondear).''')
 
 # %% [markdown]
 # ## Apartado 6
@@ -359,4 +392,7 @@ Markdown(f'z = {z_p:.3f}; t = {duracion_media} + {z_p:.3f} × {desviacion_proyec
 display(Markdown(pregunta_6))
 
 # %%
-Markdown(f'''La duración media es la mediana de la normal, así que P(T ≤ {duracion_media}) = 0.5: sólo la mitad de las veces se terminaría en la duración media o antes. Para garantizarla con un 90% haría falta que la media del proyecto fuera {duracion_media} − {z_p:.3f} × {desviacion_proyecto:.3f} = {duracion_media - z_p * desviacion_proyecto:.2f} semanas, es decir, reducir el proyecto (acortando actividades críticas) o reducir su varianza. Sin tocar el proyecto no es posible.''')
+p_media = norm.cdf(duracion_media, duracion_media, desviacion_proyecto)
+margen = duracion_comprometida - duracion_media
+media_necesaria = duracion_media - margen
+Markdown(f'''{explica_probabilidad(duracion_media, desviacion_proyecto, duracion_media)}: la media de una normal es también su mediana, así que sólo la mitad de las veces se terminaría en la duración media o antes. Esto no depende de σ_T: con la media en {duracion_media} semanas, P(T ≤ {duracion_media}) = 0.5 por pequeña que sea la varianza, así que reducir la varianza no basta.\n\nPara que {duracion_media} semanas se cumplan con un {probabilidad_objetivo:.0%} tienen que ser el percentil {probabilidad_objetivo * 100:.0f} de la duración. Según el apartado anterior, ese percentil queda {duracion_comprometida:.2f} − {duracion_media} = {margen:.2f} semanas por encima de la media; con la misma σ_T, la media debería bajar a {duracion_media} − {margen:.2f} = {media_necesaria:.2f} semanas.\n\n**Respuesta:** P(T ≤ {duracion_media}) = {p_media:.1f}. No puede garantizarse esa duración con un {probabilidad_objetivo:.0%} sin modificar el proyecto: habría que acortar la duración media al menos {margen:.2f} semanas (hasta {media_necesaria:.2f}, acortando actividades críticas) manteniendo la varianza.''')

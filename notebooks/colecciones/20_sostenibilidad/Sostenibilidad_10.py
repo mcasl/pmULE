@@ -1,6 +1,6 @@
 # ---
 # title: Sostenibilidad 10
-# subtitle: "210 t de acero: importado 241 k€ frente a europeo 247 k€, pero 299 k€ con CBAM y 2 semana(s) de retraso; alcance 3"
+# subtitle: "210 t de acero: importado 241 k€ frente a europeo 247 k€, pero 299 k€ con CBAM y 2 semanas de retraso; alcance 3"
 # coleccion: 20_sostenibilidad
 # variante: acero-importado
 # nivel: 3
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -255,6 +259,24 @@ for item in sorted(dir()):
 # %%
 actividad_acero, toneladas, precio_ets, penalidad, precio_sombra = 'F', 210, 67, 12, 150
 coste_camion, coste_barco, factor_camion, factor_barco = 0.12, 0.02, 0.1, 0.015
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -287,7 +309,19 @@ o['emisiones implícitas (t)'] = toneladas * o['emisiones implícitas (t CO2/t)'
 o['emisiones del transporte (t)'] = toneladas * (o['km por carretera'] * factor_camion + o['km por mar'] * factor_barco) / 1000
 o['emisiones (t CO₂)'] = o['emisiones implícitas (t)'] + o['emisiones del transporte (t)']
 display(o.iloc[:, 5:].round(2).T)
-Markdown(f'''Sin el CBAM la importada es {o.iloc[0, 8] - (o.iloc[1, 5] + o.iloc[1, 6]):.1f} k€ más barata; con los certificados ({o.iloc[1, 7]:.1f} k€) ''' + ('sigue siendo' if o.iloc[1, 8] < o.iloc[0, 8] else 'pasa a ser') + f''' {abs(o.iloc[0, 8] - o.iloc[1, 8]):.1f} k€ ''' + ('más barata' if o.iloc[1, 8] < o.iloc[0, 8] else 'más cara') + f'''. Emite {o.iloc[1, 11] - o.iloc[0, 11]:.0f} t más.''')
+def explica_oferta(n):
+    f = o.loc[n]; kmc, kmm = f['km por carretera'], f['km por mar']
+    tr = f'{toneladas} × ({kmc:g} × {coste_camion}' + (f' + {kmm:g} × {coste_barco}' if kmm else '') + f') / 1000 = {f["transporte (k€)"]:.2f}'
+    et = f'{toneladas} × ({kmc:g} × {factor_camion}' + (f' + {kmm:g} × {factor_barco}' if kmm else '') + f') / 1000 = {f["emisiones del transporte (t)"]:.2f}'
+    txt = (f'- **{n}**: acero = {toneladas} × {f["precio (€/t)"]:g} / 1000 = {f["acero (k€)"]:.2f} k€; transporte = {tr} k€')
+    if f['CBAM (k€)'] > 0:
+        txt += f'; CBAM = {toneladas} t × {f["emisiones implícitas (t CO2/t)"]} t CO₂/t × {precio_ets} €/t / 1000 = {f["CBAM (k€)"]:.2f} k€'
+    txt += (f'; coste en obra = **{f["coste en obra (k€)"]:.2f} k€**. Emisiones: implícitas {toneladas} × {f["emisiones implícitas (t CO2/t)"]} = {f["emisiones implícitas (t)"]:.1f} t; '
+            f'transporte {et} t; total **{f["emisiones (t CO₂)"]:.1f} t**.')
+    return txt
+eu, imp = o.index
+sin_cbam = o.loc[imp, 'acero (k€)'] + o.loc[imp, 'transporte (k€)']
+Markdown(explica_oferta(eu) + '\n' + explica_oferta(imp) + f'''\n\n**Respuesta:** sin el CBAM la importada puesta en obra ({sin_cbam:.2f} k€) es ''' + f'''{abs(o.loc[eu, 'coste en obra (k€)'] - sin_cbam):.1f} k€ ''' + ('más barata' if sin_cbam < o.loc[eu, 'coste en obra (k€)'] else 'más cara') + f''' que la europea ({o.loc[eu, 'coste en obra (k€)']:.2f} k€); con los certificados ({o.loc[imp, 'CBAM (k€)']:.2f} k€) cuesta {o.loc[imp, 'coste en obra (k€)']:.2f} k€ y ''' + ('sigue siendo' if o.loc[imp, 'coste en obra (k€)'] < o.loc[eu, 'coste en obra (k€)'] else 'pasa a ser') + f''' {abs(o.loc[eu, 'coste en obra (k€)'] - o.loc[imp, 'coste en obra (k€)']):.1f} k€ ''' + ('más barata' if o.loc[imp, 'coste en obra (k€)'] < o.loc[eu, 'coste en obra (k€)'] else 'más cara') + f'''. Emisiones: europea {o.loc[eu, 'emisiones (t CO₂)']:.1f} t, importada {o.loc[imp, 'emisiones (t CO₂)']:.1f} t ({o.loc[imp, 'emisiones (t CO₂)'] - o.loc[eu, 'emisiones (t CO₂)']:.0f} t más).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -305,7 +339,8 @@ o['penalidad (k€)'] = o['retraso (semanas)'] * penalidad
 o['coste total (k€)'] = o['coste en obra (k€)'] + o['penalidad (k€)']
 o['coste total al precio sombra (k€)'] = o['coste total (k€)'] + o['emisiones (t CO₂)'] * precio_sombra / 1000
 display(o[['coste en obra (k€)', 'retraso (semanas)', 'penalidad (k€)', 'coste total (k€)', 'emisiones (t CO₂)', 'coste total al precio sombra (k€)']].round(1).T)
-Markdown(f'''{actividad_acero} tiene {holgura} semana(s) de holgura total: las {int(ofertas.loc["acería importada", "semanas de entrega"])} de entrega retrasan el proyecto **{retraso}** semana(s) ({retraso * penalidad} k€). Coste total: europea **{o.iloc[0, 14]:.1f} k€**, importada **{o.iloc[1, 14]:.1f} k€**; al precio sombra, {o.iloc[0, 15]:.1f} frente a {o.iloc[1, 15]:.1f} k€.''')
+d_ent = int(ofertas.loc['acería importada', 'semanas de entrega'])
+Markdown(f'''{actividad_acero} tiene una holgura total de {plural(holgura, 'semana')} (inicio más temprano {int(calendario.loc[actividad_acero, 'inicio_mas_temprano'])}, más tardío {int(calendario.loc[actividad_acero, 'inicio_mas_tardio'])}): el retraso del proyecto es máx(0, entrega − holgura) = máx(0, {d_ent} − {holgura}) = **{plural(retraso, 'semana')}** (comprobado recalculando la duración: {duracion} → {duracion_importado}), con una penalidad de {retraso} × {penalidad} = {retraso * penalidad} k€.\n\nCoste total = coste en obra + penalidad: europea {o.iloc[0, 8]:.2f} + 0 = **{o.iloc[0, 14]:.1f} k€**; importada {o.iloc[1, 8]:.2f} + {retraso * penalidad} = **{o.iloc[1, 14]:.1f} k€**. Con las emisiones al precio sombra (+ emisiones × {precio_sombra} / 1000): europea {o.iloc[0, 14]:.1f} + {o.iloc[0, 11]:.1f} × {precio_sombra} / 1000 = **{o.iloc[0, 15]:.1f} k€**; importada {o.iloc[1, 14]:.1f} + {o.iloc[1, 11]:.1f} × {precio_sombra} / 1000 = **{o.iloc[1, 15]:.1f} k€**.\n\n**Respuesta:** la importada retrasa el proyecto {plural(retraso, 'semana')} ({retraso * penalidad} k€); coste total {o.iloc[0, 14]:.1f} k€ (europea) frente a {o.iloc[1, 14]:.1f} k€ (importada), y {o.iloc[0, 15]:.1f} frente a {o.iloc[1, 15]:.1f} k€ al precio sombra.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -314,7 +349,9 @@ Markdown(f'''{actividad_acero} tiene {holgura} semana(s) de holgura total: las {
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **S2.** La comparación correcta es el coste total puesto en obra con el ajuste en frontera, el transporte, el retraso y la externalidad al precio sombra: la **acería europea** (292.0 k€ frente a 381.4). El 25% del director de compras es la primera columna de una tabla de seis. **S6.** Las emisiones implícitas del acero comprado son **alcance 3** del proyecto: 504 t frente a 294; ser de la acería no las saca del inventario, y el CBAM existe precisamente para que paguen el mismo carbono que las europeas. **Norma.** La importación (210 t) supera las 50 t anuales del umbral de minimis: la empresa, como declarante, compra los certificados (33.8 k€ con el cálculo simplificado; la liquidación real descuenta la asignación gratuita que aún reciben las acerías europeas y el precio del carbono pagado en origen). Y las 2 semanas no «las absorbe la obra»: las absorbe la holgura de F (0 semana(s)), y lo que sobra va al plazo.
+# **S2.** La comparación correcta es el coste total puesto en obra con el ajuste en frontera, el transporte, el retraso y la externalidad al precio sombra: la **acería europea** (292.0 k€ frente a 381.4). El 25% del director de compras es la primera columna de una tabla de seis. **S6.** Las emisiones implícitas del acero comprado son **alcance 3** del proyecto: 504 t frente a 294; ser de la acería no las saca del inventario, y el CBAM existe precisamente para que paguen el mismo carbono que las europeas. **Norma.** La importación (210 t) supera las 50 t anuales del umbral de minimis: la empresa, como declarante, compra los certificados (33.8 k€ con el cálculo simplificado; la liquidación real descuenta la asignación gratuita que aún reciben las acerías europeas y el precio del carbono pagado en origen). Y las 2 semanas no «las absorbe la obra»: la holgura de F absorbe 0 semanas y lo que sobra, 2 semanas, va al plazo.
+#
+# **Respuesta:** se elige la **acería europea**, más barata en coste total ya sin el carbono (247.0 frente a 298.8 k€) y más aún con él; las emisiones de la acería son alcance 3 del proyecto; y la importación de 210 t **no está exenta** del CBAM (supera las 50 t anuales).
 
 # %%
 preguntas_test = [

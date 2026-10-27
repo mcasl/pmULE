@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -222,7 +226,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes (las duraciones del cuadro están en semanas).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -247,6 +251,87 @@ descripciones.to_frame()
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
+
+# %%
+def semanas_txt(lista):
+    """«la semana 6», «las semanas 1, 2 y 5» o «ninguna semana»."""
+    lista = [str(int(x)) for x in lista]
+    if not lista:
+        return 'ninguna semana'
+    return ('la semana ' if len(lista) == 1 else 'las semanas ') + lista_y(lista)
+
+
+def explica_cuadrados(cargas):
+    """Σ c² agrupando las semanas de igual carga: «6·3² + 4·5² = 54 + 100 = 154»."""
+    c = pd.Series(cargas).astype(int)
+    cuenta = c.value_counts().sort_index()
+    terminos = [f'{n}·{v}²' if n > 1 else f'{v}²' for v, n in cuenta.items()]
+    parciales = [f'{n * v * v}' for v, n in cuenta.items()]
+    return f'Σ c² = {" + ".join(terminos)} = {" + ".join(parciales)} = **{int((c ** 2).sum())}**'
+
+
+def explica_nivelacion(cuadrados, calendario):
+    """Una línea por actividad recorrida: desplazamientos probados, suma mínima y elección."""
+    tabla = getattr(cuadrados, 'data', cuadrados)
+    lineas, elegidos = [], {}
+    for a, fila in tabla.iterrows():
+        v = fila.dropna()
+        k = int(v.index.max())
+        H = int(calendario.loc[a, 'H_total'])
+        minimo = v.min()
+        mejor = int(v.idxmin())
+        empates = [int(x) for x in v.index[v == minimo]]
+        if k == 0:
+            probado = 'solo puede probarse 0'
+        else:
+            probado = f'se prueban 0 a {k}'
+        if k < H:
+            probado += (f' (no {H}: los desplazamientos ya aplicados a actividades que comparten su holgura '
+                        f'le han dejado {plural(k, "semana")})')
+        empate = (f'; empatan {lista_y([str(x) for x in empates])} y se toma el menor' if len(empates) > 1 else '')
+        lineas.append(f'- {a} (holgura total {H}): {probado}; suma mínima {int(minimo)} con {mejor}{empate} → '
+                      + (f'se desplaza **{plural(mejor, "semana")}**' if mejor > 0 else 'no se desplaza'))
+        elegidos[a] = mejor
+    return '\n'.join(lineas), {a: d for a, d in elegidos.items() if d > 0}
+
+
+def tabla_asignacion(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """Semanas en que la demanda supera el límite: orden de prioridad, qué entra y qué se aplaza y por qué."""
+    pasos, finales, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    filas = []
+    for ps in pasos:
+        if ps['total'] <= ps['limite']:
+            continue
+        t, L = ps['periodo'], int(ps['limite'])
+        orden, aplazadas, acum = [], [], 0
+        for a, f in ps['candidatas'].iterrows():
+            r = int(f[t])
+            orden.append(f'{a} (en curso, {r})' if f['Empezadas'] else f'{a} (H={int(f["H_total"])}, d={int(f[duracion])}, {r})')
+            if a in ps['se_programan']:
+                acum += r
+            else:
+                aplazadas.append(f'{a}: {acum} + {r} = {acum + r} > {L}')
+        filas.append({'semana': t, 'límite': L, 'demanda': int(ps['total']),
+                      'orden de prioridad (holgura, duración, recurso)': ' › '.join(orden),
+                      'entran': lista_y(sorted(ps['se_programan'])) if ps['se_programan'] else '—',
+                      'se aplazan una semana (no caben)': '; '.join(aplazadas)})
+    return pd.DataFrame(filas).set_index('semana') if filas else Markdown('En ninguna semana la demanda supera el límite: no hay que aplazar nada.')
+
+
+def primera_critica_aplazada(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """(semana, actividad) de la primera actividad sin holgura que la asignación tiene que aplazar, o None."""
+    pasos, _, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    for ps in pasos:
+        for a in ps['candidatas'].index:
+            if a in ps['se_retrasan'] and float(ps['candidatas'].loc[a, 'H_total']) == 0:
+                return ps['periodo'], a
+    return None
+
+
+def esperas_asignacion(datos_asignados):
+    """{actividad: semanas de espera} a partir de las filas 💤 que añade la asignación."""
+    e = datos_asignados[datos_asignados.index.str.startswith('💤')]
+    return {i[1:]: int(f.duration) for i, f in e.iterrows()}
 
 # %% [markdown]
 # ## Apartado 1
@@ -286,8 +371,9 @@ plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=None)
 # %%
 cargas = gantt_inicial.data.loc['Total'].drop('H_total').astype(float)
 semanas_pico = cargas.index[cargas == cargas.max()].tolist()
-Markdown(f'El máximo de operarios es {int(cargas.max())}, en las semanas {", ".join(map(str, semanas_pico))}. '
-         f'La media es {cargas.mean():.2f} operarios/semana.')
+Markdown(f'Cargas semana a semana: {", ".join(str(int(c)) for c in cargas)} (total {int(cargas.sum())} operarios·semana en {len(cargas)} semanas, '
+         f'media {cargas.sum():.0f} / {len(cargas)} = {cargas.mean():.2f} operarios/semana).\n\n'
+         f'**Respuesta:** el máximo es de **{int(cargas.max())} operarios**, en {semanas_txt(semanas_pico)}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -296,12 +382,12 @@ Markdown(f'El máximo de operarios es {int(cargas.max())}, en las semanas {", ".
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# La suma de cuadrados de las cargas, $\sum_t c_t^2$, penaliza los picos: para una misma carga total es mínima cuando el perfil es plano. Es la función objetivo de la nivelación.
+# La suma de cuadrados de las cargas, $\sum_t c_t^2$, penaliza los picos: para una misma carga total es mínima cuando el perfil es plano (todas las semanas con la carga media). Es la función objetivo de la nivelación.
 
 # %%
 suma_cuadrados_inicial = float((cargas ** 2).sum())
-Markdown(f'Suma de cuadrados inicial: {suma_cuadrados_inicial:.0f}. La carga total es {cargas.sum():.0f} operarios·semana; '
-         f'si se repartiera uniformemente en {len(cargas)} semanas la suma de cuadrados sería {len(cargas) * cargas.mean() ** 2:.0f}.')
+plano = len(cargas) * cargas.mean() ** 2
+Markdown(f'''{explica_cuadrados(cargas)} (agrupando las semanas de igual carga).\n\nSi los {int(cargas.sum())} operarios·semana se repartieran por igual en las {len(cargas)} semanas, cada una tendría {cargas.mean():.2f} y la suma sería {len(cargas)} · {cargas.mean():.2f}² = {plano:.0f}.\n\n**Respuesta:** no está nivelado: la carga va de {int(cargas.min())} a {int(cargas.max())} operarios y su suma de cuadrados es {suma_cuadrados_inicial:.0f}, {suma_cuadrados_inicial - plano:.0f} por encima de la de un perfil plano ({plano:.0f}).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -310,7 +396,7 @@ Markdown(f'Suma de cuadrados inicial: {suma_cuadrados_inicial:.0f}. La carga tot
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# El algoritmo recorre las actividades no críticas (por orden de fin más temprano) y, para cada una, prueba todos los desplazamientos dentro de su holgura eligiendo el que minimiza la suma de cuadrados. La tabla muestra la suma de cuadrados para cada desplazamiento posible, con el mínimo resaltado.
+# El algoritmo recorre las actividades no críticas (por orden de fin más temprano) y, para cada una, prueba todos los desplazamientos dentro de la holgura que le queda, eligiendo el que minimiza la suma de cuadrados (a igualdad, el menor desplazamiento).
 
 # %%
 #| tbl-cap: "Actividades no críticas en el orden en que las recorre el algoritmo (fin más temprano creciente; a igualdad, más holgura primero)"
@@ -319,7 +405,7 @@ no_criticas = calendario[calendario['H_total'] > 0].sort_values(['fin_mas_tempra
 no_criticas[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']].T
 
 # %% [markdown]
-# Para cada una de ellas se prueba cada desplazamiento de 0 a su holgura total (las columnas de la tabla siguiente), se recalculan las cargas y su suma de cuadrados, y se aplica el desplazamiento de suma mínima antes de pasar a la siguiente actividad; por eso el resultado depende del orden.
+# Para cada una de ellas se prueba cada desplazamiento posible (las columnas de la tabla siguiente), se recalculan las cargas y su suma de cuadrados, y se aplica el desplazamiento de suma mínima (resaltado) antes de pasar a la siguiente actividad; por eso el resultado depende del orden y la holgura disponible puede ser menor que la del calendario inicial.
 
 # %%
 #| tbl-cap: "Suma de cuadrados para cada desplazamiento posible"
@@ -330,9 +416,9 @@ desplazamientos, cuadrados, datos_nivelados, gantt_nivelado, dibujo = proyecto_n
 cuadrados
 
 # %%
-#| tbl-cap: "Desplazamientos elegidos"
-#| label: tbl-desplazamientos
-desplazamientos[desplazamientos['desplazamientos'] > 0]
+texto_niv, elegidos = explica_nivelacion(cuadrados, calendario)
+Markdown(texto_niv + '\n\n**Respuesta:** ' + (('se desplazan ' + lista_y([f'{a} {plural(d, "semana")}' for a, d in elegidos.items()])
+         + ', sin alargar el proyecto.') if elegidos else 'ningún desplazamiento mejora la suma de cuadrados.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -357,5 +443,7 @@ pd.DataFrame({'antes': [cargas.max(), (cargas ** 2).sum(), len(cargas)],
               'después': [cargas_niveladas.max(), (cargas_niveladas ** 2).sum(), len(cargas_niveladas)]},
              index=['máximo de operarios', 'suma de cuadrados', 'duración']).astype(int)
 
-# %% [markdown]
-# La duración no cambia porque sólo se han movido actividades dentro de su holgura; el perfil es más plano y el máximo de operarios, menor o igual.
+# %%
+m0, m1 = int(cargas.max()), int(cargas_niveladas.max())
+s0, s1 = int((cargas ** 2).sum()), int((cargas_niveladas ** 2).sum())
+Markdown(f'''Después de nivelar: {explica_cuadrados(cargas_niveladas)}.\n\n**Respuesta:** la suma de cuadrados baja de {s0} a {s1} ({s0 - s1} menos) y el máximo de operarios {f"baja de {m0} a {m1}" if m1 < m0 else f"se mantiene en {m0}"}; la duración sigue siendo de {len(cargas_niveladas)} semanas porque solo se han movido actividades dentro de su holgura.{" El pico no baja: la nivelación minimiza la suma de cuadrados, no el máximo, y no ha encontrado desplazamientos que vacíen las semanas de carga máxima." if m1 == m0 else ""}''')

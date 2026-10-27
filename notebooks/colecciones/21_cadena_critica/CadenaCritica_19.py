@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -330,26 +334,22 @@ def en_curso_a_la_vez(inicios, fines):
     return m
 
 
-def gantt_tramos_tikz(filas, horizonte):
-    """Diagrama de barras por tramos (TikZ): filas = [(etiqueta, [(inicio, días, tipo, texto), ...]), ...]."""
-    u = min(0.34, 15.0 / max(horizonte, 1))
-    n = len(filas)
-    paso = 5 if horizonte <= 60 else 10
-    L = [rf'\begin{{tikzpicture}}[x={u:.4f}cm, y=-0.62cm, font=\small]']
-    for x in range(0, horizonte + 1, paso):
-        L.append(rf'\draw[black!15] ({x},-0.55) -- ({x},{n - 0.45});')
-        L.append(rf'\node[font=\scriptsize, black!60] at ({x},-0.85) {{{x}}};')
-    for i, (etiqueta, tramos) in enumerate(filas):
-        L.append(rf'\node[anchor=east, font=\small\bfseries] at (-0.6,{i}) {{{etiqueta}}};')
-        for s, d, tipo, texto in tramos:
-            if d <= 0:
-                continue
-            borde = ', dashed' if tipo in ('DB', 'CB') else ''
-            L.append(rf'\draw[fill={COLORES_TRAMO[tipo]}, draw=black!55{borde}] ({s},{i - 0.32}) rectangle ({s + d},{i + 0.32});')
-            if texto != '':
-                L.append(rf'\node[font=\scriptsize] at ({s + d / 2:.2f},{i}) {{{texto}}};')
-    L.append(r'\end{tikzpicture}')
-    return '\n'.join(L)
+def momento_max_abiertos(inicios, fines):
+    """Primer día en que hay más proyectos abiertos a la vez y cuáles son (intervalos [inicio, fin))."""
+    mejor, dia = -1, 0
+    for t in sorted(set(int(s) for s in inicios)):
+        n = sum(1 for p in inicios.index if int(inicios[p]) <= t < int(fines[p]))
+        if n > mejor:
+            mejor, dia = n, t
+    return dia, [p for p in inicios.index if int(inicios[p]) <= dia < int(fines[p])]
+
+
+def gantt_tambor(filas, horizonte):
+    """Gantt de pmule por tramos: filas = [(etiqueta, [(inicio, días, tipo, texto), ...]), ...]; los colchones
+    del tambor (DB) y de capacidad (CB), con borde discontinuo."""
+    return gantt_tramos_tikz({et: [(s, d, t, COLORES_TRAMO[tipo], 'dashed' if tipo in ('DB', 'CB') else '')
+                                   for s, d, tipo, t in tramos if d > 0] for et, tramos in filas},
+                             horizonte=horizonte)
 
 
 def filas_sin_escalonar(datos, fin_tambor, tramos):
@@ -402,14 +402,15 @@ tabla_sin_escalonar(datos, fin_multi)
 #| fig-cap: "Todos los proyectos lanzados el día 0 con multitarea en el tambor (tareas del tambor en rojo)"
 #| label: fig-multi
 fin_proy_multi = fin_multi + datos['despues']
-pinta_tikz(gantt_tramos_tikz(filas_sin_escalonar(datos, fin_multi, tramos_multi), int((fin_proy_multi).max())))
+pinta_tikz(gantt_tambor(filas_sin_escalonar(datos, fin_multi, tramos_multi), int((fin_proy_multi).max())))
 
 # %%
 compromiso_libre = datos[['antes', 'tambor', 'despues', 'CP']].sum(axis=1)
 fuera = [p for p in datos.index if fin_proy_multi[p] > compromiso_libre[p]]
-Markdown(f'Con multitarea, {len(fuera)} de los {len(datos)} proyectos ({", ".join(fuera)}) terminan después de la fecha '
-         'que se les comprometería con el tambor libre: ni siquiera su colchón del proyecto absorbe la espera.' if fuera else
-         'Todos los proyectos cumplirían la fecha calculada con el tambor libre, pero consumiendo su colchón.')
+Markdown(f'**Respuesta:** con multitarea los proyectos terminan los días {lista_y([f"{int(fin_proy_multi[p])} ({p})" for p in datos.index])}. '
+         + ((f'Los {len(datos)} proyectos' if len(fuera) == len(datos) else f'{len(fuera)} de los {len(datos)} proyectos ({lista_y(fuera)})') + f' {"termina" if len(fuera) == 1 else "terminan"} después de la fecha '
+            'que se les comprometería con el tambor libre: ni siquiera su colchón del proyecto absorbe la espera en el tambor.' if fuera else
+            'Todos los proyectos terminan dentro de la fecha calculada con el tambor libre, aunque la espera en el tambor consume parte de su colchón del proyecto.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -430,10 +431,12 @@ antes_ = [p for p in datos.index if fin_proy_sec[p] < fin_proy_multi[p]]
 ult_s, ult_m = int(fin_proy_sec.max()), int(fin_proy_multi.max())
 frase = (f'el último proyecto termina el día {ult_s} frente al {ult_m}' if ult_s != ult_m else
          f'el último proyecto termina el mismo día ({ult_s}), porque el tambor hace el mismo trabajo')
-Markdown(f'Sin multitarea terminan antes {", ".join(antes_)} '
-         f'(media de los fines: {fin_proy_sec.mean():.2f} frente a {fin_proy_multi.mean():.2f} días) y ' + frase + ': repartir el '
-         'tambor no adelanta a nadie y retrasa a casi todos, porque cada tarea del tambor termina en su último turno y está '
-         'en la cadena crítica de su proyecto.')
+despues_ = [p for p in datos.index if fin_proy_sec[p] > fin_proy_multi[p]]
+efecto = ('repartir el tambor no adelanta a ningún proyecto' if not despues_ else f'repartir el tambor sólo adelanta a {lista_y(despues_)}') + f' y retrasa a {lista_y(antes_)}'
+Markdown(f'**Respuesta:** sin multitarea los proyectos terminan los días {lista_y([f"{int(fin_proy_sec[p])} ({p})" for p in datos.index])}. '
+         f'Terminan antes que con multitarea {lista_y(antes_)} '
+         f'(media de los fines: ({" + ".join(str(int(v)) for v in fin_proy_sec)})/{len(datos)} = {fin_proy_sec.mean():.2f} frente a {fin_proy_multi.mean():.2f} días) y ' + frase + ': '
+         + efecto + ', porque cada tarea del tambor termina en su último turno y está en la cadena crítica de su proyecto.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -453,10 +456,10 @@ tabla_escalonado(esc, colchon_tambor, fraccion)
 # %%
 #| fig-cap: "Programa escalonado: parte antes y después en verde, colchón del tambor y colchón del proyecto en naranja, tarea del tambor en rojo y colchones de capacidad en gris"
 #| label: fig-escalonado
-pinta_tikz(gantt_tramos_tikz(filas_escalonado(esc, colchon_tambor), int(esc['compromiso'].max())))
+pinta_tikz(gantt_tambor(filas_escalonado(esc, colchon_tambor), int(esc['compromiso'].max())))
 
 # %%
-Markdown('Lanzamientos: ' + '; '.join(f'{p} el día {int(f.lanzamiento)}, compromiso el día {int(f.compromiso)}' for p, f in esc.iterrows()) + '.')
+Markdown('**Respuesta:** lanzamientos: ' + '; '.join(f'{p} el día {int(f.lanzamiento)}, compromiso el día {int(f.compromiso)}' for p, f in esc.iterrows()) + '.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -477,12 +480,20 @@ comparacion = pd.DataFrame({r: {**{f'fin de {p}': int(f[p]) for p in datos.index
 sin_decimales(comparacion.astype(float))
 
 # %%
+lineas = []
+for r, (l, f) in regimenes.items():
+    dia_m, abiertos = momento_max_abiertos(l, f)
+    lineas.append(f'- {r}: duración media ({" + ".join(f"({int(f[p])} − {int(l[p])})" for p in datos.index)})/{len(datos)} = '
+                  f'{float((f - l).mean()):.2f} días; el día {dia_m} están abiertos {lista_y(abiertos)} ({len(abiertos)}).')
+Markdown('Cálculo de la duración media y del máximo de proyectos abiertos (un proyecto está abierto desde su lanzamiento hasta su fin):\n\n' + '\n'.join(lineas))
+
+# %%
 dur = comparacion.loc['duración media (fin − lanzamiento)']
 ultimo = comparacion.loc['último fin']
 frase_ultimo = (f'El último proyecto termina el día {int(ultimo.iloc[2])}, '
                 + (f'{int(ultimo.iloc[2] - ultimo.iloc[1])} días después que sin escalonar: es el precio de los colchones de capacidad y del tambor, la reserva que hace fiables las fechas comprometidas. '
                    if ultimo.iloc[2] > ultimo.iloc[1] else 'no más tarde que sin escalonar. '))
-Markdown(f'Con todos los proyectos lanzados a la vez hay {len(datos)} abiertos desde el día 0; escalonados, como máximo '
+Markdown(f'**Respuesta:** con todos los proyectos lanzados a la vez hay {len(datos)} abiertos desde el día 0; escalonados, como máximo '
          f"{int(comparacion.loc['máximo de proyectos abiertos a la vez'].iloc[2])}. Cada proyecto pasa abierto, de media, {dur.iloc[2]:.2f} días frente a {dur.iloc[1]:.2f} sin multitarea "
          f'y {dur.iloc[0]:.2f} con multitarea: inmoviliza menos tiempo a su equipo y menos dinero, y su fecha no depende de cómo se '
          'reparta el tambor. ' + frase_ultimo)
@@ -501,7 +512,7 @@ libre = int(esc['libre_despues'].iloc[-1])
 s_n = max(nuevo['antes'] + colchon_tambor, libre)
 lanz_n = s_n - colchon_tambor - nuevo['antes']
 fin_n = s_n + nuevo['tambor'] + nuevo['despues']
-Markdown(f"El tambor queda libre, tras la última tarea y su colchón de capacidad, el día {libre}. "
+Markdown(f"**Respuesta:** el tambor queda libre, tras la última tarea y su colchón de capacidad, el día {libre}. "
          f"Inicio de {nuevo['nombre']} en el tambor: máx({nuevo['antes']} + {colchon_tambor}; {libre}) = **{s_n}**; "
          f"lanzamiento: {s_n} − {colchon_tambor} − {nuevo['antes']} = **día {lanz_n}**; fin previsto {s_n} + {nuevo['tambor']} + "
          f"{nuevo['despues']} = {fin_n}; fecha comprometida {fin_n} + {nuevo['CP']} = **día {fin_n + nuevo['CP']}**. "

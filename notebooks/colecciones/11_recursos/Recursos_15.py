@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -231,6 +235,112 @@ duracion_minima = proyecto.duration(datos_proyecto['duration'])
 recursos = ['operarios', 'equipos']
 limites = [4, 2]
 
+# %%
+def semanas_txt(lista):
+    """«la semana 6», «las semanas 1, 2 y 5» o «ninguna semana»."""
+    lista = [str(int(x)) for x in lista]
+    if not lista:
+        return 'ninguna semana'
+    return ('la semana ' if len(lista) == 1 else 'las semanas ') + lista_y(lista)
+
+
+def explica_cuadrados(cargas):
+    """Σ c² agrupando las semanas de igual carga: «6·3² + 4·5² = 54 + 100 = 154»."""
+    c = pd.Series(cargas).astype(int)
+    cuenta = c.value_counts().sort_index()
+    terminos = [f'{n}·{v}²' if n > 1 else f'{v}²' for v, n in cuenta.items()]
+    parciales = [f'{n * v * v}' for v, n in cuenta.items()]
+    return f'Σ c² = {" + ".join(terminos)} = {" + ".join(parciales)} = **{int((c ** 2).sum())}**'
+
+
+def explica_nivelacion(cuadrados, calendario):
+    """Una línea por actividad recorrida: desplazamientos probados, suma mínima y elección."""
+    tabla = getattr(cuadrados, 'data', cuadrados)
+    lineas, elegidos = [], {}
+    for a, fila in tabla.iterrows():
+        v = fila.dropna()
+        k = int(v.index.max())
+        H = int(calendario.loc[a, 'H_total'])
+        minimo = v.min()
+        mejor = int(v.idxmin())
+        empates = [int(x) for x in v.index[v == minimo]]
+        if k == 0:
+            probado = 'solo puede probarse 0'
+        else:
+            probado = f'se prueban 0 a {k}'
+        if k < H:
+            probado += (f' (no {H}: los desplazamientos ya aplicados a actividades que comparten su holgura '
+                        f'le han dejado {plural(k, "semana")})')
+        empate = (f'; empatan {lista_y([str(x) for x in empates])} y se toma el menor' if len(empates) > 1 else '')
+        lineas.append(f'- {a} (holgura total {H}): {probado}; suma mínima {int(minimo)} con {mejor}{empate} → '
+                      + (f'se desplaza **{plural(mejor, "semana")}**' if mejor > 0 else 'no se desplaza'))
+        elegidos[a] = mejor
+    return '\n'.join(lineas), {a: d for a, d in elegidos.items() if d > 0}
+
+
+def tabla_asignacion(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """Semanas en que la demanda supera el límite: orden de prioridad, qué entra y qué se aplaza y por qué."""
+    pasos, finales, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    filas = []
+    for ps in pasos:
+        if ps['total'] <= ps['limite']:
+            continue
+        t, L = ps['periodo'], int(ps['limite'])
+        orden, aplazadas, acum = [], [], 0
+        for a, f in ps['candidatas'].iterrows():
+            r = int(f[t])
+            orden.append(f'{a} (en curso, {r})' if f['Empezadas'] else f'{a} (H={int(f["H_total"])}, d={int(f[duracion])}, {r})')
+            if a in ps['se_programan']:
+                acum += r
+            else:
+                aplazadas.append(f'{a}: {acum} + {r} = {acum + r} > {L}')
+        filas.append({'semana': t, 'límite': L, 'demanda': int(ps['total']),
+                      'orden de prioridad (holgura, duración, recurso)': ' › '.join(orden),
+                      'entran': lista_y(sorted(ps['se_programan'])) if ps['se_programan'] else '—',
+                      'se aplazan una semana (no caben)': '; '.join(aplazadas)})
+    return pd.DataFrame(filas).set_index('semana') if filas else Markdown('En ninguna semana la demanda supera el límite: no hay que aplazar nada.')
+
+
+def primera_critica_aplazada(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """(semana, actividad) de la primera actividad sin holgura que la asignación tiene que aplazar, o None."""
+    pasos, _, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    for ps in pasos:
+        for a in ps['candidatas'].index:
+            if a in ps['se_retrasan'] and float(ps['candidatas'].loc[a, 'H_total']) == 0:
+                return ps['periodo'], a
+    return None
+
+
+def esperas_asignacion(datos_asignados):
+    """{actividad: semanas de espera} a partir de las filas 💤 que añade la asignación."""
+    e = datos_asignados[datos_asignados.index.str.startswith('💤')]
+    return {i[1:]: int(f.duration) for i, f in e.iterrows()}
+
+
+
+def explica_esperas_multi(traza, datos, recursos, limites):
+    """Una línea por espera: el recurso que se satura, la semana y la suma que supera el límite."""
+    carga = {r: {} for r in recursos}
+    lineas = []
+    for _, f in traza.iterrows():
+        a, t = f['actividad'], int(f['periodo'])
+        semanas = range(t, t + int(datos.loc[a, 'duration']))
+        if f['decision'] == 'empieza':
+            for r in recursos:
+                for w in semanas:
+                    carga[r][w] = carga[r].get(w, 0) + int(datos.loc[a, r])
+            continue
+        partes = []
+        for r, L in zip(recursos, limites):
+            q = int(datos.loc[a, r])
+            for w in semanas:
+                c = carga[r].get(w, 0)
+                if c + q > L:
+                    partes.append(f'{r} en la semana {w}: ocupación {c} + {q} pedidos = {c + q} > {L}')
+                    break
+        lineas.append(f'- Semana {t}, {a}: ' + '; '.join(partes))
+    return lineas
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -268,8 +378,9 @@ cargas_op = gantt_op.data.loc['Total'].drop('H_total').astype(float)
 cargas_eq = gantt_eq.data.loc['Total'].drop('H_total').astype(float)
 exceso_op = [int(t) for t, c in cargas_op.items() if c > limites[0]]
 exceso_eq = [int(t) for t, c in cargas_eq.items() if c > limites[1]]
-Markdown(f'Operarios (límite {limites[0]}): se supera en las semanas {exceso_op or "ninguna"}. '
-         f'Equipos (límite {limites[1]}): se supera en las semanas {exceso_eq or "ninguna"}.')
+det = lambda cargas, ex, L: ' (' + '; '.join(f'{int(cargas[t])} > {L}' for t in ex) + ')' if ex else ''
+Markdown(f'**Respuesta:** los operarios (límite {limites[0]}) se superan en {semanas_txt(exceso_op)}{det(cargas_op, exceso_op, limites[0])}; '
+         f'los equipos (límite {limites[1]}), en {semanas_txt(exceso_eq)}{det(cargas_eq, exceso_eq, limites[1])}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -292,6 +403,10 @@ esperas = esperas.rename(columns={'bloqueada_por': 'recurso que se satura'})
 esperas[['periodo', 'actividad', 'recurso que se satura']].reset_index(drop=True)
 
 # %%
+Markdown('Por qué espera cada actividad (ocupación ya comprometida en esa semana + lo que pide la actividad, frente al límite):\n\n'
+         + '\n'.join(explica_esperas_multi(resultado.traza, datos_proyecto, recursos, limites)))
+
+# %%
 #| fig-cap: "Gantt de operarios tras la asignación simultánea (filas 💤: esperas)"
 #| label: fig-ganttOperarios
 pinta_tikz(resultado.dibujos['operarios'])
@@ -304,7 +419,7 @@ pinta_tikz(resultado.dibujos['equipos'])
 # %%
 #| tbl-cap: "Carga de cada recurso semana a semana frente a su límite"
 #| label: tbl-cargasLimites
-pd.concat([resultado.cargas.add_suffix(' ocupados'), resultado.limites.add_suffix(' (límite)')], axis=1).T
+limpia_tabla(pd.concat([resultado.cargas.add_suffix(' ocupados'), resultado.limites.add_suffix(' (límite)')], axis=1)).T
 
 # %%
 #| fig-cap: "Cargas de operarios tras la asignación simultánea"
@@ -317,9 +432,10 @@ plot_cargas(gantt_df=resultado.gantts['operarios'], limite_maximo_recursos=list(
 plot_cargas(gantt_df=resultado.gantts['equipos'], limite_maximo_recursos=list(resultado.limites['equipos']))
 
 # %%
-Markdown(f'La duración pasa de {duracion_minima} a {resultado.duracion} semanas. Cada actividad que espera lo hace '
-         'porque, en alguna de las semanas que ocuparía, sumada a lo ya comprometido superaría el límite de '
-         'al menos uno de los dos recursos: el que aparece en la tabla.')
+bloq = esperas.groupby('actividad')['recurso que se satura'].agg(lambda s: lista_y(sorted(set(', '.join(s).split(', ')))))
+txt_bloq = lista_y([f'{a} ({r})' for a, r in bloq.items()]) if len(bloq) else 'ninguna'
+Markdown(f'**Respuesta:** el calendario es el de la tabla de inicios y fines; la duración pasa de {duracion_minima} a {resultado.duracion} semanas. '
+         f'Esperan, por el recurso indicado: {txt_bloq}.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -346,9 +462,11 @@ pinta_tikz(dibujo_solo)
 plot_cargas(gantt_df=gantt_eq_solo, limite_maximo_recursos=limites[1])
 
 # %%
-Markdown(f'Solo con operarios la duración es {len(gantt_solo.data.columns.drop("H_total"))} semanas, pero los equipos llegan a '
-         f'{int(cargas_eq_solo.max())} (límite {limites[1]}) en las semanas {exceso}. '
-         'Resolver un recurso desplaza actividades y puede crear picos en el otro: hay que comprobar todos a la vez, '
+duracion_solo = len(gantt_solo.data.columns.drop('H_total'))
+det_solo = '; '.join(f'semana {t}: {int(cargas_eq_solo[t])} > {limites[1]}' for t in exceso)
+Markdown(f'**Respuesta:** atendiendo solo a los operarios el proyecto duraría {duracion_solo} semanas (frente a {resultado.duracion} con los dos límites), '
+         f'pero el calendario no es factible: los equipos se superan en {semanas_txt(exceso)} ({det_solo}). '
+         'Resolver un recurso desplaza actividades y puede crear (o dejar) picos en el otro: hay que comprobar todos a la vez, '
          'y corregir uno a uno no garantiza converger a un calendario factible.')
 
 # %% [markdown]
@@ -368,13 +486,16 @@ tabla.index.name, tabla.columns.name = 'operarios', 'equipos'
 tabla
 
 # %%
-mejora_op = tabla.iloc[0, 0] - tabla.iloc[1, 0]
-mejora_eq = tabla.iloc[0, 0] - tabla.iloc[0, 1]
+base = int(tabla.iloc[0, 0])
+mejora_op = base - int(tabla.iloc[1, 0])
+mejora_eq = base - int(tabla.iloc[0, 1])
+mejora_ambos = base - int(tabla.iloc[1, 1])
 if mejora_op > mejora_eq:
-    texto = 'ampliar los operarios: un operario más ahorra más semanas que un equipo más'
+    texto = 'los operarios son el cuello de botella: un operario más ahorra más semanas que un equipo más, así que conviene ampliarlos primero'
 elif mejora_eq > mejora_op:
-    texto = 'ampliar los equipos: un equipo más ahorra más semanas que un operario más'
+    texto = 'los equipos son el cuello de botella: un equipo más ahorra más semanas que un operario más, así que conviene ampliarlos primero'
+elif mejora_op > 0:
+    texto = 'los dos recursos limitan por igual: un operario o un equipo más ahorran lo mismo; decidiría el coste de cada unidad'
 else:
-    texto = 'ampliar uno solo de los recursos no basta: la mejora llega al ampliar los dos'
-Markdown(f'Con un recurso más: operarios −{mejora_op} semana(s), equipos −{mejora_eq} semana(s). Conviene {texto}. '
-         'Cuando ambos están saturados a la vez, ampliar uno solo mueve el cuello de botella al otro.')
+    texto = f'ampliar uno solo de los recursos no acorta el proyecto; ampliando los dos se ganan {plural(mejora_ambos, "semana")}'
+Markdown(f'''Con los límites actuales: {base} semanas. Con un operario más: {int(tabla.iloc[1, 0])} ({plural(mejora_op, "semana")} menos); con un equipo más: {int(tabla.iloc[0, 1])} ({plural(mejora_eq, "semana")} menos); con uno de cada: {int(tabla.iloc[1, 1])}.\n\n**Respuesta:** {texto}.{' Ampliando los dos se gana más que con cualquiera por separado: cuando ambos están saturados, ampliar uno solo mueve el cuello de botella al otro.' if mejora_ambos > max(mejora_op, mejora_eq) else ''}''')

@@ -23,11 +23,11 @@ Por el **teorema central del límite**, esa suma es aproximadamente normal aunqu
 
 **Hipótesis PERT.** La duración del proyecto se aproxima por la de la ruta crítica (la de mayor media): $T \sim N(\mu, \sigma^2)$ con $\mu$ la duración calculada con las medias y $\sigma^2$ la varianza de la ruta crítica. Si hay varias rutas críticas se toma la de mayor varianza (la más prudente).
 
-**Cálculos con la normal.** Con $z = (t - \mu)/\sigma$ y $\Phi$ la función de distribución de la normal estándar:
+**Cálculos con la normal.** Sin tipificar ni tablas: se usa directamente la función de distribución de $N(\mu, \sigma)$ de la hoja de cálculo o de la calculadora (en Python, `norm.cdf(t, mu, sigma)` y `norm.ppf(p, mu, sigma)`):
 
-- Probabilidad de terminar en $t$ o antes: $P(T \le t) = \Phi(z)$.
-- Entre dos fechas: $P(t_1 < T \le t_2) = \Phi(z_2) - \Phi(z_1)$.
-- Duración comprometible con probabilidad $p$: $t_p = \mu + z_p\,\sigma$, con $z_p = \Phi^{-1}(p)$ ($z_{0.90} = 1.282$, $z_{0.95} = 1.645$).
+- Probabilidad de terminar en $t$ o antes: $P(T \le t)$ = `=DISTR.NORM.N(t; μ; σ; VERDADERO)`.
+- Entre dos fechas: $P(t_1 < T \le t_2) = P(T \le t_2) - P(T \le t_1)$, dos llamadas a `DISTR.NORM.N`.
+- Duración comprometible con probabilidad $p$: el $t_p$ con $P(T \le t_p) = p$, que da `=INV.NORM(p; μ; σ)`; si el calendario va en semanas enteras, se redondea **hacia arriba**.
 - $P(T \le \mu) = 0.5$: comprometer la media es jugársela a cara o cruz.
 
 **Dónde falla.** El proyecto dura lo que la *más larga* de sus rutas, no lo que la crítica. Si otra ruta tiene media parecida y varianza apreciable, a veces será ella la más larga, y la duración real es *mayor* que la que dice la normal (sesgo de fusión): el PERT clásico es optimista. La lección 09 lo cuantifica con simulación. Una cota rápida: si dos rutas son independientes, $P(T \le t) = P(L_1 \le t)\,P(L_2 \le t)$, menor que cualquiera de las dos.
@@ -47,9 +47,9 @@ Con desviaciones típicas $\sigma_A = 0.5$, $\sigma_B = 0.3$, $\sigma_C = 1.0$, 
 
 $\mu = 10$, $\sigma = \sqrt{1.61} = 1.269$.
 
-- $P(T \le 12) = \Phi\big((12 - 10)/1.269\big) = \Phi(1.576) = 0.942$.
-- $P(9 < T \le 11) = \Phi(0.788) - \Phi(-0.788) = 0.785 - 0.215 = 0.569$.
-- Duración para el 95 %: $10 + 1.645 \times 1.269 = 12.09$ semanas.
+- $P(T \le 12)$ = `=DISTR.NORM.N(12; 10; 1,269; VERDADERO)` = 0.942.
+- $P(9 < T \le 11)$ = `=DISTR.NORM.N(11; 10; 1,269; VERDADERO)` − `=DISTR.NORM.N(9; 10; 1,269; VERDADERO)` = 0.785 − 0.215 = 0.569.
+- Duración para el 95 %: `=INV.NORM(0,95; 10; 1,269)` = 12.09 semanas, es decir, 13 semanas enteras.
 - Garantizar 10 semanas con el 95 % es imposible sin cambiar el proyecto: $P(T \le 10) = 0.5$.
 
 Aquí las otras rutas están lejos (7 y 6 frente a 10) y la aproximación es buena. Si la segunda ruta midiera 9 con $\sigma = 2$, la probabilidad real de terminar en 12 sería claramente menor que 0.94.
@@ -61,8 +61,8 @@ datos['variance'] = datos['standard_deviation'] ** 2
 mu = proyecto.duration(datos['duration'])
 sigma, tabla = proyecto.standard_deviation(durations=datos['duration'], variances=datos['variance'])
 from scipy.stats import norm
-p = norm.cdf((plazo - mu) / sigma)
-t_95 = mu + norm.ppf(0.95) * sigma
+p = norm.cdf(plazo, mu, sigma)       # =DISTR.NORM.N(plazo; mu; sigma; VERDADERO)
+t_95 = norm.ppf(0.95, mu, sigma)      # =INV.NORM(0,95; mu; sigma)
 ```
 
 Para ver la varianza de *todas* las rutas: `R = proyecto.path_matrix(dummies=False)` y `R @ datos['variance'][R.columns]`.

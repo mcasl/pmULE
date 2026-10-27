@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -259,8 +263,10 @@ detalle = pd.DataFrame({'flujo sin fin de vida': flujos_sin, 'flujo con fin de v
 detalle['VA sin'] = detalle['flujo sin fin de vida'] * detalle['factor 1/(1+k)^t']
 detalle['VA con'] = detalle['flujo con fin de vida'] * detalle['factor 1/(1+k)^t']
 detalle.loc['Total'] = [None, None, None, detalle['VA sin'].sum(), detalle['VA con'].sum()]
-display(detalle.round(2))
-Markdown(f'''VAN sin el fin de vida: **{van_sin:.1f} k€**; con desmantelamiento y materiales recuperados: **{van_con:.1f} k€**. ''' + ('La decisión cambia: el proyecto deja de crear valor.' if van_con < 0 else 'El proyecto sigue siendo viable, con menos margen.'))
+display(detalle.round({'flujo sin fin de vida': 1, 'flujo con fin de vida': 1, 'factor 1/(1+k)^t': 4, 'VA sin': 2, 'VA con': 2}))
+a = (1 - (1 + k) ** -anos) / k
+neto_final = recuperado - desmantelamiento
+Markdown(f'''Como los {anos} flujos de la explotación son iguales, su valor actual es flujo × factor de anualidad, a = (1 − (1 + k)^−N) / k = (1 − {1 + k:g}^−{anos}) / {k:g} = {a:.4f}:\n\n- VAN sin el fin de vida = −{inversion} + {flujo_anual} × {a:.4f} = **{van_sin:.1f} k€**.\n- El año {anos} se añade el saldo del fin de vida, materiales recuperados − desmantelamiento = {recuperado} − {desmantelamiento} = {neto_final} k€, que vale hoy {neto_final} / {1 + k:g}^{anos} = {neto_final / (1 + k) ** anos:.1f} k€: VAN con el fin de vida = {van_sin:.1f} + ({neto_final / (1 + k) ** anos:.1f}) = **{van_con:.1f} k€**.\n\nLa tabla comprueba las dos cifras año a año.\n\n**Respuesta:** VAN tal como lo presenta el director financiero, {van_sin:.1f} k€; con el fin de vida, {van_con:.1f} k€. ''' + ('**La decisión cambia**: con el fin de vida el proyecto deja de crear valor (VAN < 0).' if van_con < 0 else '**La decisión no cambia** (el VAN sigue siendo positivo), pero el margen baja.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -271,7 +277,7 @@ display(Markdown(pregunta_2))
 # %%
 provision = desmantelamiento / (1 + k) ** anos
 cuota_anual = desmantelamiento * k / ((1 + k) ** anos - 1)
-Markdown(f'''Valor actual de la obligación: {desmantelamiento} / (1 + {k})^{anos} = **{provision:.1f} k€** ({provision / inversion:.1%} de la inversión), que el PGC incorpora al coste del activo con su provisión. Cuota anual que reúne los {desmantelamiento} k€ al {k:.0%}: {desmantelamiento} · k / ((1 + k)^{anos} − 1) = **{cuota_anual:.1f} k€ al año** ({cuota_anual / flujo_anual:.1%} del flujo anual).''')
+Markdown(f'''Valor actual de la obligación (provisión inicial): {desmantelamiento} / (1 + {k:g})^{anos} = {desmantelamiento} / {(1 + k) ** anos:.4f} = **{provision:.1f} k€**, que el PGC incorpora al coste del activo con su provisión: es una inversión «escondida» del {provision:.1f} / {inversion} = **{provision / inversion:.1%}** de la inversión inicial.\n\nCuota anual que, capitalizada al {k:.0%}, reúne los {desmantelamiento} k€ en el año {anos} (factor de fondo de amortización): {desmantelamiento} · {k:g} / ({1 + k:g}^{anos} − 1) = {desmantelamiento * k:g} / {(1 + k) ** anos - 1:.4f} = **{cuota_anual:.1f} k€ al año** ({cuota_anual / flujo_anual:.1%} del flujo anual de {flujo_anual} k€).\n\n**Respuesta:** provisión de {provision:.1f} k€ ({provision / inversion:.1%} de la inversión) y cuota anual de {cuota_anual:.1f} k€.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -281,6 +287,8 @@ display(Markdown(pregunta_3))
 
 # %% [markdown]
 # **Norma y S4.** La obligación de desmantelar nace con la inversión (el contrato y la autorización la imponen): el PGC incorpora al coste del inmovilizado el valor actual de esa obligación (165.3 k€) y reconoce la provisión desde el primer día. Un caso de negocio sin el fin de vida está orientado a los entregables, no a los resultados; «dentro de 20 años» no lo saca del proyecto, porque la decisión que lo causa se toma hoy. Con el fin de vida el VAN es negativo (-40.1 k€): el proyecto **no debe aprobarse** tal como está (o debe rediseñarse para abaratar el desmantelamiento o alargar la explotación). **S1.** No provisionar traslada el coste a quien explote la planta en el año 20 —o, si entonces no hay nadie, al arrendador y a la comunidad, que se quedan con la instalación abandonada—: no es compensar ni minimizar, es trasladar. Desmantelar y restaurar es el escalón de **restaurar**; diseñar la planta para su desmontaje y reutilización (y abaratar los 530 k€) sería **minimizar**.
+#
+# **Respuesta:** no puede presentarse sin el fin de vida (S4 y PGC); si no se provisiona, el coste se traslada a quien explote la planta al final o, si no hay nadie, al arrendador y a la comunidad (trasladar: fuera de la pirámide); desmantelar y restaurar es restaurar, y diseñar para el desmontaje, minimizar.
 
 # %%
 preguntas_test = [

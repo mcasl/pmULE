@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -222,7 +226,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -250,19 +254,24 @@ descripciones.to_frame()
 display(Markdown(pregunta_1))
 
 # %%
-defectos = []
 t = datos_enunciado.reset_index()
-if (t['actividad'] != t['actividad'].str.upper()).any(): defectos.append('nombres de actividad en minúscula')
-if t['predecesoras'].str.contains(r'[a-z]').any(): defectos.append('predecesoras en minúscula')
-if t['predecesoras'].str.contains(r';| y | /').any(): defectos.append('separadores distintos de la coma (;, y, /)')
-if (t['predecesoras'] != t['predecesoras'].str.strip()).any() or t['predecesoras'].str.contains(r'\s,|,\s\s').any(): defectos.append('espacios sobrantes')
-if t['predecesoras'].str.lower().isin(['ninguna', '-', '']).any(): defectos.append('varias formas de indicar que no hay predecesoras')
 import re
 def _partes(s):
     return [p.strip().upper() for p in re.split(r'[,;/]| y ', s) if p.strip()]
-if any(len(_partes(s)) != len(set(_partes(s))) for s in t['predecesoras']): defectos.append('predecesoras repetidas')
-for d in defectos:
-    print('-', d)
+def _filas(mascara):
+    return lista_y([f'«{a}»' for a in t.loc[mascara, 'actividad']])
+_reglas = {
+    'nombres de actividad en minúscula': t['actividad'] != t['actividad'].str.upper(),
+    'predecesoras en minúscula': t['predecesoras'].map(lambda s: any(p.strip() != p.strip().upper() for p in re.split(r'[,;/]| y ', s)
+                                                                 if p.strip().lower() not in ('ninguna', '-', ''))),
+    'separadores distintos de la coma (;, y, /)': t['predecesoras'].str.contains(r';| y | /'),
+    'espacios sobrantes': (t['predecesoras'] != t['predecesoras'].str.strip()) | t['predecesoras'].str.contains(r'\s,|,\s\s|  '),
+    'formas distintas de «---» para indicar que no hay predecesoras': t['predecesoras'].str.strip().str.lower().isin(['ninguna', '-', '']),
+    'predecesoras repetidas': t['predecesoras'].map(lambda s: len(_partes(s)) != len(set(_partes(s)))),
+}
+defectos = [d for d, m in _reglas.items() if m.any()]
+Markdown('**Respuesta:** la tabla tiene estos defectos (entre comillas, las filas afectadas):\n\n'
+         + '\n'.join(f'- {d}: {_filas(m)}' for d, m in _reglas.items() if m.any()))
 
 # %% [markdown]
 # ## Apartado 2
@@ -289,7 +298,8 @@ pd.concat({'recibido': t.set_index(limpio.index)['predecesoras'], 'normalizado':
 
 # %%
 desconocidas = {p for s in limpio['predecessor'] if s != '---' for p in s.split(',')} - set(limpio.index)
-print('Predecesoras que no son actividades de la tabla:', desconocidas or 'ninguna')
+Markdown('**Respuesta:** la tabla normalizada es un cuadro de prelaciones válido: ' + ('todas las predecesoras son '
+         'actividades de la tabla.' if not desconocidas else f'¡ojo!, hay predecesoras que no son actividades: {lista_y(sorted(desconocidas))}.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -301,15 +311,21 @@ display(Markdown(pregunta_3))
 datos_proyecto = limpio.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
-print('Actividades iniciales:', ', '.join(sorted(prelaciones.start_activities)))
-print('Actividades finales:  ', ', '.join(sorted(prelaciones.end_activities)))
+_ini, _fin = sorted(prelaciones.start_activities), sorted(prelaciones.end_activities)
+_es = lambda l, s, p: s if len(l) == 1 else p
+Markdown(f'**Respuesta:** {_es(_ini, "es inicial", "son iniciales")} {lista_y(_ini)}, porque no '
+         f'{_es(_ini, "tiene", "tienen")} predecesoras (fila vacía en el cuadro expandido); '
+         f'{_es(_fin, "es final", "son finales")} {lista_y(_fin)}, porque no '
+         f'{_es(_fin, "es predecesora", "son predecesoras")} de ninguna actividad (columna vacía).')
 
 # %%
 G = nx.DiGraph([(p, a) for a, ps in prelaciones.immediate_predecessor.items() for p in ps])
 G.add_nodes_from(datos_proyecto.index)
-print('¿Hay ciclos?', not nx.is_directed_acyclic_graph(G))
+_aciclico = nx.is_directed_acyclic_graph(G)
 redundantes = sorted(set(G.edges) - set(nx.transitive_reduction(G).edges))
-print('Prelaciones redundantes:', redundantes or 'ninguna')
+Markdown(('No hay ciclos (el grafo de prelaciones es acíclico)' if _aciclico else 'Hay ciclos') + ' y '
+         + ('no hay prelaciones redundantes: ninguna predecesora inmediata es ancestro de otra predecesora de la misma actividad.'
+            if not redundantes else 'son redundantes ' + lista_y([f'{p} → {a}' for p, a in redundantes]) + '.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -317,7 +333,10 @@ print('Prelaciones redundantes:', redundantes or 'ninguna')
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Construcción del grafo Roy a partir del cuadro de prelaciones: el visor muestra primero el grafo terminado; con los botones se construye desde el principio, fila a fila, y al final recorre las columnas del cuadro comprobando en el grafo las sucesoras de cada actividad.
+
 # %%
-#| fig-cap: "Grafo Roy del proyecto"
-#| label: fig-pert
-proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
+#| fig-cap: "Construcción del grafo Roy a partir del cuadro de prelaciones"
+#| label: fig-construccion
+proyecto.display_roy_construccion()

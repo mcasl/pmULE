@@ -48,7 +48,7 @@ def _enunciado(texto: str) -> str:
 
 def _cuenta(texto: str, metodo: str) -> int:
     """Apariciones del grafo ``metodo`` en el cuaderno: llamadas directas y visores."""
-    extra = texto.count("display_roy_construccion(") if metodo == "roy" else 0
+    extra = texto.count(f"display_{metodo}_construccion(")
     return (texto.count(f".{metodo}(") + texto.count(f"display_{metodo}_pasos(") + extra
             + texto.count(f"display_ancestros('{metodo}'") + texto.count(f'display_ancestros("{metodo}"')
             + texto.count(f"display_rutas('{metodo}'") + texto.count(f'display_rutas("{metodo}"'))

@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -211,7 +215,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El servicio de empleo y el plan de formación permiten incorporar como máximo **2 persona(s) de inserción por semana** (cada una necesita un tutor en la cuadrilla); cada operario-semana de inserción cuesta 0.3 k€ más que uno ordinario (tutoría, formación y rendimiento inicial).
+# El servicio de empleo y el plan de formación permiten incorporar como máximo **2 personas de inserción por semana** (cada una necesita un tutor en la cuadrilla); cada operario-semana de inserción cuesta 0.3 k€ más que uno ordinario (tutoría, formación y rendimiento inicial).
 
 # %% [markdown]
 # > **De: Director de producción**
@@ -244,6 +248,24 @@ for item in sorted(dir()):
 
 # %%
 porcentaje, maximo_insercion, coste_tutoria, penalidad_punto = 20, 2, 0.3, 5
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -286,7 +308,8 @@ tabla = pd.DataFrame({'carga total': carga_total, 'carga de las aptas': carga_ap
 tabla.loc['Total'] = tabla.sum()
 display(tabla.astype(int).T)
 total = float(carga_total.sum()); requerido = int(np.ceil(porcentaje / 100 * total)); capacidad_inicial = float(capacidad.sum())
-Markdown(f'''Operario-semanas de la obra: **{total:.0f}**; la cláusula exige al menos {porcentaje} %: **{requerido}**. Con inicios más tempranos, las actividades aptas admiten como máximo **{capacidad_inicial:.0f}** operario-semanas de inserción ({capacidad_inicial / total:.1%}): ''' + ('**cumple**.' if capacidad_inicial >= requerido else '**no cumple**: las actividades aptas se solapan y el límite semanal desperdicia su carga.'))
+solape = [int(c) for c in carga_aptas.index if carga_aptas[c] > maximo_insercion]; vacias = [int(c) for c in carga_aptas.index if carga_aptas[c] == 0]
+Markdown(f'''Operario-semanas de la obra = suma de la carga total = **{total:.0f}**; la cláusula exige al menos {porcentaje} % × {total:.0f} = {porcentaje / 100 * total:.1f}, es decir, **{requerido}** operario-semanas (redondeando hacia arriba). La capacidad de inserción de cada semana es mín({maximo_insercion}, carga de las aptas); sumada, **{capacidad_inicial:.0f}** operario-semanas = {capacidad_inicial:.0f} / {total:.0f} = {capacidad_inicial / total:.1%} de la obra.\n\n**Respuesta:** con inicios más tempranos el plan ''' + ('**cumple** la cláusula.' if capacidad_inicial >= requerido else f'''**no cumple** ({capacidad_inicial:.0f} < {requerido}): las actividades aptas se solapan: en {plural(len(solape), "semana")} su carga supera el máximo de {maximo_insercion} y el exceso se desperdicia, ''' f'''y {plural(len(vacias), "semana")} no ''' + ('tiene' if len(vacias) == 1 else 'tienen') + ' ninguna actividad apta.'))
 
 # %%
 #| tbl-cap: "Desplazamientos de la nivelación y capacidad de inserción tras nivelar"
@@ -301,7 +324,9 @@ tabla_niv = pd.DataFrame({'carga de las aptas (nivelada)': carga_aptas_niv, f'in
 tabla_niv.loc['Total'] = tabla_niv.sum()
 display(tabla_niv.astype(int).T)
 capacidad_nivelada = float(capacidad_niv.sum())
-Markdown(f'''Tras nivelar (misma duración, {duracion} semanas) la capacidad de inserción es **{capacidad_nivelada:.0f}** operario-semanas ({capacidad_nivelada / total:.1%}): ''' + ('**cumple** la cláusula.' if capacidad_nivelada >= requerido else 'sigue sin cumplir.'))
+movidas = desplazamientos[desplazamientos['desplazamientos'] > 0]['desplazamientos']
+txt_mov = lista_y(f'{a} {plural(int(v), "semana")}' + (' (apta)' if a in aptas else '') for a, v in movidas.items())
+Markdown(f'''La nivelación (de la carga total, dentro de las holguras) desplaza {txt_mov}: reparte la carga apta en más semanas, y la capacidad de inserción sube a **{capacidad_nivelada:.0f}** operario-semanas ({capacidad_nivelada / total:.1%}) con la misma duración ({duracion} semanas).\n\n**Respuesta:** tras nivelar, ''' + (f'''**cumple** la cláusula ({capacidad_nivelada:.0f} ≥ {requerido}).''' if capacidad_nivelada >= requerido else f'''sigue sin cumplir ({capacidad_nivelada:.0f} < {requerido}).'''))
 
 # %%
 #| fig-cap: "Diagrama de cargas tras la nivelación"
@@ -318,13 +343,14 @@ display(Markdown(pregunta_2))
 #| tbl-cap: "Coste de cumplir frente a coste de no cumplir"
 #| label: tbl-coste
 deficit_inicial = max(0, requerido - capacidad_inicial)
-puntos_deficit = 100 * deficit_inicial / total
+puntos_deficit = max(0.0, porcentaje - 100 * capacidad_inicial / total)   # puntos porcentuales que faltan hasta el porcentaje exigido
 costes = pd.Series({'cumplir tras nivelar: sobrecoste de tutoría (k€)': requerido * coste_tutoria,
                     'plan inicial sin nivelar: déficit (operario-semanas)': deficit_inicial,
                     'plan inicial sin nivelar: déficit (puntos porcentuales)': puntos_deficit,
                     'plan inicial sin nivelar: penalidad (k€)': puntos_deficit * penalidad_punto})
 display(costes.round(2).to_frame('valor'))
-Markdown(f'''Cumplir cuesta **{requerido * coste_tutoria:.1f} k€** de tutoría y una nivelación que no alarga la obra; no cumplir con el plan inicial deja {deficit_inicial:.0f} operario-semanas de déficit ({puntos_deficit:.1f} puntos), **{puntos_deficit * penalidad_punto:.1f} k€** de penalidad''' + (' y, por debajo de la mitad, causa de resolución.' if capacidad_inicial < requerido / 2 else '.'))
+pct_ini = 100 * capacidad_inicial / total
+Markdown(f'''- Cumplir (plan nivelado): {requerido} operario-semanas de inserción × {coste_tutoria} k€ = **{requerido * coste_tutoria:.1f} k€** de tutoría, con una nivelación que no alarga la obra.\n- No cumplir (plan inicial): se alcanza el {capacidad_inicial:.0f} / {total:.0f} = {pct_ini:.2f} % frente al {porcentaje} % exigido; faltan {porcentaje} − {pct_ini:.2f} = **{puntos_deficit:.2f} puntos** ({plural(deficit_inicial, "operario-semana", "operario-semanas")} hasta las {requerido}), y la penalidad es {puntos_deficit:.2f} × {penalidad_punto} = **{puntos_deficit * penalidad_punto:.1f} k€**''' + (f'''; además, {pct_ini:.2f} % es menos de la mitad del {porcentaje} %: causa de resolución.''' if pct_ini < porcentaje / 2 else f''' (no hay causa de resolución: {pct_ini:.2f} % supera la mitad del {porcentaje} %).''') + f'''\n\n**Respuesta:** la cláusula cuesta {requerido * coste_tutoria:.1f} k€ y la penalidad de no cumplirla con el plan inicial sería {puntos_deficit * penalidad_punto:.1f} k€: ''' + ('cumplir es más barato' if requerido * coste_tutoria < puntos_deficit * penalidad_punto else 'la penalidad sería menor, pero la cláusula es una obligación esencial del contrato, no una opción que se compra (apartado 3)') + '.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -333,7 +359,9 @@ Markdown(f'''Cumplir cuesta **{requerido * coste_tutoria:.1f} k€** de tutoría
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma y S14.** La condición especial de ejecución es una **obligación del contrato** (LCSP, art. 202): el pliego la ha calificado de esencial, de modo que su incumplimiento lleva la penalidad y, por debajo de la mitad, la resolución (art. 202.3). Se exige igualmente a los subcontratistas (art. 202.4): pasarla a la subcontrata **no la traslada**, la extiende; y «cubrirla en el papel» con personal que no cumple la definición del pliego es una afirmación falsa en la certificación (lección 19, C1), además de incumplir. Si el plan la cumple es un cálculo: con inicios más tempranos la capacidad es de 14 operario-semanas frente a las 16 exigidas (**no cumple**, 2.6 puntos de déficit); tras nivelar, 20 (**cumple**), con la misma duración. **S10.** El plan no puede apoyarse en una contratación que la norma y el contrato no permiten: la opción «en el papel» no está en la tabla, y la de nivelar sí.
+# **Norma y S14.** La condición especial de ejecución es una **obligación del contrato** (LCSP, art. 202): el pliego la ha calificado de esencial, de modo que su incumplimiento lleva la penalidad y, por debajo de la mitad, la resolución (art. 202.3). Se exige igualmente a los subcontratistas (art. 202.4): pasarla a la subcontrata **no la traslada**, la extiende; y «cubrirla en el papel» con personal que no cumple la definición del pliego es una afirmación falsa en la certificación (lección 19, C1), además de incumplir. Si el plan la cumple es un cálculo: con inicios más tempranos la capacidad es de 14 operario-semanas frente a las 16 exigidas (**no cumple**, 2.05 puntos de déficit); tras nivelar, 20 (**cumple**), con la misma duración. **S10.** El plan no puede apoyarse en una contratación que la norma y el contrato no permiten: la opción «en el papel» no está en la tabla, y la de nivelar sí.
+#
+# **Respuesta:** es una **obligación** del contrato (esencial); el plan con inicios más tempranos **no** la cumple y el nivelado **sí**; trasladarla a la subcontrata no la cumple (se exige también a ella) y «cubrirla en el papel» es falsear la certificación.
 
 # %%
 preguntas_test = [
@@ -372,4 +400,4 @@ display(Markdown(pregunta_4))
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados, incluidos los que no están en la mesa (la comunidad, los trabajadores de la cadena, quien opere o desmantele lo construido, las generaciones siguientes) y qué pierde o gana cada uno con las cifras del bloque A; (2) formular al menos dos alternativas además de la propuesta, situándolas en la pirámide (compensar, restaurar, minimizar, evitar); (3) someter cada alternativa a tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería ante el inspector, el cliente o la prensa?) y ciclo de vida (¿quién paga el impacto y cuándo?)—; (4) decidir y redactar la comunicación con las cifras. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
 # %% [markdown]
-# Al director de producción: la tabla del apartado 1 nivelada, con las semanas y actividades en las que entran las 2 persona(s) de inserción, el calendario de incorporación con el servicio de empleo (hay que pedirlas con antelación) y el coste (4.8 k€) frente a la penalidad (12.8 k€). Al responsable del contrato: el plan de cumplimiento con la documentación que se aportará (contratos, certificados del servicio de empleo, partes de trabajo), y a las subcontratas, la cláusula en su contrato porque la ley lo exige, no para deshacerse de ella. Prueba de publicidad: ¿firmaría la certificación con la lista de «inserción» de la subcontrata de pintura?
+# Al director de producción: la tabla del apartado 1 nivelada, con las semanas y actividades en las que entran las personas de inserción (2 como máximo por semana), el calendario de incorporación con el servicio de empleo (hay que pedirlas con antelación) y el coste (4.8 k€) frente a la penalidad (10.3 k€). Al responsable del contrato: el plan de cumplimiento con la documentación que se aportará (contratos, certificados del servicio de empleo, partes de trabajo), y a las subcontratas, la cláusula en su contrato porque la ley lo exige, no para deshacerse de ella. Prueba de publicidad: ¿firmaría la certificación con la lista de «inserción» de la subcontrata de pintura?

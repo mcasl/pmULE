@@ -4,6 +4,7 @@
 # coleccion: 14_comprension
 # variante: verdadero-falso
 # nivel: 2
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -34,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -42,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -155,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -223,7 +228,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -252,6 +257,7 @@ calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = proyecto.duration(datos_proyecto['duration'])
 rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])
 R = proyecto.path_matrix(dummies=False)
+pred = prelaciones.immediate_predecessor
 proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -267,7 +273,7 @@ display(Markdown(pregunta_1))
 a = calendario.index[calendario['H_total'] > 0][0]
 h = int(calendario.loc[a, 'H_total'])
 d2 = datos_proyecto['duration'].copy(); d2[a] += h + 1
-Markdown(f'Justificación: la holgura total es exactamente el retraso que admite sin mover el fin del proyecto. Comprobación con {a} (holgura {h}): retrasada {h + 1} semanas el proyecto pasa de {duracion} a {proyecto.duration(d2)}.')
+Markdown(f'Justificación: la holgura total es exactamente el retraso que admite una actividad sin mover el fin del proyecto; un retraso mayor alarga el proyecto en lo que exceda de la holgura. Comprobación con {a} (holgura total {h}): retrasada {h + 1} semanas, el proyecto pasa de {duracion} a {proyecto.duration(d2)} semanas.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -281,10 +287,13 @@ display(Markdown(pregunta_2))
 # %%
 filas = []
 for r in R.index:
-    acts = list(R.columns[R.loc[r] == 1])
-    filas.append({'ruta': r, 'suma de holguras libres': int(calendario.loc[acts, 'H_libre'].sum()), 'margen de la ruta': int(duracion - (R.loc[r] * datos_proyecto['duration'][R.columns]).sum())})
+    acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+    dur_r = int(sum(datos_proyecto.loc[a, 'duration'] for a in acts))
+    filas.append({'ruta': ' – '.join(acts),
+                  'suma de holguras libres': ' + '.join(str(int(calendario.loc[a, 'H_libre'])) for a in acts) + f" = {int(calendario.loc[acts, 'H_libre'].sum())}",
+                  'margen de la ruta = τ − duración': f'{duracion} − {dur_r} = {duracion - dur_r}'})
 display(pd.DataFrame(filas).set_index('ruta'))
-Markdown('Justificación: las holguras libres de una ruta son huecos disjuntos entre el fin de una actividad y el inicio de la siguiente (o el fin del proyecto); su suma es como mucho el margen total de la ruta, y es menor si alguna actividad de la ruta empieza después del fin de su predecesora en la ruta por culpa de otra predecesora.')
+Markdown('Justificación: las holguras libres de una ruta son huecos disjuntos entre el fin de una actividad y el inicio de la siguiente (o el fin del proyecto); su suma es como mucho el margen total de la ruta, y es menor si alguna actividad de la ruta empieza después del fin de su predecesora en la ruta por culpa de otra predecesora. La tabla lo comprueba en todas las rutas del proyecto.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -296,7 +305,7 @@ display(Markdown(pregunta_3))
 # «La holgura independiente de una actividad puede ser mayor que su holgura libre.» — **Falsa**.
 
 # %%
-Markdown(f'Justificación: H_indep ≤ H_libre ≤ H_total siempre. La libre es la parte de la total que no afecta a las sucesoras (H_libre = mín ES suc − EF ≤ LS − ES = H_total, porque mín ES suc ≤ mín LS suc = LF); la independiente, además, supone las predecesoras acabando lo más tarde posible, lo que sólo puede reducir el margen. En el proyecto: ' + ', '.join(f"{a}: {int(r.H_independiente)} ≤ {int(r.H_libre)} ≤ {int(r.H_total)}" for a, r in calendario.iterrows()) + '.')
+Markdown(f'Justificación: H_indep ≤ H_libre ≤ H_total siempre. La libre es la parte de la total que no afecta a las sucesoras (H_libre = mín ES suc − EF ≤ LF − EF = H_total, porque mín ES suc ≤ mín LS suc = LF; ES/EF: inicio/fin más temprano, LS/LF: inicio/fin más tardío); la independiente, además, supone las predecesoras acabando lo más tarde posible, lo que sólo puede reducir el margen. En el proyecto (H_indep ≤ H_libre ≤ H_total): ' + ', '.join(f"{a}: {int(r.H_independiente)} ≤ {int(r.H_libre)} ≤ {int(r.H_total)}" for a, r in calendario.iterrows()) + '.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -309,8 +318,14 @@ display(Markdown(pregunta_4))
 
 # %%
 ejemplo = calendario.index[(calendario['H_libre'] == 0) & (calendario['H_total'] > 0)].tolist()
-Markdown(f'Contraejemplo: {", ".join(ejemplo)} tiene(n) holgura libre 0 y holgura total {", ".join(str(int(calendario.loc[a, "H_total"])) for a in ejemplo)} > 0: '
-         'no es crítica, sólo ocurre que su sucesora empieza justo cuando ella termina (en el calendario de inicios tempranos).')
+a = ejemplo[0]
+_suc = sorted(s for s, ps in pred.items() if a in ps)
+_es = {s: int(calendario.loc[s, 'inicio_mas_temprano']) for s in _suc}
+_r = calendario.loc[a]
+Markdown(f'Contraejemplo: {a}. Su holgura libre es H_libre = mín(ES de sus sucesoras) − EF = mín(' + ', '.join(f'{s}: {v}' for s, v in _es.items())
+         + f') − {int(_r.fin_mas_temprano)} = 0, pero su holgura total es H_total = LS − ES = {int(_r.inicio_mas_tardio)} − {int(_r.inicio_mas_temprano)} = {int(_r.H_total)} > 0: '
+         f'no es crítica (ES/EF: inicio/fin más temprano; LS: inicio más tardío). Holgura libre 0 sólo significa que, en el calendario de inicios tempranos, una sucesora empieza justo cuando ella termina.'
+         + (f' Lo mismo ocurre con {lista_y(ejemplo[1:])}.' if len(ejemplo) > 1 else ''))
 
 # %% [markdown]
 # ## Apartado 5
@@ -322,7 +337,7 @@ display(Markdown(pregunta_5))
 # «La holgura total de una actividad nunca es menor que su holgura libre.» — **Verdadera**.
 
 # %%
-Markdown(f'Justificación: H_indep ≤ H_libre ≤ H_total siempre. La libre es la parte de la total que no afecta a las sucesoras (H_libre = mín ES suc − EF ≤ LS − ES = H_total, porque mín ES suc ≤ mín LS suc = LF); la independiente, además, supone las predecesoras acabando lo más tarde posible, lo que sólo puede reducir el margen. En el proyecto: ' + ', '.join(f"{a}: {int(r.H_independiente)} ≤ {int(r.H_libre)} ≤ {int(r.H_total)}" for a, r in calendario.iterrows()) + '.')
+Markdown(f'Justificación: H_indep ≤ H_libre ≤ H_total siempre. La libre es la parte de la total que no afecta a las sucesoras (H_libre = mín ES suc − EF ≤ LF − EF = H_total, porque mín ES suc ≤ mín LS suc = LF; ES/EF: inicio/fin más temprano, LS/LF: inicio/fin más tardío); la independiente, además, supone las predecesoras acabando lo más tarde posible, lo que sólo puede reducir el margen. En el proyecto (H_indep ≤ H_libre ≤ H_total): ' + ', '.join(f"{a}: {int(r.H_independiente)} ≤ {int(r.H_libre)} ≤ {int(r.H_total)}" for a, r in calendario.iterrows()) + '.')
 
 # %% [markdown]
 # ## Apartado 6
@@ -336,4 +351,4 @@ display(Markdown(pregunta_6))
 # %%
 a = calendario.index[calendario['H_total'] == 0][0]
 d2 = datos_proyecto['duration'].copy(); d2[a] += 1
-Markdown(f'Justificación: una actividad crítica está en una ruta de duración τ; alargarla x alarga esa ruta a τ + x, y ninguna ruta puede ser más corta que la más larga. Comprobación con {a}: {duracion} → {proyecto.duration(d2)}.')
+Markdown(f'Justificación: una actividad crítica está en una ruta de duración τ (la duración del proyecto); alargarla x semanas alarga esa ruta a τ + x, y la duración del proyecto es la de la ruta más larga. Comprobación con {a}: la duración pasa de {duracion} a {proyecto.duration(d2)} semanas.')

@@ -60,12 +60,12 @@ Variantes:
 - `PERT_01` [minimo-ficticias, nivel 1] — 8 actividades, 2 ficticias, 6 rutas
 - `PERT_02` [paralelas, nivel 2] — 9 actividades, 3 ficticias, 7 rutas
 - `PERT_03` [mas-ficticias, nivel 2] — 10 actividades, 3 ficticias, 5 rutas
-- `PERT_04` [compartir-nodos, nivel 2] — 9 actividades, 1 pareja(s) con mismas predecesoras y 3 con mismas sucesoras
+- `PERT_04` [compartir-nodos, nivel 2] — 9 actividades, 1 pareja con mismas predecesoras y 3 con mismas sucesoras
 - `PERT_05` [ficticias-sobrantes, nivel 3] — 9 actividades, 7 ficticias sin simplificar frente a 2
 - `PERT_06` [minimo-ficticias, nivel 1] — 8 actividades, 2 ficticias, 6 rutas
 - `PERT_07` [paralelas, nivel 2] — 9 actividades, 3 ficticias, 9 rutas
 - `PERT_08` [mas-ficticias, nivel 2] — 10 actividades, 3 ficticias, 9 rutas
-- `PERT_09` [compartir-nodos, nivel 2] — 9 actividades, 2 pareja(s) con mismas predecesoras y 4 con mismas sucesoras
+- `PERT_09` [compartir-nodos, nivel 2] — 9 actividades, 2 parejas con mismas predecesoras y 4 con mismas sucesoras
 - `PERT_10` [ficticias-sobrantes, nivel 3] — 8 actividades, 8 ficticias sin simplificar frente a 3
 
 ## 03_roy — Grafo Roy
@@ -143,23 +143,23 @@ Variantes:
   - `diagnostico` (nivel 3): calendario entregado con dos errores: localizarlos por las relaciones entre fechas y holguras
   - `mini-a-mano` (nivel 1): cinco o seis actividades sin ficticias: rutas, pasos adelante y atrás y holguras con los números sustituidos
 
-- `Holguras_01` [tres-holguras, nivel 1] — 9 actividades, 1 ruta(s) crítica(s)
-- `Holguras_02` [tres-holguras-b, nivel 2] — 10 actividades, 1 ruta(s) crítica(s)
-- `Holguras_03` [varias-criticas, nivel 2] — 10 actividades, 2 ruta(s) crítica(s)
+- `Holguras_01` [tres-holguras, nivel 1] — 9 actividades, 1 ruta crítica
+- `Holguras_02` [tres-holguras-b, nivel 2] — 10 actividades, 1 ruta crítica
+- `Holguras_03` [varias-criticas, nivel 2] — 10 actividades, 2 rutas críticas
 - `Holguras_04` [holgura-compartida, nivel 2] — 10 actividades; D y G comparten 13 semanas de holgura
 - `Holguras_05` [vigilancia, nivel 2] — 9 actividades; ordenación por vigilancia y actividades sin margen
 - `Holguras_06` [diagnostico, nivel 3] — 8 actividades; calendario con errores en B y C
 - `Holguras_07` [mini-a-mano, nivel 1] — 5 actividades, 2 rutas, sin ficticias; cálculo completo a mano
-- `Holguras_08` [tres-holguras, nivel 1] — 10 actividades, 1 ruta(s) crítica(s)
-- `Holguras_09` [tres-holguras-b, nivel 2] — 10 actividades, 1 ruta(s) crítica(s)
-- `Holguras_10` [varias-criticas, nivel 2] — 10 actividades, 2 ruta(s) crítica(s)
-- `Holguras_11` [holgura-compartida, nivel 2] — 9 actividades; C y D comparten 1 semanas de holgura
+- `Holguras_08` [tres-holguras, nivel 1] — 10 actividades, 1 ruta crítica
+- `Holguras_09` [tres-holguras-b, nivel 2] — 10 actividades, 1 ruta crítica
+- `Holguras_10` [varias-criticas, nivel 2] — 10 actividades, 2 rutas críticas
+- `Holguras_11` [holgura-compartida, nivel 2] — 9 actividades; C y D comparten 1 semana de holgura
 - `Holguras_12` [vigilancia, nivel 2] — 10 actividades; ordenación por vigilancia y actividades sin margen
 - `Holguras_13` [diagnostico, nivel 3] — 9 actividades; calendario con errores en D y C
 - `Holguras_14` [mini-a-mano, nivel 1] — 5 actividades, 2 rutas, sin ficticias; cálculo completo a mano
-- `Holguras_15` [tres-holguras, nivel 1] — 9 actividades, 1 ruta(s) crítica(s)
-- `Holguras_16` [tres-holguras-b, nivel 2] — 9 actividades, 1 ruta(s) crítica(s)
-- `Holguras_17` [varias-criticas, nivel 2] — 10 actividades, 2 ruta(s) crítica(s)
+- `Holguras_15` [tres-holguras, nivel 1] — 9 actividades, 1 ruta crítica
+- `Holguras_16` [tres-holguras-b, nivel 2] — 9 actividades, 1 ruta crítica
+- `Holguras_17` [varias-criticas, nivel 2] — 10 actividades, 2 rutas críticas
 - `Holguras_18` [holgura-compartida, nivel 2] — 9 actividades; B y D comparten 3 semanas de holgura
 - `Holguras_19` [vigilancia, nivel 2] — 9 actividades; ordenación por vigilancia y actividades sin margen
 - `Holguras_20` [mini-a-mano, nivel 1] — 5 actividades, 2 rutas, sin ficticias; cálculo completo a mano
@@ -226,26 +226,26 @@ Variantes:
   - `hito` (nivel 2): probabilidad de alcanzar un hito intermedio: cadenas hasta la actividad, media y varianza del hito frente a las del proyecto
   - `ser-critica` (nivel 3): dos cadenas paralelas: probabilidad de que la no crítica resulte la más larga y probabilidad exacta del plazo frente a PERT
 
-- `Probabilidad_01` [normal, nivel 1] — 9 actividades, 1 ruta(s) crítica(s), σ = 1.18
-- `Probabilidad_02` [dos-rutas-criticas, nivel 2] — 9 actividades, 2 ruta(s) crítica(s), σ = 1.25
-- `Probabilidad_03` [dos-rutas-criticas-b, nivel 2] — 10 actividades, 2 ruta(s) crítica(s), σ = 1.57
-- `Probabilidad_04` [casi-critica-variable, nivel 3] — 9 actividades; segunda ruta a 1 semana(s) de la crítica y mucho más variable
+- `Probabilidad_01` [normal, nivel 1] — 9 actividades, 1 ruta crítica, σ = 1.18
+- `Probabilidad_02` [dos-rutas-criticas, nivel 2] — 9 actividades, 2 rutas críticas, σ = 1.25
+- `Probabilidad_03` [dos-rutas-criticas-b, nivel 2] — 10 actividades, 2 rutas críticas, σ = 1.57
+- `Probabilidad_04` [casi-critica-variable, nivel 3] — 9 actividades; segunda ruta a 1 semana de la crítica y mucho más variable
 - `Probabilidad_05` [varianza-maxima, nivel 3] — 10 actividades; σ máxima admisible de I para P ≥ 90 % en 37 semanas
 - `Probabilidad_06` [diagnostico, nivel 2] — 9 actividades; resolución con σ sumadas y con la ruta equivocada
 - `Probabilidad_07` [hito, nivel 2] — 9 actividades; hito al final de C (fecha media 11, comprometida 12)
 - `Probabilidad_08` [ser-critica, nivel 3] — dos cadenas paralelas de 2 y 2 actividades; P(ruta no crítica resulta la más larga)
-- `Probabilidad_09` [normal, nivel 1] — 9 actividades, 1 ruta(s) crítica(s), σ = 0.57
-- `Probabilidad_10` [dos-rutas-criticas, nivel 2] — 9 actividades, 2 ruta(s) crítica(s), σ = 1.47
-- `Probabilidad_11` [dos-rutas-criticas-b, nivel 2] — 10 actividades, 2 ruta(s) crítica(s), σ = 2.21
-- `Probabilidad_12` [casi-critica-variable, nivel 3] — 9 actividades; segunda ruta a 1 semana(s) de la crítica y mucho más variable
+- `Probabilidad_09` [normal, nivel 1] — 9 actividades, 1 ruta crítica, σ = 0.57
+- `Probabilidad_10` [dos-rutas-criticas, nivel 2] — 9 actividades, 2 rutas críticas, σ = 1.47
+- `Probabilidad_11` [dos-rutas-criticas-b, nivel 2] — 10 actividades, 2 rutas críticas, σ = 2.21
+- `Probabilidad_12` [casi-critica-variable, nivel 3] — 9 actividades; segunda ruta a 1 semana de la crítica y mucho más variable
 - `Probabilidad_13` [varianza-maxima, nivel 3] — 10 actividades; σ máxima admisible de E para P ≥ 90 % en 28 semanas
 - `Probabilidad_14` [diagnostico, nivel 2] — 9 actividades; resolución con σ sumadas y con la ruta equivocada
 - `Probabilidad_15` [hito, nivel 2] — 9 actividades; hito al final de E (fecha media 14, comprometida 15)
 - `Probabilidad_16` [ser-critica, nivel 3] — dos cadenas paralelas de 3 y 2 actividades; P(ruta no crítica resulta la más larga)
-- `Probabilidad_17` [normal, nivel 1] — 9 actividades, 1 ruta(s) crítica(s), σ = 1.27
-- `Probabilidad_18` [dos-rutas-criticas, nivel 2] — 10 actividades, 2 ruta(s) crítica(s), σ = 1.04
-- `Probabilidad_19` [dos-rutas-criticas-b, nivel 2] — 9 actividades, 2 ruta(s) crítica(s), σ = 1.10
-- `Probabilidad_20` [casi-critica-variable, nivel 3] — 10 actividades; segunda ruta a 1 semana(s) de la crítica y mucho más variable
+- `Probabilidad_17` [normal, nivel 1] — 9 actividades, 1 ruta crítica, σ = 1.27
+- `Probabilidad_18` [dos-rutas-criticas, nivel 2] — 10 actividades, 2 rutas críticas, σ = 1.04
+- `Probabilidad_19` [dos-rutas-criticas-b, nivel 2] — 9 actividades, 2 rutas críticas, σ = 1.10
+- `Probabilidad_20` [casi-critica-variable, nivel 3] — 10 actividades; segunda ruta a 1 semana de la crítica y mucho más variable
 
 ## 09_montecarlo — Método de Monte Carlo
 
@@ -533,12 +533,12 @@ Variantes:
   - `recursos-van` (nivel 3): límite de operarios y VAN: retraso de ingresos, coste de ampliar la cuadrilla y flujo mínimo con y sin límite
   - `crashing-van` (nivel 3): duración óptima por VAN: reducir mes a mes con Ackoff, coste frente a ingresos adelantados y umbral de flujo
 
-- `Viabilidad_01` [caso-base, nivel 1] — una línea de envasado automatizada: I0 = 760 k€, 7 años, k = 12%; VAN 394, TIR 23.9%
+- `Viabilidad_01` [caso-base, nivel 1] — una línea de envasado automatizada: I0 = 760 k€, 7 años, k = 12%; VAN 392, TIR 23.8%
 - `Viabilidad_02` [vinculo-proyecto, nivel 2] — 8 actividades, 18 meses de inversión (I0 = 1150 k€), 50 k€/mes durante 48 meses, k = 10%
 - `Viabilidad_03` [alternativas, nivel 2] — A y B (6 años) con conflicto VAN/TIR (Fisher 13.7%), C de 4 años; k = 6%
 - `Viabilidad_04` [sensibilidad, nivel 2] — una nave logística con reparto de última milla: umbrales de precio, volumen y coste variable; escenarios; inflación 3%
-- `Viabilidad_05` [financiacion, nivel 3] — una flota de vehículos eléctricos de alquiler: préstamo del 70% al 6% a 5 años; TIR proyecto 21.6%
-- `Viabilidad_06` [caso-base, nivel 1] — una flota de vehículos eléctricos de alquiler: I0 = 1390 k€, 5 años, k = 8%; VAN 227, TIR 13.1%
+- `Viabilidad_05` [financiacion, nivel 3] — una flota de vehículos eléctricos de alquiler: préstamo del 70% al 6% a 5 años; TIR proyecto 21.5%
+- `Viabilidad_06` [caso-base, nivel 1] — una flota de vehículos eléctricos de alquiler: I0 = 1390 k€, 5 años, k = 8%; VAN 226, TIR 13.1%
 - `Viabilidad_07` [vinculo-proyecto, nivel 2] — 9 actividades, 15 meses de inversión (I0 = 1250 k€), 60 k€/mes durante 48 meses, k = 12%
 - `Viabilidad_08` [alternativas, nivel 2] — A y B (6 años) con conflicto VAN/TIR (Fisher 10.3%), C de 3 años; k = 8%
 - `Viabilidad_09` [sensibilidad, nivel 2] — una línea de envasado automatizada: umbrales de precio, volumen y coste variable; escenarios; inflación 3%
@@ -549,7 +549,7 @@ Variantes:
 - `Viabilidad_14` [crashing-van, nivel 3] — ingresos de 35 k€/mes durante 36 meses; reducción mes a mes con Ackoff
 - `Viabilidad_15` [recursos-van, nivel 3] — límite de 3 operarios, ingresos de 35 k€/mes durante 60 meses
 - `Viabilidad_16` [crashing-van, nivel 3] — ingresos de 35 k€/mes durante 48 meses; reducción mes a mes con Ackoff
-- `Viabilidad_17` [caso-base, nivel 1] — una línea de envasado automatizada: I0 = 590 k€, 6 años, k = 12%; VAN 236, TIR 22.1%
+- `Viabilidad_17` [caso-base, nivel 1] — una línea de envasado automatizada: I0 = 590 k€, 6 años, k = 12%; VAN 233, TIR 21.9%
 - `Viabilidad_18` [vinculo-proyecto, nivel 2] — 8 actividades, 18 meses de inversión (I0 = 1050 k€), 35 k€/mes durante 60 meses, k = 12%
 - `Viabilidad_19` [alternativas, nivel 2] — A y B (5 años) con conflicto VAN/TIR (Fisher 10.7%), C de 4 años; k = 6%
 - `Viabilidad_20` [sensibilidad, nivel 2] — una aplicación de gestión por suscripción: umbrales de precio, volumen y coste variable; escenarios; inflación 4%
@@ -572,7 +572,7 @@ Variantes:
 - `Caso_02` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 1 operario en 2–4 (2 sem. de retraso) frente a 3–5
 - `Caso_03` [comite-valor-ganado, nivel 3] — comité y valor ganado: D declarada al 75 % frente al 30 % real; SPI 1.00 → 0.88
 - `Caso_04` [oferta-comercial, nivel 2] — oferta comercial: media 19, P(≤19) = 0.28 por Monte Carlo, plazo 90 % 22.8; óptimo 21
-- `Caso_05` [comite-inversion, nivel 3] — comité de inversión: una flota de vehículos eléctricos de alquiler; VAN 203 k€ (14%), precio −20% con prob. 25%
+- `Caso_05` [comite-inversion, nivel 3] — comité de inversión: una flota de vehículos eléctricos de alquiler; VAN 201 k€ (14%), precio −20% con prob. 25%
 - `Caso_06` [reforma-laboratorio, nivel 3] — reforma del laboratorio: 3 semanas de retraso, alquiler 4 k€/sem, bolsa 4 k€
 - `Caso_07` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 2 operarios en 2–4 (2 sem. de retraso) frente a 3–5
 - `Caso_08` [comite-valor-ganado, nivel 3] — comité y valor ganado: C declarada al 67 % frente al 40 % real; SPI 1.00 → 0.82
@@ -584,7 +584,7 @@ Variantes:
 - `Caso_14` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 1 operario en 2–3 (1 sem. de retraso) frente a 3–4
 - `Caso_15` [comite-valor-ganado, nivel 3] — comité y valor ganado: C declarada al 67 % frente al 27 % real; SPI 1.00 → 0.88
 - `Caso_16` [oferta-comercial, nivel 2] — oferta comercial: media 24, P(≤24) = 0.29 por Monte Carlo, plazo 90 % 26.1; óptimo 25
-- `Caso_17` [comite-inversion, nivel 3] — comité de inversión: una nave logística con reparto de última milla; VAN 340 k€ (33%), precio −12% con prob. 40%
+- `Caso_17` [comite-inversion, nivel 3] — comité de inversión: una nave logística con reparto de última milla; VAN 339 k€ (33%), precio −12% con prob. 40%
 - `Caso_18` [contingencia-planta, nivel 3] — límite de 3 operarios, plazo mes 21, penalización 6 k€/mes y VAN
 - `Caso_19` [reforma-laboratorio, nivel 3] — reforma del laboratorio: 3 semanas de retraso, alquiler 4 k€/sem, bolsa 6 k€
 - `Caso_20` [recursos-compartidos, nivel 2] — recursos compartidos: préstamo de 2 operarios en 7–8 (2 sem. de retraso) frente a 10–11
@@ -672,44 +672,44 @@ Variantes:
 
 - `Sostenibilidad_01` [compresion-con-carbono, nivel 3] — adelantar 3 semanas: 11 k€ y 28 t frente a 14 k€ y 12 t con el carbono a 300 €/t
 - `Sostenibilidad_02` [coste-ciclo-de-vida, nivel 2] — A 150 k€ frente a B 240 k€ de inversión; ciclo de vida 481 frente a 460 k€ con el carbono a 250 €/t (equilibrio 59 €/t)
-- `Sostenibilidad_03` [residuos-de-obra, nivel 2] — demolición mecánica con contenedor único: 1 semana(s) y 10 k€ frente a 12.4 k€ más de gestión y el 93% valorizable a vertedero; art. 30 Ley 7/2022
+- `Sostenibilidad_03` [residuos-de-obra, nivel 2] — demolición mecánica con contenedor único: 1 semana y 10 k€ frente a 12.4 k€ más de gestión y el 93% valorizable a vertedero; art. 30 Ley 7/2022
 - `Sostenibilidad_04` [fraccionamiento-eia, nivel 3] — un parque eólico de 8 aerogeneradores de 5.0 MW (40 MW) fraccionado: P(hito) 0.94 con simplificada frente a 0.30 con la ordinaria que corresponde; art. 7.1.a Ley 21/2013
 - `Sostenibilidad_05` [huella-del-proyecto, nivel 3] — AE 189 t < PE 201 t a la semana 10, pero EPI 0.75 y previsión 480 t sobre 360; alcances de las fuentes
 - `Sostenibilidad_06` [neutro-en-carbono, nivel 2] — 1420 t compensadas a 9 €/t (13 k€) frente a reducir el 40%; «neutro» prohibido por la Directiva 2024/825
 - `Sostenibilidad_07` [ola-de-calor, nivel 3] — calor en las semanas 5–14 (40% por semana): duración esperada 22.3 frente a 21, P(T ≤ 22) de 0.85 a 0.40
 - `Sostenibilidad_08` [subcontratacion-en-cadena, nivel 2] — pico 12 → 9 nivelado frente a 7 de plantilla; cadena de 4 escalones 11 k€ frente a ETT 18 k€; art. 5 Ley 32/2006
 - `Sostenibilidad_09` [energia-en-obra, nivel 2] — pico 65 kW → 45 kW nivelado: grupo toda la obra 26 k€ y 19 t frente a grupo + acometida 18 k€ y 9 t
-- `Sostenibilidad_10` [acero-importado, nivel 3] — 210 t de acero: importado 241 k€ frente a europeo 247 k€, pero 299 k€ con CBAM y 2 semana(s) de retraso; alcance 3
+- `Sostenibilidad_10` [acero-importado, nivel 3] — 210 t de acero: importado 241 k€ frente a europeo 247 k€, pero 299 k€ con CBAM y 2 semanas de retraso; alcance 3
 - `Sostenibilidad_11` [desmantelamiento, nivel 2] — VAN 91 k€ sin el fin de vida frente a -40 k€ con desmantelamiento (530 k€ en el año 20); provisión según el PGC
 - `Sostenibilidad_12` [compresion-con-carbono, nivel 3] — adelantar 3 semanas: 7 k€ y 36 t frente a 9 k€ y 12 t con el carbono a 150 €/t
 - `Sostenibilidad_13` [coste-ciclo-de-vida, nivel 2] — A 90 k€ frente a B 130 k€ de inversión; ciclo de vida 322 frente a 283 k€ con el carbono a 150 €/t (B gana ya sin el carbono)
-- `Sostenibilidad_14` [residuos-de-obra, nivel 2] — demolición mecánica con contenedor único: 2 semana(s) y 30 k€ frente a 11.7 k€ más de gestión y el 93% valorizable a vertedero; art. 30 Ley 7/2022
+- `Sostenibilidad_14` [residuos-de-obra, nivel 2] — demolición mecánica con contenedor único: 2 semanas y 30 k€ frente a 11.7 k€ más de gestión y el 93% valorizable a vertedero; art. 30 Ley 7/2022
 - `Sostenibilidad_15` [fraccionamiento-eia, nivel 3] — un parque eólico de 12 aerogeneradores de 5.0 MW (60 MW) fraccionado: P(hito) 0.97 con simplificada frente a 0.17 con la ordinaria que corresponde; art. 7.1.a Ley 21/2013
 - `Sostenibilidad_16` [huella-del-proyecto, nivel 3] — AE 213 t < PE 227 t a la semana 11, pero EPI 0.80 y previsión 585 t sobre 470; alcances de las fuentes
 - `Sostenibilidad_17` [neutro-en-carbono, nivel 2] — 1200 t compensadas a 6 €/t (7 k€) frente a reducir el 30%; «neutro» prohibido por la Directiva 2024/825
 - `Sostenibilidad_18` [ola-de-calor, nivel 3] — calor en las semanas 5–14 (50% por semana): duración esperada 23.0 frente a 21, P(T ≤ 23) de 0.92 a 0.49
 - `Sostenibilidad_19` [subcontratacion-en-cadena, nivel 2] — pico 10 → 8 nivelado frente a 5 de plantilla; cadena de 4 escalones 22 k€ frente a ETT 36 k€; art. 5 Ley 32/2006
 - `Sostenibilidad_20` [energia-en-obra, nivel 2] — pico 55 kW → 45 kW nivelado: grupo toda la obra 20 k€ y 19 t frente a grupo + acometida 14 k€ y 7 t
-- `Sostenibilidad_21` [acero-importado, nivel 3] — 170 t de acero: importado 171 k€ frente a europeo 193 k€, pero 214 k€ con CBAM y 1 semana(s) de retraso; alcance 3
+- `Sostenibilidad_21` [acero-importado, nivel 3] — 170 t de acero: importado 171 k€ frente a europeo 193 k€, pero 214 k€ con CBAM y 1 semana de retraso; alcance 3
 - `Sostenibilidad_22` [desmantelamiento, nivel 2] — VAN 256 k€ sin el fin de vida frente a 192 k€ con desmantelamiento (320 k€ en el año 20); provisión según el PGC
 - `Sostenibilidad_23` [ventana-ambiental, nivel 2] — ventana 1 de abril–30 de junio (semanas 13–26): 2 actividades esperan; 26 → 33 semanas (+7); adelantar 6 o retrasar 26 el inicio
-- `Sostenibilidad_24` [tierras-sobrantes, nivel 2] — 34,000 m³ de desmonte y 34,000 m³ de terraplén: vertedero + préstamo 846 k€ frente a reutilizar 77 k€ con 3 semana(s) de retraso; art. 3.2.b Ley 7/2022
+- `Sostenibilidad_24` [tierras-sobrantes, nivel 2] — 34,000 m³ de desmonte y 34,000 m³ de terraplén: vertedero + préstamo 846 k€ frente a reutilizar 77 k€ con 3 semanas de retraso; art. 3.2.b Ley 7/2022
 - `Sostenibilidad_25` [clausula-social, nivel 3] — cláusula del 15 %: 14 de 90 operario-semanas; capacidad 13 con inicios más tempranos y 16 tras nivelar (máx. 1/semana); art. 202 LCSP
-- `Sostenibilidad_26` [hormigon-bajo-carbono, nivel 3] — 1,690 m³: B emite 152 t menos y retrasa 3 semana(s); recuperarlas cuesta 3 k€; al precio sombra de 150 €/t gana B comprimido
+- `Sostenibilidad_26` [hormigon-bajo-carbono, nivel 3] — 1,690 m³: B emite 152 t menos y retrasa 3 semanas; recuperarlas cuesta 3 k€; al precio sombra de 150 €/t gana B comprimido
 - `Sostenibilidad_27` [turno-de-noche, nivel 2] — adelantar 3 semanas: 9 k€ con noche en todo (E ruidosas) frente a 10 k€ legal; esperado con denuncia 18 k€
 - `Sostenibilidad_28` [prefabricacion, nivel 2] — prefabricar acorta 3 semanas (21 → 18) y evita 57 t de residuo; 230 t a 250 km (6 t CO₂, alcance 3); total al precio sombra 217 frente a 223 k€
 - `Sostenibilidad_29` [ventana-ambiental, nivel 2] — ventana 1 de marzo–31 de mayo (semanas 9–22): 2 actividades esperan; 19 → 25 semanas (+6); adelantar 5 o retrasar 22 el inicio
 - `Sostenibilidad_30` [tierras-sobrantes, nivel 2] — 31,000 m³ de desmonte y 37,000 m³ de terraplén: vertedero + préstamo 864 k€ frente a reutilizar 130 k€ sin retraso; art. 3.2.b Ley 7/2022
 - `Sostenibilidad_31` [clausula-social, nivel 3] — cláusula del 20 %: 16 de 78 operario-semanas; capacidad 14 con inicios más tempranos y 20 tras nivelar (máx. 2/semana); art. 202 LCSP
-- `Sostenibilidad_32` [hormigon-bajo-carbono, nivel 3] — 1,350 m³: B emite 149 t menos y retrasa 2 semana(s); recuperarlas cuesta 6 k€; al precio sombra de 150 €/t gana B comprimido
+- `Sostenibilidad_32` [hormigon-bajo-carbono, nivel 3] — 1,350 m³: B emite 149 t menos y retrasa 2 semanas; recuperarlas cuesta 6 k€; al precio sombra de 150 €/t gana B comprimido
 - `Sostenibilidad_33` [turno-de-noche, nivel 2] — adelantar 3 semanas: 3 k€ con noche en todo (E ruidosas) frente a 6 k€ legal; esperado con denuncia 29 k€
 - `Sostenibilidad_34` [prefabricacion, nivel 2] — prefabricar acorta 2 semanas (15 → 13) y evita 49 t de residuo; 280 t a 440 km (12 t CO₂, alcance 3); total al precio sombra 154 frente a 127 k€
 - `Sostenibilidad_35` [restriccion-de-agua, nivel 2] — cuota de 100 m³/semana: pico 130 → 100 m³ nivelado, exceso 120 → 0 m³; cabe tras nivelar; hidrante: 23 k€ esperados
-- `Sostenibilidad_36` [pista-de-obra, nivel 3] — pista corta por la ZEC: 2 semana(s) y 27 k€ de semanas y camiones frente a 20 k€ de restauración (neto 7 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 17 a 33; art. 46.5 Ley 42/2007
-- `Sostenibilidad_37` [amianto, nivel 2] — 1900 m² de fibrocemento antes de D: plan de trabajo de 7 semanas y retirada de 1; 22 → 24 semanas (+2), o +1 presentando el plan 1 semana(s) antes; arts. 11, 12 y 17 RD 396/2006
+- `Sostenibilidad_36` [pista-de-obra, nivel 3] — pista corta por la ZEC: 2 semanas y 27 k€ de semanas y camiones frente a 20 k€ de restauración (neto 7 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 17 a 33; art. 46.5 Ley 42/2007
+- `Sostenibilidad_37` [amianto, nivel 2] — 1900 m² de fibrocemento antes de D: plan de trabajo de 7 semanas y retirada de 1; 22 → 24 semanas (+2), o +1 presentando el plan 1 semana antes; arts. 11, 12 y 17 RD 396/2006
 - `Sostenibilidad_38` [restriccion-de-agua, nivel 2] — cuota de 50 m³/semana: pico 90 → 50 m³ nivelado, exceso 80 → 0 m³; cabe tras nivelar; hidrante: 21 k€ esperados
-- `Sostenibilidad_39` [pista-de-obra, nivel 3] — pista corta por la ZEC: 3 semana(s) y 38 k€ de semanas y camiones frente a 15 k€ de restauración (neto 23 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 23 a 38; art. 46.5 Ley 42/2007
-- `Sostenibilidad_40` [amianto, nivel 2] — 2100 m² de fibrocemento antes de F: plan de trabajo de 7 semanas y retirada de 2; 20 → 24 semanas (+4), o +2 presentando el plan 2 semana(s) antes; arts. 11, 12 y 17 RD 396/2006
+- `Sostenibilidad_39` [pista-de-obra, nivel 3] — pista corta por la ZEC: 3 semanas y 38 k€ de semanas y camiones frente a 15 k€ de restauración (neto 23 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 23 a 38; art. 46.5 Ley 42/2007
+- `Sostenibilidad_40` [amianto, nivel 2] — 2100 m² de fibrocemento antes de F: plan de trabajo de 7 semanas y retirada de 2; 20 → 24 semanas (+4), o +2 presentando el plan 2 semanas antes; arts. 11, 12 y 17 RD 396/2006
 
 ## 21_cadena_critica — Método de la cadena crítica
 
@@ -736,7 +736,7 @@ Variantes:
 - `CadenaCritica_02` [colchon-proyecto, nivel 1] — 9 actividades; cadena de 5 actividades; compromiso 35 frente a 42 días
 - `CadenaCritica_03` [dimensionado-colchon, nivel 2] — cadena de 8 actividades; colchón 15 (cortar y pegar) frente a 12 (raíz)
 - `CadenaCritica_04` [colchones-alimentacion, nivel 2] — 2 colchones de alimentación; compromiso 31 días
-- `CadenaCritica_05` [cadena-con-recursos, nivel 2] — 1 equipo; la cadena pasa por 1 enlace(s) de recurso; 37 frente a 36 días sin recursos
+- `CadenaCritica_05` [cadena-con-recursos, nivel 2] — 1 equipo; la cadena pasa por 1 enlace de recurso; 37 frente a 36 días sin recursos
 - `CadenaCritica_06` [plan-completo, nivel 3] — 1 equipo; colchones por raíz; compromiso 33 frente a 40 días
 - `CadenaCritica_07` [seguimiento-fiebre, nivel 2] — cadena de 6 actividades, CP de 11 días; informes en zona verde → verde → amarilla
 - `CadenaCritica_08` [monte-carlo-colchon, nivel 3] — compromiso 46 frente a 52 días; Monte Carlo de 20000 réplicas
@@ -745,7 +745,7 @@ Variantes:
 - `CadenaCritica_11` [colchon-proyecto, nivel 1] — 9 actividades; cadena de 5 actividades; compromiso 35 frente a 42 días
 - `CadenaCritica_12` [dimensionado-colchon, nivel 2] — cadena de 7 actividades; colchón 11 (cortar y pegar) frente a 9 (raíz)
 - `CadenaCritica_13` [colchones-alimentacion, nivel 2] — 2 colchones de alimentación; compromiso 51 días
-- `CadenaCritica_14` [cadena-con-recursos, nivel 2] — 2 equipos; la cadena pasa por 2 enlace(s) de recurso; 35 frente a 29 días sin recursos
+- `CadenaCritica_14` [cadena-con-recursos, nivel 2] — 2 equipos; la cadena pasa por 2 enlaces de recurso; 35 frente a 29 días sin recursos
 - `CadenaCritica_15` [plan-completo, nivel 3] — 1 equipo; colchones por raíz; compromiso 38 frente a 45 días
 - `CadenaCritica_16` [seguimiento-fiebre, nivel 2] — cadena de 5 actividades, CP de 8 días; informes en zona verde → amarilla → amarilla
 - `CadenaCritica_17` [monte-carlo-colchon, nivel 3] — compromiso 38 frente a 45 días; Monte Carlo de 20000 réplicas

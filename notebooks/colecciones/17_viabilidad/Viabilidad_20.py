@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -259,6 +263,54 @@ def anualidad_equivalente(VAN, k, n):
     '''Anualidad constante durante n años cuyo valor actual es VAN.'''
     return float(VAN * k / (1 - (1 + k) ** -n))
 
+_SUP = str.maketrans('0123456789-', '⁰¹²³⁴⁵⁶⁷⁸⁹⁻')
+def _num(x, d=1):
+    return f'{round(float(x), d) + 0.0:.{d}f}'.replace('-', '−')
+def _con_signo(x, d=1):
+    return f' − {_num(-x, d)}' if x < 0 else f' + {_num(x, d)}'
+
+def explica_van(flujos, k, unidad='k€', nombre='VAN'):
+    '''VAN término a término: Σ flujo_t / (1 + k)^t con los números sustituidos.'''
+    base = f'{1 + k:.6g}'
+    terminos = _num(flujos[0]) + ''.join(f' {"−" if f < 0 else "+"} {_num(abs(f))}/{base}{str(t).translate(_SUP)}' for t, f in enumerate(flujos) if t > 0)
+    actuales = _num(flujos[0]) + ''.join(_con_signo(f / (1 + k) ** t) for t, f in enumerate(flujos) if t > 0)
+    return f'{nombre} = Σ flujo_t/(1 + k)^t = {terminos} = {actuales} = **{_num(van(flujos, k))} {unidad}**'
+
+def explica_tir(flujos, unidad='k€'):
+    '''Cómo se obtiene la TIR: horquilla de dos tasas enteras con VAN de signo contrario, interpolación y comprobación.'''
+    r = tir(flujos)
+    a = np.floor(r * 100) / 100; b = a + 0.01
+    va, vb = van(flujos, a), van(flujos, b)
+    aprox = a + 0.01 * va / (va - vb)
+    return (f'La TIR es la tasa que anula el VAN. Probando tasas: VAN({a:.0%}) = {_num(va)} {unidad} y VAN({b:.0%}) = {_num(vb)} {unidad} tienen signo distinto, '
+            f'así que la TIR está entre {a:.0%} y {b:.0%}; interpolando linealmente, TIR ≈ {a:.0%} + 1 % × {_num(va)}/({_num(va)} − ({_num(vb)})) = {aprox:.2%}. '
+            f'Afinando (bisección, o =TIR(rango de flujos) en la hoja de cálculo): **TIR = {r:.2%}**. Comprobación: VAN({r:.2%}) = {abs(van(flujos, r)):.4f} ≈ 0.')
+
+def explica_payback(flujos, k=None, unidad='k€'):
+    '''Año en que el acumulado (simple o descontado) se hace positivo e interpolación lineal dentro de ese año.'''
+    acum, nombre = 0.0, 'acumulado' + ('' if k is None else ' descontado')
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return (f'el {nombre} pasa de {_num(acum)} (año {t - 1}) a {_num(acum + v)} (año {t}); dentro del año {t} se recuperan los {_num(-acum)} {unidad} '
+                    f'que faltaban con un flujo{"" if k is None else " descontado"} de {_num(v)}: payback = {t - 1} + {_num(-acum)}/{_num(v)} = **{t - 1 + (-acum) / v:.2f} años**')
+        acum += v
+    return f'el {nombre} no llega a ser positivo: la inversión no se recupera'
+
+def explica_van_mensual(pagos, F, N, km, unidad='k€'):
+    '''VAN mensual = VA de los ingresos (renta de N meses desde el mes T + 1) − VA de los desembolsos de los meses 1…T.'''
+    pagos = [float(x) for x in pagos]; T = len(pagos); base = f'{1 + km:.5f}'
+    va_des = sum(x / (1 + km) ** m for m, x in enumerate(pagos, 1))
+    a_N = (1 - (1 + km) ** -N) / km
+    va_ing = F * a_N * (1 + km) ** -T
+    t_des = ' + '.join(f'{_num(x)}/{base}{str(m).translate(_SUP)}' for m, x in list(enumerate(pagos, 1))[:3])
+    if T > 3:
+        t_des += f' + … + {_num(pagos[-1])}/{base}{str(T).translate(_SUP)}'
+    return (f'- VA de los desembolsos = Σ desembolso_m/(1 + k_m)^m = {t_des} = **{_num(va_des)} {unidad}**.\n'
+            f'- VA de los ingresos: renta de N = {N} meses de {_num(F)} {unidad} que empieza en el mes T + 1 = {T + 1}: '
+            f'F · [1 − (1 + k_m)^−N]/k_m · (1 + k_m)^−T = {_num(F)} × [1 − {base}^−{N}]/{km:.6f} × {base}^−{T} = {_num(F)} × {a_N:.3f} × {(1 + km) ** -T:.4f} = **{_num(va_ing)} {unidad}**.\n'
+            f'- VAN = {_num(va_ing)} − {_num(va_des)} = **{_num(va_ing - va_des)} {unidad}**.')
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -285,8 +337,8 @@ amortizacion = pd.Series([0] + [(I0 - VR) / n] * n, index=anos)
 BAI = EBITDA - amortizacion
 impuesto = BAI.clip(lower=0) * t_imp; impuesto[0] = 0
 BDI = BAI - impuesto
-circulante = pd.Series([w * ventas[1]] + [w * ventas[t] for t in range(1, n + 1)], index=anos)   # el del año 1 se aporta en t = 0
-variacion_circulante = circulante.diff().fillna(circulante[0]); variacion_circulante[n] -= circulante[n]   # se recupera al final
+circulante = pd.Series([w * ventas[t + 1] for t in range(n)] + [0], index=anos)   # saldo en el momento t: el que necesitan las ventas del año t + 1
+variacion_circulante = circulante.diff().fillna(circulante[0])   # aportaciones al principio de cada año; en t = n (saldo 0) se recupera todo
 inversion = pd.Series([I0] + [0] * n, index=anos)
 valor_residual = pd.Series([0] * n + [VR], index=anos)
 FCL = BDI + amortizacion - variacion_circulante - inversion + valor_residual
@@ -299,6 +351,21 @@ flujos = FCL.tolist()
 tabla.round(1).T
 
 # %%
+def _fcl_txt(t):
+    return (f'FCL_{t} = BDI + amortización − Δ circulante − inversión + valor residual = {_num(BDI[t])}{_con_signo(amortizacion[t])}'
+            f'{_con_signo(-variacion_circulante[t])}{_con_signo(-inversion[t])}{_con_signo(valor_residual[t])} = **{_num(FCL[t])}**')
+Markdown('Siglas: EBITDA, resultado antes de intereses, impuestos y amortizaciones; BAI, beneficio antes de impuestos; BDI, beneficio después de impuestos; '
+         'FCL, flujo de caja libre (lo que el proyecto deja disponible cada año, en k€). Cálculo detallado del año 1 y de los años 0 y n:\n\n'
+         f'- Ventas_1 = unidades × precio = {_num(unidades[1])} × {precio:g} = {_num(ventas[1])}; costes variables = {_num(unidades[1])} × {cv:g} = {_num(costes_variables[1])}; '
+         f'EBITDA_1 = {_num(ventas[1])} − {_num(costes_variables[1])} − {_num(CF)} = {_num(EBITDA[1])}.\n'
+         f'- Amortización anual = (I0 − VR)/n = ({_num(I0, 0)} − {_num(VR, 0)})/{n} = {_num(amortizacion[1])}; BAI_1 = {_num(EBITDA[1])} − {_num(amortizacion[1])} = {_num(BAI[1])}; '
+         f'impuesto_1 = {t_imp:g} × {_num(BAI[1])} = {_num(impuesto[1])}; BDI_1 = {_num(BAI[1])} − {_num(impuesto[1])} = {_num(BDI[1])}.\n'
+         f'- Circulante (se aporta al principio de cada año, es decir, al final del anterior): en t = 0 el del año 1, {w:g} × {_num(ventas[1])} = {_num(variacion_circulante[0])}; '
+         f'en cada momento t = 1…{n - 1}, el aumento que necesitan las ventas del año siguiente, {w:g} × (ventas_t+1 − ventas_t) '
+         f'(en t = 1: {w:g} × ({_num(ventas[2])} − {_num(ventas[1])}) = {_num(variacion_circulante[1])}); en t = {n} se recupera todo el circulante acumulado, {w:g} × {_num(ventas[n])} = {_num(w * ventas[n])}.\n'
+         f'- {_fcl_txt(0)}; {_fcl_txt(1)}; {_fcl_txt(n)}.')
+
+# %%
 def modelo(precio=precio, u1=u1, cv=cv, CF=CF, g=g, I0=I0, n=n, VR=VR, w=w, t_imp=t_imp, inflacion=0.0):
     '''Flujos de caja libre del modelo; con inflación, en euros corrientes (precios y costes crecen cada año).'''
     unidades = pd.Series([0] + [u1 * (1 + g) ** (t - 1) for t in range(1, n + 1)])
@@ -306,11 +373,12 @@ def modelo(precio=precio, u1=u1, cv=cv, CF=CF, g=g, I0=I0, n=n, VR=VR, w=w, t_im
     ventas = unidades * precio * infl; EBITDA = ventas - unidades * cv * infl - pd.Series([0] + [CF] * n) * infl
     amort = pd.Series([0] + [(I0 - VR) / n] * n); BAI = EBITDA - amort
     imp = BAI.clip(lower=0) * t_imp; imp[0] = 0
-    circ = pd.Series([w * ventas[1]] + [w * ventas[t] for t in range(1, n + 1)])
-    dcirc = circ.diff().fillna(circ[0]); dcirc[n] -= circ[n]
+    circ = pd.Series([w * ventas[t + 1] for t in range(n)] + [0])
+    dcirc = circ.diff().fillna(circ[0])
     return (BAI - imp + amort - dcirc - pd.Series([I0] + [0] * n) + pd.Series([0] * n + [VR])).tolist()
 VAN = van(modelo(), k)
-Markdown(f'VAN del caso base: {VAN:.1f} k€ (TIR {tir(modelo()):.2%}).')
+Markdown(explica_van(modelo(), k) + '.\n\n' + explica_tir(modelo())
+         + f'\n\n**Respuesta:** VAN del caso base = {VAN:.1f} k€ (TIR {tir(modelo()):.2%}): ' + ('viable.' if VAN > 0 else 'no viable.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -319,19 +387,32 @@ Markdown(f'VAN del caso base: {VAN:.1f} k€ (TIR {tir(modelo()):.2%}).')
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Cada umbral se obtiene resolviendo VAN(x) = 0 en la variable x (bisección), con las demás fijas. La sensibilidad se lee en la variación porcentual que anula el VAN: cuanto menor, más frágil es el proyecto frente a esa variable.
+# Cada umbral es el valor de la variable x que hace VAN(x) = 0 con las demás fijas. El VAN es casi lineal en cada variable, así que el umbral se aproxima bien con una regla de tres: VAN(x) ≈ VAN_base + (x − x_base) · ΔVAN/Δx, donde ΔVAN/Δx se mide cambiando la variable un 1 %; después se afina por bisección y se comprueba que el VAN en el umbral es 0. La sensibilidad se lee en la variación porcentual que anula el VAN: cuanto menor, más frágil es el proyecto frente a esa variable.
 
 # %%
 from scipy.optimize import brentq
 precio_umbral = brentq(lambda x: van(modelo(precio=x), k), precio * 0.2, precio * 2)
 u1_umbral = brentq(lambda x: van(modelo(u1=x), k), u1 * 0.2, u1 * 2)
 cv_umbral = brentq(lambda x: van(modelo(cv=x), k), cv * 0.2, max(cv * 5, precio * 0.99))
-umbrales = pd.DataFrame({'caso base': [precio, u1, cv], 'umbral (VAN = 0)': [precio_umbral, u1_umbral, cv_umbral]},
-                        index=['precio', 'unidades año 1', 'coste variable'])
-umbrales['variación admisible'] = umbrales['umbral (VAN = 0)'] / umbrales['caso base'] - 1
-display(umbrales.round(3))
-mas_sensible = umbrales['variación admisible'].abs().idxmin()
-Markdown(f'La variable más sensible es **{mas_sensible}**: basta una variación del {umbrales.loc[mas_sensible, "variación admisible"]:+.1%} para anular el VAN.')
+_base = {'precio': precio, 'unidades año 1': u1, 'coste variable': cv}
+_arg = {'precio': 'precio', 'unidades año 1': 'u1', 'coste variable': 'cv'}
+_umb = {'precio': precio_umbral, 'unidades año 1': u1_umbral, 'coste variable': cv_umbral}
+filas = {}
+for v, x0 in _base.items():
+    pend = (van(modelo(**{_arg[v]: x0 * 1.01}), k) - VAN) / (x0 * 0.01)
+    filas[v] = {'caso base': x0, 'ΔVAN por unidad de la variable': pend,
+                'umbral ≈ base − VAN / pendiente': f'{x0:g} − {VAN:.1f}/({_num(pend, 2)}) = {x0 - VAN / pend:.3f}',
+                'umbral exacto (VAN = 0)': _umb[v], 'VAN en el umbral': van(modelo(**{_arg[v]: _umb[v]}), k),
+                'variación admisible': _umb[v] / x0 - 1}
+umbrales = pd.DataFrame(filas).T
+for c in umbrales.columns.drop('umbral ≈ base − VAN / pendiente'):
+    umbrales[c] = umbrales[c].astype(float)
+display(umbrales.style.format({'caso base': '{:.3f}', 'ΔVAN por unidad de la variable': '{:.2f}', 'umbral exacto (VAN = 0)': '{:.3f}',
+                               'VAN en el umbral': '{:.4f}', 'variación admisible': '{:+.1%}'}))
+mas_sensible = umbrales['variación admisible'].astype(float).abs().idxmin()
+Markdown('**Respuesta:** ' + '; '.join(f'{v}: {"mínimo" if v != "coste variable" else "máximo"} {float(umbrales.loc[v, "umbral exacto (VAN = 0)"]):.3f} ({float(umbrales.loc[v, "variación admisible"]):+.1%} respecto a {_base[v]:g})' for v in umbrales.index)
+         + f'. El proyecto es más sensible a la variable **{mas_sensible}**: basta una variación del {float(umbrales.loc[mas_sensible, "variación admisible"]):+.1%} para anular el VAN. '
+         'El diagrama de araña muestra lo mismo: la recta más inclinada (en % de variación) es la de la variable más sensible.')
 
 # %%
 #| fig-cap: "VAN frente a la variación de cada variable (diagrama de araña)"
@@ -352,17 +433,31 @@ ax.axhline(0, color='grey'); ax.set_xlabel('variación respecto al caso base (%)
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Cada escenario repite el modelo completo con los tres datos cambiados a la vez; la tabla da sus flujos de caja libre y, debajo, el VAN término a término y la TIR.
+
 # %%
 escenarios = {'pesimista': dict(precio=precio * 0.9, u1=u1 * 0.9, CF=CF * 1.1), 'base': {}, 'optimista': dict(precio=precio * 1.1, u1=u1 * 1.1, CF=CF * 0.9)}
+display(pd.DataFrame({e: modelo(**kw) for e, kw in escenarios.items()}, index=pd.Index(range(n + 1), name='año')).T.round(1))
 tabla_esc = pd.DataFrame({e: {'VAN (k€)': van(modelo(**kw), k), 'TIR': tir(modelo(**kw))} for e, kw in escenarios.items()}).T
-display(tabla_esc.round(3))
-Markdown(f'''El escenario pesimista {"mantiene" if tabla_esc.loc["pesimista", "VAN (k€)"] > 0 else "destruye"} la viabilidad (VAN {tabla_esc.loc["pesimista", "VAN (k€)"]:.1f}). Los escenarios combinan desviaciones simultáneas, que es lo que ocurre en la práctica (un mal año afecta a precio y volumen a la vez); el análisis de una variable cada vez las subestima.''')
+display(tabla_esc.style.format({'VAN (k€)': '{:.1f}', 'TIR': '{:.2%}'}))
+Markdown('\n'.join(f'- {e} (precio {kw.get("precio", precio):g}, unidades {kw.get("u1", u1):g}, costes fijos {kw.get("CF", CF):g}): ' + explica_van(modelo(**kw), k) + f'; TIR = {tir(modelo(**kw)):.2%}.'
+                   for e, kw in escenarios.items() if e != 'base')
+         + f'\n\n**Respuesta:** VAN y TIR: pesimista {tabla_esc.loc["pesimista", "VAN (k€)"]:.1f} k€ y {tabla_esc.loc["pesimista", "TIR"]:.2%}; '
+         f'base {VAN:.1f} k€ y {tabla_esc.loc["base", "TIR"]:.2%}; optimista {tabla_esc.loc["optimista", "VAN (k€)"]:.1f} k€ y {tabla_esc.loc["optimista", "TIR"]:.2%}. '
+         f'El escenario pesimista {"mantiene" if tabla_esc.loc["pesimista", "VAN (k€)"] > 0 else "destruye"} la viabilidad'
+         f'{" (su TIR queda por encima" if tabla_esc.loc["pesimista", "TIR"] > k else " (su TIR queda por debajo"} de la tasa del {k:.0%}). '
+         'Los escenarios combinan desviaciones simultáneas, que es lo que ocurre en la práctica (un mal año afecta a precio y volumen a la vez); '
+         'el análisis de una variable cada vez las subestima.')
 
 # %% [markdown]
 # ## Apartado 4
 
 # %%
 display(Markdown(pregunta_4))
+
+# %% [markdown]
+# En euros corrientes, todo importe que sigue a los precios se multiplica en el año t por (1 + π)^t (ventas, costes variables y fijos y, con ellas, el circulante); la amortización y el valor residual, que dependen del precio de compra, no cambian. Esos flujos se descuentan a la tasa nominal, que incluye la inflación: relación de Fisher, (1 + k_nominal) = (1 + k_real)(1 + π).
 
 # %%
 inflacion = 0.04
@@ -371,4 +466,4 @@ flujos_corrientes = modelo(inflacion=inflacion)
 VAN_corriente = van(flujos_corrientes, k_nominal)
 VAN_corriente_mal = van(flujos_corrientes, k)
 display(pd.DataFrame({'euros constantes': modelo(), 'euros corrientes': flujos_corrientes}, index=pd.Index(range(n + 1), name='año')).T.round(1))
-Markdown(f'''Relación de Fisher: (1 + k_nominal) = (1 + k_real)(1 + π) → k_nominal = (1 + {k})(1 + {inflacion}) − 1 = {k_nominal:.2%}. Flujos corrientes descontados a la tasa nominal: VAN = {VAN_corriente:.1f} k€, frente a {VAN:.1f} con flujos constantes y tasa real. No coinciden porque no todo crece con la inflación: la amortización (y su ahorro fiscal) y el valor residual son importes nominales fijos, y el circulante crece con las ventas nominales; la inflación perjudica al proyecto vía impuestos y circulante. El error grave sería mezclar: flujos corrientes con tasa real daría {VAN_corriente_mal:.1f} k€, un VAN inflado.''')
+Markdown(f'''k_nominal = (1 + {k})(1 + {inflacion}) − 1 = {k_nominal:.2%}. Flujos corrientes descontados a la tasa nominal: ''' + explica_van(flujos_corrientes, k_nominal) + f'''. **Respuesta:** los flujos corrientes se construyen inflando cada año precios y costes con (1 + {inflacion})^t y se descuentan al {k_nominal:.2%}. Con ello el VAN es {VAN_corriente:.1f} k€, frente a {VAN:.1f} con flujos constantes y tasa real: no coinciden exactamente porque no todo crece con la inflación: la amortización (y su ahorro fiscal) y el valor residual son importes nominales fijos, y el circulante crece con las ventas nominales; {"la inflación perjudica al proyecto" if VAN_corriente < VAN else "la inflación favorece ligeramente al proyecto"} vía impuestos y circulante ({VAN_corriente - VAN:+.1f} k€). El error grave sería mezclar: flujos corrientes con tasa real daría {VAN_corriente_mal:.1f} k€, un VAN inflado.''')

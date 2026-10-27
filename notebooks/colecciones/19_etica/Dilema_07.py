@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -273,6 +277,63 @@ def indicadores(seguimiento, calendario_plan, semana):
     PV, EV, AC = float(detalle['PV_i'].sum()), float(detalle['EV_i'].sum()), float(detalle['AC'].sum())
     return detalle, pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV': EV - AC, 'SV': EV - PV, 'CPI': EV / AC, 'SPI': EV / PV})
 
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
+
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
@@ -287,16 +348,28 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# **Notación.** BAC: presupuesto de cada actividad; PV (*planned value*): coste presupuestado del trabajo programado hasta la semana de control; EV (*earned value*): valor ganado, BAC × porcentaje realizado; AC (*actual cost*): coste real incurrido; CV = EV − AC (variación de coste) y SV = EV − PV (variación de plazo); CPI = EV / AC y SPI = EV / PV (índices de rendimiento del coste y del cronograma; menos de 1 es desfavorable); EAC = BAC / CPI (previsión del coste final si se mantiene el CPI) y VAC = BAC − EAC. PV se calcula con las fechas de la línea base: cada actividad reparte su BAC uniformemente entre su inicio más temprano y su fin.
+
 # %%
 #| tbl-cap: "PV, EV y AC contra la línea base aprobada"
 #| label: tbl-detalleBase
 detalle_base, ind_base = indicadores(seguimiento, calendario, semana_control)
-display(detalle_base[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']])
-ind_base.round(3).to_frame('línea base aprobada').T
+detalle_base[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]
 
 # %%
 fin_previsto = duracion + desplazamiento
-Markdown(f'''SPI = {ind_base["SPI"]:.2f}, SV = {ind_base["SV"]:.1f} k€ (CPI = {ind_base["CPI"]:.2f}: el coste va según lo hecho). Como el retraso es de arranque y el ritmo es el previsto, la fecha de fin prevista es la semana **{fin_previsto}** ({desplazamiento} más que la línea base).''')
+Markdown(f'''Totales en la semana {semana_control}:
+
+- {explica_suma(sin_ceros(detalle_base['PV_i']), 'PV', 'k€', 1)}
+- {explica_suma(sin_ceros(detalle_base['EV_i']), 'EV', 'k€', 1)}
+- {explica_suma(sin_ceros(seguimiento['AC']), 'AC', 'k€', 0)}
+
+{explica_indicadores(ind_base, titulo='**Contra la línea base aprobada:**')}
+
+Fecha de fin prevista: el retraso es sólo de arranque ({desplazamiento} semanas) y desde entonces todo avanza al ritmo previsto, así que el proyecto terminará {desplazamiento} semanas después de lo planificado: {duracion} + {desplazamiento} = **semana {fin_previsto}**. (La previsión genérica duración / SPI = {duracion} / {ind_base["SPI"]:.3f} = {duracion / ind_base["SPI"]:.1f} semanas no sirve aquí: supone que el retraso seguirá creciendo al ritmo actual, y el enunciado dice que no.)
+
+**Respuesta.** PV = {ind_base["PV"]:.1f}, EV = {ind_base["EV"]:.1f} y AC = {ind_base["AC"]:.1f} k€; SV = {ind_base["SV"]:.1f} k€ y SPI = {ind_base["SPI"]:.2f} (retraso); CV = {ind_base["CV"]:.1f} k€ y CPI = {ind_base["CPI"]:.2f} (el coste va según lo hecho); fin previsto en la semana {fin_previsto}, frente a la {duracion} de la línea base.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -304,18 +377,30 @@ Markdown(f'''SPI = {ind_base["SPI"]:.2f}, SV = {ind_base["SV"]:.1f} k€ (CPI = 
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# Desplazar la línea base equivale a sumar el desplazamiento a todas las fechas del calendario; en la semana de control, PV se calcula entonces con las semanas transcurridas desde el nuevo inicio.
+
 # %%
-#| tbl-cap: "Lo mismo contra la línea base desplazada (PV calculado en la semana t − desplazamiento)"
+#| tbl-cap: "PV, EV y AC contra la línea base desplazada"
 #| label: tbl-detalleDesplazada
 calendario_desplazado = calendario.copy()
 for col in ['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio']:
     calendario_desplazado[col] = calendario[col] + desplazamiento
 detalle_desp, ind_desp = indicadores(seguimiento, calendario_desplazado, semana_control)
+detalle_desp[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]
+
+# %%
+#| tbl-cap: "Indicadores contra las dos líneas base"
+#| label: tbl-comparacionLB
 comparacion = pd.DataFrame({'línea base aprobada': ind_base, 'línea base desplazada': ind_desp})
 comparacion.round(3)
 
 # %%
-Markdown(f'''Sólo cambia PV (y con él SV y SPI, que pasa a {ind_desp["SPI"]:.2f}); EV, AC, CV y CPI no se mueven. La fecha de fin prevista sigue siendo la semana {fin_previsto}: el retraso ha desaparecido del informe, no del proyecto.''')
+Markdown(f'''- {explica_suma(sin_ceros(detalle_desp['PV_i']), 'PV (desplazada)', 'k€', 1)}
+
+{explica_indicadores(ind_desp, titulo='**Contra la línea base desplazada:**')}
+
+**Respuesta.** Sólo cambia PV ({ind_base["PV"]:.1f} → {ind_desp["PV"]:.1f} k€) y, con él, SV ({ind_base["SV"]:.1f} → {ind_desp["SV"]:.1f} k€) y SPI ({ind_base["SPI"]:.2f} → {ind_desp["SPI"]:.2f}). EV, AC, CV y CPI no cambian, porque no dependen de la línea base. La fecha de fin prevista **no cambia**: sigue siendo la semana {fin_previsto}. El retraso desaparece del informe, no del proyecto.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -323,8 +408,12 @@ Markdown(f'''Sólo cambia PV (y con él SV y SPI, que pasa a {ind_desp["SPI"]:.2
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C9.** La línea base es un compromiso aprobado con el cliente; cambiarla exige una **solicitud de cambio aprobada** por el control integrado de cambios, no un «ajuste técnico» del jefe de proyecto. Que la causa del retraso sea del cliente no cambia el procedimiento: es justamente el motivo de una solicitud de cambio (o de una reclamación) en la que el cliente reconoce las 3 semanas y se aprueba la nueva fecha de fin (26). Sin ese trámite, un informe con SPI = 1 es **C3**: una cifra correcta contra una referencia que nadie ha aprobado, presentada como si fuera el plan. Con el trámite, el mismo SPI = 1 es legítimo, porque la referencia es la nueva línea base aprobada.
+# %%
+Markdown(f'''**Criterio C9 (línea base y control de cambios).** La línea base es un compromiso aprobado por el cliente (fin en la semana {duracion}); sólo cambia mediante una solicitud de cambio aprobada, no por un «ajuste técnico» del jefe de proyecto. Que la causa del retraso sea del cliente (permisos entregados {desplazamiento} semanas tarde) no cambia el procedimiento: es precisamente el motivo de una solicitud de cambio (o de una reclamación) en la que el cliente reconoce esas {desplazamiento} semanas y aprueba el nuevo fin en la semana {fin_previsto}.
+
+**Criterio C3 (información fuera de contexto).** Sin ese trámite, el informe con SPI = {ind_desp["SPI"]:.2f} da una cifra aritméticamente correcta contra una referencia que nadie ha aprobado, presentada como si fuera el plan: el cliente leería «en plazo» un proyecto que acabará en la semana {fin_previsto} y no en la {duracion}.
+
+**Respuesta.** No puede desplazarla por su cuenta (C9). El informe con SPI = {ind_desp["SPI"]:.2f} sería **información fuera de contexto (C3)**. Lo haría legítimo una **solicitud de cambio aprobada** que mueva la línea base {desplazamiento} semanas; con ella, el mismo SPI ≈ 1 sería correcto.''')
 
 # %%
 preguntas_test = [
@@ -362,5 +451,12 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Informe: SPI 0.79 contra la línea base aprobada, con la causa documentada (permisos entregados 3 semanas tarde) y la fecha prevista 26. Propuesta al cliente: solicitud de cambio por causa imputable al cliente que mueva la línea base 3 semanas y, si procede, la compensación de costes de la espera; aprobada, los informes siguientes miden contra la nueva línea base. Lo que no cabe: el «ajuste técnico» silencioso, que además deja al contratista sin la prueba de que el retraso no es suyo.
+# %%
+rubrica_caso(
+    [('Cliente', f'recibe «SPI = {ind_desp["SPI"]:.2f}» y planifica con la semana {duracion}, cuando el fin previsto es la {fin_previsto}'),
+     ('Contratista', f'sin solicitud de cambio pierde la prueba de que las {desplazamiento} semanas de retraso son imputables al cliente (y la compensación de la espera)'),
+     ('Jefe de proyecto', 'evita un informe en rojo este mes a costa de su credibilidad cuando la fecha real aparezca')],
+    [('Desplazar la línea base sin aprobación e informar SPI ≈ 1 (propuesta)', 'no infringe una ley, pero sí el procedimiento contractual de cambios', 'no', 'no: el cliente no aceptaría que le cambien la referencia sin preguntar'),
+     (f'Informar SPI {ind_base["SPI"]:.2f} contra la línea base aprobada, con la causa documentada', 'sí', 'sí', 'sí'),
+     (f'Además, presentar una solicitud de cambio por causa del cliente: fin en la semana {fin_previsto}', 'sí', 'sí', 'sí')],
+    f'''informe con SPI {ind_base["SPI"]:.2f} contra la línea base aprobada, la causa documentada (permisos entregados {desplazamiento} semanas tarde) y la fecha prevista, semana {fin_previsto}. Al cliente: solicitud de cambio que mueva la línea base {desplazamiento} semanas y, si procede, la compensación de los costes de la espera; una vez aprobada, los informes siguientes miden contra la nueva línea base.''')

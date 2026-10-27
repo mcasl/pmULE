@@ -1,6 +1,6 @@
 # ---
 # title: Sostenibilidad 40
-# subtitle: "2100 m² de fibrocemento antes de F: plan de trabajo de 7 semanas y retirada de 2; 20 → 24 semanas (+4), o +2 presentando el plan 2 semana(s) antes; arts. 11, 12 y 17 RD 396/2006"
+# subtitle: "2100 m² de fibrocemento antes de F: plan de trabajo de 7 semanas y retirada de 2; 20 → 24 semanas (+4), o +2 presentando el plan 2 semanas antes; arts. 11, 12 y 17 RD 396/2006"
 # coleccion: 20_sostenibilidad
 # variante: amianto
 # nivel: 2
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -212,7 +216,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# La retirada de la cubierta por una empresa inscrita en el RERA (plan de trabajo, equipos de protección, embalaje y gestor de residuos peligrosos) cuesta 24 k€ y dura 2 semana(s); el plan de trabajo se presenta a la autoridad laboral cuando se contrata a la empresa y tarda **7 semanas** en quedar aprobado (45 días). Quitar las placas con la cuadrilla de peones un sábado y llevarlas en el contenedor de escombros costaría 5 k€. La penalidad por retraso de la entrega es de 8 k€ por semana. Por la experiencia de la empresa, una retirada sin plan ni empresa inscrita acaba en visita de la Inspección de Trabajo con probabilidad 50%: paralización de la obra 3 semanas y sanción de 80 k€, además del riesgo para los operarios.
+# La retirada de la cubierta por una empresa inscrita en el RERA (plan de trabajo, equipos de protección, embalaje y gestor de residuos peligrosos) cuesta 24 k€ y dura 2 semanas; el plan de trabajo se presenta a la autoridad laboral cuando se contrata a la empresa y tarda **7 semanas** en quedar aprobado (45 días). Quitar las placas con la cuadrilla de peones un sábado y llevarlas en el contenedor de escombros costaría 5 k€. La penalidad por retraso de la entrega es de 8 k€ por semana. Por la experiencia de la empresa, una retirada sin plan ni empresa inscrita acaba en visita de la Inspección de Trabajo con probabilidad 50%: paralización de la obra 3 semanas y sanción de 80 k€, además del riesgo para los operarios.
 
 # %% [markdown]
 # > **De: Jefe de obra**
@@ -233,8 +237,8 @@ datos_enunciado
 # Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).
 
 # %%
-pregunta_1 = "1. (A) Añada al cuadro las actividades que la norma exige: P, plan de trabajo aprobado (7 semanas desde el inicio, sin predecesoras) y R, retirada de la cubierta por la empresa inscrita (2 semana(s), después de P y de las predecesoras de F), de modo que F empiece tras R. Calcule la nueva duración, la ruta crítica y el retraso respecto al plan.  "
-pregunta_2 = "2. (A) ¿Cuántas semanas antes del inicio habría que presentar el plan de trabajo para que el retraso fuera sólo el de la retirada (2 semana(s))? Calcule el coste de las opciones: retirada legal con el retraso, retirada legal con el plan presentado con antelación, y la propuesta de los peones con su coste esperado.  "
+pregunta_1 = "1. (A) Añada al cuadro las actividades que la norma exige: P, plan de trabajo aprobado (7 semanas desde el inicio, sin predecesoras) y R, retirada de la cubierta por la empresa inscrita (2 semanas, después de P y de las predecesoras de F), de modo que F empiece tras R. Calcule la nueva duración, la ruta crítica y el retraso respecto al plan.  "
+pregunta_2 = "2. (A) ¿Cuántas semanas antes del inicio habría que presentar el plan de trabajo para que el retraso fuera sólo el de la retirada (2 semanas)? Calcule el coste de las opciones: retirada legal con el retraso, retirada legal con el plan presentado con antelación, y la propuesta de los peones con su coste esperado.  "
 pregunta_3 = "3. (B) Según el criterio y la norma de referencia, ¿pueden los peones retirar la cubierta? ¿Es la aprobación del plan de trabajo una actividad del cronograma o «papeleo»? ¿Dónde va el residuo? ¿En qué escalón de la pirámide queda la propuesta?  "
 pregunta_4 = "4. (C) ¿Qué propone al jefe de obra y qué comunica al cliente y a la dirección facultativa? Aplique la rúbrica.  "
 
@@ -247,6 +251,24 @@ for item in sorted(dir()):
 
 # %%
 demolicion, semanas_plan, semanas_retirada, coste_rera, coste_peones, penalidad, p_inspeccion, multa, paralizacion = 'F', 7, 2, 24, 5, 8, 0.5, 80, 3
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -294,9 +316,9 @@ proyecto_legal.display_roy_pasos(datos_legal['duration'])
 # %%
 #| tbl-cap: "Calendario con las actividades exigidas por la norma"
 #| label: tbl-calendarioLegal
-display(calendario_legal)
-camino = ' / '.join('–'.join(r) for r in proyecto_legal.critical_path(datos_legal['duration']).values())
-Markdown(f'''El proyecto pasa de {duracion} a **{duracion_legal}** semanas (ruta crítica {camino}): **{retraso}** semana(s) de retraso, {retraso * penalidad} k€ de penalidad. El plan de trabajo (P) entra en la ruta crítica: {demolicion} no puede empezar hasta la semana {int(calendario_legal.loc[demolicion, 'inicio_mas_temprano'])} en vez de la {int(calendario.loc[demolicion, 'inicio_mas_temprano'])}.''')
+display(calendario_legal.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'inicio_mas_tardio': 'inicio más tardío', 'fin_mas_temprano': 'fin más temprano', 'fin_mas_tardio': 'fin más tardío', 'H_libre': 'holgura libre', 'H_independiente': 'holgura independiente', 'H_total': 'holgura total'}))
+es_r = int(calendario_legal.loc['R', 'inicio_mas_temprano']); es_y0 = int(calendario.loc[demolicion, 'inicio_mas_temprano']); es_y1 = int(calendario_legal.loc[demolicion, 'inicio_mas_temprano'])
+Markdown(f'''R empieza cuando terminan P (instante {semanas_plan}) y las predecesoras de {demolicion} (instante {es_y0}): en el instante máx({semanas_plan}, {es_y0}) = {es_r}, y termina en el {es_r} + {semanas_retirada} = {es_y1}. {demolicion} no puede empezar hasta el instante {es_y1} en vez del {es_y0}: se retrasa {es_y1} − {es_y0} = {plural(es_y1 - es_y0, 'semana')}, y como era crítica, el proyecto también.\n\n''' + str(explica_camino_critico(proyecto_legal, datos_legal['duration'], 'semanas').data) + f'''\n\n**Respuesta:** el proyecto pasa de {duracion} a **{duracion_legal}** semanas: **{plural(retraso, 'semana')}** de retraso ({retraso} × {penalidad} = {retraso * penalidad} k€ de penalidad).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -308,10 +330,11 @@ display(Markdown(pregunta_2))
 es_y = int(calendario.loc[demolicion, 'inicio_mas_temprano'])
 adelanto = max(0, semanas_plan - es_y)
 opciones = pd.Series({'retirada legal, plan presentado al empezar': coste_rera + retraso * penalidad,
-                      f'retirada legal, plan presentado {adelanto} semana(s) antes': coste_rera + semanas_retirada * penalidad,
+                      f'retirada legal, plan presentado {plural(adelanto, "semana")} antes': coste_rera + semanas_retirada * penalidad,
                       'peones el sábado (propuesta): coste esperado': coste_peones + p_inspeccion * (multa + paralizacion * penalidad)})
 display(opciones.round(1).to_frame('coste (k€)'))
-Markdown(f'''{demolicion} empezaría en la semana {es_y}: presentando el plan **{adelanto} semana(s) antes del inicio** (en cuanto se adjudique, con la empresa inscrita ya elegida) el retraso se reduce a la semana de la retirada, {semanas_retirada * penalidad} k€. La propuesta de los peones cuesta {opciones.iloc[2]:.1f} k€ esperados''' + (', más que la vía legal con antelación: mal negocio además de infracción.' if opciones.iloc[2] > opciones.iloc[1] else ', menos que la vía legal: la respuesta B no depende de esta cuenta.'))
+mas_barata_legal = opciones.iloc[:2].idxmin()
+Markdown(f'''Para que P no retrase nada tiene que estar aprobado cuando {demolicion} podía empezar (instante {es_y}): presentarlo máx(0, {semanas_plan} − {es_y}) = **{plural(adelanto, 'semana')} antes del inicio** (en cuanto se conozca la adjudicación, con la empresa inscrita ya elegida). Entonces sólo queda el retraso de la retirada: {plural(semanas_retirada, 'semana')} de retraso.\n\n- Retirada legal, plan presentado al empezar: {coste_rera} + {retraso} × {penalidad} = **{opciones.iloc[0]:.1f} k€**.\n- Retirada legal, plan presentado {plural(adelanto, 'semana')} antes: {coste_rera} + {semanas_retirada} × {penalidad} = **{opciones.iloc[1]:.1f} k€**.\n- Peones el sábado: coste + P(inspección) × (sanción + semanas de paralización × penalidad) = {coste_peones} + {p_inspeccion} × ({multa} + {paralizacion} × {penalidad}) = **{opciones.iloc[2]:.1f} k€** esperados''' + (', más que la vía legal con antelación: mal negocio además de infracción.' if opciones.iloc[2] > opciones.iloc[1] else ', menos que la vía legal: la respuesta B no depende de esta cuenta.') + f'''\n\n**Respuesta:** hay que presentar el plan {plural(adelanto, 'semana')} antes del inicio; la opción legal más barata es la retirada con el plan presentado con antelación ({opciones.iloc[1]:.1f} k€, frente a {opciones.iloc[0]:.1f} k€ presentándolo al empezar); la propuesta de los peones cuesta {opciones.iloc[2]:.1f} k€ esperados y, sobre todo, no es legal.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -320,7 +343,9 @@ Markdown(f'''{demolicion} empezaría en la semana {es_y}: presentando el plan **
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma y S17.** Los trabajos con riesgo de exposición al amianto sólo pueden hacerlos empresas inscritas en el RERA (RD 396/2006, art. 17.1) con un plan de trabajo aprobado por la autoridad laboral antes de empezar (arts. 11 y 12): los peones **no pueden** retirar la cubierta, con mascarilla o sin ella. El plan de trabajo no es papeleo: es una actividad con duración legal (45 días, art. 12.2, con silencio positivo) y prelación (antes de la retirada, que es antes de F), y su efecto en el plazo es una cuenta: 4 semana(s) si se presenta al empezar, 2 si se presenta 2 semana(s) antes. Que «en F ya está contada la demolición» es la trampa: contaba una demolición que la ley no permite hacer así. **S8.** El residuo con amianto es **peligroso** (LER 17 06 05*): embalado y etiquetado, a gestor autorizado, sin mezclar con otros residuos (Ley 7/2022, arts. 20 y 21); «al contenedor de escombros» contamina el contenedor entero y es infracción. **S10.** El plan no puede apoyarse en exponer a la cuadrilla a un cancerígeno para ahorrar 19 k€: no es una opción de la tabla. **S1.** La propuesta traslada el impacto a los operarios (y, con el contenedor, al gestor y al vertedero): ni siquiera compensa. La vía legal con el plan presentado a tiempo **minimiza** el efecto en el plazo; **evitar** sería haber tenido en el cronograma P y R desde el principio.
+# **Norma y S17.** Los trabajos con riesgo de exposición al amianto sólo pueden hacerlos empresas inscritas en el RERA (RD 396/2006, art. 17.1) con un plan de trabajo aprobado por la autoridad laboral antes de empezar (arts. 11 y 12): los peones **no pueden** retirar la cubierta, con mascarilla o sin ella. El plan de trabajo no es papeleo: es una actividad con duración legal (45 días, art. 12.2, con silencio positivo) y prelación (antes de la retirada, que es antes de F), y su efecto en el plazo es una cuenta: 4 semanas si se presenta al empezar, 2 si se presenta 2 semanas antes. Que «en F ya está contada la demolición» es la trampa: contaba una demolición que la ley no permite hacer así. **S8.** El residuo con amianto es **peligroso** (LER 17 06 05*): embalado y etiquetado, a gestor autorizado, sin mezclar con otros residuos (Ley 7/2022, arts. 20 y 21); «al contenedor de escombros» contamina el contenedor entero y es infracción. **S10.** El plan no puede apoyarse en exponer a la cuadrilla a un cancerígeno para ahorrar 19 k€: no es una opción de la tabla. **S1.** La propuesta traslada el impacto a los operarios (y, con el contenedor, al gestor y al vertedero): ni siquiera compensa. La vía legal con el plan presentado a tiempo **minimiza** el efecto en el plazo; **evitar** sería haber tenido en el cronograma P y R desde el principio.
+#
+# **Respuesta:** los peones **no** pueden retirarla; el plan de trabajo es una **actividad del cronograma** (duración legal y prelación), no papeleo; el residuo es **peligroso** y va embalado a gestor autorizado; la propuesta traslada el impacto a los operarios (ni siquiera compensa).
 
 # %%
 preguntas_test = [
@@ -331,7 +356,7 @@ preguntas_test = [
     ('Si un trámite obligatorio de duración d debe terminar antes de una actividad crítica que empieza en la semana ES, el proyecto se retrasa…', ['máx(0, d − ES) semanas (más la duración de lo que el trámite habilita), salvo que el trámite se lance con antelación', 'd semanas siempre', 'nada, porque los trámites van en paralelo', 'ES semanas'],
      'S17 y lección 05: el calendario dice cuánto y con qué antelación.'),
     ('Los residuos con amianto de una obra son…', ['residuos peligrosos: embalados, etiquetados y entregados a gestor autorizado sin mezclar', 'residuos inertes', 'residuos de construcción ordinarios si están mojados', 'residuos municipales'],
-     'LER 17 06 05*; Ley 7/2022, arts. 20 y 21.'),
+     'Código LER 17 06 05 (marcado con asterisco: peligroso); Ley 7/2022, arts. 20 y 21.'),
 ]
 import os
 def a_gift(preguntas_test, titulo, semilla=1):

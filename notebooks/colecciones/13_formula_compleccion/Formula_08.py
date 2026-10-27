@@ -4,6 +4,7 @@
 # coleccion: 13_formula_compleccion
 # variante: casi-criticas
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -34,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -42,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -155,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -239,6 +244,40 @@ R = proyecto.path_matrix(dummies=False)
 t = datos_proyecto['duration'][R.columns]
 delta = 2
 
+# %%
+def _num(x, dec=0):
+    x = float(x)
+    return (f'{x:.{dec}f}' if dec else f'{x:g}').replace('-', '−')
+
+
+def producto_Rt(proyecto, R, t, base, decimales=0):
+    """Cada fila de R por el vector t: (R·t)_r = Σ_i R_ri·t_i, con los términos no nulos (actividades de la
+    ruta, en orden de ejecución) y el valor; marca las filas que dan el máximo."""
+    cal = proyecto.calendar(base)
+    orden = {a: k for k, a in enumerate(ordena_ruta(list(R.columns), cal))}
+    filas = {}
+    for r in R.index:
+        acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: orden.get(a, 0))
+        total = float(sum(float(t[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    'fila de R · t = suma': ' + '.join(f'{a}({_num(t[a], decimales)})' for a in acts) + f' = {_num(total, decimales)}',
+                    'R·t': total}
+    tabla = pd.DataFrame(filas).T
+    tabla['R·t'] = tabla['R·t'].astype(float)
+    tabla['máximo'] = np.where(np.isclose(tabla['R·t'], tabla['R·t'].max()), '← τ', '')
+    return tabla
+
+
+def explica_tau(tabla, unidad='', decimales=0, nombre='τ'):
+    """«τ = ‖R·t‖∞ = máx(19, 20, 17) = 20, que da la ruta Route_2 (A – C – E)»."""
+    v = tabla['R·t']
+    T = float(v.max())
+    rutas = [f"{r} ({tabla.loc[r, 'actividades']})" for r in v.index if np.isclose(v[r], T)]
+    u = f' {unidad}' if unidad else ''
+    quien = (f'que corresponde a la ruta {rutas[0]}' if len(rutas) == 1
+             else f'alcanzado a la vez por {len(rutas)} rutas: {lista_y(rutas)}')
+    return (f"{nombre} = ‖R·t‖∞ = máx({', '.join(_num(x, decimales) for x in v)}) = **{_num(T, decimales)}{u}**, {quien}")
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -251,8 +290,15 @@ display(Markdown(pregunta_1))
 Rt = R @ t
 tau = float(Rt.max())
 margen = (tau - Rt)
-tabla = pd.DataFrame({'actividades': {r: ' - '.join(acts) for r, acts in proyecto.paths(dummies=False).items()}, 'R·t': Rt, 'margen = τ − R·t': margen}).sort_values('margen = τ − R·t')
+producto = producto_Rt(proyecto, R, t, datos_proyecto['duration'])
+tabla = pd.DataFrame({'actividades': producto['actividades'], 'R·t = suma': producto['fila de R · t = suma'],
+                      'margen = τ − R·t': [f'{tau:.0f} − {Rt[r]:.0f} = {margen[r]:.0f}' for r in R.index]}, index=R.index)
+tabla = tabla.loc[margen.sort_values(kind='stable').index]
 tabla
+
+# %%
+Markdown('**Respuesta:** ' + explica_tau(producto, 'días') + '. Rutas de menor a mayor margen: '
+         + ', '.join(f'{r} ({margen[r]:.0f})' for r in margen.sort_values(kind="stable").index) + '.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -261,13 +307,14 @@ tabla
 display(Markdown(pregunta_2))
 
 # %%
-casi = tabla.index[tabla['margen = τ − R·t'] <= delta].tolist()
-criticas = tabla.index[tabla['margen = τ − R·t'] == 0].tolist()
+casi = [r for r in tabla.index if margen[r] <= delta]
+criticas = [r for r in tabla.index if margen[r] == 0]
 veces = R.loc[casi].sum()               # columnas de R^T · indicador de rutas casi críticas
 en_criticas = R.loc[criticas].sum() > 0
 casi_sin_ser = veces.index[(veces > 0) & ~en_criticas].tolist()
-display(pd.DataFrame({'en rutas casi críticas (nº)': veces, 'crítica': en_criticas}).T)
-Markdown(f'Rutas casi críticas (margen ≤ {delta}): {", ".join(casi)}. Actividades en alguna de ellas sin ser críticas: {", ".join(casi_sin_ser) or "ninguna"}.')
+display(pd.DataFrame({'en rutas casi críticas (nº)': veces, 'crítica': en_criticas.map({True: 'sí', False: 'no'})}).T)
+Markdown(f'**Respuesta:** rutas casi críticas (margen ≤ {delta}): {lista_y(casi)}. Sumando sus filas de R, las columnas positivas son '
+         f'{lista_y([a for a in R.columns if veces[a] > 0])}; quitando las críticas, quedan {lista_y(casi_sin_ser) if casi_sin_ser else "ninguna"}.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -285,7 +332,13 @@ a_min = umbral.index[0]; x = int(umbral.iloc[0]) + 1
 t_retrasada = t.copy(); t_retrasada[a_min] += x
 Rt_r = R @ t_retrasada
 display(umbral.to_frame('margen mínimo de sus rutas').T)
-Markdown(f'Retrasando {a_min} {x} días: τ pasa de {tau:.0f} a {float(Rt_r.max()):.0f} y la ruta crítica es {Rt_r.idxmax()} (antes {Rt.idxmax()}).')
+m_min = int(umbral.iloc[0])
+rutas_a = [r for r in R.index if R.loc[r, a_min] == 1 and margen[r] == m_min]
+t_empate = t.copy(); t_empate[a_min] += m_min
+Rt_e = R @ t_empate
+crit_e = [r for r in R.index if np.isclose(Rt_e[r], Rt_e.max())]
+crit_r = [r for r in R.index if np.isclose(Rt_r[r], Rt_r.max())]
+Markdown(f'''**Respuesta:** la actividad no crítica con menos margen en sus rutas es {a_min}: su ruta {lista_y(rutas_a)} tiene un margen de {plural(m_min, "día")}. Retrasando {a_min} {plural(m_min, 'día')}, esa ruta empata con la crítica (τ sigue en {float(Rt_e.max()):.0f}, rutas críticas {lista_y(crit_e)}); con {plural(x, 'día')}, la supera: τ pasa de {tau:.0f} a {float(Rt_r.max()):.0f} y la ruta crítica es {lista_y(crit_r)} (antes {Rt.idxmax()}). Así, el menor retraso que cambia la ruta crítica es {plural(m_min, 'día')} si basta con un empate y {plural(x, 'día')} si debe sustituirla.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -302,7 +355,8 @@ margen2 = Rt2.max() - Rt2
 comparacion = pd.DataFrame({'margen (proyecto 1)': margen, 'margen (proyecto 2)': margen2}).sort_values('margen (proyecto 1)')
 display(comparacion)
 n_casi1, n_casi2 = int((margen <= delta).sum()), int((margen2 <= delta).sum())
-Markdown(f'Rutas con margen ≤ {delta}: {n_casi1} en el proyecto 1 y {n_casi2} en el 2. El proyecto 1 es más sensible: más rutas compiten por ser la crítica.')
+mas_sensible = 'el proyecto 1' if n_casi1 > n_casi2 else ('el proyecto 2' if n_casi2 > n_casi1 else 'ninguno de los dos (empatan)')
+Markdown(f'Rutas con margen ≤ {delta}: {n_casi1} en el proyecto 1 y {n_casi2} en el 2. Es más sensible {mas_sensible}: más rutas compiten por ser la crítica.')
 
 # %%
 rng = np.random.default_rng(7)
@@ -313,6 +367,11 @@ def simula(tv):
 T1, T2 = simula(t), simula(t2)
 pd.DataFrame({'proyecto 1': [tau, T1.mean(), T1.std(), T1.mean() - tau], 'proyecto 2': [float(Rt2.max()), T2.mean(), T2.std(), T2.mean() - float(Rt2.max())]},
              index=['τ determinista', 'media simulada', 'desv. típica simulada', 'sesgo de fusión (media − τ)']).round(2)
+
+# %%
+mayor_var = 'el proyecto 2' if T2.std() > T1.std() else 'el proyecto 1'
+mayor_sesgo = 'el proyecto 1' if T1.mean() - tau > T2.mean() - float(Rt2.max()) else 'el proyecto 2'
+Markdown(f'''**Respuesta:** es más sensible {mas_sensible} ({n_casi1} frente a {n_casi2} rutas con margen ≤ {delta}). En la simulación (desviación típica del 25 % de cada duración), la desviación típica de τ es {T1.std():.2f} en el proyecto 1 y {T2.std():.2f} en el 2, así que tiene más varianza {mayor_var}; el sesgo de fusión es mayor en {mayor_sesgo} ({T1.mean() - tau:.2f} frente a {T2.mean() - float(Rt2.max()):.2f}). Ojo: parte de la mayor dispersión del proyecto 2 se debe a que sus actividades críticas son más largas y aquí la desviación de cada duración es proporcional a su media.''')
 
 # %% [markdown]
 # Con duraciones inciertas, el proyecto con más rutas casi críticas sufre más *sesgo de fusión*: la media simulada supera a τ porque en cada réplica gana la ruta que haya salido más larga entre varias candidatas. La desviación típica, en cambio, suele ser algo menor en el proyecto sensible (el máximo de varias variables se dispersa menos que una sola) y mayor en el proyecto 2, donde τ depende casi siempre de la misma ruta y hereda toda su varianza. La sensibilidad se lee directamente en el vector de márgenes $\tau\mathbf{1} - R\,t$: cuantos más ceros y valores pequeños tenga, más frágil es el camino crítico.

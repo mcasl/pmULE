@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -248,6 +252,24 @@ for item in sorted(dir()):
 # %%
 peso_prefabricados, km_fabrica, extra_material, coste_semana, emisiones_semana, fraccion_residuo_pref, precio_sombra = 280, 440, 30, 8, 3.0, 0.2, 100
 coste_camion, factor_camion, coste_gestion_residuo, km_gestor = 0.12, 0.1, 45, 25
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -292,7 +314,7 @@ camino_pref = ' / '.join('–'.join(r) for r in proyecto.critical_path(datos_pre
 resumen = pd.DataFrame({'in situ': [duracion, op_in, residuo_in], 'prefabricado': [duracion_pref, op_pref, residuo_pref]},
                        index=['duración (semanas)', 'operario-semanas en obra', 'residuo en obra (t)'])
 display(resumen.round(1))
-Markdown(f'''Prefabricar acorta el proyecto de {duracion} a **{duracion_pref}** semanas (ruta crítica {camino_pref}), quita {op_in - op_pref:.0f} operario-semanas de la obra y evita {residuo_in - residuo_pref:.0f} t de residuo en ella.''')
+Markdown(f'''Con prefabricados las actividades {lista_y(f'{a} ({datos_proyecto.loc[a, "duration"]} → {datos_pref.loc[a, "duration"]})' for a in prefabricadas)} se acortan; el proyecto pasa de {duracion} a **{duracion_pref}** semanas (camino crítico {criticas_txt(proyecto, datos_pref['duration'])}). Las operario-semanas en obra son la suma de operarios × duración de cada actividad (el total del diagrama de cargas): {op_in:.0f} in situ y {op_pref:.0f} prefabricando, {op_in - op_pref:.0f} menos ({lista_y(f'{a}: {datos_proyecto.loc[a, "resources"]} × {datos_proyecto.loc[a, "reduccion_prefabricado"]}' for a in prefabricadas)}). Residuo en obra: in situ {suma_txt(datos_proyecto.loc[prefabricadas, 'residuos_t'])} t; prefabricado, el {fraccion_residuo_pref:.0%}: {residuo_in:.0f} × {fraccion_residuo_pref} = {residuo_pref:.1f} t.\n\n**Respuesta:** in situ {duracion} semanas, {op_in:.0f} operario-semanas y {residuo_in:.0f} t de residuo; prefabricado {duracion_pref} semanas, {op_pref:.0f} operario-semanas y {residuo_pref:.1f} t (se evitan {residuo_in - residuo_pref:.1f} t).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -316,10 +338,12 @@ def opcion(semanas, residuo, transporte_t_km, extra):
     return s
 comparacion = pd.DataFrame({'in situ': opcion(duracion, residuo_in, 0, 0),
                             'prefabricado': opcion(duracion_pref, residuo_pref, peso_prefabricados * km_fabrica, extra_material)})
-display(comparacion.round(2))
+display(limpia_tabla(comparacion))
 em_camiones = comparacion.loc['transporte de prefabricados, alcance 3 (t CO₂)', 'prefabricado']
 em_semanas = comparacion.loc['semanas de obra (t CO₂)', 'in situ'] - comparacion.loc['semanas de obra (t CO₂)', 'prefabricado']
-Markdown(f'''Los camiones de la fábrica emiten {em_camiones:.1f} t; las {duracion - duracion_pref} semanas de obra que se ahorran, {em_semanas:.1f} t. En total, prefabricar ''' + ('emite menos' if comparacion.loc['emisiones (t CO₂)', 'prefabricado'] < comparacion.loc['emisiones (t CO₂)', 'in situ'] else 'emite más') + f''' ({comparacion.loc['emisiones (t CO₂)', 'prefabricado']:.1f} frente a {comparacion.loc['emisiones (t CO₂)', 'in situ']:.1f} t) y cuesta ''' + ('**' + f'''{abs(comparacion.loc['coste total al precio sombra (k€)', 'in situ'] - comparacion.loc['coste total al precio sombra (k€)', 'prefabricado']):.1f} k€ ''' + ('menos' if comparacion.loc['coste total al precio sombra (k€)', 'prefabricado'] < comparacion.loc['coste total al precio sombra (k€)', 'in situ'] else 'más') + '**') + f''' al precio sombra ({abs(comparacion.loc['coste monetario (k€)', 'in situ'] - comparacion.loc['coste monetario (k€)', 'prefabricado']):.1f} k€ ''' + ('menos' if comparacion.loc['coste monetario (k€)', 'prefabricado'] < comparacion.loc['coste monetario (k€)', 'in situ'] else 'más') + ' en dinero).')
+tkm = peso_prefabricados * km_fabrica
+display(Markdown(f'''- In situ: coste = {duracion} × {coste_semana} + {residuo_in:.0f} × {coste_gestion_residuo} / 1000 = **{comparacion.loc['coste monetario (k€)', 'in situ']:.2f} k€**; emisiones = {duracion} × {emisiones_semana} + {residuo_in:.0f} × {km_gestor} × {factor_camion} / 1000 = **{comparacion.loc['emisiones (t CO₂)', 'in situ']:.2f} t**.\n- Prefabricado: coste = {extra_material} + {duracion_pref} × {coste_semana} + {peso_prefabricados} × {km_fabrica} × {coste_camion} / 1000 + {residuo_pref:.1f} × {coste_gestion_residuo} / 1000 = **{comparacion.loc['coste monetario (k€)', 'prefabricado']:.2f} k€**; emisiones = {duracion_pref} × {emisiones_semana} + {peso_prefabricados} × {km_fabrica} × {factor_camion} / 1000 + {residuo_pref:.1f} × {km_gestor} × {factor_camion} / 1000 = **{comparacion.loc['emisiones (t CO₂)', 'prefabricado']:.2f} t**.\n- Coste total = coste + emisiones × {precio_sombra} / 1000: in situ {comparacion.loc['coste total al precio sombra (k€)', 'in situ']:.2f} k€; prefabricado {comparacion.loc['coste total al precio sombra (k€)', 'prefabricado']:.2f} k€.'''))
+Markdown(f'''**Respuesta:** los camiones de la fábrica emiten {em_camiones:.2f} t y las {duracion - duracion_pref} semanas de obra que se ahorran, {duracion - duracion_pref} × {emisiones_semana} = {em_semanas:.1f} t: pesan más ''' + ('**las semanas de obra**' if em_semanas > em_camiones else '**los camiones**') + '. En total, prefabricar ' + ('emite menos' if comparacion.loc['emisiones (t CO₂)', 'prefabricado'] < comparacion.loc['emisiones (t CO₂)', 'in situ'] else 'emite más') + f''' ({comparacion.loc['emisiones (t CO₂)', 'prefabricado']:.1f} frente a {comparacion.loc['emisiones (t CO₂)', 'in situ']:.1f} t) y cuesta ''' + ('**' + f'''{abs(comparacion.loc['coste total al precio sombra (k€)', 'in situ'] - comparacion.loc['coste total al precio sombra (k€)', 'prefabricado']):.1f} k€ ''' + ('menos' if comparacion.loc['coste total al precio sombra (k€)', 'prefabricado'] < comparacion.loc['coste total al precio sombra (k€)', 'in situ'] else 'más') + '**') + f''' al precio sombra ({abs(comparacion.loc['coste monetario (k€)', 'in situ'] - comparacion.loc['coste monetario (k€)', 'prefabricado']):.1f} k€ ''' + ('menos' if comparacion.loc['coste monetario (k€)', 'prefabricado'] < comparacion.loc['coste monetario (k€)', 'in situ'] else 'más') + ' en dinero).')
 
 # %% [markdown]
 # ## Apartado 3
@@ -328,7 +352,9 @@ Markdown(f'''Los camiones de la fábrica emiten {em_camiones:.1f} t; las {duraci
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **S6.** El transporte de los prefabricados por un transportista contratado es **alcance 3** del proyecto, y cuenta: 12.3 t. Pero también cuentan las semanas de obra que se ahorran (2 × 3.0 t) y el residuo que no se genera, y «lo contrario de sostenible» es una afirmación sobre una columna de la tabla, no sobre la tabla. **S8.** Las 49 t de residuo que no llegan a producirse en la obra son **prevención**, el primer escalón de la jerarquía; «los gestiona el gestor» es el último. **S2.** Con el precio sombra la decisión es el coste total: **in situ** (127.3 k€ frente a 154.5 prefabricado): con estas distancias y este precio sombra los camiones pesan más que las semanas, y la respuesta es la contraria a la de otros casos; lo que no cambia es que se decide con la tabla entera, no con la columna de los camiones. **S4.** «Lo que ahorremos en semanas no es de este presupuesto» es la orientación al proceso: las 2 semanas de instalaciones, grúa y equipo son consecuencia de la decisión que se toma ahora, las pague quien las pague; sacarlas de la cuenta es la misma trampa que el consumo del equipo barato (caso del ciclo de vida).
+# **S6.** El transporte de los prefabricados por un transportista contratado es **alcance 3** del proyecto, y cuenta: 12.3 t. Pero también cuentan las semanas de obra que se ahorran (2 × 3.0 = 6.0 t) y el residuo que no se genera, y «lo contrario de sostenible» es una afirmación sobre una columna de la tabla, no sobre la tabla. Aquí la tabla entera le da la razón en las emisiones (prefabricar emite 51.4 t frente a 45.2), pero porque lo dicen las cifras, no porque traer camiones sea por definición «lo contrario de sostenible». **S8.** Las 48.8 t de residuo que no llegan a producirse en la obra son **prevención**, el primer escalón de la jerarquía; «los gestiona el gestor» no sube el residuo de escalón: lo que se genera queda, como mucho, en reciclado. **S2.** Con el precio sombra la decisión es el coste total: **in situ** (127.3 k€ frente a 154.5 prefabricado): con estas distancias y este precio sombra los camiones pesan más que las semanas y la conclusión del director acierta, aunque con un argumento incompleto; lo que no cambia es que se decide con la tabla entera, no con la columna de los camiones. **S4.** «Lo que ahorremos en semanas no es de este presupuesto» es la orientación al proceso: las 2 semanas de instalaciones, grúa y equipo son consecuencia de la decisión que se toma ahora, las pague quien las pague; sacarlas de la cuenta es la misma trampa que el consumo del equipo barato (caso del ciclo de vida).
+#
+# **Respuesta:** no es correcto decidir por los camiones: el transporte es alcance 3 y cuenta, pero se compara con todo lo demás; el residuo evitado es prevención; por el coste total se elige **in situ**, y «no es de este presupuesto» no cambia la cuenta (S4).
 
 # %%
 preguntas_test = [

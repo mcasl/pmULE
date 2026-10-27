@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -265,6 +269,24 @@ for item in sorted(dir()):
 
 # %%
 semana_control, presupuesto_emisiones = 11, 470
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -310,7 +332,7 @@ indicadores = pd.Series({'PE (t)': PE, 'EE (t)': EE, 'AE (t)': AE, 'EE − AE (t
                          'EPI = EE / AE': EPI, 'índice de avance EE / PE': EE / PE,
                          'EAC = presupuesto / EPI (t)': EAC, 'exceso previsto sobre el presupuesto (t)': EAC - presupuesto_emisiones})
 display(indicadores.round(2).to_frame('valor').T)
-Markdown(f'''EPI = {EE:.1f} / {AE:.1f} = **{EPI:.2f}**: por cada tonelada planificada para el trabajo hecho se han emitido {1 / EPI:.2f}. Previsión al cierre **{EAC:.0f} t** frente a las {presupuesto_emisiones:.0f} del acta: el indicador **no se cumple** si no cambia el ritmo de emisión.''')
+Markdown(f'''Cada total es la suma de la columna de la tabla anterior:\n\n- {explica_suma(detalle['PE_i'], 'PE', 't', 1)}\n- {explica_suma(detalle['EE_i'], 'EE', 't', 1)}\n- {explica_suma(detalle['AE'], 'AE', 't', 1)}\n\nEPI = EE / AE = {EE:.1f} / {AE:.1f} = **{EPI:.2f}**: por cada tonelada planificada para el trabajo hecho se han emitido 1 / {EPI:.2f} = {1 / EPI:.2f} t. Previsión al cierre EAC = presupuesto / EPI = {presupuesto_emisiones} / {EPI:.4f} = **{EAC:.0f} t**.\n\n**Respuesta:** PE = {PE:.1f} t, EE = {EE:.1f} t, AE = {AE:.1f} t, EPI = {EPI:.2f} y EAC = {EAC:.0f} t frente a las {presupuesto_emisiones} t del acta: el indicador **no se cumple** si no cambia el ritmo de emisión (exceso previsto de {EAC - presupuesto_emisiones:.0f} t).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -318,8 +340,11 @@ Markdown(f'''EPI = {EE:.1f} / {AE:.1f} = **{EPI:.2f}**: por cada tonelada planif
 # %%
 display(Markdown(pregunta_2))
 
-# %% [markdown]
-# Se mezclan dos efectos de signo contrario. El proyecto va **retrasado** (EE/PE = 0.76: se ha hecho menos trabajo del previsto a la fecha), y por eso ha emitido menos que lo planificado a la fecha: 213 t frente a 227. Pero por el trabajo que sí se ha hecho ha emitido **más de lo previsto** (EPI = 0.80): las actividades empezadas (D, E, y las terminadas) emiten entre un 20 y un 40 % más por unidad de avance que el plan. El acumulado compara dos cosas que no son comparables (lo emitido por el trabajo hecho con lo previsto para un trabajo mayor); EE es la referencia correcta, exactamente como en el valor ganado de costes (lección 14): AE < PV no dice nada de la eficiencia; EV − AC sí.
+# %%
+empezadas = detalle.index[detalle['EE_i'] > 0]
+ratio = (detalle.loc[empezadas, 'AE'] / detalle.loc[empezadas, 'EE_i']).astype(float)
+exceso_pct = ', '.join(f'{a} {float(detalle.loc[a, "AE"]):.1f}/{float(detalle.loc[a, "EE_i"]):.1f} = {ratio[a]:.2f}' for a in empezadas)
+Markdown(f'''Se mezclan dos efectos de signo contrario, y la diferencia del borrador se descompone exactamente en ellos:\n\nAE − PE = (AE − EE) + (EE − PE) = ({AE:.1f} − {EE:.1f}) + ({EE:.1f} − {PE:.1f}) = {AE - EE:.1f} + ({EE - PE:.1f}) = **{AE - PE:.1f} t**.\n\n- **Retraso** (EE − PE = {EE - PE:.1f} t; índice de avance EE / PE = {EE:.1f} / {PE:.1f} = {EE / PE:.2f}): se ha hecho menos trabajo del previsto a la fecha, y por eso se ha emitido menos de lo planificado a la fecha.\n- **Ineficiencia** (AE − EE = {AE - EE:.1f} t; EPI = {EPI:.2f}): por el trabajo que sí se ha hecho se ha emitido más de lo previsto. Cociente AE / EE de cada actividad empezada: {exceso_pct}; todas emiten entre un {100 * (ratio.min() - 1):.0f} y un {100 * (ratio.max() - 1):.0f} % más por unidad de avance que el plan.\n\nEl primer efecto gana en el acumulado (AE < PE) y esconde el segundo, que es el que se proyecta al cierre. EE es la referencia correcta, exactamente como en el valor ganado de costes (lección 12): AC < PV no dice nada de la eficiencia; EV − AC sí.\n\n**Respuesta:** AE < PE porque el proyecto va retrasado; EAC > presupuesto porque cada unidad de trabajo emite más de lo previsto (EPI < 1). El acumulado mezcla el retraso y la ineficiencia.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -329,6 +354,8 @@ display(Markdown(pregunta_3))
 
 # %% [markdown]
 # **S5.** El indicador está en el acta de constitución: se informa como el coste, con PE, EE, AE, el índice y la previsión al cierre. El borrador da un dato cierto (213 < 227) que lleva a la conclusión contraria a la correcta (EAC 585 t > 470): es una verdad a medias (C2) o, si el jefe de proyecto conoce el EPI, información fuera de contexto (C3). Las cifras que debe contener: EPI 0.80, EAC 585 t, retraso EE/PE 0.76, causas y medidas. **S6.** Clasificación de las fuentes: gasóleo de la maquinaria propia: alcance 1; grupo electrógeno de la obra: alcance 1; electricidad comprada a la red: alcance 2; transporte de materiales por un transportista contratado: alcance 3; vehículos de la subcontrata de montaje: alcance 3. La regla es quién controla la fuente: el combustible de lo propio es alcance 1 aunque lo queme un camión; el mismo camión de un transportista contratado es alcance 3; la electricidad comprada es siempre alcance 2.
+#
+# **Respuesta:** el borrador **no cumple** S5: debe dar PE, EE, AE, el EPI (0.80) y la previsión al cierre (585 t frente a 470); los alcances son los indicados arriba.
 
 # %%
 preguntas_test = [

@@ -13,6 +13,126 @@ META = dict(slug="03_roy", prefijo="Roy",
                         "entre actividades.",
             n_defecto=3)
 
+# Celda auxiliar (se define en el cuaderno): una línea por ficticia del PERT con los nodos
+# que une, la prelación que transmite y por qué hace falta.
+_AUX_FICTICIAS = '''
+def explica_ficticias(proyecto, prelaciones):
+    """Una línea por ficticia del PERT: nodos que une, prelación que transmite y por qué no
+    basta con hacer empezar las sucesoras en el nodo donde terminan las predecesoras."""
+    G = proyecto.pert_graph
+    pred = {a: set(ps) for a, ps in prelaciones.immediate_predecessor.items()}
+    R = nx.DiGraph([(p, a) for a, ps in pred.items() for p in ps])
+    R.add_nodes_from(pred)
+    anc = {a: nx.ancestors(R, a) for a in pred}
+    def entran(nodo, salvo=None):
+        acts = set()
+        for i, _, d in G.in_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= entran(i) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def salen(nodo, salvo=None):
+        acts = set()
+        for _, j, d in G.out_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= salen(j) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def arcos_reales(nodo, sentido):
+        aristas = G.in_edges(nodo, data=True) if sentido == 'in' else G.out_edges(nodo, data=True)
+        return {(u if sentido == 'in' else v): d['activity'] for u, v, d in aristas if not d['activity'].startswith('@')}
+    pl = lambda acts, s, p: s if len(acts) == 1 else p
+    lineas = []
+    arcos = sorted(proyecto.nodes_from_edges.items(), key=lambda kv: (int(kv[1][0]), int(kv[1][1])))
+    for nombre, (i, j) in arcos:
+        if not nombre.startswith('@'):
+            continue
+        antes, despues = sorted(entran(i)), sorted(salen(j))
+        # prelaciones inmediatas del cuadro que pasan por la ficticia (las demás ya se deducen de otras)
+        pares = [(x, y) for x in antes for y in despues if x in pred[y]] or [(x, y) for x in antes for y in despues]
+        despues = sorted({y for _, y in pares})
+        grupos = {}
+        for y in despues:
+            grupos.setdefault(tuple(sorted(x for x, z in pares if z == y)), []).append(y)
+        transmite = '; '.join(f'{lista_y(xs)} {pl(xs, "precede", "preceden")} a {lista_y(ys)}' for xs, ys in grupos.items())
+        # Si los nodos i y j fueran uno solo, lo que llega a j precedería a lo que sale de i
+        llegan_j, salen_i = sorted(entran(j, salvo=nombre)), sorted(salen(i, salvo=nombre))
+        falsas = [(x, y) for y in salen_i for x in llegan_j if x not in anc[y]]
+        if falsas:
+            x_s = sorted({x for x, _ in falsas})
+            y_s = sorted({y for _, y in falsas})
+            directas_j, directas_i = set(arcos_reales(j, 'in').values()), set(arcos_reales(i, 'out').values())
+            llega = (f'{pl(x_s, "llega", "llegan")} al nodo {j}' if set(x_s) <= directas_j else
+                     f'{pl(x_s, "llega", "llegan")} al nodo {j} (directamente o por otra ficticia)')
+            sale = (f'{pl(y_s, "sale", "salen")} de ese nodo' if set(y_s) <= directas_i else
+                    f'{pl(y_s, "empieza", "empiezan")} a partir de ese nodo (directamente o tras otra ficticia)')
+            motivo = (f'{lista_y(despues)} {pl(despues, "espera", "esperan")} además a {lista_y(x_s)}, que {llega}; '
+                      f'si {lista_y(despues)} {pl(despues, "saliera", "salieran")} del nodo {i}, {lista_y(x_s)} '
+                      f'{pl(x_s, "precedería", "precederían")} también a {lista_y(y_s)}, que {sale} y no '
+                      f'{pl(y_s, "depende", "dependen")} de {pl(x_s, "ella", "ellas")}')
+        else:
+            gemelas = None
+            ini_i, ini_j = arcos_reales(i, 'in'), arcos_reales(j, 'in')
+            fin_i, fin_j = arcos_reales(i, 'out'), arcos_reales(j, 'out')
+            for u in sorted(set(ini_i) & set(ini_j)):
+                gemelas = gemelas or (ini_i[u], ini_j[u], u, j, f'empiezan en el mismo nodo ({u})')
+            for v in sorted(set(fin_i) & set(fin_j)):
+                gemelas = gemelas or (fin_i[v], fin_j[v], i, v, f'terminan en el mismo nodo ({v})')
+            if gemelas:
+                a, b, n1, n2, verbo = gemelas
+                a, b = sorted([a, b])
+                motivo = (f'{a} y {b} {verbo}; sin la ficticia irían '
+                          f'las dos del nodo {n1} al {n2}, dos arcos entre el mismo par de nodos que no se podrían distinguir')
+            else:
+                motivo = 'sin ella habría que fundir los nodos y se perdería la estructura del grafo'
+        lineas.append(f'- Ficticia {i} → {j}: transmite que {transmite}. Hace falta porque {motivo}.')
+    return lineas
+'''
+
+# Celda que explica, con los números del proyecto, de dónde salen los nodos y arcos de cada grafo
+_COMPARA_ROY_PERT = r"""_ini, _fin = sorted(prelaciones.start_activities), sorted(prelaciones.end_activities)
+_lineas = explica_ficticias(proyecto, prelaciones)
+Markdown(f'''**Roy**: un nodo por actividad más los nodos de inicio y fin: {n_act} + 2 = **{n_act + 2} nodos**. Los arcos son las
+{n_prelaciones} prelaciones inmediatas del cuadro, más {plural(len(_ini), 'arco')} desde el inicio hasta
+{'la actividad inicial' if len(_ini) == 1 else 'las actividades iniciales'} ({lista_y(_ini)}) y {plural(len(_fin), 'arco')} desde
+{'la actividad final' if len(_fin) == 1 else 'las actividades finales'} ({lista_y(_fin)}) hasta el fin:
+{n_prelaciones} + {len(_ini)} + {len(_fin)} = **{n_arcos_roy} arcos**.
+
+**PERT**: los arcos son las {n_act} actividades más las ficticias: {n_act} + {len(proyecto.dummies)} = **{n_act + len(proyecto.dummies)} arcos**;
+los nodos son los sucesos (inicio y fin de grupos de actividades), **{len(proyecto.nodes)} nodos**, porque las actividades con las
+mismas predecesoras salen de un mismo nodo y las que tienen las mismas sucesoras llegan a un mismo nodo.
+
+La diferencia se debe a qué representa cada elemento: en el Roy las prelaciones son arcos y nunca hacen falta ficticias; en el
+PERT las prelaciones se expresan compartiendo nodos, y cuando una prelación no puede expresarse así aparece una ficticia.
+''' + (f'''Este PERT necesita {plural(len(_lineas), 'ficticia')}:
+
+''' + '\n'.join(_lineas) if _lineas else 'Este PERT no necesita ninguna ficticia.'))"""
+
+_DEF_HOLGURAS = ("Holguras: la *total* (LS − ES) es lo que puede retrasarse una actividad sin alargar el "
+                 "proyecto; la *libre* (mín ES de las sucesoras − EF) lo que puede retrasarse sin retrasar el "
+                 "inicio más temprano de ninguna sucesora; la *independiente* (máx(0, mín ES suc. − máx LF "
+                 "pred. − d)) la que conserva aunque sus predecesoras acaben lo más tarde posible y sus "
+                 "sucesoras empiecen lo antes posible.")
+
+# Cálculo paso a paso de las fechas, holguras y camino crítico (tras la celda del calendario)
+def _fechas_y_critico(donde='en las dos figuras siguientes'):
+    return [
+    md("Cómo sale cada fecha (ES/EF: inicio y fin más tempranos; LS/LF: inicio y fin más tardíos): para cada "
+       "actividad, la tabla muestra los fines más tempranos de sus predecesoras que se comparan (el máximo es su "
+       "ES) y los inicios más tardíos de sus sucesoras (el mínimo es su LF)."),
+    code('#| tbl-cap: "Cálculo paso a paso de las fechas"\n#| label: tbl-fechasPaso\n'
+         "detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d']]"),
+    md("El calendario incluye también las holguras. " + _DEF_HOLGURAS.replace("Holguras: la", "La", 1) + " Las actividades de holgura total nula "
+       "son las críticas y forman el camino crítico."),
+    code("duracion_proyecto = proyecto.duration(datos_proyecto['duration'])\n"
+         "explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas')"),
+    code("_criticas = ordena_ruta(calendario.index[calendario['H_total'] == 0], calendario)\n"
+         "_holgadas = ordena_ruta(calendario.index[calendario['H_total'] > 0], calendario)\n"
+         "_txt = ', '.join(f'{a} ({int(calendario.loc[a, \"H_total\"])})' for a in _holgadas)\n"
+         "Markdown(f'**Respuesta:** el proyecto dura {plural(duracion_proyecto, \"semana\")} y son críticas {lista_y(_criticas)} '\n"
+         "         f'(holgura total 0). En el grafo Roy el camino crítico pasa por los nodos de esas actividades y en el '\n"
+         "         f'PERT por sus arcos (en rojo " + donde + "). '\n"
+         "         + (f'Las demás tienen holgura total positiva (entre paréntesis, en semanas): {_txt}.' if _holgadas else 'No hay actividades con holgura.'))"),
+    ]
+
 
 def _base(k, rng):
     con_desfases = (k % 3 == 0)
@@ -62,6 +182,7 @@ def _base(k, rng):
     celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()"))
+    celdas.append(code(_AUX_FICTICIAS))
     ap = 1
     celdas += apartado(ap); ap += 1
     celdas.append(md("En el grafo Roy cada actividad es un nodo y cada prelación inmediata un arco. Se añaden "
@@ -80,10 +201,7 @@ def _base(k, rng):
                        "              'arcos': [n_arcos_roy, n_act + len(proyecto.dummies)],\n"
                        "              'ficticias': [0, len(proyecto.dummies)]},\n"
                        "             index=['Roy', 'PERT'])"))
-    celdas.append(md("En Roy el número de nodos es fijo (actividades más inicio y fin) y los arcos son las "
-                     "prelaciones. En PERT los arcos son las actividades y los nodos los sucesos; cuando una "
-                     "prelación no puede expresarse compartiendo nodos aparece una ficticia, que es el precio "
-                     "que paga el PERT por representar las actividades como arcos."))
+    celdas.append(code(_COMPARA_ROY_PERT))
     celdas += apartado(ap); ap += 1
     celdas.append(md("Sobre el grafo Roy, el inicio más temprano de una actividad es el máximo de los fines "
                      "más tempranos de sus predecesoras; el fin más tardío, el mínimo de los inicios más "
@@ -91,37 +209,37 @@ def _base(k, rng):
     celdas.append(code('#| tbl-cap: "Calendario del proyecto"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
-    celdas.append(md("Cómo sale cada fecha: para cada actividad, la tabla muestra los fines más tempranos de sus "
-                     "predecesoras que se comparan (el máximo es su inicio más temprano) y los inicios más tardíos "
-                     "de sus sucesoras (el mínimo es su fin más tardío)."))
-    celdas.append(code('#| tbl-cap: "Cálculo paso a paso de las fechas"\n#| label: tbl-fechasPaso\n'
-                       "detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d']]"))
-    celdas.append(code("duracion_proyecto = proyecto.duration(datos_proyecto['duration'])\n"
-                       "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
-                       "Markdown(f'La duración del proyecto es {duracion_proyecto} semanas.')"))
+    celdas += _fechas_y_critico()
     celdas.append(code('#| fig-cap: "Grafo Roy con tiempos y camino crítico"\n#| label: fig-royCritico\n'
                        "proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)"))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT con tiempos y camino crítico", label="fig-pertCritico", tipo="pert")
     if con_desfases:
         W, Z, X, Y, espera = mods["W"], mods["Z"], mods["X"], mods["Y"], mods["espera"]
         mitad = int(D[W]) // 2
-        nuevo = {a: set(ps) for a, ps in preds.items()}
-        # espera entre X e Y: actividad de espera 💤Y
-        nuevo[Y].discard(X)
-        nuevo[f"💤{Y}"] = {X}
-        nuevo[Y].add(f"💤{Y}")
-        # solape: W se parte en W1 y W2; Z arranca tras W1; el resto de sucesoras de W tras W2
-        nuevo[f"{W}1"] = set(nuevo.pop(W))
-        nuevo[f"{W}2"] = {f"{W}1"}
-        for a in list(nuevo):
-            if W in nuevo[a]:
-                nuevo[a].discard(W)
-                nuevo[a].add(f"{W}1" if a == Z else f"{W}2")
-        dur_nuevo = {a: int(D[a]) for a in preds if a != W}
-        dur_nuevo[f"{W}1"] = mitad
-        dur_nuevo[f"{W}2"] = int(D[W]) - mitad
-        dur_nuevo[f"💤{Y}"] = espera
-        nuevo_str = {a: ",".join(sorted(ps)) if ps else "---" for a, ps in nuevo.items()}
+
+        def _modifica(con_espera, con_solape):
+            nuevo = {a: set(ps) for a, ps in preds.items()}
+            dur_nuevo = {a: int(D[a]) for a in preds}
+            if con_espera:      # espera entre X e Y: actividad de espera 💤Y
+                nuevo[Y].discard(X)
+                nuevo[f"💤{Y}"] = {X}
+                nuevo[Y].add(f"💤{Y}")
+                dur_nuevo[f"💤{Y}"] = espera
+            if con_solape:      # solape: W se parte en W1 y W2; Z arranca tras W1; el resto de sucesoras de W tras W2
+                nuevo[f"{W}1"] = set(nuevo.pop(W))
+                nuevo[f"{W}2"] = {f"{W}1"}
+                for a in list(nuevo):
+                    if W in nuevo[a]:
+                        nuevo[a].discard(W)
+                        nuevo[a].add(f"{W}1" if a == Z else f"{W}2")
+                del dur_nuevo[W]
+                dur_nuevo[f"{W}1"] = mitad
+                dur_nuevo[f"{W}2"] = int(D[W]) - mitad
+            return {a: ",".join(sorted(ps)) if ps else "---" for a, ps in nuevo.items()}, dur_nuevo
+
+        nuevo_str, dur_nuevo = _modifica(True, True)
+        solo_espera, dur_solo_espera = _modifica(True, False)
+        solo_solape, dur_solo_solape = _modifica(False, True)
         celdas += apartado(ap); ap += 1
         celdas.append(md(f"Las dos condiciones nuevas son relaciones con desfase. Con actividades en los nodos "
                          f"se modelan con actividades auxiliares:\n\n"
@@ -140,9 +258,37 @@ def _base(k, rng):
         celdas.append(code('#| tbl-cap: "Calendario del proyecto modificado"\n#| label: tbl-calendarioModificado\n'
                            "proyecto_mod.calendar(duraciones_mod)"))
         celdas.append(code("duracion_mod = proyecto_mod.duration(duraciones_mod)\n"
-                           "Markdown(f'La duración pasa de {duracion_proyecto} a {duracion_mod} semanas: la espera añade tiempo si "
-                           f"{X}-{Y} está en una ruta crítica y el solape lo quita si {W}-{Z} lo está. Aquí el efecto neto es "
-                           "de {duracion_mod - duracion_proyecto:+d} semanas.')"))
+                           "explica_camino_critico(proyecto_mod, duraciones_mod, 'semanas')"))
+        celdas.append(md("Para ver qué aporta cada cambio se calcula también el proyecto con sólo uno de los dos."))
+        celdas.append(code(literal_dict(solo_espera, "prelaciones_solo_espera") + "\n"
+                           + literal_dict(dur_solo_espera, "duraciones_solo_espera") + "\n"
+                           + literal_dict(solo_solape, "prelaciones_solo_solape") + "\n"
+                           + literal_dict(dur_solo_solape, "duraciones_solo_solape") + "\n"
+                           "def _duracion(prel, dur):\n"
+                           "    return int(PredecessorTable.from_dict_of_strings(prel).create_project().duration(pd.Series(dur)))\n"
+                           "T_espera = _duracion(prelaciones_solo_espera, duraciones_solo_espera)\n"
+                           "T_solape = _duracion(prelaciones_solo_solape, duraciones_solo_solape)\n"
+                           f"X, Y, W, Z, espera, mitad = {X!r}, {Y!r}, {W!r}, {Z!r}, {espera}, {mitad}\n"
+                           "c = calendario\n"
+                           "margen = int(c.loc[Y, 'inicio_mas_tardio'] - c.loc[X, 'fin_mas_temprano'])\n"
+                           "enlace_critico = (c.loc[W, 'H_total'] == 0 and c.loc[Z, 'H_total'] == 0\n"
+                           "                  and c.loc[W, 'fin_mas_temprano'] == c.loc[Z, 'inicio_mas_temprano'])\n"
+                           "_e = (f'- **Sólo la espera**: la prelación {X} → {Y} tenía un margen LS({Y}) − EF({X}) = '\n"
+                           "      f'{int(c.loc[Y, \"inicio_mas_tardio\"])} − {int(c.loc[X, \"fin_mas_temprano\"])} = {plural(margen, \"semana\")}; '\n"
+                           "      f'una espera de {plural(espera, \"semana\")} alarga el proyecto máx(0, {espera} − {margen}) = '\n"
+                           "      f'{max(0, espera - margen)}: de {duracion_proyecto} a **{T_espera}** semanas.')\n"
+                           "if T_solape < duracion_proyecto:\n"
+                           "    _por = (f'la prelación {W} → {Z} está en el camino crítico, así que el proyecto se acorta '\n"
+                           "            f'{plural(duracion_proyecto - T_solape, \"semana\")} (hasta que otra ruta pasa a ser la más larga)')\n"
+                           "elif enlace_critico:\n"
+                           "    _por = f'aunque la prelación {W} → {Z} es crítica, hay otra ruta crítica que no pasa por ella'\n"
+                           "else:\n"
+                           "    _por = f'la prelación {W} → {Z} no está en el camino crítico'\n"
+                           "_s = (f'- **Sólo el solape**: {Z} puede empezar {plural(int(c.loc[W, \"duracion\"]) - mitad, \"semana\")} antes '\n"
+                           "      f'de que termine {W} (tras {W}1, de {mitad}); {_por}: el proyecto dura **{T_solape}** semanas.')\n"
+                           "Markdown(_e + '\\n' + _s + f'\\n\\n**Respuesta:** con la espera y el solape a la vez el proyecto dura '\n"
+                           "         f'**{plural(duracion_mod, \"semana\")}**, ' + ('las mismas que antes.' if duracion_mod == duracion_proyecto else\n"
+                           "         f'{plural(abs(duracion_mod - duracion_proyecto), \"semana\")} {\"menos\" if duracion_mod < duracion_proyecto else \"más\"} que las {duracion_proyecto} iniciales.'))"))
     sub = f"{n} actividades, {info['n_dummies']} ficticias en PERT" + (", con espera y solape" if con_desfases else "")
     return celdas, sub
 
@@ -221,7 +367,8 @@ def _predecesora_dominante(rng):
                        "pd.DataFrame(filas).set_index('actividad')"))
     celdas.append(code("calendario = proyecto.calendar(duracion)\n"
                        "coincide = all(calendario.loc[a, 'inicio_mas_temprano'] == ES[a] and calendario.loc[a, 'inicio_mas_tardio'] == LS[a] for a in orden)\n"
-                       "Markdown(f'La duración del proyecto es {duracion_proyecto} días. El cálculo coincide con el de la librería: {coincide}.')"))
+                       "Markdown(f'**Respuesta:** la duración del proyecto es el mayor fin más temprano, {duracion_proyecto} días. '\n"
+                       "         + ('El cálculo coincide con el calendario de la librería.' if coincide else 'El cálculo NO coincide con el de la librería.'))"))
     celdas += apartado(3)
     celdas.append(code("dominantes = {}\n"
                        "for a in datos_proyecto.index:\n"
@@ -230,19 +377,23 @@ def _predecesora_dominante(rng):
                        "        maximo = max(EF[p] for p in ps)\n"
                        "        dominantes[a] = ', '.join(p for p in ps if EF[p] == maximo)\n"
                        "pd.Series(dominantes).to_frame('predecesora dominante')"))
-    celdas.append(md(f"La predecesora dominante de {objetivo} es {dominante}: su fin más temprano es el mayor de "
-                     f"entre las predecesoras y por tanto el que fija el inicio de {objetivo}. Las demás "
-                     f"predecesoras terminan antes y tienen margen (holgura libre) respecto a {objetivo}."))
-    celdas += apartado(4)
     celdas.append(code(f"objetivo, dominante = '{objetivo}', '{dominante}'\n"
                        "otras = [p for p in sorted(predecesoras[objetivo]) if p != dominante]\n"
                        "margen = {p: EF[dominante] - EF[p] for p in otras}\n"
-                       "d2 = duracion.copy(); d2[dominante] -= 1\n"
+                       "_fines = ', '.join(f'EF({p}) = {EF[p]}' for p in sorted(predecesoras[objetivo]))\n"
+                       "_margenes = lista_y([f'{p} termina {plural(m, \"día\")} antes' for p, m in margen.items()])\n"
+                       "Markdown(f'**Respuesta:** la predecesora dominante de {objetivo} es **{dominante}**: de sus predecesoras '\n"
+                       "         f'({_fines}) es la que termina más tarde y fija ES({objetivo}) = {ES[objetivo]}; {_margenes}.')"))
+    celdas += apartado(4)
+    celdas.append(code("d2 = duracion.copy(); d2[dominante] -= 1\n"
                        "ES_nuevo = int(proyecto.calendar(d2).loc[objetivo, 'inicio_mas_temprano'])\n"
-                       "Markdown(f'''Para adelantar {objetivo} hay que acortar {dominante} (o alguna de sus antecesoras en la cadena que la "
-                       "hace llegar la última): acortándola un día, {objetivo} empieza en {ES_nuevo} en vez de {ES[objetivo]}. "
-                       "Acortar {\", \".join(otras)} no sirve: terminan {\", \".join(f\"{p} {m} día(s)\" for p, m in margen.items())} antes que {dominante} y "
-                       "su holgura sólo aumentaría. Sólo cuando {dominante} se acorte tanto que otra predecesora pase a ser la última cambiará la dominante.''')"))
+                       "_segunda = max(EF[p] for p in otras)\n"
+                       "Markdown(f'**Respuesta:** hay que acortar {dominante} (o alguna de sus antecesoras en la cadena que la hace '\n"
+                       "         f'llegar la última). Acortándola un día, EF({dominante}) pasa de {EF[dominante]} a {EF[dominante] - 1} '\n"
+                       "         f'y {objetivo} empieza en máx({EF[dominante] - 1}, {_segunda}) = {ES_nuevo} en vez de {ES[objetivo]}. '\n"
+                       "         f'Acortar {lista_y(otras)} no sirve, porque {dominante} seguiría llegando la última ({_margenes} que ella): '\n"
+                       "         f'sólo aumentaría su margen. La dominante sólo cambia si {dominante} se acorta más de '\n"
+                       "         f'{plural(EF[dominante] - _segunda, \"día\")} (lo que le saca la siguiente predecesora que termina más tarde).')"))
     return celdas, f"{n} actividades, cálculo manual sobre Roy; predecesora dominante de {objetivo}"
 
 
@@ -287,28 +438,33 @@ def _desde_sucesoras(rng):
                        "datos_proyecto"))
     celdas.append(code("prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()\n"
-                       "print('Iniciales (sin predecesoras):', ', '.join(sorted(prelaciones.start_activities)))\n"
-                       "print('Finales (sin sucesoras):     ', ', '.join(sorted(prelaciones.end_activities)))"))
+                       "_ini, _fin = sorted(prelaciones.start_activities), sorted(prelaciones.end_activities)\n"
+                       "_v = lambda l, s, p: s if len(l) == 1 else p\n"
+                       "Markdown(f'**Respuesta:** {_v(_ini, \"es inicial\", \"son iniciales\")} {lista_y(_ini)}: en el cuadro de sucesoras no '\n"
+                       "         f'{_v(_ini, \"aparece\", \"aparecen\")} en la casilla de ninguna actividad, y en el de predecesoras '\n"
+                       "         f'{_v(_ini, \"tiene\", \"tienen\")} `---`. {_v(_fin, \"Es final\", \"Son finales\")} {lista_y(_fin)}: en el cuadro de '\n"
+                       "         f'sucesoras {_v(_fin, \"tiene\", \"tienen\")} `---`, y en el de predecesoras no {_v(_fin, \"figura\", \"figuran\")} '\n"
+                       "         f'como predecesora de ninguna actividad.')"))
     celdas += apartado(2)
     celdas.append(code('#| fig-cap: "Grafo Roy"\n#| label: fig-roy\n'
                        "proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)"))
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap="Grafo PERT", label="fig-pert", tipo="pert")
-    celdas.append(code("Markdown(f'El PERT necesita {len(proyecto.dummies)} actividad(es) ficticia(s); el Roy, ninguna.')"))
+    celdas.append(code(_AUX_FICTICIAS))
+    celdas.append(code("_lineas = explica_ficticias(proyecto, prelaciones)\n"
+                       "Markdown(f'**Respuesta:** el Roy no necesita ficticias (cada prelación es un arco); el PERT necesita '\n"
+                       "         f'**{plural(len(_lineas), \"ficticia\")}**' + (':\\n\\n' + '\\n'.join(_lineas) if _lineas else '.'))"))
     celdas += apartado(3)
     celdas.append(code('#| tbl-cap: "Calendario del proyecto"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
-    celdas.append(code('#| tbl-cap: "Cálculo paso a paso de las fechas"\n#| label: tbl-fechasPaso\n'
-                       "detalle_holguras(calendario, prelaciones)[['ES = máx EF pred.', 'EF = ES + d', 'LF = mín LS suc.', 'LS = LF − d']]"))
-    celdas.append(code("duracion_proyecto = proyecto.duration(datos_proyecto['duration'])\n"
-                       "camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])\n"
-                       "Markdown(f'La duración del proyecto es {duracion_proyecto} semanas.')"))
+    celdas += _fechas_y_critico('en las figuras del apartado 2')
     celdas += apartado(4)
     celdas.append(code("sucesoras = {a: sorted(b for b, ps in prelaciones.immediate_predecessor.items() if a in ps) for a in datos_proyecto.index}\n"
                        "reconstruido = pd.Series({a: (','.join(s) if s else '---') for a, s in sucesoras.items()}, name='successor')\n"
                        "coincide = (reconstruido == datos_enunciado['successor'].map(lambda s: ','.join(sorted(s.split(','))) if s != '---' else s)).all()\n"
                        "display(pd.concat({'enunciado': datos_enunciado['successor'], 'reconstruido': reconstruido}, axis=1))\n"
-                       "Markdown(f'Los dos cuadros coinciden: {coincide}. Son la misma relación leída en los dos sentidos.')"))
+                       "Markdown(('Los dos cuadros coinciden' if coincide else 'Los cuadros NO coinciden') + ': son la misma relación '\n"
+                       "         '(«A precede a B») leída en los dos sentidos, por filas en uno y por columnas en el otro.')"))
     return celdas, f"{n} actividades; cuadro de sucesoras, {info['n_dummies']} ficticias en PERT"
 
 

@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -285,6 +289,11 @@ def tabla_alimentacion(plan):
     filas = {}
     for nombre, fila in plan.alimentacion.iterrows():
         ms = [int(x) for x in str(fila['margenes']).split(' + ')]
+        acts = str(fila['cadena_alimentacion']).split(' - ')
+        if len(acts) == len(ms):
+            marg = '; '.join(f"{a}: {int(plan.segura[a])} − {int(plan.agresiva[a])} = {m}" for a, m in zip(acts, ms))
+        else:
+            marg = ' + '.join(map(str, ms))
         if plan.metodo_alimentacion == 'cortar_pegar':
             calc = f"0,5·({' + '.join(map(str, ms))}) = {0.5 * sum(ms):g} → {int(fila['requerido'])}"
         else:
@@ -293,6 +302,7 @@ def tabla_alimentacion(plan):
         fin_p = int(plan.inicio_temprano[fila['desde']] + plan.agresiva[fila['desde']])
         filas[nombre] = {'arco': f"{fila['desde']} → {fila['antes_de']}",
                          'cadena de alimentación': fila['cadena_alimentacion'],
+                         'márgenes = segura − agresiva': marg,
                          'colchón requerido': calc,
                          'holgura disponible = inicio de la cadena − fin más temprano': f"{entrada} − {fin_p} = {int(fila['disponible'])}",
                          'colchón adoptado = mín(requerido, disponible)': int(fila['adoptado'])}
@@ -334,6 +344,8 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
+        partes_c = ([f"{min(r, d):g} ({a})" for a, r, d in zip(curso.index, curso['restante'], curso['agresiva'])]
+                    + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()])
         hecho = float(inf['avance'])
         largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
                   for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
@@ -341,13 +353,42 @@ def resumen_informes(plan, informes):
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
-                                  + (f" ({'; '.join(largas)})" if largas else '')),
+            'cadena completada = (T − restante)/T': ((f"({T} − ({' + '.join(partes_c)}))/{T} = ({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                                      if len(partes_c) > 1 else
+                                                      f"({T} − {partes_c[0]})/{T} = {pa:.1f} %" if partes_c else f"{T}/{T} = {pa:.1f} %")
+                                                     + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
-            'zona': inf['zona']}
+            'zona': zona_txt(pc, inf['limite_verde'], inf['limite_roja'], inf['zona'])}
     return pd.DataFrame(columnas)
+
+
+def zona_txt(pc, lv, lr, zona):
+    """Comparación del consumo con los dos límites que decide la zona."""
+    if zona == 'verde':
+        return f'{pc:.1f} % < {lv:.1f} % (límite verde) → verde'
+    nota = ' (justo en la frontera: cuenta como la zona superior)' if min(abs(pc - lv), abs(pc - lr)) < 1e-6 else ''
+    if zona == 'roja':
+        return f'{pc:.1f} % ≥ {lr:.1f} % (límite rojo) → roja' + nota
+    return f'{lv:.1f} % ≤ {pc:.1f} % < {lr:.1f} % → amarilla' + nota
+
+
+def tabla_rutas(proyecto, R, valores):
+    """Rutas con sus actividades en orden de ejecución y su duración como suma término a término."""
+    filas, cal = {}, proyecto.calendar(valores)
+    for i, r in enumerate(R.index, 1):
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        total = int(sum(int(valores[a]) for a in acts))
+        filas[f'ruta {i}'] = {'actividades': ' - '.join(acts),
+                              'duración = suma': ' + '.join(f'{a}({int(valores[a])})' for a in acts) + f' = {total}'}
+    return pd.DataFrame(filas).T
+
+
+def margenes_txt(plan, acts):
+    """«4 + 2 + 3 = 9» con los márgenes de las actividades dadas."""
+    ms = [int(plan.margen[a]) for a in acts]
+    return f"{' + '.join(map(str, ms))} = {sum(ms)}" if len(ms) > 1 else f'{sum(ms)}'
 
 # %% [markdown]
 # ## Apartado 1
@@ -358,15 +399,12 @@ display(Markdown(pregunta_1))
 # %%
 datos_proyecto['duration'] = datos_proyecto['agresiva']
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con las estimaciones agresivas y la cadena crítica"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
@@ -399,7 +437,7 @@ detalle_colchon(margenes, 'colchón del proyecto')
 # %%
 CP_cp = ceil(0.5 * margenes.sum() - 1e-9)
 CP_rz = ceil(sqrt((margenes ** 2).sum()) - 1e-9)
-Markdown(f'Cortar y pegar: **{CP_cp} días**; raíz de la suma de cuadrados: **{CP_rz} días**.')
+Markdown(f'**Respuesta:** cortar y pegar, **{CP_cp} días**; raíz de la suma de cuadrados, **{CP_rz} días**.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -408,7 +446,7 @@ Markdown(f'Cortar y pegar: **{CP_cp} días**; raíz de la suma de cuadrados: **{
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# Con duraciones normales, la de la cadena es normal con media la suma de las medias (la duración agresiva de la cadena, $T$) y varianza la suma de las varianzas, $\sigma_C^2 = \sum_i (m_i/1{,}2816)^2$. La probabilidad de cumplir $T + CP$ es $\Phi(CP/\sigma_C)$.
+# Con duraciones normales, la de la cadena es normal con media la suma de las medias (la duración agresiva de la cadena, $T$) y varianza la suma de las varianzas, $\sigma_C^2 = \sum_i (m_i/1{,}2816)^2$. La probabilidad de cumplir $T + CP$ es $P(T_C \le T + CP)$ con $T_C \sim N(T, \sigma_C)$, que se obtiene con la hoja de cálculo: `=DISTR.NORM.N(T + CP; T; σ_C; VERDADERO)`.
 
 # %%
 sigma = margenes / 1.2816
@@ -418,12 +456,12 @@ Markdown(f'σ de la cadena = √{(sigma ** 2).sum():.3f} = **{sigma_cadena:.3f} 
          f'(que es la raíz de la suma de cuadrados de los márgenes dividida por 1,2816: {sqrt((margenes ** 2).sum()):.3f}/1,2816).')
 
 # %%
-#| tbl-cap: "Probabilidad de terminar la cadena en T + CP"
-#| label: tbl-probabilidad
-pd.DataFrame({'colchón': [CP_cp, CP_rz], 'fecha T + CP': [T + CP_cp, T + CP_rz],
-              'z = CP/σ': [f'{CP_cp}/{sigma_cadena:.3f} = {CP_cp / sigma_cadena:.3f}', f'{CP_rz}/{sigma_cadena:.3f} = {CP_rz / sigma_cadena:.3f}'],
-              'P = Φ(z)': [round(norm.cdf(CP_cp / sigma_cadena), 4), round(norm.cdf(CP_rz / sigma_cadena), 4)]},
-             index=['cortar y pegar', 'raíz']).T
+p_cp = norm.cdf(T + CP_cp, T, sigma_cadena)
+p_rz = norm.cdf(T + CP_rz, T, sigma_cadena)
+Markdown(f'- Cortar y pegar: fecha {T} + {CP_cp} = {T + CP_cp}; ' + explica_probabilidad(T, sigma_cadena, T + CP_cp, nombre='T_C') + '\n'
+         f'- Raíz de la suma de cuadrados: fecha {T} + {CP_rz} = {T + CP_rz}; ' + explica_probabilidad(T, sigma_cadena, T + CP_rz, nombre='T_C') + '\n\n'
+         f'**Respuesta:** la cadena termina en {T + CP_cp} días o menos con probabilidad {p_cp:.4f} con el colchón de cortar y pegar, '
+         f'y en {T + CP_rz} días o menos con probabilidad {p_rz:.4f} con el de la raíz.')
 
 # %% [markdown]
 # Sin redondear, el colchón de la raíz es exactamente $1{,}2816\,\sigma_C$: da la probabilidad 0,90 que se buscaba en cada actividad, ahora para la cadena completa (el redondeo al día superior la sube algo). El de cortar y pegar no tiene un nivel de confianza fijo: depende del número de actividades. El cálculo ignora las cadenas de alimentación, que se protegen con sus propios colchones.
@@ -440,13 +478,17 @@ display(Markdown(pregunta_4))
 m = float(margenes.mean())
 n = np.arange(1, 13)
 tabla_n = pd.DataFrame({'cortar y pegar = n·m/2': n * m / 2, 'raíz = √n·m': np.sqrt(n) * m,
-                        'P con cortar y pegar = Φ(1,2816·√n/2)': norm.cdf(1.2816 * np.sqrt(n) / 2),
-                        'P con raíz': norm.cdf(1.2816) + 0 * n}, index=pd.Index(n, name='n'))
-tabla_n.round(3).T
+                        'σ_C = √n·m/1,2816': np.sqrt(n) * m / 1.2816,
+                        'P con cortar y pegar': norm.cdf(n * m / 2, 0, np.sqrt(n) * m / 1.2816),
+                        'P con raíz': norm.cdf(np.sqrt(n) * m, 0, np.sqrt(n) * m / 1.2816)}, index=pd.Index(n, name='n'))
+tabla_n.map(lambda v: f'{v:.3f}').T
+
+# %% [markdown]
+# Cada probabilidad es la de que la cadena no supere su duración más el colchón: `=DISTR.NORM.N(T + colchón; T; σ_C; VERDADERO)`, que es lo mismo que `=DISTR.NORM.N(colchón; 0; σ_C; VERDADERO)`. Con la raíz el colchón es siempre 1,2816·σ_C, y la probabilidad, 0,90.
 
 # %%
-Markdown(f'Con m = {m:.2f} días, cortar y pegar crece linealmente (n·m/2) y la raíz como √n·m. Son iguales cuando '
-         'n/2 = √n, es decir, n = 4: con más de cuatro actividades cortar y pegar da un colchón mayor, y su probabilidad '
+Markdown(f'**Respuesta:** con m = {m:.2f} días, cortar y pegar crece linealmente (n·m/2) y la raíz como √n·m. Son iguales cuando '
+         'n/2 = √n, es decir, n = 4: con más de cuatro actividades (a partir de n = 5) cortar y pegar da un colchón mayor, y su probabilidad '
          'de cumplir se acerca a 1 (sobreprotege las cadenas largas, a costa de alargar el compromiso); con menos de cuatro da un '
          f'colchón menor que la raíz y protege menos del 90 % (con n = 2, P = {norm.cdf(1.2816 * np.sqrt(2) / 2):.2f}). '
          f'Esta cadena tiene {len(cadena)} actividades: cortar y pegar le asigna {CP_cp - CP_rz} días más que la raíz.')
@@ -464,7 +506,7 @@ preguntas_test = [
      'σ = √(Σ márgenes²)/1,2816 = 8,307/1,2816 = 6,48 días: se suman las varianzas, no las desviaciones.'),
     ('¿Con qué probabilidad se termina la cadena en su duración más el colchón de cortar y pegar?',
      ['0,955', '0,918', '0,900', '0,500'],
-     'P = Φ(CP/σ) = Φ(11/6,481) = 0,955.'),
+     'P(T_C ≤ 58) con T_C ~ N(47; 6,481): =DISTR.NORM.N(58; 47; 6,481; VERDADERO) = 0,955.'),
     ('Para una cadena de n actividades con el mismo margen, ¿cuándo da cortar y pegar un colchón mayor que la raíz de la suma de cuadrados?',
      ['con más de 4 actividades', 'con más de 2 actividades', 'con más de 9 actividades', 'nunca: siempre da un colchón menor'],
      'n·m/2 = √n·m cuando √n = 2, es decir, n = 4; a partir de ahí cortar y pegar crece más deprisa.'),

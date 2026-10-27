@@ -69,7 +69,10 @@ def truncate_and_pad(value, n_decimal_places):
     if isinstance(value, str):
         if not value.strip():          # casilla vacía en filas/columnas extra
             return value
-        value = float(value)
+        try:
+            value = float(value)
+        except ValueError:             # texto («sí», «NO»…) en filas/columnas extra: tal cual
+            return value
     elif (
         isinstance(value, np.int64)
         or isinstance(value, np.int32)
@@ -1528,8 +1531,10 @@ class ProjectGraph:
 
     def display_critical_path(self, durations):
         critical_path = self.critical_path(durations)
-        for ruta,actividades in critical_path.items():
-            display(Markdown(f"- {ruta} :\t" + ", ".join(actividades) + " <br> "))
+        calendario = self.calendar(durations)
+        for ruta, actividades in critical_path.items():
+            # en orden de ejecución (inicio más temprano), no alfabético
+            display(Markdown(f"- {ruta} :\t" + ", ".join(ordena_ruta(actividades, calendario)) + " <br> "))
 
     def zaderenko(self, durations: Dict[str, float]):
         duraciones = self._normalize_durations(durations, dummies=True).to_dict()
@@ -9076,6 +9081,9 @@ def make_gantt_tikz(
     inner_text_digits = params.get("inner_text_digits", 0)
     fill_colors = params.get("fill_colors", None) or {}      # {actividad: color de relleno}
     arrow_styles = params.get("arrow_styles", None) or {}    # {(predecesora, sucesora): estilo TikZ extra}
+    # {actividad: [(inicio, duración[, texto[, relleno[, estilo]]]), ...]}: barra partida en tramos
+    # (actividades interrumpidas, multitarea, esperas…); cada tramo con su texto, relleno y estilo TikZ
+    segments = params.get("segments", None) or {}
 
     activity_list = list(
         activity for activity in gantt_data.index if not activity.startswith("💤")
@@ -9252,6 +9260,25 @@ def make_gantt_tikz(
         start = gantt_data.loc[actividad, "start"]
         duration = gantt_data.loc[actividad, "duration"]
         name = actividad
+        if actividad in segments:
+            for tramo in segments[actividad]:
+                s0, d0 = float(tramo[0]), float(tramo[1])
+                if d0 <= 0:
+                    continue
+                texto_t = tramo[2] if len(tramo) > 2 else ""
+                relleno = tramo[3] if len(tramo) > 3 and tramo[3] else background_color
+                estilo = (", " + tramo[4]) if len(tramo) > 4 and tramo[4] else ""
+                y0 = (-y - 1 + (1 - activity_relative_height) / 2) * row_height
+                text += ("\n" + rf"\draw[draw=black, fill={relleno}{estilo}] ({s0 * period_width:.3f},{y0:.3f}) "
+                         rf"rectangle ++({d0 * period_width:.3f},{row_height * activity_relative_height:.3f});")
+                if texto_t not in ("", None):
+                    # como en las barras normales: el número en cada periodo (o uno centrado en el tramo)
+                    xs = ([s0 + k + 0.5 for k in range(int(round(d0)))] if params.get("segments_text_per_period", False)
+                          else [s0 + d0 / 2])
+                    for xc in xs:
+                        text += ("\n" + rf"\node[font={activity_inner_text_style}, text={text_color}] at "
+                                 rf"({xc * period_width:.3f},{(-y - 0.5) * row_height:.3f}) {{{texto_t}}};")
+            continue
         if math.isnan(start) or math.isnan(duration):
             continue
 
@@ -9315,6 +9342,34 @@ def make_gantt_tikz(
     text += "\n" + r"\end{tikzpicture}"
     return text
 
+
+
+def gantt_tramos_tikz(tramos, horizonte=None, extra_rows=None, criticas=(), params=None):
+    """Diagrama de Gantt de pmule (``make_gantt_tikz``) con barras partidas en tramos, para
+    programaciones que no salen de un ``ProjectGraph``: actividades interrumpidas, multitarea,
+    tambor de varios proyectos, Gantt dado en el enunciado…
+
+    tramos : {fila: [(inicio, duración[, texto[, relleno[, estilo]]]), ...]} (inicio en periodos
+        transcurridos: la barra que ocupa el periodo 1 empieza en 0). El orden del diccionario es el
+        de las filas.
+    horizonte : número de periodos de la retícula (por defecto, el fin del último tramo).
+    extra_rows : DataFrame con filas extra bajo el Gantt (cargas, totales…), una columna por periodo.
+    criticas : filas que se pintan con el color de las críticas.
+    params : parámetros de estilo de ``make_gantt_tikz`` (sin flechas por defecto)."""
+    filas = list(tramos)
+    inicio = {f: min(float(t[0]) for t in tramos[f]) if tramos[f] else float("nan") for f in filas}
+    fin = {f: max(float(t[0]) + float(t[1]) for t in tramos[f]) if tramos[f] else float("nan") for f in filas}
+    datos = pd.DataFrame({"start": [0 if pd.isna(inicio[f]) else int(round(inicio[f])) for f in filas],
+                          "duration": [0 if pd.isna(fin[f]) else int(round(fin[f] - inicio[f])) for f in filas],
+                          "Htotal": [0 if f in set(criticas) else 1 for f in filas]},
+                         index=[str(f) for f in filas])
+    p = dict(arrows=False)
+    p.update(params or {})
+    p["segments"] = {str(f): list(tramos[f]) for f in filas}
+    if horizonte is None:
+        horizonte = int(np.ceil(max((v for v in fin.values() if not pd.isna(v)), default=1)))
+    p.setdefault("number_of_periods", int(horizonte))
+    return make_gantt_tikz(datos, extra_rows=extra_rows, params=p)
 
 
 def _ancho_etiqueta(texto: str) -> float:
@@ -10571,3 +10626,173 @@ def plot_curvas_valor_ganado(gantts):
     )
     plt.show()
     
+
+# ---------------------------------------------------------------------------
+# Explicaciones con los números sustituidos (para las resoluciones de los cuadernos)
+# ---------------------------------------------------------------------------
+# Cada función devuelve texto Markdown (o un DataFrame) con el cálculo intermedio
+# escrito término a término, de modo que la respuesta a cada pregunta se lea sin
+# tener que reconstruirla a partir de las tablas de la librería.
+
+def plural(n, singular: str, plural: str | None = None, decimales: int = 0) -> str:
+    """«1 semana», «3 semanas», «2,5 días»: número y sustantivo concordados."""
+    try:
+        entero = float(n).is_integer()
+    except (TypeError, ValueError):
+        return f"{n} {plural or singular + 's'}"
+    txt = f"{int(round(float(n)))}" if entero else f"{float(n):.{max(decimales, 1)}f}"
+    uno = entero and abs(int(round(float(n)))) == 1
+    return f"{txt} {singular if uno else (plural or singular + 's')}"
+
+
+def lista_y(items, conj: str = "y") -> str:
+    """«A», «A y B», «A, B y C»."""
+    items = [str(x) for x in items]
+    if not items:
+        return "ninguna"
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + f" {conj} " + items[-1]
+
+
+def ordena_ruta(actividades, calendario=None, duraciones=None, proyecto=None):
+    """Actividades de una ruta en orden de ejecución (no alfabético): por inicio más
+    temprano del calendario; si no se da el calendario se calcula con ``proyecto`` y
+    ``duraciones``."""
+    acts = [a for a in actividades if not str(a).startswith("@")]
+    if calendario is None and proyecto is not None and duraciones is not None:
+        calendario = proyecto.calendar(duraciones)
+    if calendario is None:
+        return acts
+    es = calendario["inicio_mas_temprano"]
+    ef = calendario["fin_mas_temprano"]
+    return sorted(acts, key=lambda a: (float(es.get(a, 0)), float(ef.get(a, 0)), str(a)))
+
+
+def explica_camino_critico(proyecto, duraciones, unidad: str = "semanas", decimales: int = 0,
+                           separador: str = " – "):
+    """Markdown con cada camino crítico escrito como suma de duraciones y la duración del
+    proyecto: «A – B – D – F – H = 4 + 7 + 1 + 6 + 1 = 19 semanas»."""
+    rutas = proyecto.critical_path(duraciones)
+    calendario = proyecto.calendar(duraciones)
+    T = float(proyecto.duration(duraciones))
+    d = proyecto._normalize_durations(duraciones, dummies=False)
+    fmt = lambda x: f"{float(x):.{decimales}f}"       # noqa: E731
+    lineas = []
+    for acts in rutas.values():
+        acts = ordena_ruta(acts, calendario)
+        lineas.append(f"- **{separador.join(acts)}**: {' + '.join(fmt(d[a]) for a in acts)} = **{fmt(T)}** {unidad}")
+    n = len(rutas)
+    if n == 1:
+        cab = "Camino crítico (la ruta de mayor duración; sus actividades tienen holgura total nula):"
+    else:
+        cab = (f"Hay **{n} caminos críticos** (todas estas rutas suman la duración máxima, luego todas sus "
+               "actividades tienen holgura total nula y un retraso en cualquiera de ellas alarga el proyecto):")
+    return Markdown(cab + "\n\n" + "\n".join(lineas) + f"\n\n**Duración del proyecto: {fmt(T)} {unidad}.**")
+
+
+def explica_rutas(proyecto, duraciones, unidad: str = "semanas", decimales: int = 0, separador: str = " – "):
+    """DataFrame con todas las rutas del grafo en orden de ejecución, su suma término a
+    término y su duración; las críticas marcadas. Complementa a ``explica_camino_critico``."""
+    R = proyecto.path_matrix(dummies=False)
+    calendario = proyecto.calendar(duraciones)
+    d = pd.Series(duraciones)
+    fmt = lambda x: f"{float(x):.{decimales}f}"       # noqa: E731
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        total = float(sum(d[a] for a in acts))
+        filas[r] = {"ruta": separador.join(acts),
+                    f"duración ({unidad}) = suma": " + ".join(fmt(d[a]) for a in acts) + f" = {fmt(total)}",
+                    "duración": total}
+    t = pd.DataFrame(filas).T
+    T = t["duración"].astype(float).max()
+    t["crítica"] = np.where(np.isclose(t["duración"].astype(float), T), "sí", "no")
+    return t
+
+
+def explica_suma(valores, nombre: str = "duración", unidad: str = "", decimales: int = 0, actividades=None) -> str:
+    """«A(4) + B(7) + D(1) = 12 semanas»: suma término a término de un dict/Series."""
+    v = pd.Series(valores)
+    acts = list(actividades) if actividades is not None else list(v.index)
+    total = float(sum(float(v[a]) for a in acts))
+    fmt = lambda x: f"{float(x):.{decimales}f}"       # noqa: E731
+    return (f"{nombre} = " + " + ".join(f"{a}({fmt(v[a])})" for a in acts)
+            + f" = {' + '.join(fmt(v[a]) for a in acts)} = **{fmt(total)}**" + (f" {unidad}" if unidad else ""))
+
+
+def explica_sigma_ruta(actividades, varianzas, decimales: int = 3, nombre: str = "σ") -> str:
+    """«σ = √(0,160 + 0,250 + 1,000) = √1,410 = 1,187»: desviación típica de una ruta a
+    partir de las varianzas de sus actividades."""
+    v = pd.Series(varianzas)
+    acts = [a for a in actividades if not str(a).startswith("@")]
+    s = float(sum(float(v[a]) for a in acts))
+    return (f"{nombre} = √(" + " + ".join(f"{float(v[a]):.{decimales}f}" for a in acts)
+            + f") = √{s:.{decimales}f} = **{s ** 0.5:.{decimales}f}**")
+
+
+def _num_hoja(x, decimales: int = 4) -> str:
+    """Número como se teclea en una hoja de cálculo en español (coma decimal, sin ceros sobrantes)."""
+    x = float(x)
+    txt = f"{x:.{decimales}f}".rstrip("0").rstrip(".") if not x.is_integer() else f"{int(x)}"
+    return txt.replace(".", ",").replace("-", "−")
+
+
+def explica_probabilidad(media, sigma, T, mayor: bool = False, decimales: int = 4, nombre: str = "T") -> str:
+    """Probabilidad normal sin tipificar ni tablas (se calcula con ordenador o calculadora):
+    «P(T ≤ 29), con T ~ N(μ = 27; σ = 1.565): =DISTR.NORM.N(29; 27; 1,565; VERDADERO) = 0.8993 (89.9 %)».
+    Con ``mayor=True``, P(T > t) = 1 − P(T ≤ t)."""
+    from scipy.stats import norm as _norm
+    p = float(_norm.cdf(float(T), float(media), float(sigma)))
+    f = f"`=DISTR.NORM.N({_num_hoja(T)}; {_num_hoja(media)}; {_num_hoja(sigma)}; VERDADERO)`"
+    cab = f"con {nombre} ~ N(μ = {float(media):g}; σ = {float(sigma):.3f})"
+    if mayor:
+        return (f"P({nombre} > {float(T):g}) = 1 − P({nombre} ≤ {float(T):g}), {cab}: 1 − {f} = 1 − {p:.{decimales}f} "
+                f"= **{1 - p:.{decimales}f}** ({1 - p:.1%})")
+    return f"P({nombre} ≤ {float(T):g}), {cab}: {f} = **{p:.{decimales}f}** ({p:.1%})"
+
+
+def explica_intervalo(media, sigma, a, b, decimales: int = 4, nombre: str = "T") -> str:
+    """«P(26 < T ≤ 29) = P(T ≤ 29) − P(T ≤ 26) = 0.8993 − 0.2615 = 0.6379», con las dos
+    probabilidades escritas como funciones de hoja de cálculo (sin tipificar)."""
+    from scipy.stats import norm as _norm
+    pa = float(_norm.cdf(float(a), float(media), float(sigma)))
+    pb = float(_norm.cdf(float(b), float(media), float(sigma)))
+    fa = f"`=DISTR.NORM.N({_num_hoja(a)}; {_num_hoja(media)}; {_num_hoja(sigma)}; VERDADERO)`"
+    fb = f"`=DISTR.NORM.N({_num_hoja(b)}; {_num_hoja(media)}; {_num_hoja(sigma)}; VERDADERO)`"
+    return (f"P({float(a):g} < {nombre} ≤ {float(b):g}) = P({nombre} ≤ {float(b):g}) − P({nombre} ≤ {float(a):g}), "
+            f"con {nombre} ~ N(μ = {float(media):g}; σ = {float(sigma):.3f}): {fb} − {fa} "
+            f"= {pb:.{decimales}f} − {pa:.{decimales}f} = **{pb - pa:.{decimales}f}** ({pb - pa:.1%})")
+
+
+def explica_percentil(media, sigma, p, unidad: str = "", decimales: int = 2, nombre: str = "T") -> str:
+    """Plazo con probabilidad p de cumplirse, sin tablas: «t tal que P(T ≤ t) = 0.90:
+    =INV.NORM(0,9; 27; 1,565) = 29.01 semanas»."""
+    from scipy.stats import norm as _norm
+    t = float(_norm.ppf(float(p), float(media), float(sigma)))
+    return (f"t tal que P({nombre} ≤ t) = {float(p):g}, con {nombre} ~ N(μ = {float(media):g}; σ = {float(sigma):.3f}): "
+            f"`=INV.NORM({_num_hoja(p)}; {_num_hoja(media)}; {_num_hoja(sigma)})` = **{t:.{decimales}f}**"
+            + (f" {unidad}" if unidad else ""))
+
+
+def limpia_tabla(df, decimales: int = 2, nan: str = "—"):
+    """Copia de una tabla lista para mostrar: NaN → «—», booleanos → sí/no, −0 → 0 y los
+    números enteros sin decimales."""
+    t = df.copy()
+    if isinstance(t, pd.Series):
+        t = t.to_frame()
+    for c in t.columns:
+        col = t[c]
+        if col.dtype == bool:
+            t[c] = col.map({True: "sí", False: "no"})
+            continue
+        if pd.api.types.is_numeric_dtype(col):
+            vals = col.astype(float)
+            vals = vals.where(~np.isclose(vals.fillna(1.0), 0.0), 0.0)
+            if np.all(np.isnan(vals) | np.isclose(vals, np.round(vals))):
+                t[c] = [nan if np.isnan(x) else str(int(round(x))) for x in vals]
+            else:
+                t[c] = [nan if np.isnan(x) else f"{x:.{decimales}f}" for x in vals]
+        else:
+            t[c] = col.astype(object).where(col.notna(), nan)
+    return t

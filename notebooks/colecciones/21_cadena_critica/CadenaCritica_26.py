@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -294,6 +298,11 @@ def tabla_alimentacion(plan):
     filas = {}
     for nombre, fila in plan.alimentacion.iterrows():
         ms = [int(x) for x in str(fila['margenes']).split(' + ')]
+        acts = str(fila['cadena_alimentacion']).split(' - ')
+        if len(acts) == len(ms):
+            marg = '; '.join(f"{a}: {int(plan.segura[a])} − {int(plan.agresiva[a])} = {m}" for a, m in zip(acts, ms))
+        else:
+            marg = ' + '.join(map(str, ms))
         if plan.metodo_alimentacion == 'cortar_pegar':
             calc = f"0,5·({' + '.join(map(str, ms))}) = {0.5 * sum(ms):g} → {int(fila['requerido'])}"
         else:
@@ -302,6 +311,7 @@ def tabla_alimentacion(plan):
         fin_p = int(plan.inicio_temprano[fila['desde']] + plan.agresiva[fila['desde']])
         filas[nombre] = {'arco': f"{fila['desde']} → {fila['antes_de']}",
                          'cadena de alimentación': fila['cadena_alimentacion'],
+                         'márgenes = segura − agresiva': marg,
                          'colchón requerido': calc,
                          'holgura disponible = inicio de la cadena − fin más temprano': f"{entrada} − {fin_p} = {int(fila['disponible'])}",
                          'colchón adoptado = mín(requerido, disponible)': int(fila['adoptado'])}
@@ -343,6 +353,8 @@ def resumen_informes(plan, informes):
         curso = det[det['estado'] == 'en curso']
         pend = det[det['estado'] == 'pendiente']
         partes = [f"{r:g} ({a})" for a, r in curso['restante'].items()] + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()]
+        partes_c = ([f"{min(r, d):g} ({a})" for a, r, d in zip(curso.index, curso['restante'], curso['agresiva'])]
+                    + [f"{int(d)} ({a})" for a, d in pend['agresiva'].items()])
         hecho = float(inf['avance'])
         largas = [f"a {a} le quedan {r:g} días, más que su duración agresiva: se cuentan {int(d)}"
                   for a, r, d in zip(curso.index, curso['restante'], curso['agresiva']) if r > d]
@@ -350,13 +362,42 @@ def resumen_informes(plan, informes):
         columnas[f"día {inf['dia']}"] = {
             'fin previsto = día + restante de la cadena': f"{inf['dia']} + {' + '.join(partes) if partes else '0'} = {inf['fin_previsto']:g}",
             'colchón consumido': f"{inf['fin_previsto']:g} − {T} = {inf['consumo']:g} días → {inf['consumo']:g}/{CP} = {pc:.1f} %",
-            'cadena completada': (f"({T} − {T - hecho:g})/{T} = {pa:.1f} %"
-                                  + (f" ({'; '.join(largas)})" if largas else '')),
+            'cadena completada = (T − restante)/T': ((f"({T} − ({' + '.join(partes_c)}))/{T} = ({T} − {T - hecho:g})/{T} = {pa:.1f} %"
+                                                      if len(partes_c) > 1 else
+                                                      f"({T} − {partes_c[0]})/{T} = {pa:.1f} %" if partes_c else f"{T}/{T} = {pa:.1f} %")
+                                                     + (f" ({'; '.join(largas)})" if largas else '')),
             'BPI = % colchón restante / % cadena restante': (f"(100 − {pc:.1f})/(100 − {pa:.1f}) = {inf['bpi']:.2f}" if pa < 100 else '—'),
             'límite verde = 10 + 0,6·avance': f"10 + 0,6·{pa:.1f} = {inf['limite_verde']:.1f} %",
             'límite rojo = 30 + 0,6·avance': f"30 + 0,6·{pa:.1f} = {inf['limite_roja']:.1f} %",
-            'zona': inf['zona']}
+            'zona': zona_txt(pc, inf['limite_verde'], inf['limite_roja'], inf['zona'])}
     return pd.DataFrame(columnas)
+
+
+def zona_txt(pc, lv, lr, zona):
+    """Comparación del consumo con los dos límites que decide la zona."""
+    if zona == 'verde':
+        return f'{pc:.1f} % < {lv:.1f} % (límite verde) → verde'
+    nota = ' (justo en la frontera: cuenta como la zona superior)' if min(abs(pc - lv), abs(pc - lr)) < 1e-6 else ''
+    if zona == 'roja':
+        return f'{pc:.1f} % ≥ {lr:.1f} % (límite rojo) → roja' + nota
+    return f'{lv:.1f} % ≤ {pc:.1f} % < {lr:.1f} % → amarilla' + nota
+
+
+def tabla_rutas(proyecto, R, valores):
+    """Rutas con sus actividades en orden de ejecución y su duración como suma término a término."""
+    filas, cal = {}, proyecto.calendar(valores)
+    for i, r in enumerate(R.index, 1):
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        total = int(sum(int(valores[a]) for a in acts))
+        filas[f'ruta {i}'] = {'actividades': ' - '.join(acts),
+                              'duración = suma': ' + '.join(f'{a}({int(valores[a])})' for a in acts) + f' = {total}'}
+    return pd.DataFrame(filas).T
+
+
+def margenes_txt(plan, acts):
+    """«4 + 2 + 3 = 9» con los márgenes de las actividades dadas."""
+    ms = [int(plan.margen[a]) for a in acts]
+    return f"{' + '.join(map(str, ms))} = {sum(ms)}" if len(ms) > 1 else f'{sum(ms)}'
 
 
 def detalle_pv_ev(plan, datos, dia, terminadas, trabajados, en_curso):
@@ -386,15 +427,12 @@ def indices(tabla, filtro=None):
     pv, ev = float(t['PV_i'].sum()), float(t['EV_i'].sum())
     return pv, ev, (ev / pv if pv else float('nan'))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con las estimaciones agresivas y la cadena crítica"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
@@ -414,6 +452,9 @@ pinta_tikz(plan.gantt_tikz(params=GANTT_CC))
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Con la línea base del plan de cadena crítica, el **valor planificado** (PV) de una actividad el día del informe es su presupuesto por la fracción de su duración agresiva que el plan prevé hecha ese día: días previstos = mín(máx(día − inicio en el plan, 0), duración). El **valor ganado** (EV) es su presupuesto por su avance físico: 100 % si ha terminado, días trabajados/(trabajados + restantes) si está en curso y 0 % si no ha empezado. PV y EV del proyecto son las sumas de los de las actividades.
+
 # %%
 #| tbl-cap: "Valor planificado y valor ganado de cada actividad (miles de euros)"
 #| label: tbl-pvev
@@ -422,7 +463,9 @@ tabla_vg.drop(columns=['PV_i', 'EV_i'])
 
 # %%
 PV, EV, SPI = indices(tabla_vg)
-Markdown(f'PV = {PV:.2f}; EV = {EV:.2f}; SV = EV − PV = {EV - PV:+.2f} miles de euros; **SPI = {EV:.2f}/{PV:.2f} = {SPI:.3f}**. '
+suma = lambda col: ' + '.join(f'{v:.2f} ({a})' for a, v in tabla_vg[col].items() if v > 0) or '0'
+Markdown(f'PV = {suma("PV_i")} = {PV:.2f}; EV = {suma("EV_i")} = {EV:.2f} miles de euros (sólo se suman las actividades con valor no nulo).\n\n'
+         f'**Respuesta:** SV = EV − PV = {EV:.2f} − {PV:.2f} = {EV - PV:+.2f} miles de euros; **SPI = {EV:.2f}/{PV:.2f} = {SPI:.3f}**. '
          + ('Según el valor ganado el proyecto va adelantado: se ha hecho más trabajo del previsto a estas alturas.' if SPI >= 1 else
             f'Según el valor ganado el proyecto va retrasado: se ha hecho sólo el {100 * SPI:.1f} % del trabajo previsto a estas alturas.'))
 
@@ -444,7 +487,7 @@ resumen
 pinta_tikz(grafico_fiebre_tikz([s]))
 
 # %%
-Markdown(f"Según la gestión por colchones el proyecto está en zona **{s['zona']}**: se ha consumido el {s['pct_consumo']:.1f} % del "
+Markdown(f"**Respuesta:** según la gestión por colchones el proyecto está en zona **{s['zona']}**: se ha consumido el {s['pct_consumo']:.1f} % del "
          f"colchón con el {s['pct_avance']:.1f} % de la cadena completada (BPI {s['bpi']:.2f}). "
          + ('La fecha comprometida está amenazada.' if s['zona'] != 'verde' else 'La fecha comprometida no corre peligro.'))
 
@@ -459,10 +502,15 @@ display(Markdown(pregunta_3))
 #| label: tbl-spiPartes
 partes = {'cadena crítica': tabla_vg['cadena'] == 'sí', 'alimentación': tabla_vg['cadena'] != 'sí', 'todo el proyecto': None}
 spis = {k: indices(tabla_vg, f) for k, f in partes.items()}
-pd.DataFrame({k: {'PV': round(pv, 2), 'EV': round(ev, 2), 'SPI = EV/PV': f'{ev:.2f}/{pv:.2f} = {spi:.3f}'} for k, (pv, ev, spi) in spis.items()})
+def suma_parte(f, col):
+    t = tabla_vg if f is None else tabla_vg[f]
+    v = [f'{x:.2f} ({a})' for a, x in t[col].items() if x > 0]
+    return ' + '.join(v) + (f' = {float(t[col].sum()):.2f}' if len(v) > 1 else '') if v else '0.00'
+pd.DataFrame({k: {'PV': suma_parte(partes[k], 'PV_i'), 'EV': suma_parte(partes[k], 'EV_i'), 'SPI = EV/PV': f'{ev:.2f}/{pv:.2f} = {spi:.3f}'}
+              for k, (pv, ev, spi) in spis.items()})
 
 # %%
-Markdown(f"El SPI global ({spis['todo el proyecto'][2]:.3f}) mezcla dos cosas: la cadena crítica va al ritmo del plan "
+Markdown(f"**Respuesta:** el SPI global ({spis['todo el proyecto'][2]:.3f}) mezcla dos cosas: la cadena crítica va al ritmo del plan "
          f"(SPI {spis['cadena crítica'][2]:.3f}) y la alimentación va retrasada (SPI {spis['alimentación'][2]:.3f}), pero su "
          "retraso cabe en sus colchones de alimentación: por eso no llega a la cadena ni consume colchón del proyecto. El valor "
          "ganado pesa igual un día de retraso en cualquier actividad; la gestión por colchones sólo cuenta el que amenaza la entrega.")
@@ -470,9 +518,13 @@ Markdown(f"El SPI global ({spis['todo el proyecto'][2]:.3f}) mezcla dos cosas: l
 # %%
 #| tbl-cap: "Consumo de los colchones de alimentación"
 #| label: tbl-consumoCA
-ca = s['alimentacion'].set_index('colchon')[['desde', 'antes_de', 'fin_previsto', 'adoptado', 'consumido']]
+ca = s['alimentacion'].set_index('colchon')
 ca.index.name = None
-sin_decimales(ca.rename(columns={'antes_de': 'antes de', 'fin_previsto': 'fin previsto', 'adoptado': 'colchón (días)'}).astype(object))
+pd.DataFrame({n: {'arco': f'{f.desde} → {f.antes_de}', 'colchón (días)': int(f.adoptado),
+                  'el colchón empieza = inicio de la actividad de la cadena − colchón': f'{int(plan.inicios[f.antes_de])} − {int(f.adoptado)} = {int(plan.inicios[f.antes_de]) - int(f.adoptado)}' if f.antes_de != 'fin' else f'{T} − {int(f.adoptado)} = {T - int(f.adoptado)}',
+                  'fin previsto de ' + 'la alimentación': f'{f.fin_previsto:g} ({f.desde})',
+                  'consumido = máx(0, fin previsto − inicio del colchón)': f'máx(0, {f.fin_previsto:g} − {(int(plan.inicios[f.antes_de]) if f.antes_de != "fin" else T) - int(f.adoptado)}) = {f.consumido:g}'}
+              for n, f in ca.iterrows()}).T
 
 # %% [markdown]
 # ## Apartado 4

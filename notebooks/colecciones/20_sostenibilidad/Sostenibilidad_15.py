@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -245,6 +249,24 @@ for item in sorted(dir()):
 
 # %%
 tramitacion, meses_mas, hito = 'B', 6, 24
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -269,7 +291,13 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 display(Markdown(pregunta_1))
 
 # %%
-Markdown(f'''Procedimiento simplificado: **{duracion}** meses, margen de {hito - duracion} sobre el hito. Procedimiento ordinario: **{duracion_ordinaria}** meses, ''' + (f'retraso de {duracion_ordinaria - hito}' if duracion_ordinaria > hito else f'margen de {hito - duracion_ordinaria}') + f''' respecto al hito (la tramitación es crítica: los {meses_mas} meses van enteros al plazo).''')
+display(Markdown('**Procedimiento simplificado** (duraciones del enunciado).'))
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'meses'))
+display(Markdown(f'**Procedimiento ordinario** ({tramitacion} dura {datos_proyecto.loc[tramitacion, "duration"]} + {meses_mas} = {duraciones_ordinaria[tramitacion]} meses).'))
+display(explica_camino_critico(proyecto, duraciones_ordinaria, 'meses'))
+def frente_al_hito(T):
+    return (f'margen de {plural(hito - T, "mes", "meses")}' if T <= hito else f'retraso de {plural(T - hito, "mes", "meses")}')
+Markdown(f'''La tramitación {tramitacion} es crítica en los dos casos: los {meses_mas} meses más del procedimiento ordinario van enteros al plazo ({duracion} + {meses_mas} = {duracion_ordinaria}).\n\n**Respuesta:** procedimiento simplificado, **{duracion} meses**: {frente_al_hito(duracion)} respecto al hito del mes {hito}; procedimiento ordinario, **{duracion_ordinaria} meses**: {frente_al_hito(duracion_ordinaria)}.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -295,8 +323,41 @@ mc_o = proyecto.monte_carlo(dists_o, n_samples=20000, seed=2030)
 p_mc_s = float((np.asarray(mc_s.tau_samples) <= hito).mean()); p_mc_o = float((np.asarray(mc_o.tau_samples) <= hito).mean())
 tabla = pd.DataFrame({'simplificado': [duracion, sigma_s, p_pert_s, p_mc_s], 'ordinario': [duracion_ordinaria, sigma_o, p_pert_o, p_mc_o]},
                      index=['duración esperada', 'σ del camino crítico', 'P(T ≤ hito) PERT', 'P(T ≤ hito) Monte Carlo'])
-display(tabla.round(2))
-Markdown(f'''La probabilidad de llegar al hito pasa de **{p_mc_s:.2f}** a **{p_mc_o:.2f}** con el procedimiento ordinario. Para llegar al hito habría que acortar {max(0, duracion_ordinaria - hito)} meses en actividades críticas distintas de la tramitación (ingeniería y compras en paralelo con la tramitación, lección 10) —y más para recuperar un margen—, o negociar el hito.''')
+display(tabla.round(4))
+def ruta_sigma(duraciones):
+    '''Camino crítico de mayor varianza (el que da la σ del PERT), en orden de ejecución.'''
+    L = R @ duraciones[R.columns]; V = R @ datos_proyecto['variance'][R.columns]
+    criticas = [r for r in R.index if np.isclose(L[r], L.max())]
+    r = max(criticas, key=lambda x: V[x])
+    return ordena_ruta(list(R.columns[R.loc[r] == 1]), proyecto.calendar(duraciones))
+acts_s, acts_o = ruta_sigma(datos_proyecto['duration']), ruta_sigma(duraciones_ordinaria)
+Markdown(f'''La aproximación normal del PERT toma T ~ N(μ, σ), con μ la duración del camino crítico y σ la raíz de la suma de las varianzas de sus actividades (el hito exige terminar como muy tarde en el mes {hito}: P(T ≤ {hito})).\n\n- **Simplificado** (camino crítico {'–'.join(acts_s)}): {explica_sigma_ruta(acts_s, datos_proyecto['variance'])}; {explica_probabilidad(duracion, sigma_s, hito)}. Monte Carlo: {p_mc_s:.4f} (fracción de las {miles(len(mc_s.tau_samples))} réplicas con T ≤ {hito}).\n- **Ordinario** (camino crítico {'–'.join(acts_o)}): {explica_sigma_ruta(acts_o, datos_proyecto['variance'])}; {explica_probabilidad(duracion_ordinaria, sigma_o, hito)}. Monte Carlo: {p_mc_o:.4f}.\n\nLas dos estimaciones casi coinciden; el Monte Carlo tiene en cuenta además las rutas casi críticas (tabla de criticidad).''')
+
+# %%
+L_o = R @ duraciones_ordinaria[R.columns]
+cal_o = proyecto.calendar(duraciones_ordinaria)
+def recorte(objetivo):
+    '''Rutas que superan la duración objetivo, con su exceso, y actividades (distintas de la tramitación) comunes a todas ellas.'''
+    largas = L_o[L_o > objetivo].sort_values(ascending=False)
+    conjuntos = [set(R.columns[R.loc[r] == 1]) for r in largas.index]
+    comunes = ordena_ruta(list(set.intersection(*conjuntos) - {tramitacion}), cal_o) if conjuntos else []
+    rutas = [f'{"–".join(ordena_ruta(list(R.columns[R.loc[r] == 1]), cal_o))} ({L_o[r]:.0f} meses, exceso {L_o[r] - objetivo:.0f})' for r in largas.index]
+    return largas, rutas, comunes
+def texto_recorte(objetivo, que):
+    largas, rutas, comunes = recorte(objetivo)
+    if largas.empty:
+        return f'- {que}: ninguna ruta supera {objetivo} meses; no hay que acortar nada.'
+    n = largas.max() - objetivo
+    txt = f'- {que} (duración ≤ {objetivo} meses): hay que acortar {plural(n, "mes", "meses")} el proyecto; superan {objetivo} meses ' + lista_y(rutas) + '. '
+    if len(rutas) == 1:
+        txt += f'Basta ganar {plural(n, "mes", "meses")} en actividades de esa ruta distintas de la tramitación ({lista_y(comunes)}).'
+    elif comunes:
+        txt += (f'Cada mes que se gane en una actividad común a todas ellas ({lista_y(comunes)}) acorta todas a la vez; lo que falte en cada ruta '
+                'hasta cubrir su exceso se gana en sus demás actividades (lección 10).')
+    else:
+        txt += 'No tienen otra actividad común: hay que acortar actividades de cada una de esas rutas hasta cubrir su exceso (lección 10).'
+    return txt
+Markdown('Qué hay que acortar con el procedimiento ordinario (el enunciado no da duraciones mínimas ni costes, de modo que se indican las actividades candidatas y cuántos meses):\n\n' + texto_recorte(hito, 'Para llegar al hito') + '\n' + texto_recorte(duracion, f'Para recuperar el margen de {plural(hito - duracion, "mes", "meses")} del procedimiento simplificado') + f'''\n\nLa otra palanca es la propia tramitación: empezarla antes o solapar con ella la ingeniería y las compras, o negociar el hito.\n\n**Respuesta:** P(T ≤ {hito}) = {p_pert_s:.2f} (PERT) y {p_mc_s:.2f} (Monte Carlo) con el simplificado; {p_pert_o:.2f} y {p_mc_o:.2f} con el ordinario. Con el ordinario hay que acortar {plural(max(0, duracion_ordinaria - hito), "mes", "meses")} para llegar al hito y {plural(meses_mas, "mes", "meses")} para recuperar el margen.''')
 
 # %%
 #| tbl-cap: "Índice de criticidad con el procedimiento ordinario"
@@ -310,7 +371,9 @@ Markdown(f'''La probabilidad de llegar al hito pasa de **{p_mc_s:.2f}** a **{p_m
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma.** El proyecto es un parque eólico de 12 aerogeneradores de 5.0 MW (60 MW): supera el umbral del anexo I (50 o más aerogeneradores, más de 30 MW o a menos de 2 km de otro parque (anexo I)) y le corresponde la evaluación **ordinaria**. **S9.** Presentarlo en dos partes no cambia el procedimiento: los proyectos que, fraccionados, alcanzan por acumulación los umbrales del anexo I se evalúan por el anexo I (art. 7.1.a). Lo que cambia es el riesgo: el órgano ambiental acumula las dos solicitudes —y los 5 meses de simplificada se convierten en 11 de ordinaria empezando más tarde— o, peor, la autorización obtenida es nula y el hito se pierde de todos modos. Y hay una segunda razón, propia de los parques eólicos: dos parques contiguos están cada uno a menos de 2 km del otro, que es por sí solo un supuesto del anexo I; el fraccionamiento no esquiva el anexo, lo duplica. **S11.** La tramitación es un riesgo del proyecto: tiene probabilidad, impacto (6 meses en la ruta crítica, P del hito de 0.97 a 0.17) y respuestas (empezar antes, solapar, negociar el hito); «es cosa de la administración» es retener del comité el dato que decide.
+# **Norma.** El proyecto es un parque eólico de 12 aerogeneradores de 5.0 MW (60 MW): sus 60 MW superan los 30 MW del anexo I (que también incluye los parques de 50 o más aerogeneradores y los situados a menos de 2 km de otro parque), y le corresponde la evaluación **ordinaria**. **S9.** Presentarlo en dos partes no cambia el procedimiento: los proyectos que, fraccionados, alcanzan por acumulación los umbrales del anexo I se evalúan por el anexo I (art. 7.1.a). Lo que cambia es el riesgo: el órgano ambiental acumula las dos solicitudes —y los 5 meses de simplificada se convierten en 11 de ordinaria empezando más tarde— o, peor, la autorización obtenida es nula y el hito se pierde de todos modos. Y hay una segunda razón, propia de los parques eólicos: dos parques contiguos están cada uno a menos de 2 km del otro, que es por sí solo un supuesto del anexo I; el fraccionamiento no esquiva el anexo, lo duplica. **S11.** La tramitación es un riesgo del proyecto: tiene probabilidad, impacto (6 meses en la ruta crítica, P del hito de 0.97 a 0.17) y respuestas (empezar antes, solapar, negociar el hito); «es cosa de la administración» es retener del comité el dato que decide.
+#
+# **Respuesta:** le corresponde la evaluación **ordinaria**; presentarlo en dos partes no cambia el procedimiento (sólo añade el riesgo de nulidad), y la tramitación es un **riesgo del proyecto** que se cuantifica en el cronograma.
 
 # %%
 preguntas_test = [

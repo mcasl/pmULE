@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -245,6 +249,24 @@ for item in sorted(dir()):
 
 # %%
 plazo, p_episodio, perdida_episodio, ventana = 22, 0.4, 0.4, (5, 14)
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -276,12 +298,16 @@ tabla = calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total']].copy(
 tabla['exterior'] = datos_proyecto['exterior']
 tabla['semanas en la ventana'] = [semanas_en_ventana(a) for a in tabla.index]
 tabla['pérdida esperada'] = tabla['semanas en la ventana'] * p_episodio * perdida_episodio
-display(tabla.round(2))
+display(tabla.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'fin_mas_temprano': 'fin más temprano', 'H_total': 'holgura total'}).round(2))
 duraciones_calor = datos_proyecto['duration'] + tabla['pérdida esperada']
 R = proyecto.path_matrix(dummies=False)
-duracion_esperada_calor = float((R @ duraciones_calor[R.columns]).max())
+L_calor = R @ duraciones_calor[R.columns]
+duracion_esperada_calor = float(L_calor.max())
+ruta_calor = ordena_ruta(list(R.columns[R.loc[L_calor.idxmax()] == 1]), calendario)
 criticas_exterior = [a for a in tabla.index if tabla.loc[a, 'H_total'] == 0 and tabla.loc[a, 'semanas en la ventana'] > 0]
-Markdown(f'''Duración esperada **{duracion_esperada_calor:.1f}** semanas con la pérdida por calor, frente a {duracion} del plan (+{duracion_esperada_calor - duracion:.1f}). El riesgo se concentra en las actividades exteriores críticas: {', '.join(criticas_exterior)}.''')
+ej = tabla['semanas en la ventana'].idxmax()
+es_ej, ef_ej = int(tabla.loc[ej, 'inicio_mas_temprano']), int(tabla.loc[ej, 'fin_mas_temprano'])
+Markdown(f'''Una actividad que empieza en el instante ES y termina en EF ocupa las semanas ES + 1 a EF; las que caen en la ventana (semanas {ventana[0]} a {ventana[1]}) son máx(0, mín(EF, {ventana[1]}) − máx(ES, {ventana[0] - 1})), y sólo cuentan si la actividad es exterior. Por ejemplo, {ej} (semanas {es_ej + 1} a {ef_ej}): mín({ef_ej}, {ventana[1]}) − máx({es_ej}, {ventana[0] - 1}) = {int(tabla.loc[ej, 'semanas en la ventana'])} semanas; su pérdida esperada es {int(tabla.loc[ej, 'semanas en la ventana'])} × {p_episodio} × {perdida_episodio} = {tabla.loc[ej, 'pérdida esperada']:.2f} semanas.\n\nSumando la pérdida esperada a la duración de cada actividad, la ruta más larga es {'–'.join(ruta_calor)}: {' + '.join(f'{duraciones_calor[a]:g}' for a in ruta_calor)} = **{duracion_esperada_calor:.1f}** semanas.\n\n**Respuesta:** duración esperada con el calor, **{duracion_esperada_calor:.1f}** semanas frente a {duracion} del plan (+{duracion_esperada_calor - duracion:.1f}). El riesgo se concentra en las actividades exteriores críticas, cuya pérdida va entera al plazo: {lista_y(criticas_exterior)} ({' + '.join(f'{tabla.loc[a, "pérdida esperada"]:.2f}' for a in criticas_exterior)} semanas esperadas).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -303,8 +329,12 @@ dists = {a: duracion_con_calor(float(fila['duration']), float(fila['standard_dev
 con_calor = proyecto.monte_carlo(dists, n_samples=20000, seed=2030)
 tau = np.asarray(con_calor.tau_samples, dtype=float)
 p_con = float((tau <= plazo).mean())
-display(con_calor.summary().round(2))
-Markdown(f'''P(T ≤ {plazo}) = **{p_sin:.2f}** sin el calor (PERT, σ = {sigma:.2f}) y **{p_con:.2f}** con él (Monte Carlo); con probabilidad 0,8 la obra termina en la semana {np.percentile(tau, 80):.1f}.''')
+resumen_mc = con_calor.summary().rename(columns={'mean': 'media', 'std': 'desviación típica', 'q05': 'percentil 5', 'q50': 'mediana', 'q95': 'percentil 95', 'min': 'mínimo', 'max': 'máximo'})
+display(resumen_mc.round(2))
+L0 = R @ datos_proyecto['duration'][R.columns]; V0 = R @ datos_proyecto['variance'][R.columns]
+r0 = max([r for r in R.index if np.isclose(L0[r], L0.max())], key=lambda x: V0[x])
+acts0 = ordena_ruta(list(R.columns[R.loc[r0] == 1]), calendario)
+Markdown(f'''Sin el calor (PERT): camino crítico {'–'.join(acts0)}, μ = {duracion}; {explica_sigma_ruta(acts0, datos_proyecto['variance'])}; {explica_probabilidad(duracion, sigma, plazo)}.\n\nCon el calor (Monte Carlo): en cada réplica cada actividad dura una normal más {perdida_episodio} semanas por cada episodio de una binomial(semanas en la ventana; {p_episodio}); P(T ≤ {plazo}) es la fracción de las {miles(len(tau))} réplicas que terminan a tiempo: **{p_con:.4f}**. La duración media simulada es {tau.mean():.2f} semanas, ''' + ('prácticamente la esperada del apartado 1' if abs(tau.mean() - duracion_esperada_calor) < 0.1 else 'algo mayor que la esperada del apartado 1 (las rutas casi críticas también pueden alargar el proyecto)') + f''' ({duracion_esperada_calor:.1f}).\n\n**Respuesta:** P(T ≤ {plazo}) = **{p_sin:.2f}** sin el calor y **{p_con:.2f}** con él; con el calor, el plazo que se cumple con probabilidad 0.80 es la semana {np.percentile(tau, 80):.1f}.''')
 
 # %%
 #| tbl-cap: "Actividades exteriores: desplazamiento necesario para salir de la ventana frente a la holgura total"
@@ -312,10 +342,27 @@ Markdown(f'''P(T ≤ {plazo}) = **{p_sin:.2f}** sin el calor (PERT, σ = {sigma:
 ext = tabla[(tabla['exterior'] == 1) & (tabla['semanas en la ventana'] > 0)].copy()
 ext['desplazamiento para empezar en la semana ' + str(ventana[1] + 1)] = (ventana[1] - ext['inicio_mas_temprano']).clip(lower=0)
 ext['cabe en la holgura'] = ext.iloc[:, -1] <= ext['H_total']
-ext[['inicio_mas_temprano', 'H_total', 'semanas en la ventana', ext.columns[-2], 'cabe en la holgura']]
-
-# %% [markdown]
-# Las actividades críticas no tienen margen: su pérdida va entera al plazo. Las exteriores con holgura pueden, a veces, salir de la ventana (o entrar menos en ella); si no cabe, la alternativa es la adaptación de la jornada (empezar a las 6, parar en las horas de aviso) con su productividad, no «trabajar igual».
+ext['semanas en la ventana desplazando toda la holgura'] = [max(0, min(int(r['inicio_mas_temprano'] + r['H_total']) + int(datos_proyecto.loc[a, 'duration']), ventana[1]) - max(int(r['inicio_mas_temprano'] + r['H_total']), ventana[0] - 1)) for a, r in ext.iterrows()]
+display(limpia_tabla(ext[['inicio_mas_temprano', 'H_total', 'semanas en la ventana', ext.columns[-3], 'cabe en la holgura', ext.columns[-1]]]
+        .rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'H_total': 'holgura total'})))
+col_d = 'desplazamiento para empezar en la semana ' + str(ventana[1] + 1)
+criticas_ext = [a for a, r in ext.iterrows() if r['H_total'] == 0]
+frases = [lista_y(criticas_ext) + (' es crítica (holgura 0): no puede moverse' if len(criticas_ext) == 1 else ' son críticas (holgura 0): no pueden moverse') + ' sin retrasar el proyecto'] if criticas_ext else []
+for a, r in ext.iterrows():
+    h, d_s, n0, n1 = int(r['H_total']), int(r[col_d]), int(r['semanas en la ventana']), int(r.iloc[-1])
+    if h == 0:
+        continue
+    elif r['cabe en la holgura']:
+        frases.append(f'{a} sale de la ventana retrasando su inicio {plural(d_s, "semana")}, dentro de su holgura de {h}')
+    elif n1 < n0:
+        frases.append(f'{a} necesitaría {d_s} semanas y tiene {h} de holgura: no sale, pero desplazándola entera pasa de {n0} a {plural(n1, "semana")} en la ventana')
+    else:
+        frases.append(f'{a} necesitaría {d_s} semanas y tiene {h} de holgura: no sale de la ventana')
+salen = [a for a, r in ext.iterrows() if r['cabe en la holgura'] and r['H_total'] > 0]
+Markdown('Para no tocar la ventana una actividad exterior tendría que empezar en la semana ' + str(ventana[1] + 1) + ' (inicio en el instante ' + str(ventana[1]) + '): '
+         'desplazamiento = ' + str(ventana[1]) + ' − inicio más temprano, que debe caber en su holgura total. ' + '; '.join(frases) + '. '
+         'Desplazar una actividad consume holgura de las que la siguen; si no cabe, la alternativa es adaptar la jornada (empezar a las 6, parar en las horas de aviso), no «trabajar igual».\n\n'
+         + ('**Respuesta:** pueden salir de la ventana con su holgura total: ' + lista_y(salen) + '.' if salen else '**Respuesta:** ninguna actividad exterior puede salir de la ventana usando su holgura total.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -325,6 +372,8 @@ display(Markdown(pregunta_3))
 
 # %% [markdown]
 # **Norma y S10.** Cuando hay aviso naranja o rojo, la adaptación de las condiciones de trabajo es obligatoria, incluida la reducción o modificación de las horas y la prohibición de ciertas tareas en las horas del fenómeno (RD 486/1997, disposición adicional única): «se trabaja igual» no es una opción del plan, y «se recupera con horas por la tarde» tiene el límite de la jornada y de las horas extraordinarias (lección 19, horas extra). **S11.** El calor tiene probabilidad (40% por semana), impacto (1.3 semanas esperadas; P del plazo de 0.85 a 0.40) y respuestas (reordenar, adaptar la jornada, reserva dimensionada): es un riesgo del proyecto por definición, y presentar al cliente las duraciones medias conociéndolo es retener información (C4). Lo que el jefe de proyecto teme —una reserva «que se usa para todo»— se resuelve declarándola y asignándola (lección 19, C8), no ocultando el riesgo.
+#
+# **Respuesta:** no: el cronograma con duraciones medias oculta un riesgo cuantificado y «se trabaja igual» incumple la obligación de adaptar la jornada con aviso naranja o rojo; el calor **es un riesgo del proyecto** (S11) y su respuesta tiene que respetar S10.
 
 # %%
 preguntas_test = [

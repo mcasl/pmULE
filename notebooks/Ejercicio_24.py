@@ -57,6 +57,7 @@ from pmule import *
 from IPython.display import display, HTML, Markdown, Math, Latex
 display(HTML("<style>.container { width:80% !important; }</style>"))
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 import sympy as sym
 
@@ -146,6 +147,9 @@ display(Markdown(pregunta_1))
 #| tbl-cap: "Cuadro de prelaciones expandido"
 #| label: tbl-MatrizPrelaciones
 proyecto.display_rutas("pert")
+_pm = proyecto.path_matrix(dummies=False)
+display(Markdown(f"**Respuesta:** la matriz de caminos tiene una fila por ruta ({len(_pm.index)}) y una columna por actividad "
+                 f"({len(_pm.columns)}); el elemento vale 1 si la actividad pertenece a la ruta y 0 si no."))
 
 # %% [markdown]
 # ## Apartado 2
@@ -167,7 +171,15 @@ from pmule import display_producto_rutas
 display_producto_rutas(path_matrix, D, duraciones_caminos)
 
 # %%
-Markdown(f"La mayor duración de los caminos es {duraciones_caminos.values.max()}")
+_dur_rutas = duraciones_caminos.iloc[:, 0]
+_Tmax = _dur_rutas.max()
+_cal = proyecto.calendar(duraciones)
+_acts = lambda r: ordena_ruta(list(_pm.columns[_pm.loc[r] == 1]), _cal)
+Markdown(f"La mayor duración de los caminos es {duraciones_caminos.values.max()}: máx({', '.join(format(v, 'g') for v in _dur_rutas)}) = "
+         f"{_Tmax:g}, que corresponde a "
+         + lista_y([f"{r} ({' – '.join(_acts(r))} = {' + '.join(format(duraciones[a], 'g') for a in _acts(r))})"
+                    for r in _dur_rutas.index if _dur_rutas[r] == _Tmax])
+         + f" (camino crítico).\n\n**Respuesta:** la duración del proyecto es **{_Tmax:g}** unidades de tiempo.")
 
 # %% [markdown]
 # ## Apartado 3
@@ -190,6 +202,11 @@ proyecto.pert(durations=False, ranksep=1)
 #| tbl-cap: "Cálculo de los tiempos tempranos y tardíos con el método de Zaderenko"
 #| label: tbl-MatrizZaderenko
 proyecto.display_zaderenko_tikz(duraciones)
+_nodos = proyecto.calculate_pert(durations=duraciones)['nodes']
+display(Markdown("**Respuesta:** tiempos temprano / tardío de cada nodo: "
+                 + "; ".join(f"nodo {n}: {r.early:g} / {r.late:g}" for n, r in _nodos.iterrows())
+                 + f". Los nodos con ambos tiempos iguales están en el camino crítico; la duración del proyecto es "
+                 f"{_nodos['early'].max():g}."))
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -206,7 +223,7 @@ proyecto.display_pert_pasos(duraciones)
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# Para construir el cuadro de ancestros prestamos atención a todas las actividades aguas arriba de las que depende cada activiadd.
+# Para construir el cuadro de ancestros prestamos atención a todas las actividades aguas arriba de las que depende cada actividad (sus precedentes directas, las precedentes de estas, y así sucesivamente).
 
 # %%
 #| tbl-cap: "Cuadro de prelaciones transitivas (ancestros)"

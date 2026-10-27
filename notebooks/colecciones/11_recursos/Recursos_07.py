@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -232,9 +236,91 @@ duracion_minima = proyecto.duration(datos_proyecto['duration'])
 limite = 4
 
 # %%
-def planificar(datos, prelaciones, limite, prioridad, interrumpible=False, max_periodos=200):
+def semanas_txt(lista):
+    """«la semana 6», «las semanas 1, 2 y 5» o «ninguna semana»."""
+    lista = [str(int(x)) for x in lista]
+    if not lista:
+        return 'ninguna semana'
+    return ('la semana ' if len(lista) == 1 else 'las semanas ') + lista_y(lista)
+
+
+def explica_cuadrados(cargas):
+    """Σ c² agrupando las semanas de igual carga: «6·3² + 4·5² = 54 + 100 = 154»."""
+    c = pd.Series(cargas).astype(int)
+    cuenta = c.value_counts().sort_index()
+    terminos = [f'{n}·{v}²' if n > 1 else f'{v}²' for v, n in cuenta.items()]
+    parciales = [f'{n * v * v}' for v, n in cuenta.items()]
+    return f'Σ c² = {" + ".join(terminos)} = {" + ".join(parciales)} = **{int((c ** 2).sum())}**'
+
+
+def explica_nivelacion(cuadrados, calendario):
+    """Una línea por actividad recorrida: desplazamientos probados, suma mínima y elección."""
+    tabla = getattr(cuadrados, 'data', cuadrados)
+    lineas, elegidos = [], {}
+    for a, fila in tabla.iterrows():
+        v = fila.dropna()
+        k = int(v.index.max())
+        H = int(calendario.loc[a, 'H_total'])
+        minimo = v.min()
+        mejor = int(v.idxmin())
+        empates = [int(x) for x in v.index[v == minimo]]
+        if k == 0:
+            probado = 'solo puede probarse 0'
+        else:
+            probado = f'se prueban 0 a {k}'
+        if k < H:
+            probado += (f' (no {H}: los desplazamientos ya aplicados a actividades que comparten su holgura '
+                        f'le han dejado {plural(k, "semana")})')
+        empate = (f'; empatan {lista_y([str(x) for x in empates])} y se toma el menor' if len(empates) > 1 else '')
+        lineas.append(f'- {a} (holgura total {H}): {probado}; suma mínima {int(minimo)} con {mejor}{empate} → '
+                      + (f'se desplaza **{plural(mejor, "semana")}**' if mejor > 0 else 'no se desplaza'))
+        elegidos[a] = mejor
+    return '\n'.join(lineas), {a: d for a, d in elegidos.items() if d > 0}
+
+
+def tabla_asignacion(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """Semanas en que la demanda supera el límite: orden de prioridad, qué entra y qué se aplaza y por qué."""
+    pasos, finales, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    filas = []
+    for ps in pasos:
+        if ps['total'] <= ps['limite']:
+            continue
+        t, L = ps['periodo'], int(ps['limite'])
+        orden, aplazadas, acum = [], [], 0
+        for a, f in ps['candidatas'].iterrows():
+            r = int(f[t])
+            orden.append(f'{a} (en curso, {r})' if f['Empezadas'] else f'{a} (H={int(f["H_total"])}, d={int(f[duracion])}, {r})')
+            if a in ps['se_programan']:
+                acum += r
+            else:
+                aplazadas.append(f'{a}: {acum} + {r} = {acum + r} > {L}')
+        filas.append({'semana': t, 'límite': L, 'demanda': int(ps['total']),
+                      'orden de prioridad (holgura, duración, recurso)': ' › '.join(orden),
+                      'entran': lista_y(sorted(ps['se_programan'])) if ps['se_programan'] else '—',
+                      'se aplazan una semana (no caben)': '; '.join(aplazadas)})
+    return pd.DataFrame(filas).set_index('semana') if filas else Markdown('En ninguna semana la demanda supera el límite: no hay que aplazar nada.')
+
+
+def primera_critica_aplazada(proyecto, datos, maximo, recurso='resources', duracion='duration'):
+    """(semana, actividad) de la primera actividad sin holgura que la asignación tiene que aplazar, o None."""
+    pasos, _, _, _ = proyecto.copy().asignar_pasos(datos.copy(), duracion, recurso, maximo)
+    for ps in pasos:
+        for a in ps['candidatas'].index:
+            if a in ps['se_retrasan'] and float(ps['candidatas'].loc[a, 'H_total']) == 0:
+                return ps['periodo'], a
+    return None
+
+
+def esperas_asignacion(datos_asignados):
+    """{actividad: semanas de espera} a partir de las filas 💤 que añade la asignación."""
+    e = datos_asignados[datos_asignados.index.str.startswith('💤')]
+    return {i[1:]: int(f.duration) for i, f in e.iterrows()}
+
+# %%
+def planificar(datos, prelaciones, limite, prioridad, interrumpible=False, max_periodos=200, registro=None):
     '''Programación en paralelo periodo a periodo con un recurso renovable limitado.
-    prioridad(a, t) -> número: menor = antes. Devuelve (semanas trabajadas por actividad, inicio, fin).'''
+    prioridad(a, t) -> número: menor = antes. Devuelve (semanas trabajadas por actividad, inicio, fin).
+    Si se pasa una lista en registro, añade una entrada por semana con el orden, las que entran y las que esperan.'''
     pred = prelaciones.immediate_predecessor
     restante = datos['duration'].astype(int).to_dict()
     rec = datos['resources'].astype(int).to_dict()
@@ -253,10 +339,15 @@ def planificar(datos, prelaciones, limite, prioridad, interrumpible=False, max_p
         else:
             orden = sorted(elegibles, key=lambda a: prioridad(a, t))
         disponible = limite
-        activas = []
+        activas, esperan = [], []
         for a in orden:
             if rec[a] <= disponible:
                 activas.append(a); disponible -= rec[a]
+            else:
+                esperan.append((a, rec[a], limite - disponible))
+        if registro is not None:
+            registro.append(dict(semana=t, orden=list(orden), activas=list(activas), esperan=esperan,
+                                 en_curso=set(en_curso)))
         for a in activas:
             restante[a] -= 1; trabajo[a].append(t)
         en_curso = {a for a in activas if restante[a] > 0}
@@ -264,20 +355,40 @@ def planificar(datos, prelaciones, limite, prioridad, interrumpible=False, max_p
     fin = pd.Series({a: (max(s) if s else np.nan) for a, s in trabajo.items()})
     return trabajo, inicio, fin
 
+def tabla_decisiones(registro, clave, limite):
+    '''Semanas en que alguna actividad disponible tiene que esperar: orden, las que trabajan y por qué esperan las demás.'''
+    filas = []
+    for r in registro:
+        if not r['esperan']:
+            continue
+        etiqueta = lambda a: ', '.join(x for x in ('en curso' if a in r['en_curso'] else clave(a), f"{int(datos_proyecto.loc[a, 'resources'])} op.") if x)
+        orden = ' › '.join(f'{a} ({etiqueta(a)})' for a in r['orden'])
+        filas.append({'semana': r['semana'], 'orden de prioridad': orden,
+                      'trabajan': ', '.join(r['activas']) or '—',
+                      'esperan (no caben)': '; '.join(f'{a}: {usado} + {q} = {usado + q} > {limite}' for a, q, usado in r['esperan'])})
+    return pd.DataFrame(filas).set_index('semana') if filas else Markdown('Ninguna actividad disponible tiene que esperar.')
+
 def gantt_texto(trabajo, limite):
-    '''Tabla actividad × semana con el recurso usado y fila de carga total.'''
+    '''Gantt de pmule: semanas trabajadas por cada actividad (en tramos si se interrumpe) con los operarios
+    que usa en cada semana, y la carga total frente al límite.'''
     T = max(max(s) for s in trabajo.values() if s)
-    g = pd.DataFrame('', index=list(trabajo), columns=range(1, T + 1), dtype=object)   # object: admite enteros y texto
+    tramos = {}
     for a, semanas in trabajo.items():
-        for t in semanas:
-            g.loc[a, t] = int(datos_proyecto.loc[a, 'resources'])
-    carga = pd.Series({t: sum(int(datos_proyecto.loc[a, 'resources']) for a, s in trabajo.items() if t in s) for t in g.columns})
-    g.loc['Total'] = carga
-    g.loc['≤ límite'] = ['sí' if c <= limite else 'NO' for c in carga]
-    return g
+        q = int(datos_proyecto.loc[a, 'resources'])
+        seg = []
+        for t in sorted(semanas):
+            if seg and seg[-1][0] + seg[-1][1] == t - 1:
+                seg[-1] = (seg[-1][0], seg[-1][1] + 1, q)
+            else:
+                seg.append((t - 1, 1, q))
+        tramos[a] = seg
+    carga = [sum(int(datos_proyecto.loc[a, 'resources']) for a, s in trabajo.items() if t in s) for t in range(1, T + 1)]
+    extra = pd.DataFrame([carga, ['sí' if c <= limite else 'NO' for c in carga]], index=['Total', r'$\le$ límite'], columns=range(1, T + 1))
+    return pinta_tikz(gantt_tramos_tikz(tramos, horizonte=T, extra_rows=extra, params={'segments_text_per_period': True}))
 
 # %%
 regla = lambda a, t: (calendario.loc[a, 'H_total'], datos_proyecto.loc[a, 'duration'], a)
+clave = lambda a: f"H={int(calendario.loc[a, 'H_total'])}, d={int(datos_proyecto.loc[a, 'duration'])}"
 
 # %% [markdown]
 # ## Apartado 1
@@ -305,16 +416,23 @@ gantt_inicial, dibujo = proyecto.copy().gantt_cargas(datos_proyecto.copy(), 'dur
 plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[limite])
 
 # %% [markdown]
-# El planificador recorre las semanas: una actividad es *disponible* cuando han terminado sus predecesoras; las disponibles se ordenan por la regla (menor holgura total, luego menor duración) y entran mientras quepan en el límite. Sin interrupciones, las ya empezadas van primero.
+# El planificador recorre las semanas: una actividad es *disponible* cuando han terminado sus predecesoras; las disponibles se ordenan por la regla (menor holgura total, luego menor duración, luego orden alfabético) y entran mientras quepan en el límite. Sin interrupciones, las ya empezadas van primero. La primera tabla recoge las semanas en que alguna actividad disponible tiene que esperar y por qué; la segunda, el Gantt de operarios.
+
+# %%
+#| tbl-cap: "Esperas sin interrupciones"
+#| label: tbl-decisionesNo
+registro_no = []
+trabajo_no, inicio_no, fin_no = planificar(datos_proyecto, prelaciones, limite, regla, interrumpible=False, registro=registro_no)
+tabla_decisiones(registro_no, clave, limite)
 
 # %%
 #| tbl-cap: "Programación sin interrupciones"
 #| label: tbl-sinInterrupcion
-trabajo_no, inicio_no, fin_no = planificar(datos_proyecto, prelaciones, limite, regla, interrumpible=False)
 gantt_texto(trabajo_no, limite)
 
 # %%
-Markdown(f'Sin interrupciones el proyecto dura {int(fin_no.max())} semanas (mínimo sin límite de recursos: {duracion_minima}).')
+Markdown(f'**Respuesta:** sin interrupciones el proyecto dura **{int(fin_no.max())} semanas**, '
+         f'{int(fin_no.max()) - duracion_minima} más que sin límite de operarios ({duracion_minima}).')
 
 # %% [markdown]
 # ## Apartado 2
@@ -322,10 +440,19 @@ Markdown(f'Sin interrupciones el proyecto dura {int(fin_no.max())} semanas (mín
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# Ahora, cada semana se ordenan por la misma regla *todas* las disponibles, también las empezadas: una actividad en curso deja de trabajar esa semana si otras de más prioridad ocupan los operarios.
+
+# %%
+#| tbl-cap: "Esperas con interrupciones permitidas"
+#| label: tbl-decisionesSi
+registro_si = []
+trabajo_si, inicio_si, fin_si = planificar(datos_proyecto, prelaciones, limite, regla, interrumpible=True, registro=registro_si)
+tabla_decisiones(registro_si, clave, limite)
+
 # %%
 #| tbl-cap: "Programación con interrupciones permitidas"
 #| label: tbl-conInterrupcion
-trabajo_si, inicio_si, fin_si = planificar(datos_proyecto, prelaciones, limite, regla, interrumpible=True)
 gantt_texto(trabajo_si, limite)
 
 # %%
@@ -333,7 +460,8 @@ def interrupciones(semanas):
     return sum(1 for s1, s2 in zip(semanas, semanas[1:]) if s2 > s1 + 1)
 inter = pd.Series({a: interrupciones(s) for a, s in trabajo_si.items()})
 inter = inter[inter > 0]
-Markdown(f'''Con interrupciones el proyecto dura {int(fin_si.max())} semanas. {('Se interrumpen ' + ', '.join(f'{a} ({v} vez/veces)' for a, v in inter.items()) + '.') if len(inter) else 'Ninguna actividad llega a interrumpirse.'}''')
+detalle_inter = lista_y([f"{a} ({'una vez' if v == 1 else str(v) + ' veces'}: trabaja en las semanas {', '.join(map(str, trabajo_si[a]))})" for a, v in inter.items()])
+Markdown(f'''**Respuesta:** con interrupciones el proyecto dura **{int(fin_si.max())} semanas**. {('Se interrumpe' + ('n ' if len(inter) > 1 else ' ') + detalle_inter + '.') if len(inter) else 'Ninguna actividad llega a interrumpirse: en ninguna semana aparece una actividad disponible más prioritaria que otra ya en curso y que necesite sus operarios.'}''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -344,12 +472,25 @@ display(Markdown(pregunta_3))
 # %%
 #| tbl-cap: "Inicio y fin de cada actividad en las dos programaciones"
 #| label: tbl-comparacion
-pd.DataFrame({'inicio (no interr.)': inicio_no.astype(int), 'fin (no interr.)': fin_no.astype(int),
+comparacion = pd.DataFrame({'inicio (no interr.)': inicio_no.astype(int), 'fin (no interr.)': fin_no.astype(int),
               'inicio (interr.)': inicio_si.astype(int), 'fin (interr.)': fin_si.astype(int),
               'semanas trabajadas (interr.)': {a: len(s) for a, s in trabajo_si.items()}})
+comparacion
 
-# %% [markdown]
-# Si hay ganancia, viene de que al permitir interrumpir no hay que esperar a que termine una actividad poco urgente para liberar operarios: una actividad crítica puede entrar en cuanto está disponible. Si no la hay, es que la regla de prioridad ya había evitado bloquear el recurso con actividades holgadas. Interrumpir nunca empeora la duración con este planificador (el no interrumpible es un caso particular), pero puede fragmentar mucho el trabajo.
+# %%
+cambian = [a for a in comparacion.index if (comparacion.loc[a, 'inicio (no interr.)'], comparacion.loc[a, 'fin (no interr.)']) != (comparacion.loc[a, 'inicio (interr.)'], comparacion.loc[a, 'fin (interr.)'])]
+ganancia = int(fin_no.max()) - int(fin_si.max())
+if ganancia > 0:
+    texto = (f'Hay ganancia de {plural(ganancia, "semana")}: al permitir interrumpir no hay que esperar a que termine una actividad poco urgente para '
+             f'liberar operarios, y las más prioritarias entran en cuanto están disponibles. Cambian las fechas de {lista_y(cambian)}.')
+elif ganancia == 0:
+    texto = ('No hay ganancia: ' + (f'aunque cambian las fechas de {lista_y(cambian)}, ' if cambian else 'las dos programaciones coinciden semana a semana; ')
+             + 'la regla de prioridad ya evitaba bloquear los operarios con actividades holgadas.')
+else:
+    texto = (f'Interrumpir empeora el resultado en {plural(-ganancia, "semana")}: el planificador decide semana a semana sin mirar adelante, y '
+             f'parar actividades a medias retrasa sus sucesoras. Cambian las fechas de {lista_y(cambian)}.')
+Markdown(f'**Respuesta:** {int(fin_no.max())} semanas sin interrupciones frente a {int(fin_si.max())} con ellas. ' + texto +
+         ' Ojo: el planificador es una heurística, así que permitir interrupciones no garantiza mejorar (puede incluso empeorar) y, cuando mejora, fragmenta el trabajo.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -358,4 +499,4 @@ pd.DataFrame({'inicio (no interr.)': inicio_no.astype(int), 'fin (no interr.)': 
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# Interrumpir tiene costes que el modelo ignora: volver a montar y desmontar (tiempos de preparación), pérdida de ritmo y de aprendizaje, el material en curso inmovilizado, la coordinación de los operarios y la dificultad de seguimiento. Compensa cuando el ahorro de plazo vale más que esos costes: actividades largas, modulares (pueden partirse en lotes) y sin costes de preparación apreciables; no compensa en tareas con fraguados, curados o procesos continuos.
+# **Respuesta:** interrumpir tiene costes que el modelo ignora: volver a montar y desmontar (tiempos de preparación), pérdida de ritmo y de aprendizaje, el material en curso inmovilizado, la coordinación de los operarios y la dificultad de seguimiento. Compensa cuando el ahorro de plazo vale más que esos costes: actividades largas, modulares (pueden partirse en lotes) y sin costes de preparación apreciables; no compensa en tareas con fraguados, curados o procesos continuos.

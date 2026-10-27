@@ -28,7 +28,41 @@ from IPython.display import display, HTML, Markdown, Math
 sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, pinta_tikz, plot_cargas
+from pmule import explica_camino_critico, explica_probabilidad, ordena_ruta, lista_y, plural
 
+def _cargas(gantt, limites=None):
+    """Carga de recursos por periodo (y, si se da, frente al límite, que se prolonga con su último valor)."""
+    import numpy as _np, pandas as _pd
+    _c = gantt.data.loc['Total'].drop('H_total').astype(float)
+    _t = _pd.DataFrame({'Periodo': range(1, len(_c) + 1), 'Carga': _c.astype(int).values})
+    if limites is not None:
+        _l = list(limites) if isinstance(limites, (list, tuple)) else [limites]
+        _t['Límite'] = (_l + [_l[-1]] * len(_c))[:len(_c)]
+        _t['¿Supera?'] = _np.where(_t['Carga'] > _t['Límite'], 'sí', 'no')
+    return _t.set_index('Periodo').T
+
+def _tabla_varianzas(caminos, varianzas, calendario):
+    """Varianza de cada ruta crítica, con las actividades en orden de ejecución y la suma término a término."""
+    import pandas as _pd
+    _f = {}
+    for _r, _acts in caminos.items():
+        _acts = ordena_ruta(_acts, calendario)
+        _f[_r] = {'Ruta': ' – '.join(_acts),
+                  'Varianza = suma': ' + '.join(f"σ²({a})" for a in _acts) + ' = '
+                                     + ' + '.join(f"{varianzas[a]:g}" for a in _acts) + f" = {sum(varianzas[a] for a in _acts):g}"}
+    return _pd.DataFrame(_f).T
+
+def _respuesta_ackoff(best_option, costes, T0, T1, unidad='periodos'):
+    """Coste de cada iteración de Ackoff-Sasieni y resumen de las reducciones."""
+    from collections import Counter as _Counter
+    _ci = {it: sum(costes[a] for a in acts) for it, acts in best_option.items()}
+    _n = _Counter(a for acts in best_option.values() for a in acts)
+    return Markdown(
+        'Coste de cada iteración (suma de los costes unitarios de reducción de las actividades acortadas un periodo):\n\n'
+        + '\n'.join(f"- Iteración {it}: " + ' + '.join(f"{a}({costes[a]:g})" for a in acts) + f" = {_ci[it]:g}" for it, acts in best_option.items())
+        + "\n\n**Respuesta:** hay que reducir " + lista_y([f"{a} {plural(n, 'periodo')}" for a, n in _n.items()])
+        + f"; la duración pasa de {T0:g} a {T1:g} {unidad} con un sobrecoste mínimo de "
+        + ' + '.join(f"({c:g})" for c in _ci.values()) + f" = **{sum(_ci.values()):g}** unidades monetarias.")
 # %%
 # %%capture
 # %mkdir -p ~/temp
@@ -58,6 +92,7 @@ from IPython.display import display, HTML
 display(HTML("<style>.container { width:100% !important; }</style>"))
 
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 
 datos_enunciado= pd.DataFrame([
@@ -149,7 +184,7 @@ resultados_pert['nodes']
 
 # %%
 duracion_media_proyecto = proyecto.duration(durations=datos_proyecto['duration'])
-Markdown(f"De acuerdo a la duración obtenida para el nodo final del proyecto, la duración media del proyecto es {duracion_media_proyecto} periodos.")
+Markdown(f"El tiempo más temprano del nodo final del proyecto es su duración media: **{duracion_media_proyecto:g} periodos**.")
 
 # %% [markdown]
 # ### Calendario del proyecto
@@ -168,11 +203,12 @@ proyecto.display_calendario(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Holgura total de las actividades"
 #| label: tbl-holguras
-resultados_pert['activities'][['H_total']]
-
+display(resultados_pert['activities'][['H_total']].rename(columns={'H_total': 'Holgura total'}))
+display(Markdown('(Las filas que empiezan por @ son actividades ficticias.) Actividades con holgura total nula: **'
+                 + lista_y([a for a in ordena_ruta(datos_proyecto.index, calendario) if resultados_pert['activities'].loc[a, 'H_total'] == 0]) + '**.'))
 # %% [markdown]
 # #### Camino crítico
-# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas, cuyas actividades se listan en orden alfabético:
+# Las actividades con holgura total cero forman el camino crítico. Los visores siguientes lo muestran sobre los grafos Pert y Roy; a continuación se enumeran sus rutas.
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -191,11 +227,9 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
-# Las rutas del camino crítico son:
-
+# Las rutas del camino crítico (actividades en orden de ejecución) son:
 # %%
-proyecto.display_critical_path(durations=datos_proyecto['duration'])
-
+explica_camino_critico(proyecto, datos_proyecto['duration'], 'periodos')
 # %% [markdown]
 # ## Apartado 2
 
@@ -206,10 +240,10 @@ display(Markdown(pregunta_2))
 duracion_media_proyecto = proyecto.duration(durations=datos_proyecto['duration'])
 
 # %%
-Markdown(f"La duración media del proyecto la conocemos del primer apartado. Tiene valor {duracion_media_proyecto} periodos.")
+Markdown(f"La duración media del proyecto la conocemos del primer apartado: μ = **{duracion_media_proyecto:g} periodos**.")
 
 # %% [markdown]
-# Para determinar la desviación típica debemos obtener en cada rama del camino crítico la suma de las varianzas, y quedarnos con la mayor.
+# Para determinar la desviación típica debemos obtener en cada rama del camino crítico la suma de las varianzas de sus actividades (el enunciado da la desviación típica $\sigma$; la varianza es $\sigma^2$), y quedarnos con la mayor.
 
 # %%
 datos_proyecto['variance'] = datos_proyecto.eval('standard_deviation ** 2')
@@ -219,12 +253,11 @@ desviacion_proyecto, caminos_varianza = proyecto.standard_deviation(durations=da
 # %%
 #| tbl-cap: "Varianza de las rutas del camino crítico"
 #| label: tbl-varianzaRutas2
-caminos_varianza
-
+_tabla_varianzas(proyecto.critical_path(datos_proyecto['duration']), datos_proyecto['variance'], calendario)
 # %%
-display(Markdown(f"""La varianza de la duración del proyecto es la máxima varianza de las rutas críticas. Para este proyecto es {round(desviacion_proyecto**2,2)}.  
-Habitualmente será útil calcular su raiz cuadrada, la desviación típica, para ser utilizada como parámetro de la ley de distribución normal.  """))
-display(Markdown(f"La desviación típica es {round(desviacion_proyecto,2)}"""))
+_v = caminos_varianza.data['Variance'].astype(float)
+display(Markdown(f"""La varianza de la duración del proyecto es la máxima varianza de las rutas críticas: σ² = máx({', '.join(f'{x:g}' for x in _v)}) = **{desviacion_proyecto**2:g}**.  
+Su raíz cuadrada, la desviación típica, es el parámetro de la ley normal: σ = √{desviacion_proyecto**2:g} = **{desviacion_proyecto:.2f}** periodos."""))
 
 # %% [markdown]
 # Una vez caracterizada la distribución normal con la que aproximamos la duración del proyecto, podemos hacer el cálculo de la probabilidad:
@@ -237,7 +270,9 @@ probabilidad_antes_b = norm.cdf(periodo_probabilidad_b, loc=duracion_media_proye
 from pmule import display_normal_tikz
 display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=periodo_probabilidad_b)
 
-Markdown(f"Para un proyecto con duración media {duracion_media_proyecto} y desviación típica {round(desviacion_proyecto, 2)} el valor de la probabilidad de terminar antes del periodo {periodo_probabilidad_b} es {round(probabilidad_antes_b * 100, 2)} por ciento.")
+Markdown(explica_probabilidad(duracion_media_proyecto, desviacion_proyecto, periodo_probabilidad_b)
+         + f"\n\n**Respuesta:** la probabilidad de terminar el proyecto antes de {periodo_probabilidad_b} periodos es "
+           f"**{probabilidad_antes_b:.4f}** ({probabilidad_antes_b * 100:.2f} %).")
 
 # %% [markdown]
 # ## Apartado 3
@@ -261,14 +296,14 @@ proyecto.display_ackoff_pasos_tikz(
     reduction=2)
 
 # %% [markdown]
-# Los desplazamientos indicados al aplicar el algoritmo de reducción con mínimo coste son:
+# Las reducciones indicadas en cada iteración del algoritmo de reducción con mínimo coste, y su coste, son:
 
 # %%
 for iteracion, actividades in best_option.items():
-    display(Markdown(f"- Iteración {iteracion}: " + ", ".join(actividades) + " <br>"))
+    pass
 
 # %%
-Markdown(f"El coste de la reducción ha sido de {2 * datos_proyecto.loc['A', 'ucr'] + 2 * datos_proyecto.loc['H', 'ucr']} unidades monetarias.")
+_respuesta_ackoff(best_option, datos_proyecto['ucr'], proyecto.duration(datos_proyecto['duration']), proyecto.duration(duration))
 
 # %% [markdown]
 # ## Apartado 4
@@ -293,8 +328,18 @@ pinta_tikz(dibujo)
 #| fig-cap: "Diagrama de cargas del proyecto de acuerdo a su definición original, con indicación del límite máximo de recursos"
 #| label: fig-preNivelacionBarras
 plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=limite_maximo_recursos)
-
+_n6 = 6
+_c = _cargas(gantt_df)
+_c6 = _c.loc['Carga'].iloc[:_n6]
+display(Markdown(f"(La línea del límite se dibuja en todo el proyecto, pero el enunciado solo limita los recursos durante las {_n6} primeras semanas.) "
+                 f"Cargas de las semanas 1 a {_n6} con la programación más temprana y las duraciones del apartado 1: "
+                 + ', '.join(str(x) for x in _c6) + f"; máximo = {_c6.max()} frente a un límite de {limite_maximo_recursos[0]}."))
 # %% [markdown]
-# Se concluye por tanto que la restricción de recursos impuesta no implica ningún problema.
+# A partir de la semana 7 no hay límite de recursos, por lo que solo hay que comprobar las seis primeras semanas.
 
 # %%
+_ok = _c6.max() <= limite_maximo_recursos[0]
+display(Markdown(
+    f"**Respuesta:** {'sí' if _ok else 'no'} es posible realizar el proyecto en los {duracion_media_proyecto:g} periodos del apartado 1: "
+    + (f"la carga máxima de las {_n6} primeras semanas es {_c6.max()} ≤ {limite_maximo_recursos[0]}, así que la programación más temprana ya respeta el límite y no hace falta retrasar ninguna actividad."
+       if _ok else f"en las {_n6} primeras semanas la carga llega a {_c6.max()} > {limite_maximo_recursos[0]}; habría que retrasar actividades.")))

@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -262,6 +266,63 @@ proyecto = prelaciones.create_project()
 duracion = float(proyecto.duration(datos_proyecto['duration']))
 sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])
 
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
+
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
@@ -275,6 +336,9 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 display(Markdown(pregunta_1))
+
+# %% [markdown]
+# Con cuatro o más licitadores y el precio como único criterio, la norma de referencia se aplica así: (1) media de las bajas de todas las ofertas; (2) si alguna oferta es superior a esa media en más de 10 puntos (es decir, su baja es más de 10 puntos **menor** que la media), se excluye y se recalcula la media con las restantes (y, si quedan menos de tres, con las tres ofertas más bajas, que son las de mayor baja); (3) se presume anormalmente baja la oferta cuya baja supera la media en más de 10 puntos.
 
 # %%
 def umbral_temeridad(bajas):
@@ -291,9 +355,20 @@ def umbral_temeridad(bajas):
     return media + 10, media
 bajas = bajas_competidores['baja (%)'].tolist() + [baja_propuesta]
 umbral, media = umbral_temeridad(bajas)
+media0 = float(np.mean(bajas))
+excluidas = [b for b in bajas if b < media0 - 10]
 precio_oferta = presupuesto * (1 - baja_propuesta / 100)
 margen = precio_oferta - coste_estimado
-Markdown(f'''Bajas: {bajas}; media {media:.2f} %; umbral de presunción: media + 10 = **{umbral:.2f} %**. Nuestra baja del {baja_propuesta} % {'**supera** el umbral: se presume anormalmente baja' if baja_propuesta > umbral else 'no supera el umbral'}. Precio ofertado {precio_oferta:.1f} k€ frente a un coste estimado de {coste_estimado} k€: margen **{margen:+.1f} k€**.''')
+baja_sin_perdida = 100 * (1 - coste_estimado / presupuesto)
+paso2 = (f'Ninguna baja es menor que {media0:.2f} − 10 = {media0 - 10:.2f}: no se excluye ninguna oferta y la media se mantiene.' if not excluidas else
+         f'Las bajas {lista_y([f"{b:g}" for b in excluidas])} son menores que {media0:.2f} − 10 = {media0 - 10:.2f}: se excluyen y la nueva media es **{media:.2f} %**.')
+Markdown(f'''1. Media de las cuatro bajas: ({' + '.join(f"{b:g}" for b in bajas)}) / {len(bajas)} = **{media0:.2f} %**.
+2. {paso2}
+3. Umbral de presunción: {media:.2f} + 10 = **{umbral:.2f} %**. Nuestra baja, {baja_propuesta:g} %, {'**supera** el umbral: se presume anormalmente baja' if baja_propuesta > umbral else 'no supera el umbral'}.
+
+Precio ofertado = {presupuesto} · (1 − {baja_propuesta:g}/100) = **{precio_oferta:.1f} k€**; margen sobre el coste estimado = {precio_oferta:.1f} − {coste_estimado:g} = **{margen:+.1f} k€** ({'pérdidas' if margen < 0 else 'beneficio'}). La mayor baja sin perder dinero sería 100 · (1 − {coste_estimado:g}/{presupuesto}) = {baja_sin_perdida:.1f} %.
+
+**Respuesta.** Media de las bajas {media:.2f} %, umbral {umbral:.2f} %; la oferta del {baja_propuesta:g} % {'incurre' if baja_propuesta > umbral else 'no incurre'} en la presunción y deja un margen de {margen:+.1f} k€ sobre el coste.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -302,10 +377,15 @@ Markdown(f'''Bajas: {bajas}; media {media:.2f} %; umbral de presunción: media +
 display(Markdown(pregunta_2))
 
 # %%
-z = (plazo_oferta - duracion) / sigma
-p_plazo = float(norm.cdf(z))
-plazo_80 = duracion + norm.ppf(0.8) * sigma
-Markdown(f'''Duración esperada {duracion:.1f} semanas, σ = {sigma:.2f}: **P(T ≤ {plazo_oferta}) = {p_plazo:.2f}**. Con probabilidad 0,8 se cumplirían **{plazo_80:.1f}** semanas.''')
+camino, _ = camino_critico_sigma(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])
+p_plazo = float(norm.cdf(plazo_oferta, duracion, sigma))
+plazo_80 = float(norm.ppf(0.8, duracion, sigma))
+Markdown(f'''Camino crítico {' – '.join(camino)}: duración esperada {' + '.join(f"{datos_proyecto.loc[a, 'duration']:g}" for a in camino)} = **{duracion:.2f}** semanas; {explica_sigma_ruta(camino, datos_proyecto['variance'])} semanas.
+
+- {explica_probabilidad(duracion, sigma, plazo_oferta)}.
+- Plazo con probabilidad 0,8: {explica_percentil(duracion, sigma, 0.8, 'semanas')}.
+
+**Respuesta.** La probabilidad de ejecutar en {plazo_oferta} semanas es **{p_plazo:.3f}** ({porc(p_plazo)}); el plazo que se cumple con probabilidad 0,8 es {plazo_80:.2f} semanas, es decir, se podrían ofertar **{int(np.ceil(plazo_80))} semanas** (con {int(np.floor(plazo_80))} la probabilidad sería {norm.cdf(np.floor(plazo_80), duracion, sigma):.3f}, menor que 0,8).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -313,8 +393,12 @@ Markdown(f'''Duración esperada {duracion:.1f} semanas, σ = {sigma:.2f}: **P(T 
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **Norma.** La presunción de anormalidad obliga a la mesa a pedir justificación de la oferta; si la justificación no acredita que se puede ejecutar a ese precio (con un margen de -96 k€ sobre el coste, difícilmente), la oferta se excluye. «Ganar seguro» no es, por tanto, lo que ocurre. **C13.** Ofertar 14 semanas con una probabilidad del 12% de cumplirlas, contando con renegociar, es un compromiso que no se hace de buena fe; y **C1**: la oferta afirma un plazo que quien la firma sabe que no es el que espera cumplir. Que «siempre se haga» no cambia el criterio; y los modificados y prórrogas de la LCSP tienen causas tasadas, entre las que no está «ofertamos lo que no podíamos».
+# %%
+Markdown(f'''**Norma** (RGLCAP art. 85; LCSP art. 149). La presunción de anormalidad obliga a la mesa a pedir al licitador que justifique su oferta; si la justificación no convence, la oferta se excluye. Con un margen de {margen:+.1f} k€ sobre el propio coste estimado, la justificación sería difícil: «ganar seguro» no es lo que la norma prevé, sino un trámite que puede acabar en exclusión.
+
+**Criterio C13 (compromisos de buena fe).** Ofertar {plazo_oferta} semanas con una probabilidad de cumplirlas de {p_plazo:.3f}, sabiendo que «el equipo dice que no llega» y contando con «renegociar con modificados y prórrogas», es asumir un compromiso que se sabe inalcanzable: no es de buena fe. **Criterio C1 (afirmación falsa).** La oferta afirma un plazo que quien la firma no espera cumplir. Que «siempre se haga» no cambia el criterio, y los modificados y las prórrogas tienen causas tasadas en la ley, entre las que no está haber ofertado lo que no se podía cumplir.
+
+**Respuesta.** La presunción de anormalidad abre un trámite de justificación y, si no convence, la **exclusión**. Ofertar un plazo inalcanzable (P = {p_plazo:.3f}) contando con renegociarlo incumple **C13** y **C1**.''')
 
 # %%
 preguntas_test = [
@@ -352,5 +436,16 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Oferta defendible: una baja por debajo del umbral (27.9 %) que deje margen sobre el coste, y el plazo que se puede cumplir con un 80 % (17 semanas), o 16 con la reserva declarada; si el plazo corto es decisivo, con el coste de comprimirlo (lección 10) dentro del precio. Al director comercial: la oferta temeraria se puede quedar fuera en la mesa, y si entra, los modificados no cubren un plazo que no se podía cumplir: el 88% de retraso se paga en penalidades y reputación. Prueba de publicidad: ¿firmaría la oferta si la mesa pudiera leer el correo del director comercial?
+# %%
+baja_defendible = min(umbral, baja_sin_perdida)
+rubrica_caso(
+    [('Administración contratante', f'adjudica a una oferta con {margen:+.1f} k€ de margen y un {porc(1 - p_plazo, 0)} de probabilidad de no cumplir el plazo: riesgo de abandono, modificados y retrasos'),
+     ('Competidores', 'pierden una licitación ante una oferta que no se podía cumplir'),
+     ('Empresa y equipo', f'si gana, ejecuta con pérdidas ({margen:+.1f} k€) y penalidades probables; si la excluyen, pierde la licitación igualmente'),
+     ('Usuarios de la obra', 'reciben la obra más tarde de lo prometido')],
+    [(f'Baja del {baja_propuesta:g} % y plazo de {plazo_oferta} semanas (propuesta)', 'presunción de anormalidad: justificación y posible exclusión', 'no', 'no: la empresa no aceptaría un proveedor que le hiciera esto'),
+     (f'Baja ≤ {baja_defendible:.1f} % (bajo el umbral y sin pérdidas) y plazo de {int(np.ceil(plazo_80))} semanas (80 %)', 'sí', 'sí', 'sí'),
+     (f'Plazo de {duracion:.0f} semanas con la reserva declarada y su probabilidad', 'sí', 'sí', 'sí'),
+     ('Si el plazo corto es decisivo, ofertarlo con el coste de comprimir (lección 10) incluido en el precio', 'sí', 'sí', 'sí'),
+     ('No presentarse si no se puede competir sin pérdidas', 'sí', 'sí', 'sí')],
+    f'''una baja que no supere ni el umbral ({umbral:.2f} %) ni la que deja el precio por debajo del coste ({baja_sin_perdida:.1f} %), y el plazo de {int(np.ceil(plazo_80))} semanas, que se cumple con un 80 % de probabilidad. Al director comercial: la oferta temeraria puede quedar fuera en la mesa; si entra, los modificados no cubren un plazo que no se podía cumplir y la probabilidad del {porc(1 - p_plazo, 0)} de retraso se paga en penalidades y reputación. Prueba de publicidad: ¿firmaría la oferta si la mesa pudiera leer su correo?''')

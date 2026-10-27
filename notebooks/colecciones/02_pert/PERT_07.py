@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -237,21 +241,22 @@ proyecto = prelaciones.create_project()
 display(Markdown(pregunta_1))
 
 # %% [markdown]
-# Partimos del cuadro de prelaciones expandido: las filas dan las predecesoras inmediatas y las columnas las sucesoras. Dos actividades pueden compartir nodo final si tienen exactamente las mismas sucesoras, y nodo inicial si tienen las mismas predecesoras; en los demás casos hacen falta ficticias.
+# Partimos del cuadro de prelaciones expandido: las filas dan las predecesoras inmediatas y las columnas las sucesoras. Dos actividades pueden compartir nodo final si tienen exactamente las mismas sucesoras, y nodo inicial si tienen las mismas predecesoras; en los demás casos hacen falta ficticias. El visor muestra primero el grafo terminado junto al cuadro; con los botones se construye desde el principio, fila a fila, y al final recorre las columnas del cuadro para comprobar en el grafo las sucesoras de cada actividad.
 
 # %%
-#| tbl-cap: "Cuadro de prelaciones expandido"
-#| label: tbl-prelacionesExpandido
-prelaciones.display_immediate_linkage_matrix()
-
-# %%
-#| fig-cap: "Grafo PERT con numeración de nodos; las ficticias se dibujan discontinuas"
+#| fig-cap: "Construcción del grafo PERT a partir del cuadro de prelaciones expandido (las ficticias, discontinuas)"
 #| label: fig-pert
-proyecto.pert(durations=False, ranksep=1)
+proyecto.display_pert_construccion()
 
 # %%
-print(f'El grafo tiene {len(proyecto.nodes)} nodos, {len(proyecto)} actividades reales '
-      f'y {len(proyecto.dummies)} ficticias: {", ".join(proyecto.dummies)}')
+_arcos = sorted(proyecto.pert_graph.edges(data=True), key=lambda e: (int(e[0]), int(e[1])))
+_mal = [d['activity'] for i, j, d in _arcos if int(i) >= int(j)]
+Markdown(f'**Respuesta:** el grafo tiene {len(proyecto.nodes)} nodos, numerados del 1 al {len(proyecto.nodes)}, '
+         f'{len(proyecto)} actividades reales y **{plural(len(proyecto.dummies), "ficticia")}** '
+         f'({lista_y(proyecto.dummies)}; el nombre indica los nodos que unen). '
+         + ('Todos los arcos van de un número menor a uno mayor: '
+            + ', '.join(f"{d['activity']} ({i} → {j})" for i, j, d in _arcos) + '.' if not _mal
+            else f'Arcos que no cumplen la regla: {lista_y(_mal)}.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -260,25 +265,81 @@ print(f'El grafo tiene {len(proyecto.nodes)} nodos, {len(proyecto)} actividades 
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Cada ficticia une el nodo final de unas actividades con el nodo inicial de otras. La prelación que transmite es «todas las que entran en su nodo origen preceden a todas las que salen de su nodo destino».
+# Una ficticia que va del nodo *i* al *j* transmite que todas las actividades que terminan en *i* preceden a todas las que empiezan en *j*. Para ver por qué no puede evitarse hay que imaginar que las actividades que salen de *j* salieran directamente de *i*: si eso añade alguna prelación que el cuadro no tiene, o junta dos actividades entre el mismo par de nodos, la ficticia es imprescindible.
 
 # %%
-grafo = proyecto.pert_graph
-def actividades_que_entran(nodo):
-    return sorted(d['activity'] for _, _, d in grafo.in_edges(nodo, data=True) if not d['activity'].startswith('@'))
-def actividades_que_salen(nodo):
-    return sorted(d['activity'] for _, _, d in grafo.out_edges(nodo, data=True) if not d['activity'].startswith('@'))
+def explica_ficticias(proyecto, prelaciones):
+    """Una línea por ficticia del PERT: nodos que une, prelación que transmite y por qué no
+    basta con hacer empezar las sucesoras en el nodo donde terminan las predecesoras."""
+    G = proyecto.pert_graph
+    pred = {a: set(ps) for a, ps in prelaciones.immediate_predecessor.items()}
+    R = nx.DiGraph([(p, a) for a, ps in pred.items() for p in ps])
+    R.add_nodes_from(pred)
+    anc = {a: nx.ancestors(R, a) for a in pred}
+    def entran(nodo, salvo=None):
+        acts = set()
+        for i, _, d in G.in_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= entran(i) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def salen(nodo, salvo=None):
+        acts = set()
+        for _, j, d in G.out_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= salen(j) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def arcos_reales(nodo, sentido):
+        aristas = G.in_edges(nodo, data=True) if sentido == 'in' else G.out_edges(nodo, data=True)
+        return {(u if sentido == 'in' else v): d['activity'] for u, v, d in aristas if not d['activity'].startswith('@')}
+    pl = lambda acts, s, p: s if len(acts) == 1 else p
+    lineas = []
+    arcos = sorted(proyecto.nodes_from_edges.items(), key=lambda kv: (int(kv[1][0]), int(kv[1][1])))
+    for nombre, (i, j) in arcos:
+        if not nombre.startswith('@'):
+            continue
+        antes, despues = sorted(entran(i)), sorted(salen(j))
+        # prelaciones inmediatas del cuadro que pasan por la ficticia (las demás ya se deducen de otras)
+        pares = [(x, y) for x in antes for y in despues if x in pred[y]] or [(x, y) for x in antes for y in despues]
+        despues = sorted({y for _, y in pares})
+        grupos = {}
+        for y in despues:
+            grupos.setdefault(tuple(sorted(x for x, z in pares if z == y)), []).append(y)
+        transmite = '; '.join(f'{lista_y(xs)} {pl(xs, "precede", "preceden")} a {lista_y(ys)}' for xs, ys in grupos.items())
+        # Si los nodos i y j fueran uno solo, lo que llega a j precedería a lo que sale de i
+        llegan_j, salen_i = sorted(entran(j, salvo=nombre)), sorted(salen(i, salvo=nombre))
+        falsas = [(x, y) for y in salen_i for x in llegan_j if x not in anc[y]]
+        if falsas:
+            x_s = sorted({x for x, _ in falsas})
+            y_s = sorted({y for _, y in falsas})
+            directas_j, directas_i = set(arcos_reales(j, 'in').values()), set(arcos_reales(i, 'out').values())
+            llega = (f'{pl(x_s, "llega", "llegan")} al nodo {j}' if set(x_s) <= directas_j else
+                     f'{pl(x_s, "llega", "llegan")} al nodo {j} (directamente o por otra ficticia)')
+            sale = (f'{pl(y_s, "sale", "salen")} de ese nodo' if set(y_s) <= directas_i else
+                    f'{pl(y_s, "empieza", "empiezan")} a partir de ese nodo (directamente o tras otra ficticia)')
+            motivo = (f'{lista_y(despues)} {pl(despues, "espera", "esperan")} además a {lista_y(x_s)}, que {llega}; '
+                      f'si {lista_y(despues)} {pl(despues, "saliera", "salieran")} del nodo {i}, {lista_y(x_s)} '
+                      f'{pl(x_s, "precedería", "precederían")} también a {lista_y(y_s)}, que {sale} y no '
+                      f'{pl(y_s, "depende", "dependen")} de {pl(x_s, "ella", "ellas")}')
+        else:
+            gemelas = None
+            ini_i, ini_j = arcos_reales(i, 'in'), arcos_reales(j, 'in')
+            fin_i, fin_j = arcos_reales(i, 'out'), arcos_reales(j, 'out')
+            for u in sorted(set(ini_i) & set(ini_j)):
+                gemelas = gemelas or (ini_i[u], ini_j[u], u, j, f'empiezan en el mismo nodo ({u})')
+            for v in sorted(set(fin_i) & set(fin_j)):
+                gemelas = gemelas or (fin_i[v], fin_j[v], i, v, f'terminan en el mismo nodo ({v})')
+            if gemelas:
+                a, b, n1, n2, verbo = gemelas
+                a, b = sorted([a, b])
+                motivo = (f'{a} y {b} {verbo}; sin la ficticia irían '
+                          f'las dos del nodo {n1} al {n2}, dos arcos entre el mismo par de nodos que no se podrían distinguir')
+            else:
+                motivo = 'sin ella habría que fundir los nodos y se perdería la estructura del grafo'
+        lineas.append(f'- Ficticia {i} → {j}: transmite que {transmite}. Hace falta porque {motivo}.')
+    return lineas
 
-filas = []
-for origen, destino, d in grafo.edges(data=True):
-    if d['activity'].startswith('@'):
-        filas.append({'ficticia': d['activity'],
-                      'entran en el nodo origen': ', '.join(actividades_que_entran(origen)),
-                      'salen del nodo destino': ', '.join(actividades_que_salen(destino))})
-pd.DataFrame(filas).set_index('ficticia')
-
-# %% [markdown]
-# Si en lugar de la ficticia se fusionaran ambos nodos, las actividades que salen del nodo destino pasarían a tener como predecesoras a todas las que entran en el origen *y* a las que entran en el destino, que no es lo que dice el cuadro; y si se eliminara sin fusionar, se perdería la prelación. Por eso ninguna puede evitarse.
+# %%
+Markdown('\n'.join(explica_ficticias(proyecto, prelaciones)))
 
 # %% [markdown]
 # ## Apartado 3
@@ -287,13 +348,25 @@ pd.DataFrame(filas).set_index('ficticia')
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# D y E tienen las mismas predecesoras, así que pueden compartir el nodo inicial. Pero dos arcos no pueden unir el mismo par de nodos (el grafo no distinguiría una actividad de la otra), de modo que sólo compartirán también el nodo final si además tienen las mismas sucesoras, y aun en ese caso una de las dos necesita una ficticia.
+# D y E tienen las mismas predecesoras, así que pueden compartir el nodo inicial. Pero dos arcos no pueden unir el mismo par de nodos (el grafo no distinguiría una actividad de la otra): sólo podrían compartir también el nodo final si tuvieran las mismas sucesoras, y aun en ese caso una de las dos tendría que terminar en un nodo propio unido al común por una ficticia.
 
 # %%
+a, b = 'D', 'E'
 sucesoras = {act: sorted(s for s, ps in prelaciones.immediate_predecessor.items() if act in ps)
              for act in datos_proyecto.index}
-print('Sucesoras de D:', sucesoras['D'])
-print('Sucesoras de E:', sucesoras['E'])
+nodos = proyecto.nodes_from_edges
+_pred = lista_y(sorted(prelaciones.immediate_predecessor[a])) or 'ninguna'
+if sucesoras[a] == sucesoras[b]:
+    _txt = (f'{a} y {b} tienen también las mismas sucesoras ({lista_y(sucesoras[a]) or "ninguna: son finales"}), '
+            f'así que, si compartieran los dos nodos, serían dos arcos entre el mismo par de nodos. Por eso '
+            f'salen del mismo nodo ({nodos[a][0]}) pero llegan a nodos distintos: {a} al {nodos[a][1]} y {b} al '
+            f'{nodos[b][1]}, y una ficticia lleva el final de una de ellas al nodo de la otra.')
+else:
+    _txt = (f'Sus sucesoras son distintas ({a}: {lista_y(sucesoras[a]) or "ninguna"}; {b}: '
+            f'{lista_y(sucesoras[b]) or "ninguna"}), así que no pueden compartir el nodo final: salen del '
+            f'mismo nodo ({nodos[a][0]}) y llegan a nodos distintos ({a} al {nodos[a][1]}, {b} al {nodos[b][1]}).')
+Markdown(f'**Respuesta:** {a} y {b} tienen las mismas predecesoras ({_pred}), luego pueden compartir el nodo '
+         f'inicial. {_txt}')
 
 # %% [markdown]
 # ## Apartado 4
@@ -301,14 +374,17 @@ print('Sucesoras de E:', sucesoras['E'])
 # %%
 display(Markdown(pregunta_4))
 
-# %%
-#| tbl-cap: "Rutas del grafo (sin ficticias)"
-#| label: tbl-rutas
-rutas = proyecto.paths(dummies=False)
-pd.Series({ruta: ' - '.join(acts) for ruta, acts in rutas.items()}).to_frame('actividades')
+# %% [markdown]
+# Las rutas se enumeran recorriendo el grafo desde el nodo inicial: en cada nodo se abre una rama por cada arco que sale de él; las ficticias se recorren pero no se anotan, porque no son actividades.
 
 # %%
-print(f'El grafo tiene {len(rutas)} rutas entre el nodo inicial y el final.')
+#| tbl-cap: "Rutas del grafo (sin ficticias), en orden de ejecución"
+#| label: tbl-rutas
+rutas = proyecto.paths(dummies=False)
+pd.Series({ruta.replace('Route_', 'Ruta '): ' – '.join(acts) for ruta, acts in rutas.items()}).to_frame('actividades')
+
+# %%
+Markdown(f'**Respuesta:** hay **{plural(len(rutas), "ruta")}** entre el nodo inicial y el final.')
 
 # %% [markdown]
 # ## Apartado 5
@@ -332,5 +408,11 @@ for act in datos_proyecto.index:
     for acts in rutas.values():
         if act in acts:
             por_rutas |= set(acts[:acts.index(act)])
-    comprobacion[act] = por_rutas == set(ancestros[act])
-pd.Series(comprobacion).to_frame('coincide')
+    comprobacion[act] = {'antes en alguna ruta': ', '.join(sorted(por_rutas)) or '—',
+                         'ancestros (cuadro)': ', '.join(sorted(ancestros[act])) or '—',
+                         'coincide': 'sí' if por_rutas == set(ancestros[act]) else 'no'}
+comprobacion = pd.DataFrame(comprobacion).T
+display(comprobacion)
+Markdown('**Respuesta:** ' + ('para todas las actividades coinciden, así que el grafo respeta el cuadro de ancestros.'
+         if (comprobacion['coincide'] == 'sí').all() else
+         f"no coinciden para {lista_y(comprobacion.index[comprobacion['coincide'] == 'no'])}."))

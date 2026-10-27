@@ -1,6 +1,6 @@
 # ---
 # title: Sostenibilidad 36
-# subtitle: "pista corta por la ZEC: 2 semana(s) y 27 k€ de semanas y camiones frente a 20 k€ de restauración (neto 7 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 17 a 33; art. 46.5 Ley 42/2007"
+# subtitle: "pista corta por la ZEC: 2 semanas y 27 k€ de semanas y camiones frente a 20 k€ de restauración (neto 7 k€); con la evaluación de la modificación (18 semanas) el proyecto pasa de 17 a 33; art. 46.5 Ley 42/2007"
 # coleccion: 20_sostenibilidad
 # variante: pista-de-obra
 # nivel: 3
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -215,7 +219,7 @@ datos_enunciado
 
 # %% [markdown]
 # > **De: Director de obra**
-# > Abrimos la pista corta por la ZEC: son 12 km menos por viaje y 2 semana(s) menos de obra. Al acabar restauramos el trazado (20 k€) y, si el órgano ambiental se pone serio, se paga la medida compensatoria; con los camiones y las semanas sale a cuenta. Lo de la evaluación de la modificación lo dejamos para la documentación final.
+# > Abrimos la pista corta por la ZEC: son 12 km menos por viaje y 2 semanas menos de obra. Al acabar restauramos el trazado (20 k€) y, si el órgano ambiental se pone serio, se paga la medida compensatoria; con los camiones y las semanas sale a cuenta. Lo de la evaluación de la modificación lo dejamos para la documentación final.
 
 # %% [markdown]
 # ## Criterio de referencia
@@ -247,6 +251,24 @@ for item in sorted(dir()):
 # %%
 km_larga, km_corta, coste_semana, emisiones_semana, coste_restaurar, medida_compensatoria, semanas_evaluacion, precio_sombra = 15, 3, 8, 2.0, 20, 90, 18, 150
 coste_camion, factor_camion = 0.12, 0.1
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -284,10 +306,11 @@ def opcion(km, semanas, restaurar):
     s['coste total al precio sombra (k€)'] = s['coste monetario (k€)'] + s['emisiones (t CO₂)'] * precio_sombra / 1000
     return s
 comparacion = pd.DataFrame({'pista evaluada': opcion(km_larga, duracion, 0), 'pista corta por la ZEC': opcion(km_corta, duracion_corta, coste_restaurar)})
-display(comparacion.round(2))
-camino_c = ' / '.join('–'.join(r) for r in proyecto.critical_path(duraciones_corta).values())
-ahorro = comparacion.loc['coste monetario (k€)', 'pista evaluada'] - comparacion.loc['coste monetario (k€)', 'pista corta por la ZEC']
-Markdown(f'''La pista corta acorta el proyecto de {duracion} a **{duracion_corta}** semanas (ruta crítica {camino_c}) y, restauración incluida, ahorra **{ahorro:.1f} k€** en dinero y {comparacion.loc['emisiones (t CO₂)', 'pista evaluada'] - comparacion.loc['emisiones (t CO₂)', 'pista corta por la ZEC']:.1f} t: al precio sombra, {comparacion.loc['coste total al precio sombra (k€)', 'pista evaluada'] - comparacion.loc['coste total al precio sombra (k€)', 'pista corta por la ZEC']:.1f} k€. Ese es el tamaño de la tentación; la pregunta B es si está en la tabla.''')
+display(limpia_tabla(comparacion))
+ev, co = comparacion.columns
+ahorro = comparacion.loc['coste monetario (k€)', ev] - comparacion.loc['coste monetario (k€)', co]
+ahorro_bruto = (comparacion.loc['transporte (k€)', ev] - comparacion.loc['transporte (k€)', co]) + (comparacion.loc['semanas de obra (k€)', ev] - comparacion.loc['semanas de obra (k€)', co])
+Markdown(f'''Con la pista corta, {lista_y(acarreo)} duran una semana menos y el proyecto pasa de {duracion} a **{duracion_corta}** semanas (camino crítico {criticas_txt(proyecto, duraciones_corta)}). Toneladas acarreadas: {suma_txt(datos_proyecto.loc[acarreo, 'toneladas_acarreo'])} t.\n\n- Transporte: {miles(toneladas)} × {km_larga} × {coste_camion} / 1000 = {comparacion.loc['transporte (k€)', ev]:.2f} k€ por la evaluada y {miles(toneladas)} × {km_corta} × {coste_camion} / 1000 = {comparacion.loc['transporte (k€)', co]:.2f} k€ por la corta; emisiones {miles(toneladas)} × km × {factor_camion} / 1000 = {comparacion.loc['emisiones del transporte, alcance 3 (t CO₂)', ev]:.2f} y {comparacion.loc['emisiones del transporte, alcance 3 (t CO₂)', co]:.2f} t.\n- Semanas de obra: {duracion} × {coste_semana} = {duracion * coste_semana} k€ y {duracion_corta} × {coste_semana} = {duracion_corta * coste_semana} k€; emisiones {duracion} × {emisiones_semana} y {duracion_corta} × {emisiones_semana} t.\n- Ahorro de la pista corta = transporte + semanas = {ahorro_bruto:.2f} k€, frente a {coste_restaurar} k€ de restauración: ahorro neto {ahorro_bruto:.2f} − {coste_restaurar} = **{ahorro:.2f} k€**.\n\n**Respuesta:** coste total al precio sombra, pista evaluada **{comparacion.loc['coste total al precio sombra (k€)', ev]:.2f} k€** y pista corta **{comparacion.loc['coste total al precio sombra (k€)', co]:.2f} k€** (la corta ahorra {comparacion.loc['coste total al precio sombra (k€)', ev] - comparacion.loc['coste total al precio sombra (k€)', co]:.2f} k€ y {comparacion.loc['emisiones (t CO₂)', ev] - comparacion.loc['emisiones (t CO₂)', co]:.1f} t). Ese es el tamaño de la tentación; la pregunta B es si está en la tabla.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -308,9 +331,10 @@ prelaciones_ev = PredecessorTable.from_dataframe_of_strings(datos_ev, activity='
 proyecto_ev = prelaciones_ev.create_project()
 calendario_ev = proyecto_ev.calendar(datos_ev['duration'])
 duracion_ev = int(proyecto_ev.duration(datos_ev['duration']))
-display(calendario_ev)
-camino_ev = ' / '.join('–'.join(r) for r in proyecto_ev.critical_path(datos_ev['duration']).values())
-Markdown(f'''Con la evaluación de la modificación ({semanas_evaluacion} semanas) antes del primer acarreo, el proyecto con la pista corta dura **{duracion_ev}** semanas (ruta crítica {camino_ev}): **{duracion_ev - duracion}** más que con la pista evaluada, {(duracion_ev - duracion) * coste_semana} k€ de coste indirecto. La pista que ahorraba {duracion - duracion_corta} semana(s) cuesta {duracion_ev - duracion} si se hace como la ley manda; y si no, no se puede hacer.''')
+display(datos_ev)
+display(calendario_ev.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'inicio_mas_tardio': 'inicio más tardío', 'fin_mas_temprano': 'fin más temprano', 'fin_mas_tardio': 'fin más tardío', 'H_libre': 'holgura libre', 'H_independiente': 'holgura independiente', 'H_total': 'holgura total'}))
+primeros = [a for a in acarreo if int(calendario.loc[a, 'inicio_mas_temprano']) < semanas_evaluacion]
+Markdown(f'''Z (evaluación de la modificación, {semanas_evaluacion} semanas, sin predecesoras) pasa a ser predecesora de todas las actividades de acarreo ({lista_y(acarreo)}), con las duraciones de la pista corta. Ninguna de ellas puede empezar antes del instante {semanas_evaluacion}, y ''' + (lista_y(f'{a} (antes empezaba en el {int(calendario.loc[a, "inicio_mas_temprano"])})' for a in primeros) + (' tiene' if len(primeros) == 1 else ' tienen') + ' que esperar' if primeros else 'ninguna empezaba antes') + f'''.\n\n''' + str(explica_camino_critico(proyecto_ev, datos_ev['duration'], 'semanas').data) + f'''\n\n**Respuesta:** con la evaluación previa, el proyecto con la pista corta dura **{duracion_ev}** semanas: {plural(duracion_ev - duracion, 'semana')} más que con la pista evaluada ({duracion}), {(duracion_ev - duracion) * coste_semana} k€ más de coste de obra. La pista que ahorraba {plural(duracion - duracion_corta, 'semana')} cuesta {plural(duracion_ev - duracion, 'semana')} si se hace como la ley manda; y si no, no se puede hacer.''')
 
 # %%
 #| fig-cap: "Gantt con la evaluación de la modificación delante de los acarreos"
@@ -325,7 +349,9 @@ pinta_tikz(_dibujo)
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma y S18.** La pista corta afecta a un espacio de la Red Natura 2000: exige una adecuada evaluación de sus repercusiones (Ley 42/2007, art. 46.4) y sólo podría autorizarse si no perjudica la integridad del lugar; con conclusiones negativas, la medida compensatoria del art. 46.5 sólo cabe **a falta de soluciones alternativas** y por razones imperiosas de interés público de primer orden. La alternativa existe —es la pista evaluada, de 15 km, que ya está en el proyecto— y 2 semana(s) de obra no son una razón imperiosa de interés público: la pista por la ZEC **no es autorizable**, ni con restauración ni con los 90 k€ de compensación, y abrirla sin más es incumplir la DIA (Ley 21/2013, art. 55.3.c). **S17.** La evaluación de la modificación no es «documentación final»: es una actividad con duración (18 semanas) y prelación (antes del primer acarreo), y el apartado 2 muestra que el proyecto duraría 33 semanas en vez de 17: la pista corta, hecha legalmente, es más lenta. **S1.** Pista corta más restauración es **restaurar**; con medida compensatoria, **compensar**; la pista evaluada **evita** el impacto, y aquí evitar no es sólo el escalón más alto: es el único que la norma admite. **S2.** El coste total al precio sombra del apartado 1 informa, pero no decide: la respuesta B no depende de que la pista corta ahorre 6.7 k€.
+# **Norma y S18.** La pista corta afecta a un espacio de la Red Natura 2000: exige una adecuada evaluación de sus repercusiones (Ley 42/2007, art. 46.4) y sólo podría autorizarse si no perjudica la integridad del lugar; con conclusiones negativas, la medida compensatoria del art. 46.5 sólo cabe **a falta de soluciones alternativas** y por razones imperiosas de interés público de primer orden. La alternativa existe —es la pista evaluada, de 15 km, que ya está en el proyecto— y 2 semanas de obra no son una razón imperiosa de interés público: la pista por la ZEC **no es autorizable**, ni con restauración ni con los 90 k€ de compensación, y abrirla sin más es incumplir la DIA (Ley 21/2013, art. 55.3.c). **S17.** La evaluación de la modificación no es «documentación final»: es una actividad con duración (18 semanas) y prelación (antes del primer acarreo), y el apartado 2 muestra que el proyecto duraría 33 semanas en vez de 17: la pista corta, hecha legalmente, es más lenta. **S1.** Pista corta más restauración es **restaurar**; con medida compensatoria, **compensar**; la pista evaluada **evita** el impacto, y aquí evitar no es sólo el escalón más alto: es el único que la norma admite. **S2.** El coste total al precio sombra del apartado 1 informa, pero no decide: la respuesta B no depende de que la pista corta ahorre 6.7 k€.
+#
+# **Respuesta:** **no** puede autorizarse: hay una alternativa (la pista evaluada), y la restauración o la compensación no la sustituyen; la evaluación de la modificación es una **actividad del cronograma** con duración y prelación; pista corta + restauración es restaurar, con medida compensatoria es compensar, y la pista evaluada evita.
 
 # %%
 preguntas_test = [
@@ -366,4 +392,4 @@ display(Markdown(pregunta_4))
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados, incluidos los que no están en la mesa (la comunidad, los trabajadores de la cadena, quien opere o desmantele lo construido, las generaciones siguientes) y qué pierde o gana cada uno con las cifras del bloque A; (2) formular al menos dos alternativas además de la propuesta, situándolas en la pirámide (compensar, restaurar, minimizar, evitar); (3) someter cada alternativa a tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería ante el inspector, el cliente o la prensa?) y ciclo de vida (¿quién paga el impacto y cuándo?)—; (4) decidir y redactar la comunicación con las cifras. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
 # %% [markdown]
-# Al director de obra: la tabla del apartado 1 con la tentación cuantificada y la del apartado 2 con lo que costaría hacerla legalmente (16 semanas más); y lo que sí puede hacerse por la pista evaluada: mejorar su firme para subir la velocidad de los camiones, cargar a plena capacidad, reordenar los acarreos con la nivelación (lección 11) o recuperar 2 semana(s) con Ackoff en otras actividades críticas (lección 10), con su coste. Al cliente: por qué la pista corta no está en la tabla y cuánto cuesta cada semana por la vía legal. Al órgano ambiental: nada que consultar si se respeta la DIA; si se quisiera otra pista, la modificación con su evaluación, antes. Prueba de publicidad: ¿explicaría al Seprona y a la prensa local la pista de 3 km por la ZEC como «la restauramos al acabar»?
+# Al director de obra: la tabla del apartado 1 con la tentación cuantificada y la del apartado 2 con lo que costaría hacerla legalmente (16 semanas más); y lo que sí puede hacerse por la pista evaluada: mejorar su firme para subir la velocidad de los camiones, cargar a plena capacidad, reordenar los acarreos con la nivelación (lección 11) o recuperar 2 semanas con Ackoff en otras actividades críticas (lección 10), con su coste. Al cliente: por qué la pista corta no está en la tabla y cuánto cuesta cada semana por la vía legal. Al órgano ambiental: nada que consultar si se respeta la DIA; si se quisiera otra pista, la modificación con su evaluación, antes. Prueba de publicidad: ¿explicaría al Seprona y a la prensa local la pista de 3 km por la ZEC como «la restauramos al acabar»?

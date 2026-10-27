@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -223,7 +227,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde al lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+# El proyecto corresponde al lanzamiento de una aplicación móvil; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -264,9 +268,16 @@ display(Markdown(pregunta_1))
 # %%
 reducido = nx.transitive_reduction(G)
 redundantes = sorted(set(G.edges) - set(reducido.edges))
+_lineas = []
 for p, a in redundantes:
     via = sorted(q for q in prelaciones_dadas[a] if q != p and p in nx.ancestors(G, q))
-    print(f'{p} → {a} es redundante: {p} ya precede a {", ".join(via)}, que precede(n) a {a}')
+    camino = nx.shortest_path(reducido, p, via[0])
+    _lineas.append(f'- **{p} → {a}** es redundante: {a} tiene también como predecesora inmediata a '
+                   f'{lista_y(via)}, y {p} ya precede a {via[0]} ({" → ".join(camino)}); luego {p} precede a {a} '
+                   f'por transitividad: {" → ".join(camino + [a])}.')
+_txt = lista_y([f'{p} → {a}' for p, a in redundantes])
+Markdown('\n'.join(_lineas) + f'\n\n**Respuesta:** {"sobran" if len(redundantes) > 1 else "sobra"} '
+         f'{_txt}; quitándolas se obtiene el cuadro mínimo siguiente.')
 
 # %%
 #| tbl-cap: "Cuadro de prelaciones inmediatas mínimo"
@@ -298,8 +309,12 @@ display(Markdown(pregunta_2))
 prelaciones.display_immediate_linkage_matrix()
 
 # %%
-print('Actividades iniciales:', ', '.join(sorted(prelaciones.start_activities)))
-print('Actividades finales:  ', ', '.join(sorted(prelaciones.end_activities)))
+_ini, _fin = sorted(prelaciones.start_activities), sorted(prelaciones.end_activities)
+_es = lambda l, s, p: s if len(l) == 1 else p
+Markdown(f'**Respuesta:** {_es(_ini, "es inicial", "son iniciales")} {lista_y(_ini)}, porque no '
+         f'{_es(_ini, "tiene", "tienen")} predecesoras (fila vacía en el cuadro expandido); '
+         f'{_es(_fin, "es final", "son finales")} {lista_y(_fin)}, porque no '
+         f'{_es(_fin, "es predecesora", "son predecesoras")} de ninguna actividad (columna vacía).')
 
 # %% [markdown]
 # ## Apartado 3
@@ -317,8 +332,12 @@ proyecto.display_distant_linkage_matrix()
 
 # %%
 ancestros = proyecto.distant_predecessor()
-for p, a in redundantes:
-    print(f'{p} ∈ ancestros({a}): {p in ancestros[a]}')
+_lineas = [f'- Fila {a}: {p} {"sí" if p in ancestros[a] else "no"} figura entre los ancestros de {a} '
+           f'({", ".join(sorted(ancestros[a]))}), porque {" → ".join(nx.shortest_path(reducido, p, a))}.'
+           for p, a in redundantes]
+Markdown('\n'.join(_lineas) + '\n\n**Respuesta:** ' + ('las prelaciones redundantes aparecen en el cuadro de '
+         'ancestros: eliminarlas del cuadro de prelaciones inmediatas no pierde información.'
+         if all(p in ancestros[a] for p, a in redundantes) else 'alguna redundante no aparece: revise el cuadro.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -327,9 +346,23 @@ for p, a in redundantes:
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# En el grafo Roy cada actividad es un nodo y cada prelación inmediata un arco, sin actividades ficticias. Siguiendo hacia atrás los arcos desde cada actividad se recorren todos sus ancestros.
+# En el grafo Roy cada actividad es un nodo y cada prelación inmediata un arco, sin actividades ficticias. Siguiendo hacia atrás los arcos desde cada actividad se recorren todos sus ancestros: al seleccionar una actividad en el visor se resaltan en el grafo y en su fila del cuadro de ancestros, y deben coincidir.
+
+# %% [markdown]
+# Construcción del grafo Roy a partir del cuadro de prelaciones: el visor muestra primero el grafo terminado; con los botones se construye desde el principio, fila a fila, y al final recorre las columnas del cuadro comprobando en el grafo las sucesoras de cada actividad.
 
 # %%
-#| fig-cap: "Grafo Roy del proyecto"
+#| fig-cap: "Construcción del grafo Roy a partir del cuadro de prelaciones"
+#| label: fig-construccion
+proyecto.display_roy_construccion()
+
+# %%
+#| fig-cap: "Grafo Roy del proyecto y cuadro de ancestros"
 #| label: fig-roy
 proyecto.display_ancestros('roy')
+
+# %%
+_n_prel = sum(len(ps) for ps in prelaciones.immediate_predecessor.values())
+Markdown(f'El grafo Roy tiene un nodo por actividad ({len(prelaciones.immediate_predecessor)}) más los nodos de inicio y '
+         f'fin, y un arco por cada una de las {_n_prel} prelaciones inmediatas (más los que salen del inicio y '
+         f'llegan al fin); no necesita ficticias.')

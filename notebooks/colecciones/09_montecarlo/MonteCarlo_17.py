@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -297,7 +301,8 @@ pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int
               'espera (semanas)': res0.esperas}).fillna(0).astype(int).T
 
 # %%
-Markdown(f'Con las duraciones más probables: {duracion_libre} semanas sin límite y {res0.duracion} semanas con {limite[0]} operarios.')
+Markdown(f'**Respuesta:** con las duraciones más probables el proyecto dura {plural(duracion_libre, "semana")} sin límite de recursos '
+         f'y {plural(res0.duracion, "semana")} con {limite[0]} operarios (las esperas de la tabla anterior lo retrasan {res0.duracion - duracion_libre}).')
 
 # %% [markdown]
 # ## Apartado 2
@@ -306,13 +311,15 @@ Markdown(f'Con las duraciones más probables: {duracion_libre} semanas sin lími
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# En cada réplica se sortean las duraciones (triangulares, redondeadas a semanas enteras), se calcula la duración sin recursos (camino más largo) y se vuelve a aplicar el algoritmo de asignación con el límite: dos duraciones por réplica. `monte_carlo_recursos` hace las 2000 réplicas y guarda ambas.
+# En cada réplica se sortean las duraciones (triangulares, redondeadas a semanas enteras), se calcula la duración sin recursos (camino más largo) y se vuelve a aplicar el algoritmo de asignación con el límite: dos duraciones por réplica. `monte_carlo_recursos` hace las 2000 réplicas y guarda ambas. Los percentiles son los de las réplicas ordenadas (el P90 deja por debajo el 90 % de ellas).
 
 # %%
 #| tbl-cap: "Distribución de la duración con y sin límite de recursos"
 #| label: tbl-mcRecursos
 mc = proyecto.copy().monte_carlo_recursos(dists, demanda[['operarios']].copy(), ['operarios'], limite, n_samples=2000, seed=11)
-mc.summary().round(2)
+resumen_mc = mc.summary().rename(columns={'q05': 'P5', 'q50': 'P50', 'q95': 'P95'})
+resumen_mc.insert(4, 'P90', [np.quantile(mc.tau_libre_samples, 0.9), np.quantile(mc.tau_recursos_samples, 0.9), np.quantile(mc.retraso_samples, 0.9)])
+resumen_mc.round(2)
 
 # %%
 #| fig-cap: "Distribución simulada de la duración sin y con el límite de operarios"
@@ -326,9 +333,11 @@ ax.axvline(plazo, color='red', linestyle='--', label=f'plazo ({plazo})')
 ax.set_xlabel('duración del proyecto (semanas)'); ax.set_ylabel('réplicas'); ax.legend(); plt.show()
 
 # %%
-Markdown(f'La media sube de {mc.tau_libre_samples.mean():.2f} a {mc.tau_recursos_samples.mean():.2f} semanas '
-         f'y la desviación típica pasa de {mc.tau_libre_samples.std():.2f} a {mc.tau_recursos_samples.std():.2f}. '
-         'El límite añade esperas que dependen de qué actividades coinciden en cada réplica.')
+rl = resumen_mc
+Markdown(f'''**Respuesta:** la media sube de {rl.loc['sin recursos', 'media']:.2f} a {rl.loc['con recursos', 'media']:.2f} semanas, '''
+         f'''la desviación típica pasa de {rl.loc['sin recursos', 'desv. típica']:.2f} a {rl.loc['con recursos', 'desv. típica']:.2f} y el percentil 90 de '''
+         f'''{rl.loc['sin recursos', 'P90']:.0f} a {rl.loc['con recursos', 'P90']:.0f} semanas. El límite añade esperas (de media '''
+         f'''{rl.loc['retraso por recursos', 'media']:.2f} semanas) que dependen de qué actividades coinciden en cada réplica.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -339,8 +348,12 @@ display(Markdown(pregunta_3))
 # %%
 p_libre = 1 - mc.prob_superar(plazo, con_recursos=False)
 p_res = 1 - mc.prob_superar(plazo)
-Markdown(f'P(T ≤ {plazo}) = {p_libre:.3f} sin recursos y {p_res:.3f} con el límite de operarios. '
-         'Quien solo mirase el camino crítico creería que el plazo es seguro cuando en realidad el riesgo real es mucho mayor.')
+n_libre = int((mc.tau_libre_samples <= plazo).sum()); n_res = int((mc.tau_recursos_samples <= plazo).sum())
+Markdown(f'''Sin recursos, {n_libre} de las 2000 réplicas terminan en {plazo} semanas o menos: P ≈ {n_libre}/2000 = {p_libre:.3f}. '''
+         f'''Con el límite, {n_res} de 2000: P ≈ {p_res:.3f}.\n\n'''
+         f'''**Respuesta:** P(T ≤ {plazo}) = {p_libre:.3f} ignorando los recursos y {p_res:.3f} respetándolos. Un director que sólo mirase '''
+         f'''el camino crítico creería que cumple el plazo {p_libre:.0%} de las veces, cuando con {limite[0]} operarios sólo lo cumple el '''
+         f'''{p_res:.1%}: el riesgo real de incumplir es {1 - p_res:.1%} y no {1 - p_libre:.1%}.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -348,18 +361,29 @@ Markdown(f'P(T ≤ {plazo}) = {p_libre:.3f} sin recursos y {p_res:.3f} con el l�
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# El índice de criticidad de una actividad es el porcentaje de réplicas en que determina la duración: sin recursos, si está en la ruta más larga; con recursos, si forma parte de la cadena de actividades y esperas por el recurso que fija el final del proyecto.
+
 # %%
 #| tbl-cap: "Criticidad sin y con recursos"
 #| label: tbl-criticidadRecursos
-(mc.criticidad * 100).round(1).sort_values(mc.criticidad.columns[-1], ascending=False)
+criticidad = (mc.criticidad * 100).round(1)
+criticidad['cambio'] = criticidad.iloc[:, -1] - criticidad.iloc[:, 0]
+criticidad.sort_values(criticidad.columns[1], ascending=False)
 
 # %%
 #| tbl-cap: "Frecuencia con que cada recurso bloquea alguna actividad"
 #| label: tbl-bloqueos
 (mc.bloqueos * 100).round(1).to_frame('% de réplicas')
 
-# %% [markdown]
-# La criticidad con recursos incluye actividades que no son críticas en el CPM pero forman parte de la cadena de esperas por el recurso: pasan a mandar al introducir el límite.
+# %%
+pasan = criticidad[criticidad['cambio'] >= 20].sort_values('cambio', ascending=False)
+bajan = criticidad[criticidad['cambio'] <= -20].sort_values('cambio')
+fmt = lambda t: lista_y([f"{a} ({t.loc[a].iloc[0]:.1f} % → {t.loc[a].iloc[1]:.1f} %)" for a in t.index])
+Markdown(f'''**Respuesta:** el límite de {limite[0]} operarios retrasa alguna actividad en el {float(mc.bloqueos.iloc[0]) * 100:.1f} % de las réplicas. '''
+         + (f'''Pasan a mandar (su índice sube 20 puntos o más) {fmt(pasan)}: en el CPM no siempre estaban en la ruta más larga, pero con el límite forman parte de la cadena de esperas por el recurso que fija el final del proyecto. ''' if len(pasan) else
+            'Ninguna actividad gana más de 20 puntos de criticidad. ')
+         + (f'''En cambio pierden peso {fmt(bajan)}.''' if len(bajan) else ''))
 
 # %% [markdown]
 # ## Apartado 5
@@ -370,6 +394,15 @@ display(Markdown(pregunta_5))
 # %%
 mc2 = proyecto.copy().monte_carlo_recursos(dists, demanda[['operarios']].copy(), ['operarios'], [limite[0] + 1], n_samples=2000, seed=11)
 p_res2 = 1 - mc2.prob_superar(plazo)
-Markdown(f'Con {limite[0] + 1} operarios P(T ≤ {plazo}) pasa de {p_res:.3f} a {p_res2:.3f}; la media baja de '
-         f'{mc.tau_recursos_samples.mean():.2f} a {mc2.tau_recursos_samples.mean():.2f} semanas. Merece la pena si el valor de '
-         'asegurar el plazo (penalizaciones evitadas × probabilidad ganada) supera el coste del operario adicional.')
+if p_res2 >= 0.8:
+    decision = (f'Con un operario más el plazo pasa a ser razonablemente seguro ({p_res2:.1%}): merece la pena si su coste es menor que '
+                'lo que se espera ahorrar en penalizaciones.')
+elif p_res2 - p_res >= 0.2:
+    decision = (f'Un operario más mejora mucho la probabilidad (+{(p_res2 - p_res) * 100:.1f} puntos), aunque el plazo sigue sin ser seguro '
+                f'({p_res2:.1%}): merece la pena si su coste es menor que las penalizaciones evitadas, y conviene combinarlo con otras medidas.')
+else:
+    decision = (f'Un operario más apenas mejora la probabilidad (+{(p_res2 - p_res) * 100:.1f} puntos, hasta {p_res2:.1%}): por sí solo no resuelve '
+                'el problema y sólo merecería la pena si es muy barato; hay que buscar otras medidas (más recursos, acortar actividades críticas o '
+                'renegociar el plazo).')
+Markdown(f'''Con {limite[0] + 1} operarios P(T ≤ {plazo}) pasa de {p_res:.3f} a {p_res2:.3f}; la media baja de '''
+         f'''{mc.tau_recursos_samples.mean():.2f} a {mc2.tau_recursos_samples.mean():.2f} semanas.\n\n**Respuesta:** {decision}''')

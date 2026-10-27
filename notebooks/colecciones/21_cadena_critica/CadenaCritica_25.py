@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -237,13 +241,17 @@ x = 100 * informes['completado'] / T
 y = 100 * (informes['fin_previsto'] - T) / CP
 bpi = (100 - y) / (100 - x)
 lim_verde, lim_roja = 10 + 0.6 * x, 30 + 0.6 * x
-zona = ['verde' if yy < lv else ('roja' if yy >= lr else 'amarilla') for yy, lv, lr in zip(y, lim_verde, lim_roja)]
+zona = ['verde' if yy < lv - 1e-9 else ('roja' if yy >= lr - 1e-9 else 'amarilla') for yy, lv, lr in zip(y, lim_verde, lim_roja)]
+def compara(y_, lv, lr, z):
+    return {'verde': f'{y_:.1f} % < {lv:.1f} % → verde', 'roja': f'{y_:.1f} % ≥ {lr:.1f} % → roja',
+            'amarilla': f'{lv:.1f} % ≤ {y_:.1f} % < {lr:.1f} % → amarilla'}[z] + (' (justo en la frontera: cuenta como la zona superior)' if min(abs(y_ - lv), abs(y_ - lr)) < 1e-6 else '')
 pd.DataFrame({f'día {d}': {
-    'colchón consumido': f"({informes.loc[d, 'fin_previsto']} − {T})/{CP} = {y[d]:.1f} %",
-    'cadena completada': f"{informes.loc[d, 'completado']}/{T} = {x[d]:.1f} %",
-    'BPI': f'(100 − {y[d]:.1f})/(100 − {x[d]:.1f}) = {bpi[d]:.2f}',
-    'límites verde / rojo': f'{lim_verde[d]:.1f} % / {lim_roja[d]:.1f} %',
-    'zona': z} for d, z in zip(informes.index, zona)})
+    'colchón consumido = (fin previsto − T)/CP': f"({informes.loc[d, 'fin_previsto']} − {T})/{CP} = {y[d]:.1f} %",
+    'cadena completada = completado/T': f"{informes.loc[d, 'completado']}/{T} = {x[d]:.1f} %",
+    'BPI = (100 − consumo)/(100 − avance)': f'(100 − {y[d]:.1f})/(100 − {x[d]:.1f}) = {bpi[d]:.2f}',
+    'límite verde = 10 + 0,6·avance': f'10 + 0,6·{x[d]:.1f} = {lim_verde[d]:.1f} %',
+    'límite rojo = 30 + 0,6·avance': f'30 + 0,6·{x[d]:.1f} = {lim_roja[d]:.1f} %',
+    'zona': compara(y[d], lim_verde[d], lim_roja[d], z)} for d, z in zip(informes.index, zona)})
 
 # %% [markdown]
 # ## Apartado 2
@@ -258,6 +266,17 @@ dias = list(informes.index)
 v = {f'{d1} → {d2}': (y[d2] - y[d1]) / (x[d2] - x[d1]) for d1, d2 in zip(dias, dias[1:])}
 pd.DataFrame({k: {'velocidad = Δ consumo / Δ avance': f'({y[d2]:.1f} − {y[d1]:.1f})/({x[d2]:.1f} − {x[d1]:.1f}) = {v[k]:.2f}'}
               for (k, (d1, d2)) in zip(v, zip(dias, dias[1:]))})
+
+# %%
+def lee(vel):
+    if vel < 0:
+        return 'negativa: el proyecto recupera colchón'
+    if vel <= 0.6:
+        return 'no mayor que 0,6: el punto no se acerca a la frontera superior'
+    if vel <= 1:
+        return 'mayor que 0,6 y no mayor que 1: el punto se acerca a la frontera superior'
+    return 'mayor que 1: el colchón se consume más deprisa de lo que avanza la cadena'
+Markdown('**Respuesta:** ' + '; '.join(f'tramo {k}, velocidad {vel:.2f}, {lee(vel)}' for k, vel in v.items()) + '.')
 
 # %% [markdown]
 # Las dos fronteras suben 0,6 puntos de consumo por cada punto de avance. Con una velocidad mayor que 0,6 el punto del gráfico se acerca a la frontera superior: el proyecto empeora respecto a las zonas aunque siga en la misma. Con una velocidad mayor que 1 el colchón se consume, en porcentaje, más deprisa de lo que avanza la cadena: si se mantuviera desde el inicio, el colchón se agotaría antes de terminarla. Con una velocidad negativa el proyecto recupera colchón.
@@ -280,7 +299,7 @@ texto = (f'Con la velocidad del último tramo ({vn:.2f}), al terminar la cadena 
 texto += (f'La recta de la tendencia, y = {y[dn]:.1f} + {vn:.2f}·(x − {x[dn]:.1f}), corta la frontera roja, y = 30 + 0,6·x, en '
           f'x = (30 − {y[dn]:.1f} + {vn:.2f}·{x[dn]:.1f})/({vn:.2f} − 0,6) = **{x_roja:.1f} %** de cadena completada'
           + (': entraría en la zona roja antes de terminar.' if x_roja < 100 else ', después del final: no llegaría a entrar en la zona roja.'))
-Markdown(texto)
+Markdown('**Respuesta:** ' + texto[0].lower() + texto[1:])
 
 # %%
 #| fig-cap: "Gráfico de fiebre con los informes y la tendencia del último tramo (discontinua)"

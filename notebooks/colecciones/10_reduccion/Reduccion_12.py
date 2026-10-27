@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -247,6 +251,181 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 duracion_normal = proyecto.duration(datos_proyecto['duration'])
 
+# %%
+from itertools import product as _product
+
+
+def _num(x):
+    return f'{float(x):g}'.replace('-', '−')
+
+
+def rangos(numeros):
+    """[1, 2, 3, 5] → «1 a 3 y 5»."""
+    ns, partes = sorted(int(x) for x in numeros), []
+    for x in ns:
+        if partes and x == partes[-1][1] + 1:
+            partes[-1][1] = x
+        else:
+            partes.append([x, x])
+    return lista_y([f'{a}' if a == b else (f'{a} y {b}' if b == a + 1 else f'{a} a {b}') for a, b in partes])
+
+
+def tabla_rutas(proyecto, valores, nombre='duración', decimales=0, base=None):
+    """Cada ruta con sus actividades en orden de ejecución y su duración como suma término a término."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(base if base is not None else valores)
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        total = float(sum(float(valores[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    f'{nombre} = suma': ' + '.join(f'{a}({float(valores[a]):.{decimales}f})' for a in acts)
+                                        + f' = {total:.{decimales}f}',
+                    nombre: total}
+    t = pd.DataFrame(filas).T
+    t[nombre] = t[nombre].astype(float)
+    return t
+
+
+def opciones_ackoff(conjuntos, d, topes, cur):
+    """Combinaciones mínimas (una actividad con margen por ruta crítica, sin sobrantes) y su coste."""
+    elegibles = [[a for a in sorted(s) if d[a] > topes[a] and np.isfinite(cur[a])] for s in conjuntos]
+    if any(not e for e in elegibles):
+        return []
+    combos = {frozenset(c) for c in _product(*elegibles)}
+    minimos = [c for c in combos if not any(o < c for o in combos)]
+    return sorted(((tuple(sorted(c)), float(sum(cur[a] for a in c))) for c in minimos),
+                  key=lambda x: (x[1], len(x[0]), x[0]))
+
+
+def info_ackoff(proyecto, duraciones, topes, cur, pasos):
+    """Estado de cada paso: duración, rutas críticas, opciones, elegidas y duraciones tras el paso."""
+    R = proyecto.path_matrix(dummies=False)
+    d = pd.Series(duraciones, dtype=float).copy()
+    topes, cur = pd.Series(topes, dtype=float), pd.Series(cur, dtype=float)
+    info = []
+    for k in sorted(pasos):
+        L = R @ d[R.columns]
+        T = float(L.max())
+        crit = [r for r in L.index if np.isclose(L[r], T)]
+        conj = [set(R.columns[R.loc[r] == 1]) for r in crit]
+        info.append(dict(T=T, crit=crit, opciones=opciones_ackoff(conj, d, topes, cur),
+                         elegidas=tuple(sorted(pasos[k])), d_antes=d.copy()))
+        for a in pasos[k]:
+            d[a] -= 1
+        info[-1]['d_despues'] = d.copy()
+    return info
+
+
+def describe_ruta(proyecto, r, base):
+    """«Route_3 (A – C – F)»: actividades de la ruta en orden de ejecución."""
+    R = proyecto.path_matrix(dummies=False)
+    return f"{r} ({' – '.join(ordena_ruta(list(R.columns[R.loc[r] == 1]), proyecto.calendar(base)))})"
+
+
+def rutas_sin_margen(proyecto, d, topes, cur):
+    """Rutas críticas (con las duraciones d) en las que ninguna actividad puede acortarse más."""
+    R = proyecto.path_matrix(dummies=False)
+    d = pd.Series(d, dtype=float)
+    L = R @ d[R.columns]
+    crit = [r for r in L.index if np.isclose(L[r], L.max())]
+    return [r for r in crit if not any(d[a] > topes[a] and np.isfinite(cur[a]) for a in R.columns[R.loc[r] == 1])]
+
+
+def narra_ackoff(proyecto, duraciones, topes, cur, pasos, unidad='semana', moneda='k€', max_opciones=5):
+    """Markdown con el razonamiento de cada paso (o grupo de pasos iguales) de Ackoff-Sasieni."""
+    R = proyecto.path_matrix(dummies=False)
+    topes, cur = pd.Series(topes, dtype=float), pd.Series(cur, dtype=float)
+    orden = ordena_ruta(list(R.columns), proyecto.calendar(pd.Series(duraciones)))
+    pos = {a: i for i, a in enumerate(orden)}
+    ruta = lambda r: f"{r} ({' – '.join(sorted(R.columns[R.loc[r] == 1], key=pos.get))})"
+
+    def criticas(dd):
+        L = R @ dd[R.columns]
+        return float(L.max()), [r for r in L.index if np.isclose(L[r], L.max())]
+
+    def opc(acts, coste):
+        if len(acts) == 1:
+            return f'{acts[0]} ({_num(coste)})'
+        return f"{' + '.join(acts)} ({' + '.join(_num(cur[a]) for a in acts)} = {_num(coste)})"
+
+    info = info_ackoff(proyecto, duraciones, topes, cur, pasos)
+    if not info:
+        return Markdown('No se ha dado ningún paso: ninguna combinación de actividades con margen acorta todas las rutas críticas.')
+    grupos = []
+    for x in info:
+        if grupos and grupos[-1][-1]['elegidas'] == x['elegidas'] and grupos[-1][-1]['crit'] == x['crit']:
+            grupos[-1].append(x)
+        else:
+            grupos.append([x])
+    lineas, acum, paso = [], 0.0, 1
+    for g in grupos:
+        x0, n = g[0], len(g)
+        el = x0['elegidas']
+        c = float(sum(cur[a] for a in el))
+        acum += n * c
+        crit, ops = x0['crit'], x0['opciones']
+        cab = (f'**Paso {paso}**' if n == 1 else f'**Pasos {paso} y {paso + 1}**' if n == 2
+               else f'**Pasos {paso} a {paso + n - 1}**')
+        cab += f" ({plural(x0['T'], unidad)} → {plural(x0['T'] - n, unidad)})."
+        t_rutas = (f'Ruta crítica: {ruta(crit[0])}.' if len(crit) == 1
+                   else f'Rutas críticas: {lista_y([ruta(r) for r in crit])}.')
+        t_ops = '; '.join(opc(a, cc) for a, cc in ops[:max_opciones])
+        if len(ops) > max_opciones:
+            t_ops += f' y {len(ops) - max_opciones} más, de coste igual o mayor'
+        quien = 'la ruta crítica' if len(crit) == 1 else 'todas las rutas críticas a la vez'
+        t_ops = f'Opciones que acortan {quien} (CUR en {moneda}/{unidad}): {t_ops}.'
+        if len(crit) == 1:
+            tipo = 'la actividad de la ruta crítica con margen y menor CUR'
+        elif len(el) == 1:
+            tipo = 'actividad común a todas las rutas críticas'
+        else:
+            tipo = 'una combinación que acorta todas las rutas críticas'
+        t_el = f"Se elige **{' + '.join(el)}** ({tipo}), la opción más barata: {_num(c)} {moneda} por {unidad}"
+        empates = [' + '.join(a) for a, cc in ops if np.isclose(cc, c) and a != el]
+        if empates:
+            t_el += (f" (empata con {lista_y(empates)}: cuestan lo mismo en este paso y el algoritmo "
+                     "toma la primera que encuentra)")
+        if len(crit) > 1 and len(el) > 1:
+            comunes = [(a, cc) for a, cc in ops if len(a) == 1]
+            if comunes:
+                t_el += f"; la actividad común más barata, {comunes[0][0][0]}, cuesta {_num(comunes[0][1])}"
+            else:
+                t_el += '; no hay ninguna actividad común a todas las rutas críticas que tenga margen'
+        d_fin = g[-1]['d_despues']
+        motivos = []
+        llegan = [a for a in el if d_fin[a] <= topes[a]]
+        if llegan:
+            motivos.append(f"{lista_y(f'{a} llega a su duración tope ({plural(topes[a], unidad)})' for a in llegan)}")
+        T_n, crit_n = criticas(d_fin)
+        nuevas = [r for r in crit_n if r not in crit]
+        if nuevas:
+            motivos.append(f"{lista_y([ruta(r) for r in nuevas])} {'alcanza' if len(nuevas) == 1 else 'alcanzan'} "
+                           f"la duración del proyecto ({plural(T_n, unidad)}) y {'pasa' if len(nuevas) == 1 else 'pasan'} "
+                           "a ser crítica" + ('' if len(nuevas) == 1 else 's'))
+        dejan = [r for r in crit if r not in crit_n]
+        if dejan:
+            motivos.append(f"{lista_y(dejan)} se acorta{'' if len(dejan) == 1 else 'n'} dos {unidad}s en el paso "
+                           f"y deja{'' if len(dejan) == 1 else 'n'} de ser crítica" + ('' if len(dejan) == 1 else 's'))
+        if g is grupos[-1] and not motivos:
+            motivos.append('se alcanza la reducción pedida')
+        t_red = f"Se {'reduce' if n == 1 else 'reducen'} {plural(n, unidad)}" + (f": {'; '.join(motivos)}." if motivos else '.')
+        t_coste = f"Sobrecoste: {n} × {_num(c)} = {_num(n * c)} {moneda}; acumulado: **{_num(acum)} {moneda}**."
+        lineas.append(f'- {cab} {t_rutas} {t_ops} {t_el}. {t_red} {t_coste}')
+        paso += n
+    T_ini, T_fin = info[0]['T'], info[-1]['T'] - 1
+    costes = [_num(sum(cur[a] for a in x['elegidas'])) for x in info]
+    cierre = (f"**Resultado:** la duración pasa de {plural(T_ini, unidad)} a {plural(T_fin, unidad)} con un sobrecoste "
+              f"de {' + '.join(costes)} = **{_num(acum)} {moneda}**.")
+    T_n, crit_n = criticas(info[-1]['d_despues'])
+    conj = [set(R.columns[R.loc[r] == 1]) for r in crit_n]
+    if not opciones_ackoff(conj, info[-1]['d_despues'], topes, cur):
+        bloq = [r for r, s in zip(crit_n, conj)
+                if not any(info[-1]['d_despues'][a] > topes[a] and np.isfinite(cur[a]) for a in s)]
+        cierre += (f" No puede reducirse más: en {lista_y([ruta(r) for r in bloq])} ninguna actividad tiene margen "
+                   "(todas están en su duración tope o no son acelerables), así que esa ruta fija la duración mínima.")
+    return Markdown('\n'.join(lineas) + '\n\n' + cierre)
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -265,11 +444,13 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| tbl-cap: "Duración de cada ruta con las duraciones normales"
 #| label: tbl-rutas
 R = proyecto.path_matrix(dummies=False)
-camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
-detalle_rutas(R, datos_proyecto['duration'][R.columns])
+tabla_rutas(proyecto, datos_proyecto['duration'])
+
+# %%
+explica_camino_critico(proyecto, datos_proyecto['duration'])
 
 # %% [markdown]
-# En cada paso del algoritmo se acorta una semana la ruta (o rutas) crítica(s) eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a la vez. La tabla muestra, para cada ruta, el CUR de sus actividades y su duración tras cada paso.
+# En cada paso del algoritmo se acorta una semana la ruta crítica (o las rutas críticas) eligiendo, entre las actividades críticas con margen, la combinación de menor CUR que reduce *todas* las rutas críticas a la vez. La tabla muestra, para cada ruta, el CUR de sus actividades y su duración tras cada paso.
 
 # %%
 #| tbl-cap: "Algoritmo de Ackoff-Sasieni"
@@ -291,13 +472,22 @@ proyecto.display_ackoff_pasos_tikz(
 #| label: tbl-ackoffPaso
 detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duration'], datos_proyecto['ucr'], pasos)
 
+# %% [markdown]
+# Razonamiento de cada paso (los pasos consecutivos que acortan lo mismo se agrupan):
+
+# %%
+narra_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duration'], datos_proyecto['ucr'], pasos)
+
 # %%
 resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pasos.values()],
                         'coste del paso': [sum(datos_proyecto.loc[acts, 'ucr']) for acts in pasos.values()]},
                        index=pd.Index(range(1, len(pasos) + 1), name='paso'))
+resumen['sobrecoste acumulado'] = resumen['coste del paso'].cumsum()
 sobrecoste = float(resumen['coste del paso'].sum())
 display(resumen)
-Markdown(f'Duración {duracion_normal} → {proyecto.duration(duraciones_reducidas)} semanas con un sobrecoste de {sobrecoste:.0f} k€.')
+Markdown(f'**Respuesta:** duración {duracion_normal} → {proyecto.duration(duraciones_reducidas)} semanas; sobrecoste de cada paso: '
+         f'{"; ".join(f"paso {p}: {_num(c)} k€" for p, c in resumen["coste del paso"].items())}; total '
+         f'{" + ".join(_num(c) for c in resumen["coste del paso"])} = **{_num(sobrecoste)} k€**.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -306,7 +496,7 @@ Markdown(f'Duración {duracion_normal} → {proyecto.duration(duraciones_reducid
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# No da lo mismo. Deshacer un paso es devolver una semana a las actividades que se acortaron en él; cualquiera de los pasos devuelve una semana al proyecto (todas las rutas críticas se alargan una semana), pero el dinero recuperado es el coste de ese paso. Como los pasos de Ackoff-Sasieni son cada vez más caros, deshacer el último recupera más dinero que deshacer el primero.
+# **Respuesta:** no da lo mismo. Deshacer un paso es devolver una semana a las actividades que se acortaron en él: el proyecto vuelve a alargarse una semana (las rutas críticas recuperan esa semana), pero el dinero que se recupera es el coste de *ese* paso. Como en Ackoff-Sasieni los pasos suelen ser cada vez más caros (apartado 4), deshacer el último recupera más dinero que deshacer el primero; el apartado siguiente lo comprueba con los números.
 
 # %% [markdown]
 # ## Apartado 3
@@ -325,9 +515,22 @@ for paso, acts in pasos.items():
 pd.DataFrame(filas).T
 
 # %%
-costes_pasos = {p: float(sum(datos_proyecto.loc[acts, 'ucr'])) for p, acts in pasos.items()}
-mejor = max(costes_pasos, key=costes_pasos.get)
-Markdown(f'''Todos los pasos devuelven el proyecto a {proyecto.duration(duraciones_reducidas) + 1} semanas, pero el que más dinero recupera es el paso {mejor + 1} ({costes_pasos[mejor]:.0f} k€). Un paso intermedio también puede deshacerse: lo que importa no es el orden en que se dieron sino su coste. Regla: para relajar el plazo se deshacen las reducciones de mayor coste primero (recorrer la tabla de Ackoff-Sasieni hacia atrás).''')
+costes_pasos = {p + 1: float(sum(datos_proyecto.loc[acts, 'ucr'])) for p, acts in pasos.items()}
+acts_pasos = {p + 1: ' + '.join(acts) for p, acts in pasos.items()}
+T_red = proyecto.duration(duraciones_reducidas)
+durs = {p: int(f['duración resultante']) for p, f in pd.DataFrame(filas).T.iterrows()}
+ultimo = max(costes_pasos)
+maximo = max(costes_pasos.values())
+mejores = [p for p, c in costes_pasos.items() if np.isclose(c, maximo)]
+iguales = [p for p, t in durs.items() if t == T_red + 1]
+if len(iguales) == len(durs):
+    t_dur = f'Todos los pasos devuelven el proyecto a {T_red + 1} semanas, así que cualquiera cumple el nuevo plazo.'
+else:
+    otros = [f'el paso {p} lo deja en {t} semanas' for p, t in durs.items() if t != T_red + 1]
+    t_dur = f'Los pasos {rangos(iguales)} devuelven el proyecto a {T_red + 1} semanas; {lista_y(otros)}.'
+t_mejor = (f'el que más recupera es el paso {mejores[0]} ({acts_pasos[mejores[0]]}, {_num(maximo)} k€)' if len(mejores) == 1
+           else f'los que más recuperan son los pasos {rangos(mejores)} ({_num(maximo)} k€ cada uno; da igual cuál se deshaga)')
+Markdown(f'''**Respuesta:** deshacer el primer paso ({acts_pasos[1]}) recupera {_num(costes_pasos[1])} k€; deshacer el último ({acts_pasos[ultimo]}) recupera {_num(costes_pasos[ultimo])} k€. {t_dur} De todos, {t_mejor}. Un paso intermedio también puede deshacerse: lo que importa no es el orden en que se dieron sino su coste. Regla general: para relajar el plazo se deshacen primero las reducciones más caras (se recorre la tabla de Ackoff-Sasieni hacia atrás, comprobando que la duración vuelve a la deseada).''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -336,4 +539,14 @@ Markdown(f'''Todos los pasos devuelven el proyecto a {proyecto.duration(duracion
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# En cada paso el algoritmo elige la opción más barata disponible; las opciones baratas se agotan (las actividades llegan a su tope) o dejan de bastar (aparecen nuevas rutas críticas que exigen acortar varias actividades a la vez), así que el coste del paso siguiente nunca es menor. La curva coste-duración es por tanto convexa: cada semana adicional de reducción cuesta más que la anterior, y por eso la decisión de hasta dónde reducir se toma comparando el coste marginal con lo que vale cada semana (penalización, coste indirecto, prima).
+# En cada paso el algoritmo elige la opción más barata disponible; las opciones baratas se agotan (las actividades llegan a su tope) o dejan de bastar (aparecen nuevas rutas críticas que exigen acortar varias actividades a la vez), así que normalmente el paso siguiente no es más barato. La curva coste-duración es entonces convexa: cada semana adicional de reducción cuesta al menos lo que la anterior, y por eso la decisión de hasta dónde reducir se toma comparando el coste marginal con lo que vale cada semana (penalización, coste indirecto, prima). No es un teorema: el algoritmo es voraz y, si un paso acorta dos actividades de una misma ruta, esa ruta puede dejar de ser crítica y el paso siguiente volver a ser barato.
+
+# %%
+costes = list(resumen['coste del paso'])
+if all(b >= a for a, b in zip(costes, costes[1:])):
+    t = f'aquí se cumple: los costes de los pasos son {" ≤ ".join(_num(c) for c in costes)} k€, y la curva coste-duración es convexa.'
+else:
+    bajan = [i + 2 for i, (a, b) in enumerate(zip(costes, costes[1:])) if b < a]
+    t = (f'aquí no se cumple del todo: los costes de los pasos son {", ".join(_num(c) for c in costes)} k€ y el paso {rangos(bajan)} es más barato que el anterior; '
+         'por eso hay que mirar la tabla completa antes de decidir.')
+Markdown(f'**Respuesta:** {t}')

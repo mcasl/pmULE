@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -243,6 +247,64 @@ def van(flujos, k):
 van_restante = van(flujos_restantes, k)
 van_total = van_restante - gastado
 suma_nominal = flujo_anual * anos
+va_flujos = van_restante + inversion_restante
+
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
 
 # %% [markdown]
 # ## Apartado 1
@@ -250,15 +312,25 @@ suma_nominal = flujo_anual * anos
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# VAN (valor actual neto) de los flujos que quedan: la inversión que falta se paga hoy (año 0) y cada flujo anual se descuenta al coste de capital k con el factor 1/(1 + k)^t. Lo ya gastado no forma parte de esos flujos: es un coste hundido, que no se recupera ni se evita con la decisión.
+
 # %%
-#| tbl-cap: "Flujos que quedan y su valor actual"
+#| tbl-cap: "Flujos que quedan y su valor actual (k€)"
 #| label: tbl-flujos
-detalle = pd.DataFrame({'flujo': flujos_restantes, 'factor 1/(1+k)^t': [1 / (1 + k) ** t for t in range(anos + 1)]},
-                       index=pd.Index(range(anos + 1), name='año'))
+detalle = pd.DataFrame({'flujo': [float(f) for f in flujos_restantes], 'factor 1/(1+k)^t': [1 / (1 + k) ** t for t in range(anos + 1)]},
+                       index=pd.Index([str(t) for t in range(anos + 1)], name='año'))
 detalle['valor actual'] = detalle['flujo'] * detalle['factor 1/(1+k)^t']
-detalle.loc['Total'] = [None, None, detalle['valor actual'].sum()]
-display(detalle.round(2))
-Markdown(f'''VAN de lo que queda: **{van_restante:.1f} k€**; VAN del proyecto completo (restando los {gastado} k€ gastados): **{van_total:.1f} k€**.''')
+detalle.loc['Total'] = [float(sum(flujos_restantes)), np.nan, detalle['valor actual'].sum()]
+limpia_tabla(detalle, 4)
+
+# %%
+factor_anualidad = (1 - (1 + k) ** -anos) / k
+Markdown(f'''- Valor actual de los flujos de explotación: {flujo_anual} · (1/{1 + k:g} + 1/{1 + k:g}² + … + 1/{1 + k:g}^{anos}) = {flujo_anual} · (1 − {1 + k:g}^−{anos}) / {k:g} = {flujo_anual} · {factor_anualidad:.4f} = **{va_flujos:.2f} k€**.
+- VAN de lo que queda = −{inversion_restante} + {va_flujos:.2f} = **{van_restante:.2f} k€**.
+- VAN del proyecto completo = VAN de lo que queda − lo gastado = {van_restante:.2f} − {gastado} = **{van_total:.2f} k€**.
+
+**Respuesta.** VAN de los flujos que quedan: {van_restante:.2f} k€; VAN del proyecto completo contando lo gastado: {van_total:.2f} k€.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -266,8 +338,20 @@ Markdown(f'''VAN de lo que queda: **{van_restante:.1f} k€**; VAN del proyecto 
 # %%
 display(Markdown(pregunta_2))
 
-# %% [markdown]
-# El VAN restante es positivo (224.1 k€): **continuar** crea valor a partir de hoy. El VAN total es negativo (-215.9 k€): el proyecto, visto desde el principio, fue una mala inversión, pero esa pérdida ya está hecha y es la misma si se continúa o se cancela. El criterio correcto es el VAN restante; lo gastado no cambia la decisión. Y «recuperar la inversión» no es cierto: ni siquiera sumando sin descontar (440 k€) se recuperan los 550 k€ totales.
+# %%
+rec_restante = va_flujos >= inversion_restante
+rec_total_nominal = suma_nominal >= gastado + inversion_restante
+Markdown(f'''- El VAN de lo que queda ({van_restante:.2f} k€) es {'positivo' if van_restante > 0 else 'negativo'}: recomienda **{'continuar' if van_restante > 0 else 'cancelar'}**.
+- El VAN total ({van_total:.2f} k€) es {'positivo' if van_total > 0 else 'negativo'}: recomendaría {'continuar' if van_total > 0 else 'cancelar'}.
+
+El criterio correcto es el **VAN de lo que queda**. Lo gastado ({gastado} k€) es el mismo si se continúa y si se cancela: no cambia con la decisión y, por tanto, no puede inclinarla. El VAN total responde a otra pregunta, si el proyecto completo fue buena inversión ({'sí' if van_total > 0 else 'no'}), que ya no se puede cambiar.
+
+¿«Recuperan la inversión»? Depende de qué inversión, y hay que descontar:
+
+- La que falta: los flujos valen hoy {va_flujos:.2f} k€ {'≥' if rec_restante else '<'} {inversion_restante} k€: {'sí la recuperan' if rec_restante else 'no la recuperan'} {('(la suma sin descontar, ' + str(suma_nominal) + ' k€, también la supera)') if rec_restante else ('(sólo la suma sin descontar, ' + str(suma_nominal) + ' k€, la supera: de ahí la apariencia de que la recupera)' if suma_nominal >= inversion_restante else '(ni siquiera la suma sin descontar, ' + str(suma_nominal) + ' k€, llega)')}.
+- La total, {gastado} + {inversion_restante} = {gastado + inversion_restante} k€: los flujos valen hoy {va_flujos:.2f} k€, así que **no** (VAN total {van_total:.2f} k€){'; ni siquiera sumando sin descontar: ' + str(suma_nominal) + ' k€' if not rec_total_nominal else '; sólo la suma sin descontar (' + str(suma_nominal) + ' k€) lo aparenta'}.
+
+**Respuesta.** El VAN de lo que queda recomienda {'continuar' if van_restante > 0 else 'cancelar'} y el VAN total, {'continuar' if van_total > 0 else 'cancelar'}; el correcto es el primero. {'La afirmación del borrador es cierta sólo para la inversión que falta; para la inversión total es falsa.' if rec_restante else 'La afirmación del borrador es falsa: descontados, los flujos no cubren ni la inversión que falta.'}''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -275,8 +359,12 @@ display(Markdown(pregunta_2))
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C12.** La decisión se toma sobre el VAN de los flujos que quedan; el borrador argumenta con lo gastado («cancelar es tirarlos»), que es irrelevante, y con una suma sin descontar («recuperan la inversión») que no recupera ni siquiera la inversión total: una afirmación falsa (C1) aunque la conclusión —continuar— sea la correcta por la razón equivocada. **C11.** Si el motivo real de continuar es no reconocer que el proyecto fue un error, el criterio pide lo contrario: reconocerlo, y decidir el resto con los números.
+# %%
+Markdown(f'''**Criterio C12 (decidir sobre el futuro, no sobre lo gastado).** El borrador argumenta con lo gastado («hemos invertido {gastado} k€; cancelar ahora es tirarlos»), que no es un argumento ni a favor ni en contra, y con una suma sin descontar ({flujo_anual} × {anos} = {suma_nominal} k€). La decisión se toma con el VAN de lo que queda: {van_restante:.2f} k€, que recomienda **{'continuar' if van_restante > 0 else 'cancelar'}**. {'La conclusión del borrador (continuar) es correcta, pero por razones equivocadas.' if van_restante > 0 else 'La propuesta del borrador (continuar) es incorrecta.'}
+
+**Criterio C1 (afirmación falsa).** «Recuperan la inversión» {'es falso si se refiere, como sugiere el borrador, a lo invertido en total (' + str(gastado + inversion_restante) + ' k€ frente a ' + f'{va_flujos:.2f}' + ' k€ de valor actual).' if rec_restante else 'es falso: descontados al ' + porc(k, 0) + ', los flujos valen ' + f'{va_flujos:.2f}' + ' k€, menos que los ' + str(inversion_restante) + ' k€ que faltan (C12 lo califica expresamente de C1).'} **Criterio C11 (reconocer los errores propios).** Si el motivo real de seguir es no reconocer que el proyecto fue mala inversión (VAN total {van_total:.2f} k€), el criterio pide lo contrario: reconocerlo y decidir el resto con los números.
+
+**Respuesta.** {'La propuesta (continuar) es correcta en su conclusión, pero su argumentación incumple C12' if van_restante > 0 else 'La propuesta es incorrecta: incumple C12'}; la afirmación «recuperan la inversión» incumple **C1**, y seguir para no admitir el error incumpliría **C11**.''')
 
 # %%
 preguntas_test = [
@@ -314,5 +402,14 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Párrafo para el comité (modelo): «El proyecto ha costado hasta hoy más de lo que valdrá: visto desde el inicio, su VAN es de -216 k€. Esa pérdida es ya un hecho. La decisión de hoy es otra: terminarlo requiere 110 k€ y los flujos previstos valen 334 k€ actuales, así que continuar aporta 224 k€. Recomendamos continuar, y revisar por qué la estimación inicial falló.» Al jefe de proyecto: reconocer el error es lo que protege su credibilidad para el siguiente proyecto; defender el proyecto con una cuenta que no se sostiene la destruye en cuanto alguien la rehace.
+# %%
+decision = 'continuar' if van_restante > 0 else 'cancelar'
+rubrica_caso(
+    [('Empresa (accionistas)', ('continuar aporta ' if van_restante > 0 else 'continuar resta ') + f'{abs(van_restante):.2f} k€ de valor desde hoy; los {gastado} k€ gastados están perdidos en cualquier caso'),
+     ('Comité de dirección', 'necesita la cuenta correcta (VAN de lo que queda) para decidir, no la del borrador'),
+     ('Jefe de proyecto y equipo', 'reconocer que el proyecto fue mala inversión les cuesta reputación a corto plazo; defenderlo con una cuenta falsa, más a largo plazo')],
+    [('Enviar el borrador tal cual (propuesta)', 'sí', 'no: no resiste que alguien rehaga la cuenta', 'no: el comité no querría decidir con ella'),
+     (f'Recomendar {decision} con el VAN de lo que queda y explicar el coste hundido', 'sí', 'sí', 'sí'),
+     ('Presentar además el análisis de por qué falló la estimación inicial (lecciones aprendidas)', 'sí', 'sí', 'sí')]
+    + ([] if van_restante > 0 else [('Cancelar y buscar comprador para el trabajo hecho', 'sí', 'sí', 'sí')]),
+    (f'''párrafo para el comité: «Visto desde el inicio, el proyecto tiene un VAN de {van_total:.0f} k€: esa pérdida ya está hecha. La decisión de hoy es otra: terminarlo requiere {inversion_restante} k€ y los flujos previstos valen {va_flujos:.0f} k€ actuales, así que continuar {'aporta ' + f'{van_restante:.0f}' + ' k€. Recomendamos continuar y revisar por qué falló la estimación inicial.»' if van_restante > 0 else 'destruye ' + f'{-van_restante:.0f}' + ' k€ más. Recomendamos cancelar, documentar lo aprendido y, si hay comprador para el trabajo hecho, venderlo.»'} Al jefe de proyecto: reconocer el error es lo que protege su credibilidad para el siguiente proyecto; defender el proyecto con una cuenta que no se sostiene la destruye en cuanto alguien la rehace.'''))

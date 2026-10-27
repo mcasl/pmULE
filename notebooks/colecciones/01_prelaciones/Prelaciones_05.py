@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -211,7 +215,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde al lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+# El proyecto corresponde al lanzamiento de una aplicación móvil; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -277,6 +281,14 @@ proyecto.display_distant_linkage_matrix()
 #| label: tbl-ancestrosGrafo
 proyecto_dibujado.display_distant_linkage_matrix()
 
+# %%
+anc_cuadro = proyecto.distant_predecessor()
+anc_grafo = proyecto_dibujado.distant_predecessor()
+difieren = [a for a in datos_proyecto.index if anc_cuadro[a] != anc_grafo[a]]
+Markdown(f'**Respuesta:** los dos cuadros de ancestros difieren en '
+         f'{"la fila" if len(difieren) == 1 else "las filas"} de {lista_y(difieren)}; las demás filas coinciden.'
+         if difieren else '**Respuesta:** los dos cuadros de ancestros coinciden fila a fila.')
+
 # %% [markdown]
 # ## Apartado 2
 
@@ -287,9 +299,6 @@ display(Markdown(pregunta_2))
 # Una prelación que está en el cuadro y no en el grafo se detecta porque alguna actividad tiene menos ancestros en el grafo; una que sobra, porque tiene más. Para localizar la prelación inmediata responsable se comparan las predecesoras inmediatas de las actividades cuyo conjunto de ancestros difiere.
 
 # %%
-anc_cuadro = proyecto.distant_predecessor()
-anc_grafo = proyecto_dibujado.distant_predecessor()
-difieren = [a for a in datos_proyecto.index if anc_cuadro[a] != anc_grafo[a]]
 pd.DataFrame({'ancestros según el cuadro': {a: ', '.join(sorted(anc_cuadro[a])) for a in difieren},
               'ancestros según el grafo': {a: ', '.join(sorted(anc_grafo[a])) for a in difieren}})
 
@@ -298,11 +307,19 @@ inm_cuadro = prelaciones.immediate_predecessor
 inm_grafo = PredecessorTable.from_dict_of_strings(prelaciones_del_grafo).immediate_predecessor
 faltan = sorted((p, a) for a in inm_cuadro for p in inm_cuadro[a] - inm_grafo.get(a, set()))
 sobran = sorted((p, a) for a in inm_grafo for p in inm_grafo[a] - inm_cuadro.get(a, set()))
-print('Faltan en el grafo:', faltan)
-print('Sobran en el grafo:', sobran)
+def _por_que(p, a, anc):
+    return (f'{p} {"sí" if p in anc[a] else "no"} es ancestro de {a}')
+_l = [f'- Falta **{p} → {a}**: está en el cuadro, pero en el grafo {a} no la tiene como predecesora inmediata '
+      f'(según el grafo, {_por_que(p, a, anc_grafo)}).' for p, a in faltan]
+_l += [f'- Sobra **{p} → {a}**: el grafo hace que {p} preceda directamente a {a}, y en el cuadro no es así '
+       f'(según el cuadro, {_por_que(p, a, anc_cuadro)}).' for p, a in sobran]
+Markdown('\n'.join(_l))
 
-# %% [markdown]
-# Las discrepancias son: falta la prelación F → G y sobra la prelación F → H (si la comparación muestra alguna más, es consecuencia de estas dos: al añadir o quitar una prelación cambian las que son redundantes).
+# %%
+_errores = {('F', 'G'), ('F', 'H')}
+_otras = [f'{p} → {a}' for p, a in faltan + sobran if (p, a) not in _errores]
+Markdown('**Respuesta:** en el grafo falta la prelación F → G y sobra la prelación F → H.' + (f' Las demás diferencias de predecesoras inmediatas ({lista_y(_otras)}) son consecuencia de estas dos: al '
+  'añadir o quitar una prelación cambia cuáles son redundantes.' if _otras else ''))
 
 # %% [markdown]
 # ## Apartado 3
@@ -316,4 +333,79 @@ display(Markdown(pregunta_3))
 proyecto.pert(durations=False, ranksep=1)
 
 # %%
-Markdown(f'El grafo correcto tiene {len(proyecto.dummies)} ficticia(s) frente a {len(proyecto_dibujado.dummies)} del dibujado.')
+def explica_ficticias(proyecto, prelaciones):
+    """Una línea por ficticia del PERT: nodos que une, prelación que transmite y por qué no
+    basta con hacer empezar las sucesoras en el nodo donde terminan las predecesoras."""
+    G = proyecto.pert_graph
+    pred = {a: set(ps) for a, ps in prelaciones.immediate_predecessor.items()}
+    R = nx.DiGraph([(p, a) for a, ps in pred.items() for p in ps])
+    R.add_nodes_from(pred)
+    anc = {a: nx.ancestors(R, a) for a in pred}
+    def entran(nodo, salvo=None):
+        acts = set()
+        for i, _, d in G.in_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= entran(i) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def salen(nodo, salvo=None):
+        acts = set()
+        for _, j, d in G.out_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= salen(j) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def arcos_reales(nodo, sentido):
+        aristas = G.in_edges(nodo, data=True) if sentido == 'in' else G.out_edges(nodo, data=True)
+        return {(u if sentido == 'in' else v): d['activity'] for u, v, d in aristas if not d['activity'].startswith('@')}
+    pl = lambda acts, s, p: s if len(acts) == 1 else p
+    lineas = []
+    arcos = sorted(proyecto.nodes_from_edges.items(), key=lambda kv: (int(kv[1][0]), int(kv[1][1])))
+    for nombre, (i, j) in arcos:
+        if not nombre.startswith('@'):
+            continue
+        antes, despues = sorted(entran(i)), sorted(salen(j))
+        # prelaciones inmediatas del cuadro que pasan por la ficticia (las demás ya se deducen de otras)
+        pares = [(x, y) for x in antes for y in despues if x in pred[y]] or [(x, y) for x in antes for y in despues]
+        despues = sorted({y for _, y in pares})
+        grupos = {}
+        for y in despues:
+            grupos.setdefault(tuple(sorted(x for x, z in pares if z == y)), []).append(y)
+        transmite = '; '.join(f'{lista_y(xs)} {pl(xs, "precede", "preceden")} a {lista_y(ys)}' for xs, ys in grupos.items())
+        # Si los nodos i y j fueran uno solo, lo que llega a j precedería a lo que sale de i
+        llegan_j, salen_i = sorted(entran(j, salvo=nombre)), sorted(salen(i, salvo=nombre))
+        falsas = [(x, y) for y in salen_i for x in llegan_j if x not in anc[y]]
+        if falsas:
+            x_s = sorted({x for x, _ in falsas})
+            y_s = sorted({y for _, y in falsas})
+            directas_j, directas_i = set(arcos_reales(j, 'in').values()), set(arcos_reales(i, 'out').values())
+            llega = (f'{pl(x_s, "llega", "llegan")} al nodo {j}' if set(x_s) <= directas_j else
+                     f'{pl(x_s, "llega", "llegan")} al nodo {j} (directamente o por otra ficticia)')
+            sale = (f'{pl(y_s, "sale", "salen")} de ese nodo' if set(y_s) <= directas_i else
+                    f'{pl(y_s, "empieza", "empiezan")} a partir de ese nodo (directamente o tras otra ficticia)')
+            motivo = (f'{lista_y(despues)} {pl(despues, "espera", "esperan")} además a {lista_y(x_s)}, que {llega}; '
+                      f'si {lista_y(despues)} {pl(despues, "saliera", "salieran")} del nodo {i}, {lista_y(x_s)} '
+                      f'{pl(x_s, "precedería", "precederían")} también a {lista_y(y_s)}, que {sale} y no '
+                      f'{pl(y_s, "depende", "dependen")} de {pl(x_s, "ella", "ellas")}')
+        else:
+            gemelas = None
+            ini_i, ini_j = arcos_reales(i, 'in'), arcos_reales(j, 'in')
+            fin_i, fin_j = arcos_reales(i, 'out'), arcos_reales(j, 'out')
+            for u in sorted(set(ini_i) & set(ini_j)):
+                gemelas = gemelas or (ini_i[u], ini_j[u], u, j, f'empiezan en el mismo nodo ({u})')
+            for v in sorted(set(fin_i) & set(fin_j)):
+                gemelas = gemelas or (fin_i[v], fin_j[v], i, v, f'terminan en el mismo nodo ({v})')
+            if gemelas:
+                a, b, n1, n2, verbo = gemelas
+                a, b = sorted([a, b])
+                motivo = (f'{a} y {b} {verbo}; sin la ficticia irían '
+                          f'las dos del nodo {n1} al {n2}, dos arcos entre el mismo par de nodos que no se podrían distinguir')
+            else:
+                motivo = 'sin ella habría que fundir los nodos y se perdería la estructura del grafo'
+        lineas.append(f'- Ficticia {i} → {j}: transmite que {transmite}. Hace falta porque {motivo}.')
+    return lineas
+
+# %%
+_lineas = explica_ficticias(proyecto, prelaciones)
+_n, _m = len(proyecto.dummies), len(proyecto_dibujado.dummies)
+Markdown(('\n'.join(_lineas) + '\n\n' if _lineas else '') + f'**Respuesta:** el grafo correcto tiene '
+         f'{plural(_n, "ficticia")} frente a {_m} del dibujado: '
+         + ('el número no cambia.' if _n == _m else f'{"una más" if _n - _m == 1 else (f"{_n - _m} más" if _n > _m else ("una menos" if _m - _n == 1 else f"{_m - _n} menos"))}.'))

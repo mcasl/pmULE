@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -220,7 +224,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde al lanzamiento de una aplicación móvil; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+# El proyecto corresponde al lanzamiento de una aplicación móvil; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -239,6 +243,287 @@ descripciones.to_frame()
 # %% [markdown]
 # # Resolución
 
+# %%
+_COLS_CAL = {'inicio_mas_temprano': 'ES', 'fin_mas_temprano': 'EF', 'inicio_mas_tardio': 'LS',
+             'fin_mas_tardio': 'LF', 'H_total': 'H total'}
+
+
+def tiempos_nodos(proyecto, duraciones):
+    """Tiempos temprano y tardío de cada nodo (sucesos del grafo PERT)."""
+    n = proyecto.calculate_pert(durations=duraciones)['nodes']
+    t = pd.DataFrame({'tiempo temprano': n['early'].astype(int).values, 'tiempo tardío': n['late'].astype(int).values},
+                     index=pd.Index([str(i) for i in n.index], name='nodo'))
+    return t
+
+
+def arcos_pert(proyecto):
+    """Actividad → arco (nodo origen → nodo destino); las ficticias al final."""
+    arcos = sorted(proyecto.nodes_from_edges.items(), key=lambda kv: (kv[0].startswith('@'), int(kv[1][0]), int(kv[1][1]), kv[0]))
+    t = pd.DataFrame({'nodo origen i': [i for _, (i, j) in arcos], 'nodo destino j': [j for _, (i, j) in arcos]},
+                     index=pd.Index([f'ficticia {a}' if a.startswith('@') else a for a, _ in arcos], name='actividad'))
+    return t
+
+
+def respuesta_duracion(proyecto, duraciones, unidad='días'):
+    t = tiempos_nodos(proyecto, duraciones)
+    finales = [str(i) for i in proyecto.pert_graph.nodes if proyecto.pert_graph.out_degree(i) == 0]
+    f = finales[0]
+    return Markdown(f"**Respuesta:** la duración del proyecto es el tiempo temprano del último nodo, el {f}: "
+                    f"**{int(t.loc[f, 'tiempo temprano'])} {unidad}** (y su tiempo tardío se iguala a ese valor para "
+                    f"empezar el cálculo hacia atrás).")
+
+
+def fechas_desde_nodos(proyecto, duraciones):
+    """Fechas y holgura total de cada actividad i → j a partir de los tiempos de sus nodos:
+    ES = t_i, EF = t_i + d, LF = t*_j, LS = t*_j − d, H total = t*_j − t_i − d."""
+    t = tiempos_nodos(proyecto, duraciones)
+    filas = []
+    for a, (i, j) in sorted(proyecto.nodes_from_edges.items()):
+        if a.startswith('@'):
+            continue
+        d, ti, tj = int(duraciones[a]), int(t.loc[i, 'tiempo temprano']), int(t.loc[j, 'tiempo tardío'])
+        filas.append({'actividad': a, 'arco i → j': f'{i} → {j}', 'ES = t_i': f'{ti}', 'EF = t_i + d': f'{ti} + {d} = {ti + d}',
+                      'LF = t*_j': f'{tj}', 'LS = t*_j − d': f'{tj} − {d} = {tj - d}',
+                      'H total = t*_j − t_i − d': f'{tj} − {ti} − {d} = {tj - ti - d}'})
+    return pd.DataFrame(filas).set_index('actividad')
+
+
+def respuesta_calendario(calendario, unidad='días'):
+    crit = calendario.index[calendario['H_total'] == 0].tolist()
+    holg = calendario.index[calendario['H_total'] > 0].tolist()
+    return Markdown(f"**Respuesta:** el calendario es el de la tabla. Las actividades críticas (holgura total 0) son "
+                    f"{lista_y(crit)}; las demás pueden retrasarse sin alargar el proyecto hasta su holgura total: "
+                    + lista_y(f"{a} {plural(int(calendario.loc[a, 'H_total']), unidad[:-1] if unidad.endswith('s') else unidad)}" for a in holg) + '.')
+
+def respuesta_critico(proyecto, duraciones, unidad='días'):
+    """Camino(s) crítico(s) como suma y respuesta."""
+    display(explica_camino_critico(proyecto, duraciones, unidad=unidad))
+    cal = proyecto.calendar(duraciones)
+    rutas = [' – '.join(ordena_ruta(r, cal)) for r in proyecto.critical_path(duraciones).values()]
+    return Markdown(f"**Respuesta:** {plural(len(rutas), 'camino crítico', 'caminos críticos')}: {lista_y(rutas)}; "
+                    f"son las actividades con holgura total 0 en el calendario.")
+
+
+def deduce_prelaciones(matriz):
+    """Cuadro de prelaciones a partir de la matriz de Zaderenko con nombres: (datos, tabla del razonamiento)."""
+    arcos = {}
+    for i in matriz.index:
+        for j in matriz.columns:
+            txt = matriz.loc[i, j]
+            if txt:
+                arcos[(str(i), str(j))] = ('ficticia', 0) if txt == 'ficticia' else (txt.split(' ')[0], int(txt.split('(')[1].rstrip(')')))
+
+    def entran(nodo):
+        acts, via = set(), []
+        for (i, j), (nombre, _) in sorted(arcos.items()):
+            if j == nodo:
+                if nombre == 'ficticia':
+                    sub, _ = entran(i)
+                    acts |= sub
+                    via.append(f"ficticia {i} → {j}, que trae {lista_y(sorted(sub))} (lo que llega al nodo {i})")
+                else:
+                    acts.add(nombre)
+                    via.append(f"{nombre} (arco {i} → {j})")
+        return acts, via
+
+    filas, prel, dur = [], {}, {}
+    for (i, j), (nombre, d) in sorted(arcos.items(), key=lambda kv: kv[1][0]):
+        if nombre == 'ficticia':
+            continue
+        acts, via = entran(i)
+        prel[nombre], dur[nombre] = ','.join(sorted(acts)) or '---', d
+        filas.append({'actividad': nombre, 'arco': f'{i} → {j}',
+                      'llega al nodo origen': '; '.join(via) or f'nada: el nodo {i} es el inicial',
+                      'predecesoras inmediatas': ', '.join(sorted(acts)) or '— (inicial)'})
+    datos = pd.DataFrame({'predecessor': pd.Series(prel), 'duration': pd.Series(dur)}).sort_index()
+    datos.index.name = 'activity'
+    return datos, pd.DataFrame(filas).set_index('actividad')
+
+
+def compara_matriz(matriz, proyecto):
+    """¿Reproduce el grafo reconstruido los arcos de la matriz del enunciado?"""
+    enun = {}
+    for i in matriz.index:
+        for j in matriz.columns:
+            txt = matriz.loc[i, j]
+            if txt and txt != 'ficticia':
+                enun[txt.split(' ')[0]] = (str(i), str(j))
+    rec = {a: ij for a, ij in proyecto.nodes_from_edges.items() if not a.startswith('@')}
+    n_fict_e = int((matriz == 'ficticia').sum().sum())
+    n_fict_r = sum(a.startswith('@') for a in proyecto.nodes_from_edges)
+    distintos = [a for a in sorted(enun) if enun[a] != rec.get(a)]
+    if not distintos:
+        txt = (f"**Respuesta:** sí la reproduce: las {len(enun)} actividades están en los mismos arcos (i → j) que en la "
+               f"matriz del enunciado, con la misma numeración de nodos, y hay {n_fict_r} ficticias "
+               f"({'las mismas' if n_fict_r == n_fict_e else f'{n_fict_e} en el enunciado'}).")
+    else:
+        txt = (f"**Respuesta:** el grafo tiene la misma estructura, pero la numeración de algunos nodos difiere (hay varias "
+               f"numeraciones válidas): " + '; '.join(f"{a}: {enun[a][0]} → {enun[a][1]} en el enunciado, "
+                                                       f"{rec[a][0]} → {rec[a][1]} en el grafo" for a in distintos) + '.')
+    return Markdown(txt)
+
+
+def rutas_por_actividad(proyecto, duraciones):
+    """Para cada actividad, la ruta más larga que pasa por ella y su duración."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    d = pd.Series(duraciones)
+    largo = {r: int(sum(d[a] for a in R.columns[R.loc[r] == 1])) for r in R.index}
+    res = {}
+    for a in R.columns:
+        rs = [r for r in R.index if R.loc[r, a] == 1]
+        r = max(rs, key=lambda r: largo[r])
+        res[a] = (' – '.join(ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)), largo[r])
+    return res, max(largo.values())
+
+
+def respuesta_forma(proyecto, duraciones, unidad='días'):
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    n_acts = R.sum(axis=1)
+    mas = n_acts[n_acts == n_acts.max()].index
+    nombres = [' – '.join(ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)) for r in mas]
+    criticas = [' – '.join(ordena_ruta(r, cal)) for r in proyecto.critical_path(duraciones).values()]
+    coincide = set(nombres) & set(criticas)
+    return Markdown(f"**Respuesta:** mirando solo la forma, las candidatas son las rutas con más actividades: "
+                    f"{lista_y(nombres)} ({int(n_acts.max())} actividades). Con las duraciones (apartado 3) la ruta más "
+                    f"larga resulta ser {lista_y(criticas)}"
+                    + (', que sí está entre ellas.' if coincide else
+                       ', que no está entre ellas: la forma del grafo no basta, hacen falta las duraciones.'))
+
+
+def respuesta_prediccion(proyecto, duraciones, casos, unidad='días'):
+    """Predicción de cada caso sumando las duraciones de las rutas (sin tiempos de los nodos)."""
+    mayor, T = rutas_por_actividad(proyecto, duraciones)
+    L = [f"**Respuesta** (la ruta más larga del proyecto suma {T} {unidad}):", '']
+    for letra, (a, extra) in zip('abc', casos):
+        ruta, l = mayor[a]
+        margen = T - l
+        if margen == 0:
+            pred = f"está en la ruta más larga, {ruta} ({l}): cualquier aumento alarga el plazo, **sí cambia** (+{extra})"
+        elif extra <= margen:
+            pred = (f"la ruta más larga que pasa por {a} es {ruta}, con {l}, {T} − {l} = {plural(margen, unidad[:-1])} menos que la "
+                    f"más larga: el aumento de {extra} cabe ({extra} ≤ {margen}), **no cambia**")
+        else:
+            pred = (f"la ruta más larga que pasa por {a} es {ruta}, con {l}, {T} − {l} = {plural(margen, unidad[:-1])} menos que la "
+                    f"más larga: el aumento de {extra} no cabe ({extra} > {margen}), **sí cambia** (+{extra - margen})")
+        L.append(f"- ({letra}) {a} dura {extra} {unidad} más: {pred}.")
+    return Markdown('\n'.join(L))
+
+
+def respuesta_comprobacion(calendario, T0, casos, unidad='días'):
+    L = []
+    for letra, (a, extra) in zip('abc', casos):
+        h = int(calendario.loc[a, 'H_total'])
+        if extra <= h:
+            L.append(f"- ({letra}) {a}: holgura total {h}, aumento {extra} ≤ {h}: el plazo sigue en {T0} {unidad}.")
+        else:
+            L.append(f"- ({letra}) {a}: holgura total {h}, aumento {extra} > {h}: el plazo pasa a {T0} + ({extra} − {h}) = {T0 + extra - h} {unidad}.")
+    return Markdown('\n'.join(L) + "\n\n**Respuesta:** las tres predicciones del apartado 2 se confirman. El dato que permitía acertar es la "
+                    "**holgura total** de cada actividad: el plazo cambia si y sólo si el aumento la supera (en una crítica es "
+                    "0 y cualquier aumento cuenta), y el proyecto se alarga exactamente el exceso.")
+
+def nodos_con_plazo(proyecto, duraciones, plazo):
+    """Tiempos de los nodos con el tiempo tardío del último nodo igual al plazo impuesto."""
+    t = tiempos_nodos(proyecto, duraciones)
+    k = int(proyecto.duration(duraciones)) - int(plazo)
+    t[f'tardío con plazo = tardío − {k}'] = t['tiempo tardío'] - k
+    return t.T
+
+
+def respuesta_negativas(con_plazo, k, unidad='semanas'):
+    neg = con_plazo.index[con_plazo['H_total'] < 0].tolist()
+    return Markdown(f"**Respuesta:** {plural(len(neg), 'actividad tiene', 'actividades tienen')} holgura total negativa: "
+                    + lista_y(f"{a} ({int(con_plazo.loc[a, 'H_total'])})".replace('(-', '(−') for a in neg)
+                    + f". Una holgura −h significa que, aun empezando lo antes posible, la actividad acaba h {unidad} después de "
+                    f"lo que permite el plazo (su fin más temprano supera en h su nuevo fin más tardío): la ruta más larga que "
+                    f"pasa por ella excede el plazo en h {unidad}. Las críticas tienen −{k}, todo el exceso del proyecto; para "
+                    f"cumplir el plazo hay que recuperar ese tiempo acortando actividades de esas rutas.")
+
+
+def rutas_exceden(proyecto, duraciones, plazo):
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    d = pd.Series(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        L = int(sum(d[a] for a in acts))
+        if L > plazo:
+            filas.append({'ruta': ' – '.join(acts), 'duración = suma': ' + '.join(str(int(d[a])) for a in acts) + f' = {L}',
+                          'exceso = duración − plazo': f'{L} − {plazo} = {L - plazo}', '_exceso': L - plazo, '_acts': acts})
+    return pd.DataFrame(filas).sort_values('_exceso', ascending=False, kind='stable').reset_index(drop=True)
+
+
+def respuesta_exceden(tabla, duraciones, unidad='semanas'):
+    d = pd.Series(duraciones)
+    n = len(tabla)
+    m = int(tabla['_exceso'].max())
+    comunes = [a for a in tabla['_acts'].iloc[0] if all(a in acts for acts in tabla['_acts'])]
+    txt = (f"**Respuesta:** {plural(n, 'ruta excede', 'rutas exceden')} el plazo: "
+           + lista_y(f"{r} en {e}" for r, e in zip(tabla['ruta'], tabla['_exceso'])) + '. ')
+    if comunes:
+        txt += ((f"{lista_y(comunes)} {'está' if len(comunes) == 1 else 'están'} en todas ellas. " if n > 1 else
+                 f"Al ser la única, cualquiera de sus actividades ({lista_y(comunes)}) está en todas. ")
+                + f"Si se acorta una sola, hay "
+                f"que acortarla {m} {unidad}, el mayor exceso (con menos, la ruta que más excede seguiría por encima del "
+                f"plazo; las rutas que no exceden no importan): ")
+        txt += '; '.join((f"{a} pasaría de {int(d[a])} a {int(d[a]) - m}" if int(d[a]) > m else
+                          f"{a} no puede (solo dura {int(d[a])})") for a in comunes) + '.'
+    else:
+        txt += 'Ninguna actividad está en todas ellas: habrá que acortar al menos dos actividades distintas.'
+    return Markdown(txt)
+
+
+def fines_gantt(datos):
+    t = pd.DataFrame({'inicio': datos['start'].astype(int), 'duración': datos['duration'].astype(int),
+                      'fin = inicio + duración': [f"{int(s)} + {int(d)} = {int(s + d)}" for s, d in zip(datos['start'], datos['duration'])]})
+    t.index.name = 'actividad'
+    return t
+
+
+def respuesta_cadenas(cadenas):
+    nombres = [' – '.join(c) for c in cadenas]
+    if len(cadenas) == 1:
+        return Markdown(f"**Respuesta:** hay una sola cadena de actividades ajustadas de la semana 0 al final: **{nombres[0]}**. "
+                        "Toda ruta crítica es una cadena ajustada (en ella cada actividad empieza justo cuando acaba la "
+                        "anterior) y el proyecto tiene al menos una, así que esta cadena es la ruta crítica, y es única.")
+    return Markdown(f"**Respuesta:** hay {len(cadenas)} cadenas ajustadas de la semana 0 al final: {lista_y(nombres)}. "
+                    "Al menos una es ruta crítica (toda ruta crítica es una cadena ajustada), pero con solo el Gantt no se "
+                    "sabe cuáles: un eslabón puede ser una coincidencia de fechas entre actividades que no son "
+                    "predecesoras. Sí puede haber más de una ruta crítica, si existen las prelaciones de varias cadenas.")
+
+
+def respuesta_recuperado(datos, ajustadas, prelaciones, proyecto, calendario, cadenas):
+    pred = prelaciones.immediate_predecessor
+    G = nx.DiGraph([(p, a) for a, ps in pred.items() for p in ps])
+    G.add_nodes_from(datos.index)
+    iguales = int((calendario['inicio_mas_temprano'].astype(int) == datos['start'].astype(int)).sum())
+    L = [f"Los inicios más tempranos calculados con el cuadro recuperado coinciden con los del Gantt en "
+         f"{iguales} de {len(datos)} actividades: " + ('**es compatible**.' if iguales == len(datos) else '**no es compatible**.')]
+    ocultas = [(p, a) for a in datos.index for p in sorted(pred[a]) if p not in ajustadas[a]]
+    if ocultas:
+        L.append('- Predecesoras reales que no son ajustadas (acaban antes de que empiece la sucesora; el Gantt no las '
+                 'delata): ' + '; '.join(f"{p} → {a} ({p} acaba en {int(datos.loc[p, 'end'])}, {a} empieza en {int(datos.loc[a, 'start'])})" for p, a in ocultas) + '.')
+    no_inm = [(p, a) for a in datos.index for p in ajustadas[a] if p not in pred[a] and p in nx.ancestors(G, a)]
+    if no_inm:
+        L.append('- Ajustadas que son antecesoras pero no predecesoras inmediatas: ' + '; '.join(f'{p} de {a}' for p, a in no_inm) + '.')
+    coinc = [(p, a) for a in datos.index for p in ajustadas[a] if p not in nx.ancestors(G, a)]
+    if coinc:
+        L.append('- Ajustadas por coincidencia de fechas (no preceden a la actividad): ' + '; '.join(f'{p} de {a}' for p, a in coinc) + '.')
+    if not (ocultas or no_inm or coinc):
+        L.append('- Aquí las predecesoras ajustadas coinciden exactamente con las reales.')
+    criticas = [' – '.join(ordena_ruta(r, calendario)) for r in proyecto.critical_path(calendario['duracion']).values()]
+    nombres = [' – '.join(c) for c in cadenas]
+    L.append(f"\n**Respuesta:** el cuadro recuperado {'reproduce' if iguales == len(datos) else 'no reproduce'} el Gantt. "
+             f"{'La ruta crítica real es' if len(criticas) == 1 else 'Las rutas críticas reales son'} {lista_y(criticas)}"
+             + (f"; de las cadenas deducidas, {lista_y([c for c in nombres if c not in criticas])} no lo "
+                f"{'es' if len([c for c in nombres if c not in criticas]) == 1 else 'son'}." if any(c not in criticas for c in nombres) else
+                ', la misma que se dedujo del Gantt.')
+             + " El Gantt no determina el cuadro de prelaciones: oculta las prelaciones con holgura y puede sugerir "
+             "otras por coincidencia de fechas.")
+    return Markdown(L[0] + '\n\n' + '\n'.join(L[1:]))
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -246,25 +531,23 @@ descripciones.to_frame()
 display(Markdown(pregunta_1))
 
 # %%
+#| tbl-cap: "Fin más temprano de cada actividad"
+#| label: tbl-fines
 datos_proyecto = datos_enunciado.copy()
 datos_proyecto['end'] = datos_proyecto['start'] + datos_proyecto['duration']
 duracion_proyecto = int(datos_proyecto['end'].max())
-datos_proyecto
+fines_gantt(datos_proyecto)
 
 # %%
 #| fig-cap: "Diagrama de Gantt de la programación conservada"
 #| label: fig-gantt
-import matplotlib.pyplot as plt
-fig, ax = plt.subplots(figsize=(8, 0.4 * len(datos_proyecto) + 1))
-for y, (a, fila) in enumerate(datos_proyecto.iterrows()):
-    ax.barh(y, fila['duration'], left=fila['start'], color='tab:blue')
-    ax.text(fila['start'] + fila['duration'] / 2, y, a, ha='center', va='center', color='white')
-ax.set_yticks(range(len(datos_proyecto))); ax.set_yticklabels(datos_proyecto.index); ax.invert_yaxis()
-ax.set_xlabel('semana'); ax.set_xticks(range(duracion_proyecto + 1)); ax.grid(axis='x', alpha=0.3)
-plt.show()
+# Gantt de pmule con las barras del enunciado (sin flechas: las prelaciones aún no se conocen)
+pinta_tikz(gantt_tramos_tikz({a: [(int(f['start']), int(f['duration']), int(f['duration']))] for a, f in datos_proyecto.iterrows()},
+                             horizonte=duracion_proyecto))
 
 # %%
-Markdown(f'La duración del proyecto es el mayor fin: {duracion_proyecto} semanas.')
+Markdown(f'**Respuesta:** los fines más tempranos son los de la tabla; la duración del proyecto es el mayor de ellos: '
+         f'máx({", ".join(f"{a}: {int(e)}" for a, e in datos_proyecto["end"].items())}) = **{duracion_proyecto} semanas**.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -281,9 +564,15 @@ for a, fila in datos_proyecto.iterrows():
     posibles[a] = sorted(p for p, f in datos_proyecto.iterrows() if p != a and f['end'] <= fila['start'])
     ajustadas[a] = sorted(p for p in posibles[a] if datos_proyecto.loc[p, 'end'] == fila['start'])
 iniciales = datos_proyecto.index[datos_proyecto['start'] == 0].tolist()
-print('Iniciales:', ', '.join(iniciales))
-pd.DataFrame({'posibles predecesoras': {a: ', '.join(v) or '—' for a, v in posibles.items()},
-              'ajustadas (fin = inicio)': {a: ', '.join(v) or '—' for a, v in ajustadas.items()}})
+pd.DataFrame({'inicio': datos_proyecto['start'].astype(int),
+              'posibles predecesoras (fin ≤ inicio)': {a: ', '.join(f"{p} ({int(datos_proyecto.loc[p, 'end'])})" for p in v) or '—' for a, v in posibles.items()},
+              'ajustadas (fin = inicio)': {a: ', '.join(v) or '—' for a, v in ajustadas.items()}}).rename_axis('actividad')
+
+# %%
+Markdown(f'**Respuesta:** son iniciales {lista_y(iniciales)} (empiezan en la semana 0). Las posibles predecesoras y las '
+         'ajustadas de cada una de las demás son las de la tabla (entre paréntesis, la semana en que acaba cada candidata). '
+         'Toda actividad no inicial tiene al menos una ajustada porque su inicio más temprano es el máximo de los fines '
+         'de sus predecesoras: la que da ese máximo acaba justo cuando ella empieza.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -298,10 +587,9 @@ def cadenas(a):
         return [[a]]
     return [c + [a] for p in ajustadas[a] for c in cadenas(p)]
 rutas_criticas_deducidas = [c for f in finales for c in cadenas(f)]
-for c in rutas_criticas_deducidas:
-    print(' - '.join(c), '=', ' + '.join(str(int(datos_proyecto.loc[x, 'duration'])) for x in c), '=', duracion_proyecto)
-Markdown(f'Se deducen {len(rutas_criticas_deducidas)} cadena(s) ajustada(s) de la semana 0 al final: cada una es una ruta crítica '
-         '*si* todas sus prelaciones consecutivas existen en el cuadro perdido; puede haber más de una.')
+display(Markdown('Cadenas de actividades ajustadas desde la semana 0 hasta el final (cada una suma la duración del proyecto):\n\n'
+                 + '\n'.join(f"- {' – '.join(c)}: {' + '.join(str(int(datos_proyecto.loc[x, 'duration'])) for x in c)} = {duracion_proyecto}" for c in rutas_criticas_deducidas)))
+respuesta_cadenas(rutas_criticas_deducidas)
 
 # %% [markdown]
 # ## Apartado 4
@@ -334,20 +622,15 @@ comparacion = pd.DataFrame({'predecesoras reales': {a: ', '.join(sorted(ps)) or 
 G = nx.DiGraph([(p, a) for a, ps in prelaciones.immediate_predecessor.items() for p in ps]); G.add_nodes_from(comparacion.index)
 comparacion['ajustadas que son antecesoras'] = [', '.join(sorted(set(ajustadas[a]) & nx.ancestors(G, a))) or '—' for a in comparacion.index]
 comparacion['ajustadas por coincidencia'] = [', '.join(sorted(set(ajustadas[a]) - nx.ancestors(G, a))) or '—' for a in comparacion.index]
-display(comparacion)
-Markdown(f'El cuadro recuperado reproduce el Gantt: {compatible}. Una predecesora ajustada suele ser una antecesora real (inmediata o no), '
-         'pero puede ser una coincidencia de fechas; y las predecesoras reales con holgura entre su fin y el inicio de la sucesora no se ven en el Gantt. '
-         'Por eso el Gantt no determina el cuadro de prelaciones.')
+display(comparacion.rename_axis('actividad'))
+respuesta_recuperado(datos_proyecto, ajustadas, prelaciones, proyecto, calendario, rutas_criticas_deducidas)
+
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo PERT con el camino crítico"
 #| label: fig-pert
-proyecto.pert(durations=prelaciones_recuperadas['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(prelaciones_recuperadas['duration'])
 
 # %% [markdown]

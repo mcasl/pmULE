@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -257,6 +261,54 @@ def anualidad_equivalente(VAN, k, n):
     '''Anualidad constante durante n años cuyo valor actual es VAN.'''
     return float(VAN * k / (1 - (1 + k) ** -n))
 
+_SUP = str.maketrans('0123456789-', '⁰¹²³⁴⁵⁶⁷⁸⁹⁻')
+def _num(x, d=1):
+    return f'{round(float(x), d) + 0.0:.{d}f}'.replace('-', '−')
+def _con_signo(x, d=1):
+    return f' − {_num(-x, d)}' if x < 0 else f' + {_num(x, d)}'
+
+def explica_van(flujos, k, unidad='k€', nombre='VAN'):
+    '''VAN término a término: Σ flujo_t / (1 + k)^t con los números sustituidos.'''
+    base = f'{1 + k:.6g}'
+    terminos = _num(flujos[0]) + ''.join(f' {"−" if f < 0 else "+"} {_num(abs(f))}/{base}{str(t).translate(_SUP)}' for t, f in enumerate(flujos) if t > 0)
+    actuales = _num(flujos[0]) + ''.join(_con_signo(f / (1 + k) ** t) for t, f in enumerate(flujos) if t > 0)
+    return f'{nombre} = Σ flujo_t/(1 + k)^t = {terminos} = {actuales} = **{_num(van(flujos, k))} {unidad}**'
+
+def explica_tir(flujos, unidad='k€'):
+    '''Cómo se obtiene la TIR: horquilla de dos tasas enteras con VAN de signo contrario, interpolación y comprobación.'''
+    r = tir(flujos)
+    a = np.floor(r * 100) / 100; b = a + 0.01
+    va, vb = van(flujos, a), van(flujos, b)
+    aprox = a + 0.01 * va / (va - vb)
+    return (f'La TIR es la tasa que anula el VAN. Probando tasas: VAN({a:.0%}) = {_num(va)} {unidad} y VAN({b:.0%}) = {_num(vb)} {unidad} tienen signo distinto, '
+            f'así que la TIR está entre {a:.0%} y {b:.0%}; interpolando linealmente, TIR ≈ {a:.0%} + 1 % × {_num(va)}/({_num(va)} − ({_num(vb)})) = {aprox:.2%}. '
+            f'Afinando (bisección, o =TIR(rango de flujos) en la hoja de cálculo): **TIR = {r:.2%}**. Comprobación: VAN({r:.2%}) = {abs(van(flujos, r)):.4f} ≈ 0.')
+
+def explica_payback(flujos, k=None, unidad='k€'):
+    '''Año en que el acumulado (simple o descontado) se hace positivo e interpolación lineal dentro de ese año.'''
+    acum, nombre = 0.0, 'acumulado' + ('' if k is None else ' descontado')
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return (f'el {nombre} pasa de {_num(acum)} (año {t - 1}) a {_num(acum + v)} (año {t}); dentro del año {t} se recuperan los {_num(-acum)} {unidad} '
+                    f'que faltaban con un flujo{"" if k is None else " descontado"} de {_num(v)}: payback = {t - 1} + {_num(-acum)}/{_num(v)} = **{t - 1 + (-acum) / v:.2f} años**')
+        acum += v
+    return f'el {nombre} no llega a ser positivo: la inversión no se recupera'
+
+def explica_van_mensual(pagos, F, N, km, unidad='k€'):
+    '''VAN mensual = VA de los ingresos (renta de N meses desde el mes T + 1) − VA de los desembolsos de los meses 1…T.'''
+    pagos = [float(x) for x in pagos]; T = len(pagos); base = f'{1 + km:.5f}'
+    va_des = sum(x / (1 + km) ** m for m, x in enumerate(pagos, 1))
+    a_N = (1 - (1 + km) ** -N) / km
+    va_ing = F * a_N * (1 + km) ** -T
+    t_des = ' + '.join(f'{_num(x)}/{base}{str(m).translate(_SUP)}' for m, x in list(enumerate(pagos, 1))[:3])
+    if T > 3:
+        t_des += f' + … + {_num(pagos[-1])}/{base}{str(T).translate(_SUP)}'
+    return (f'- VA de los desembolsos = Σ desembolso_m/(1 + k_m)^m = {t_des} = **{_num(va_des)} {unidad}**.\n'
+            f'- VA de los ingresos: renta de N = {N} meses de {_num(F)} {unidad} que empieza en el mes T + 1 = {T + 1}: '
+            f'F · [1 − (1 + k_m)^−N]/k_m · (1 + k_m)^−T = {_num(F)} × [1 − {base}^−{N}]/{km:.6f} × {base}^−{T} = {_num(F)} × {a_N:.3f} × {(1 + km) ** -T:.4f} = **{_num(va_ing)} {unidad}**.\n'
+            f'- VAN = {_num(va_ing)} − {_num(va_des)} = **{_num(va_ing - va_des)} {unidad}**.')
+
 # %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
@@ -314,9 +366,8 @@ pagos_libre = desembolsos(calendario['inicio_mas_temprano'], datos_proyecto['dur
 flujos_libre = flujo_mensual(pagos_libre)
 VAN_libre = van(flujos_libre, k_mensual)
 display(pd.DataFrame({'desembolso (k€)': pagos_libre}).T.round(1))
-Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin límite: {duracion_libre} meses de inversión ({pagos_libre.sum():.0f} k€ = Σ BAC) y '
-         f'VAN = {VAN_libre:.1f} k€ (valor actual de los ingresos {van([0.0] * (duracion_libre + 1) + [F] * N, k_mensual):.1f} menos el de los desembolsos '
-         f'{-van([0.0] + [-float(x) for x in pagos_libre], k_mensual):.1f}).')
+Markdown(f'k mensual = (1 + {k})^(1/12) − 1 = {k_mensual:.4%}. Sin límite: {duracion_libre} meses de inversión ({pagos_libre.sum():.0f} k€ = Σ BAC).\n\n'
+         + explica_van_mensual(pagos_libre, F, N, k_mensual) + f'\n\n**Respuesta:** sin límite de operarios el proyecto dura {duracion_libre} meses y su VAN es {VAN_libre:.1f} k€.')
 
 # %%
 #| tbl-cap: "VAN sin y con límite de operarios (van_recursos)"
@@ -371,7 +422,11 @@ dif = escenarios.loc['con límite'] - escenarios.loc['sin límite']
 Markdown(f'Con {L} operarios el proyecto dura {res_lim.duracion} meses (+{res_lim.duracion - duracion_libre}): los ingresos empiezan en el mes {res_lim.duracion + 1} en vez del {duracion_libre + 1}. '
          f'VAN = {VAN_lim:.1f} k€ (la librería: {escenarios.loc["con límite", "VAN"]:.1f}) frente a {VAN_libre:.1f} sin límite: {dif["VAN"]:.1f} k€. '
          f'Efecto en los ingresos: {dif["VAN ingresos"]:.1f} k€ (se cobran más tarde); en los costes: {-dif["VAN costes"]:.1f} k€ '
-         '(las actividades que esperan se pagan más tarde y el coste se descuenta más). El retraso de los ingresos domina.')
+         '(las actividades que esperan se pagan más tarde y el coste se descuenta más). '
+         f'Los ingresos son la misma renta desplazada {res_lim.duracion - duracion_libre} meses: VA = {van([0.0] * (duracion_libre + 1) + [F] * N, k_mensual):.1f} × {1 + k_mensual:.5f}^−{res_lim.duracion - duracion_libre} = {van([0.0] * (res_lim.duracion + 1) + [F] * N, k_mensual):.1f} k€. '
+         + (f'**Respuesta:** el proyecto se alarga {plural(res_lim.duracion - duracion_libre, "mes", "meses")} y pierde {-dif["VAN"]:.1f} k€ de VAN; domina el retraso de los ingresos ({dif["VAN ingresos"]:.1f} k€ frente a +{-dif["VAN costes"]:.1f} k€ de ahorro en costes).'
+            if abs(dif['VAN ingresos']) > abs(dif['VAN costes']) else
+            f'**Respuesta:** el proyecto se alarga {plural(res_lim.duracion - duracion_libre, "mes", "meses")} y su VAN cambia {dif["VAN"]:+.1f} k€; domina el efecto de los costes.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -384,14 +439,19 @@ display(Markdown(pregunta_3))
 #| label: tbl-ampliaciones
 amp = res['ampliaciones'].copy()
 amp['coste de contratar'] = amp.index * coste_operario * amp['duración']
+amp['coste = operarios × coste mensual × duración'] = [f'{u} × {coste_operario:g} × {d:.0f} = {u * coste_operario * d:.1f}' for u, d in zip(amp.index, amp['duración'])]
 amp['VAN neto de contratar'] = amp['VAN'] - amp['coste de contratar']
 amp.round(2)
 
 # %%
 mejor = amp['VAN neto de contratar'].idxmax()
-Markdown(f'La mejor opción es ampliar el límite en {mejor} operario(s): VAN neto {amp.loc[mejor, "VAN neto de contratar"]:.1f} k€ '
-         f'frente a {amp.loc[0, "VAN neto de contratar"]:.1f} k€ sin ampliar. Se compara la mejora del VAN por adelantar los ingresos '
-         'con lo que cuesta mantener a los operarios todo el proyecto.')
+_m1 = amp.loc[1, 'VAN'] - amp.loc[0, 'VAN']
+Markdown(f'Un operario más mejora el VAN en {amp.loc[1, "VAN"]:.1f} − {amp.loc[0, "VAN"]:.1f} = {_m1:.1f} k€ y cuesta {amp.loc[1, "coste de contratar"]:.1f} k€: '
+         + ('compensa. ' if _m1 > amp.loc[1, 'coste de contratar'] else 'no compensa. ')
+         + ('**Respuesta:** la mejor opción es no ampliar el límite' if mejor == 0 else f'**Respuesta:** la mejor opción es ampliar el límite en {plural(mejor, "operario")}')
+         + (f': VAN neto {amp.loc[mejor, "VAN neto de contratar"]:.1f} k€ frente a {amp.loc[0, "VAN neto de contratar"]:.1f} k€ sin ampliar' if mejor else f' (VAN {amp.loc[0, "VAN"]:.1f} k€): ninguna ampliación tiene un VAN neto mayor')
+         + '. Se compara la mejora del VAN por adelantar los ingresos con lo que cuesta mantener a los operarios todo el proyecto'
+         + (f'; con más de {plural(amp["duración"].idxmin(), "operario extra", "operarios extra")} el proyecto ya no se acorta y sólo se suma coste.' if amp['duración'].idxmin() < amp.index.max() else '.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -403,5 +463,8 @@ display(Markdown(pregunta_4))
 e0 = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, 0.0, N, k, ampliaciones=0)['escenarios']['VAN']
 e1 = proyecto.van_recursos(datos_proyecto, 'duration', ['operarios'], [L], BAC, 1.0, N, k, ampliaciones=0)['escenarios']['VAN']
 umbral = -e0 / (e1 - e0)          # el VAN es lineal en F
-Markdown(f'Flujo mensual mínimo: {umbral["sin límite"]:.2f} k€ sin límite y {umbral["con límite"]:.2f} k€ con límite '
-         f'(+{umbral["con límite"] - umbral["sin límite"]:.2f} k€ al mes): el límite exige más ingresos para recuperar lo mismo.')
+Markdown('El VAN es lineal en el flujo mensual: VAN(F) = −VA desembolsos + F · VA de una renta de 1 k€/mes durante N meses desde el mes T + 1. '
+         'Por tanto el umbral es F* = VA desembolsos / VA de la renta unitaria: '
+         + '; '.join(f'{e}: {-e0[e]:.1f}/{e1[e] - e0[e]:.3f} = {umbral[e]:.2f} k€/mes' for e in ('sin límite', 'con límite'))
+         + f'. **Respuesta:** flujo mensual mínimo {umbral["sin límite"]:.2f} k€ sin límite y {umbral["con límite"]:.2f} k€ con límite; '
+         f'el límite lo sube {umbral["con límite"] - umbral["sin límite"]:.2f} k€ al mes: al retrasar los ingresos, hacen falta más para recuperar la inversión.')

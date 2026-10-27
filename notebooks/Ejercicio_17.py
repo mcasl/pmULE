@@ -28,7 +28,7 @@ from IPython.display import display, HTML, Markdown, Math
 # To find local version of the library
 sys.path.append('../src')
 
-from pmule import PredecessorTable, ProjectGraph, pinta_tikz, plot_cargas
+from pmule import PredecessorTable, ProjectGraph, pinta_tikz, plot_cargas, explica_percentil, ordena_ruta, plural, lista_y
 
 # %%
 #| echo: false
@@ -65,6 +65,7 @@ display(Markdown(pregunta_5))
 #| label: tbl-datosEnunciado
 
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 pd.set_option("display.max_columns", None)
 pd.set_option("display.max_rows", None)
 
@@ -110,6 +111,12 @@ Markdown(pregunta_2)
 # %%
 path_matrix = proyecto.path_matrix(dummies=False)
 proyecto.display_rutas("pert")
+_cal_medio = proyecto.calendar(datos_proyecto['mean'])
+_rutas = {r: ordena_ruta(list(path_matrix.columns[path_matrix.loc[r] == 1]), _cal_medio) for r in path_matrix.index}
+display(Markdown(
+    f"**Respuesta:** la matriz de caminos tiene una fila por ruta del nodo inicial al final y una columna por actividad "
+    f"(1 si la actividad está en la ruta). Hay {plural(len(_rutas), 'ruta')}:\n\n"
+    + "\n".join(f"- {r}: {' – '.join(acts)}" for r, acts in _rutas.items())))
 
 # %% [markdown]
 # ### Apartado 3
@@ -145,14 +152,45 @@ duration.T.head()
 
 # %%
 duraciones_caminos = path_matrix @ duration   # Multiplicación matricial
-duraciones_caminos.T.head()
+_d0 = duration[0].round(2)
+display(Markdown(
+    "Cada elemento es la suma de las duraciones de las actividades de la ruta en esa iteración. Por ejemplo, en la "
+    "iteración 0:\n\n"
+    + "\n".join(f"- {r} ({' – '.join(acts)}): {' + '.join(format(_d0[a], '.2f') for a in acts)} = "
+                 f"{duraciones_caminos.loc[r, 0]:.2f}" for r, acts in _rutas.items())))
+display(duraciones_caminos.T.head().round(2))
 
 # %% [markdown]
 # La duración del proyecto en cada iteración se obtiene calculando el máximo de la duración de los caminos en esa iteración.
 
 # %%
 duracion_proyecto = duraciones_caminos.max(axis="rows").to_frame(name='duracion_proyecto')
-duracion_proyecto.head(10)
+display(duracion_proyecto.head(10).round(2))
+import networkx as _nx
+_G = proyecto.pert_graph
+_inicio = [n for n in _G.nodes if _G.in_degree(n) == 0][0]
+_nodos = sorted(_G.nodes, key=int)
+_t_nodos = {}
+_rutas_nodo = {}
+for _n in _nodos:
+    if _n == _inicio:
+        _t_nodos[f't_{_n}'] = pd.Series(0.0, index=duration.columns)
+        continue
+    _filas = []
+    for _camino in _nx.all_simple_paths(_G, _inicio, _n):
+        _acts = [_G.edges[u, v]['activity'] for u, v in zip(_camino[:-1], _camino[1:])]
+        _filas.append([a for a in _acts if not a.startswith('@')])
+    _rutas_nodo[_n] = _filas
+    _pm = pd.DataFrame([[int(a in f) for a in activity_names] for f in _filas], columns=activity_names)
+    _t_nodos[f't_{_n}'] = (_pm @ duration).max(axis='rows')
+_t_nodos = pd.DataFrame(_t_nodos)
+display(Markdown(
+    "Lo mismo vale para cualquier nodo: su tiempo temprano es el máximo de las duraciones de los caminos que van del nodo "
+    "inicial a él (matriz de caminos parcial hasta ese nodo). Caminos que llegan a cada nodo:\n\n"
+    + "\n".join(f"- nodo {n}: " + "; ".join(' – '.join(f) for f in filas) for n, filas in _rutas_nodo.items())
+    + f"\n\n**Respuesta:** tiempos tempranos de cada nodo en las primeras iteraciones (el del nodo final, "
+    f"t_{_nodos[-1]}, es la duración del proyecto y coincide con la columna anterior):"))
+display(_t_nodos.head(10).round(2))
 
 # %% [markdown]
 # ### Apartado 4
@@ -169,7 +207,12 @@ display_histograma_tikz(duracion_proyecto['duracion_proyecto'])
 duracion_proyecto.describe()
 
 # %%
-Markdown(f"La duración media del proyecto es: {round(duracion_proyecto.mean(), 1)}, la desviación típica de la duración del proyecto es: {round(duracion_proyecto.std(), 1)}")
+_x = duracion_proyecto['duracion_proyecto']
+Markdown(
+    f"Con las {number_of_samples} duraciones simuladas: media $\\bar x = \\sum x_i / n$ = {_x.sum():.2f} / {number_of_samples} = "
+    f"{_x.mean():.2f}; desviación típica muestral $s = \\sqrt{{\\sum (x_i - \\bar x)^2 / (n-1)}}$ = "
+    f"√({((_x - _x.mean()) ** 2).sum():.2f} / {number_of_samples - 1}) = {_x.std():.2f}.\n\n"
+    f"**Respuesta:** la duración media del proyecto es **{_x.mean():.1f}** periodos y su desviación típica, **{_x.std():.1f}** periodos.")
 
 # %% [markdown]
 # ### Apartado 5
@@ -185,7 +228,9 @@ Markdown(pregunta_5)
 resultado_1 = round(duracion_proyecto.sort_values(ascending=True, by='duracion_proyecto').iloc[int(0.98*number_of_samples),0], 1)
 
 # %%
-Markdown(f"Podemos ordenar los valores en sentido ascendente y quedarnos con aquél valor superior al 98% de las muestras. De esta manera obtenemos un resultado igual a {resultado_1} periodos")
+Markdown(f"Con las {number_of_samples} duraciones ordenadas de menor a mayor se toma la que ocupa la posición "
+         f"0.98 × {number_of_samples} + 1 = {int(0.98 * number_of_samples) + 1} (por debajo quedan {int(0.98 * number_of_samples)} "
+         f"iteraciones, el 98 %). De esta manera obtenemos un resultado igual a {resultado_1} periodos.")
 
 # %% [markdown]
 # O bien, utilizando la función `quantile`
@@ -196,7 +241,11 @@ from pmule import display_histograma_tikz
 display_histograma_tikz(duracion_proyecto['duracion_proyecto'], percentil=0.98)
 
 # %%
-Markdown(f"O bien, utilizando la función `quantile`, obteniendo igualmente un valor de {resultado_2} periodos.")
+Markdown(f"Utilizando la función `quantile` se obtiene igualmente un valor de {float(resultado_2.iloc[0])} periodos.\n\n"
+         f"Como comprobación, si se aproxima la duración por una normal con la media y la desviación típica del apartado 4: "
+         + explica_percentil(round(_x.mean(), 2), round(_x.std(), 2), 0.98, 'periodos')
+         + ", muy parecido al resultado de la simulación.\n\n"
+         f"**Respuesta:** el proyecto se completa antes de **{float(resultado_2.iloc[0])}** periodos con una probabilidad del 98 %.")
 
 # %%
 

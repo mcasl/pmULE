@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -231,6 +235,28 @@ proyecto = prelaciones.create_project()
 N, plazo, sigma_F = 10000, 25, 0.15
 expuestas = datos_proyecto.index[datos_proyecto['exposed'] == 'sí'].tolist()
 
+# %%
+def tabla_rutas(R, medias, varianzas=None, calendario=None, dec=0, dec_var=3, nombre='media'):
+    """Media (y varianza) de cada ruta con la suma término a término; actividades en orden de ejecución."""
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        m = float(sum(float(medias[a]) for a in acts))
+        fila = {'actividades': ' – '.join(acts),
+                f'{nombre} = suma': ' + '.join(f'{a}({float(medias[a]):.{dec}f})' for a in acts) + f' = {m:.{dec}f}',
+                nombre: m}
+        if varianzas is not None:
+            v = float(sum(float(varianzas[a]) for a in acts))
+            fila['varianza = suma'] = ' + '.join(f'{a}({float(varianzas[a]):.{dec_var}f})' for a in acts) + f' = {v:.{dec_var}f}'
+            fila['varianza'] = v
+            fila['σ = √varianza'] = v ** 0.5
+        filas[r] = fila
+    t = pd.DataFrame(filas).T
+    for c in (nombre, 'varianza', 'σ = √varianza'):
+        if c in t:
+            t[c] = t[c].astype(float)
+    return t
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -246,23 +272,29 @@ display(Markdown(pregunta_1))
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
-path_matrix = proyecto.path_matrix(dummies=False)
+path_matrix = proyecto.path_matrix(dummies=False).drop_duplicates()   # rutas que sólo difieren en ficticias, una vez
 duracion_media = proyecto.duration(datos_proyecto['duration'])
-camino_critico = proyecto.display_critical_path(datos_proyecto['duration'])
-Markdown(f'Duración media del proyecto: {duracion_media} semanas. Actividades expuestas al factor común: {", ".join(expuestas)}.')
+calendario = proyecto.calendar(datos_proyecto['duration'])
+criticas = ordena_ruta(sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts)), calendario)
+display(explica_camino_critico(proyecto, datos_proyecto['duration']))
+Markdown(f'**Respuesta:** duración media del proyecto {plural(duracion_media, "semana")}; camino crítico {" – ".join(criticas)}. '
+         f'Actividades expuestas al factor común: {lista_y(expuestas)}.')
 
 # %%
 #| tbl-cap: "Duración media de cada ruta y actividades expuestas que contiene"
 #| label: tbl-rutas
-rutas = detalle_rutas(path_matrix, datos_proyecto['duration'][path_matrix.columns], nombre='duración media')
-rutas['expuestas en la ruta'] = [', '.join(a for a in path_matrix.columns[path_matrix.loc[r] == 1] if a in expuestas) or 'ninguna' for r in path_matrix.index]
-rutas
+rutas = tabla_rutas(path_matrix, datos_proyecto['duration'], calendario=calendario, nombre='duración media')
+rutas['expuestas en la ruta'] = [', '.join(a for a in rutas.loc[r, 'actividades'].split(' – ') if a in expuestas) or 'ninguna' for r in path_matrix.index]
+limpia_tabla(rutas)
 
 # %% [markdown]
 # ## Apartado 2
 
 # %%
 display(Markdown(pregunta_2))
+
+# %% [markdown]
+# En cada réplica se sortea la duración de cada actividad con su normal (recortada en 0), se suman las duraciones a lo largo de cada ruta y la duración del proyecto es la de la ruta más larga. La probabilidad es la proporción de réplicas que no superan el plazo y el percentil 95, el valor que deja por debajo el 95 % de las réplicas ordenadas.
 
 # %%
 rng = np.random.default_rng(7363)
@@ -272,6 +304,11 @@ T_indep = (X[path_matrix.columns] @ path_matrix.T).max(axis='columns')
 resumen_indep = pd.Series({'media': T_indep.mean(), 'desviación típica': T_indep.std(), 'percentil 95': T_indep.quantile(0.95),
                            f'P(T ≤ {plazo}) (%)': (T_indep <= plazo).mean() * 100})
 resumen_indep.round(3).to_frame('independientes').T
+
+# %%
+cumplen_indep = int((T_indep <= plazo).sum())
+Markdown(f'''**Respuesta:** suponiendo independencia, media {T_indep.mean():.3f} semanas, desviación típica {T_indep.std():.3f} y '''
+         f'''P(T ≤ {plazo}) ≈ {cumplen_indep}/{N} = {cumplen_indep / N:.4f} ({cumplen_indep} de las {N} réplicas terminan a tiempo).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -299,6 +336,13 @@ a1, a2 = expuestas[:2]
 pd.DataFrame({'independientes': [X[a1].corr(X[a2])], 'con factor común': [Xc[a1].corr(Xc[a2])]}, index=[f'corr({a1}, {a2})']).round(3)
 
 # %%
+Markdown(f'''**Respuesta:** con el factor común la media pasa de {resumen_indep["media"]:.3f} a {resumen_corr["media"]:.3f} semanas '''
+         f'''(apenas cambia), la desviación típica de {resumen_indep["desviación típica"]:.3f} a {resumen_corr["desviación típica"]:.3f}, '''
+         f'''el percentil 95 de {resumen_indep["percentil 95"]:.2f} a {resumen_corr["percentil 95"]:.2f} y P(T ≤ {plazo}) de '''
+         f'''{resumen_indep[f"P(T ≤ {plazo}) (%)"]:.2f} % a {resumen_corr[f"P(T ≤ {plazo}) (%)"]:.2f} %. La correlación entre {a1} y {a2} '''
+         f'''pasa de {X[a1].corr(X[a2]):.3f} a {Xc[a1].corr(Xc[a2]):.3f}.''')
+
+# %%
 #| fig-cap: "Distribución de la duración con y sin factor común"
 #| label: fig-histograma
 from matplotlib import pyplot as plt
@@ -314,12 +358,31 @@ ax.set_xlabel('Duración del proyecto (semanas)'); ax.legend(); plt.show()
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# La varianza de una suma de variables correlacionadas positivamente es mayor que la suma de sus varianzas (se añaden los términos $2\,\mathrm{cov}$): cuando $F$ sale alto, todas las actividades expuestas se alargan a la vez y no se compensan unas con otras. La media casi no cambia porque la de $F$ es 1, pero las colas se ensanchan.
+
 # %%
+#| tbl-cap: "Índice de criticidad de las rutas sin y con factor común"
+#| label: tbl-criticidad
 ruta_critica_mc = duraciones_rutas_c.idxmax(axis='columns')
 criticidad_corr = (ruta_critica_mc.value_counts(normalize=True) * 100).reindex(path_matrix.index, fill_value=0.0)
 criticidad_indep = ((X[path_matrix.columns] @ path_matrix.T).idxmax(axis='columns').value_counts(normalize=True) * 100).reindex(path_matrix.index, fill_value=0.0)
-pd.DataFrame({'actividades': path_matrix.apply(lambda f: ' - '.join(f.index[f == 1]), axis=1),
+pd.DataFrame({'actividades': rutas['actividades'], 'expuestas': rutas['expuestas en la ruta'],
               'criticidad indep. (%)': criticidad_indep, 'criticidad con F (%)': criticidad_corr}).round(1)
 
-# %% [markdown]
-# La varianza de una suma de variables correlacionadas positivamente es mayor que la suma de sus varianzas (se añaden los términos $2\,\mathrm{cov}$): cuando $F$ sale alto, todas las actividades expuestas se alargan a la vez y no se compensan unas con otras. La media casi no cambia (la de $F$ es 1), pero las colas se ensanchan: el percentil 95 sube y la probabilidad de cumplir el plazo baja. Las rutas con más actividades expuestas ganan criticidad. Suponer independencia, como hace el PERT clásico, es optimista en presencia de causas comunes de retraso.
+# %%
+cambio = (criticidad_corr - criticidad_indep).round(1)
+ganan = [r for r in cambio.index if cambio[r] >= 0.1]
+pierden = [r for r in cambio.index if cambio[r] <= -0.1]
+fmt_r = lambda rs: lista_y([f"{rutas.loc[r, 'actividades']} ({cambio[r]:+.1f} puntos)" for r in rs])
+if ganan or pierden:
+    t_crit = ('Con el factor común ' + (f'ganan criticidad {fmt_r(ganan)}' if ganan else '')
+              + ('; ' if ganan and pierden else '') + (f'pierden criticidad {fmt_r(pierden)}' if pierden else '') + '. '
+              'Lo que cuenta no es cuántas actividades expuestas tiene cada ruta, sino cuánto de su duración depende de F en '
+              'comparación con la ruta crítica: cuando F sale alto se alargan más las rutas con más semanas expuestas, y cuando sale bajo, al revés.')
+else:
+    t_crit = 'La criticidad de las rutas prácticamente no cambia: la ruta crítica sigue dominando en casi todas las réplicas.'
+Markdown(f'''**Respuesta:** la correlación positiva hace que las actividades expuestas se retrasen (o adelanten) a la vez, sin compensarse: '''
+         f'''la desviación típica sube de {resumen_indep["desviación típica"]:.3f} a {resumen_corr["desviación típica"]:.3f} mientras la media '''
+         f'''apenas cambia ({resumen_indep["media"]:.3f} frente a {resumen_corr["media"]:.3f}), porque F tiene media 1. {t_crit} Suponer independencia, '''
+         '''como hace el PERT clásico, es optimista en presencia de causas comunes de retraso.''')

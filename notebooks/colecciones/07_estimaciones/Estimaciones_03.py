@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -221,7 +225,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en semanas).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -251,6 +255,8 @@ display(Markdown(pregunta_1))
 # El método PERT supone que la duración sigue una distribución Beta cuya media y varianza se aproximan por
 #
 # $$D = \frac{a + 4m + b}{6}, \qquad \sigma^2 = \left(\frac{b - a}{6}\right)^2.$$
+#
+# Las estimaciones $a$, $m$ y $b$ son las del cuadro del enunciado. Sustituyendo en cada actividad con las tres estimaciones conocidas:
 
 # %%
 datos_proyecto = datos_enunciado.copy()
@@ -258,12 +264,17 @@ conocidas = datos_proyecto['a'] != '?'
 numericas = datos_proyecto.loc[conocidas, ['a', 'm', 'b']].astype(float)
 datos_proyecto.loc[conocidas, 'duration'] = numericas.eval('(a + 4 * m + b) / 6')
 datos_proyecto.loc[conocidas, 'variance'] = numericas.eval('((b - a) / 6) ** 2')
-datos_proyecto
 
 # %%
 #| tbl-cap: "Media y varianza de cada actividad con los números sustituidos"
 #| label: tbl-estimacionesPaso
 detalle_estimaciones(datos_proyecto[conocidas])
+
+# %%
+sin_a = list(datos_proyecto.index[~conocidas])
+Markdown(f'''{lista_y(sin_a)} no tienen estimación optimista: su duración media es la que da el enunciado '''
+         f'''({lista_y([f"{x} = {float(datos_proyecto.loc[x, 'duration']):g}" for x in sin_a])} semanas) y su varianza se calcula en el apartado 2, '''
+         f'''una vez recuperada $a$. La tabla final de ese apartado reúne la media y la varianza de todas las actividades.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -272,7 +283,7 @@ detalle_estimaciones(datos_proyecto[conocidas])
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Despejando en la fórmula de la media: $a = 6D - 4m - b$.
+# Despejando $a$ en la fórmula de la media: $6D = a + 4m + b \Rightarrow a = 6D - 4m - b$. Con $a$ ya conocida, la varianza se calcula como en el apartado 1.
 
 # %%
 faltan = ~conocidas
@@ -282,7 +293,21 @@ datos_proyecto.loc[faltan, 'a'] = (6 * datos_proyecto.loc[faltan, 'duration'].as
 datos_proyecto[['a', 'm', 'b', 'duration']] = datos_proyecto[['a', 'm', 'b', 'duration']].astype(float)
 datos_proyecto['variance'] = datos_proyecto.eval('((b - a) / 6) ** 2')
 datos_proyecto['standard_deviation'] = np.sqrt(datos_proyecto['variance'])
-datos_proyecto.loc[faltan, ['a', 'm', 'b', 'duration', 'variance']]
+lineas = []
+for x in sin_a:
+    D_, m_x, b_x, a_x = (float(datos_proyecto.loc[x, c]) for c in ('duration', 'm', 'b', 'a'))
+    lineas.append(f'- **{x}**: a = 6·{D_:g} − 4·{m_x:g} − {b_x:g} = **{plural(a_x, "semana")}**; '
+                  f'σ² = (({b_x:g} − {a_x:g})/6)² = **{datos_proyecto.loc[x, "variance"]:.3f}**')
+Markdown('\n'.join(lineas))
+
+# %%
+#| tbl-cap: "Estimaciones completas, duración media y varianza de cada actividad"
+#| label: tbl-estimacionesCompletas
+limpia_tabla(datos_proyecto[['a', 'm', 'b', 'duration', 'variance']]
+             .rename(columns={'duration': 'media D', 'variance': 'varianza σ²'}), decimales=3)
+
+# %%
+Markdown(f'**Respuesta:** ' + '; '.join(f'a({x}) = {plural(datos_proyecto.loc[x, "a"], "semana")}' for x in sin_a) + '.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -305,10 +330,11 @@ proyecto.display_pert_pasos(duraciones)
 
 # %%
 duracion_proyecto = proyecto.duration(duraciones)
-camino_critico = proyecto.display_critical_path(duraciones)
-Markdown(f'La duración media del proyecto es {duracion_proyecto} semanas. Las estimaciones optimista y pesimista '
-         'no intervienen directamente en el camino crítico: sólo a través de la media de cada actividad. '
-         'Donde sí cuentan es en la varianza, y por tanto en la probabilidad de cumplir un plazo.')
+display(explica_camino_critico(proyecto, duraciones))
+Markdown(f'**Respuesta:** la duración media del proyecto es {plural(duracion_proyecto, "semana")}. Las estimaciones optimista y pesimista '
+         'sólo intervienen a través de la media D = (a + 4m + b)/6 de cada actividad: el camino crítico y la duración media se calculan '
+         'con esas medias, exactamente igual que con duraciones ciertas. Donde $a$ y $b$ cuentan de verdad es en la varianza '
+         '((b − a)/6)², y por tanto en la probabilidad de cumplir un plazo.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -333,7 +359,29 @@ comparacion = pd.DataFrame({
     'Uniforme':   [(a_ + b_) / 2, (b_ - a_) ** 2 / 12]},
     index=['media', 'varianza'])
 comparacion.loc['desviación típica'] = np.sqrt(comparacion.loc['varianza'])
+g = lambda x: f'{x:g}'
+Markdown(f'''Para D, con a = {g(a_)}, m = {g(m_)} y b = {g(b_)}:
+
+- Beta-PERT: media = ({g(a_)} + 4·{g(m_)} + {g(b_)})/6 = {comparacion.loc['media', 'Beta-PERT']:.3f}; varianza = (({g(b_)} − {g(a_)})/6)² = {comparacion.loc['varianza', 'Beta-PERT']:.3f}; σ = {comparacion.loc['desviación típica', 'Beta-PERT']:.3f}
+- Triangular: media = ({g(a_)} + {g(m_)} + {g(b_)})/3 = {comparacion.loc['media', 'Triangular']:.3f}; varianza = ({g(a_)}² + {g(m_)}² + {g(b_)}² − {g(a_)}·{g(b_)} − {g(a_)}·{g(m_)} − {g(b_)}·{g(m_)})/18 = {comparacion.loc['varianza', 'Triangular']:.3f}; σ = {comparacion.loc['desviación típica', 'Triangular']:.3f}
+- Uniforme: media = ({g(a_)} + {g(b_)})/2 = {comparacion.loc['media', 'Uniforme']:.3f}; varianza = ({g(b_)} − {g(a_)})²/12 = {comparacion.loc['varianza', 'Uniforme']:.3f}; σ = {comparacion.loc['desviación típica', 'Uniforme']:.3f}''')
+
+# %%
+#| tbl-cap: "Media y dispersión según la distribución supuesta"
+#| label: tbl-comparacion
 comparacion.round(3)
 
 # %%
-Markdown(f'''La Beta-PERT concentra la probabilidad cerca de la moda ({m_:.0f}) y por eso tiene la menor varianza; la uniforme reparte la probabilidad por igual entre {a_:.0f} y {b_:.0f} y es la más dispersa; la triangular queda en medio. Cuando la moda no está centrada, las medias también difieren: la PERT pesa la moda cuatro veces y se queda más cerca de ella. La uniforme es la hipótesis más prudente (mayor varianza), pero sólo está justificada si de verdad no se sabe nada entre los extremos.''')
+simetrica = np.isclose(m_ - a_, b_ - m_)
+if simetrica:
+    medias_txt = (f'Como la moda está centrada ({g(m_)} − {g(a_)} = {g(b_)} − {g(m_)}), las tres distribuciones son simétricas '
+                  f'y tienen la misma media, {comparacion.loc["media", "Beta-PERT"]:g}; sólo difieren en la dispersión.')
+else:
+    lado = 'derecha' if (b_ - m_) > (m_ - a_) else 'izquierda'
+    medias_txt = (f'La moda no está centrada (cola larga hacia la {lado}), así que las medias también difieren: la Beta-PERT pesa la moda '
+                  f'cuatro veces y se queda más cerca de ella ({comparacion.loc["media", "Beta-PERT"]:.2f}) que la triangular '
+                  f'({comparacion.loc["media", "Triangular"]:.2f}) y la uniforme ({comparacion.loc["media", "Uniforme"]:.2f}).')
+s = comparacion.loc['desviación típica']
+Markdown(f'''La Beta-PERT concentra la probabilidad cerca de la moda y es la menos dispersa (σ = {s['Beta-PERT']:.3f}); la uniforme reparte la probabilidad por igual entre {g(a_)} y {g(b_)} y es la más dispersa (σ = {s['Uniforme']:.3f}); la triangular queda en medio (σ = {s['Triangular']:.3f}). {medias_txt}
+
+**Respuesta:** la hipótesis más prudente es la uniforme, porque es la de mayor desviación típica ({s['Uniforme']:.3f} frente a {s['Triangular']:.3f} y {s['Beta-PERT']:.3f}) y conduce a plazos con más margen; pero sólo está justificada si de verdad no se sabe nada de la duración entre los extremos.''')

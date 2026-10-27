@@ -4,6 +4,7 @@
 # coleccion: 14_comprension
 # variante: comparar-planificaciones
 # nivel: 1
+# grafo: roy
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -34,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -42,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -155,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -247,6 +252,7 @@ proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion_minima = proyecto.duration(datos_proyecto['duration'])
 pred = prelaciones.immediate_predecessor
+NOMBRE = {'start_plan_1': 'Plan 1', 'start_plan_2': 'Plan 2'}
 
 # %% [markdown]
 # ## Apartado 1
@@ -261,12 +267,19 @@ def violaciones(inicio):
     for a in inicio.index:
         for p in sorted(pred[a]):
             if fin[p] > inicio[a]:
-                filas.append({'actividad': a, 'empieza en': int(inicio[a]), 'predecesora': p, 'termina en': int(fin[p]), 'conflicto': int(fin[p] - inicio[a])})
+                filas.append({'actividad': a, 'empieza en': int(inicio[a]), 'predecesora': p,
+                              'la predecesora termina en': f"{int(inicio[p])} + {int(datos_proyecto.loc[p, 'duration'])} = {int(fin[p])}",
+                              'semanas de solape': int(fin[p] - inicio[a])})
     return pd.DataFrame(filas)
+_resp = []
 for plan in ('start_plan_1', 'start_plan_2'):
     v = violaciones(planes[plan])
-    display(Markdown(f'**{plan}**: {len(v)} violación(es)'))
-    if len(v): display(v.set_index('actividad'))
+    display(Markdown(f'**{NOMBRE[plan]}**: {plural(len(v), "violación", "violaciones")}'))
+    if len(v):
+        display(v.set_index('actividad'))
+    _resp.append(f'{NOMBRE[plan]}: ' + (', '.join([f"{r['actividad']} empieza en {r['empieza en']} y su predecesora {r['predecesora']} no termina hasta {int(planes.loc[r['predecesora'], plan] + datos_proyecto.loc[r['predecesora'], 'duration'])}" for _, r in v.iterrows()])
+                                        if len(v) else 'ninguna violación'))
+Markdown('Para cada actividad se compara su inicio con el fin (inicio + duración) de cada predecesora. **Respuesta:** ' + '. '.join(_resp) + '.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -274,11 +287,21 @@ for plan in ('start_plan_1', 'start_plan_2'):
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# El proyecto termina cuando termina su última actividad: fin del plan = máx(inicio + duración) sobre todas las actividades. La tabla da el fin de cada actividad en cada plan.
+
 # %%
 fines = planes.add(datos_proyecto['duration'], axis='rows')
-duraciones = fines.max().rename('fin del proyecto')
-display(duraciones.to_frame().T)
-Markdown(f'Duración mínima del proyecto: {duracion_minima}. Un plan con violaciones no es ejecutable tal cual: su duración aparente es engañosa.')
+display(pd.DataFrame({f'fin en {NOMBRE[p]}': [f"{int(planes.loc[a, p])} + {int(datos_proyecto.loc[a, 'duration'])} = {int(fines.loc[a, p])}" for a in planes.index]
+                      for p in planes.columns}, index=planes.index))
+duraciones = fines.max()
+_txt = []
+for p in planes.columns:
+    ult = fines.index[fines[p] == duraciones[p]].tolist()
+    comp = 'igual que la' if duraciones[p] == duracion_minima else (f'{int(duraciones[p] - duracion_minima)} más que la' if duraciones[p] > duracion_minima else f'{int(duracion_minima - duraciones[p])} menos que la')
+    _txt.append(f'{NOMBRE[p]} terminaría en la semana {int(duraciones[p])} (fin de {lista_y(ult)}), {comp} duración mínima')
+Markdown(f'La duración mínima del proyecto (camino crítico) es {duracion_minima} semanas. **Respuesta:** ' + '; '.join(_txt) + '. '
+         'Pero un plan con violaciones no es ejecutable tal cual: su duración aparente es engañosa y hay que corregirlo (apartado 3).')
 
 # %% [markdown]
 # ## Apartado 3
@@ -287,7 +310,7 @@ Markdown(f'Duración mínima del proyecto: {duracion_minima}. Un plan con violac
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# Corrección mínima: se recorren las actividades en orden topológico y cada una empieza en el máximo entre la fecha propuesta y el fin de sus predecesoras (ya corregidas). Así sólo se mueven las actividades que lo necesitan y sus sucesoras.
+# Corrección mínima: se recorren las actividades en orden topológico (cada una después de sus predecesoras) y cada una empieza en el máximo entre la fecha propuesta y el fin de sus predecesoras (ya corregidas). Así sólo se retrasan las actividades que lo necesitan y, en cadena, sus sucesoras.
 
 # %%
 G = nx.DiGraph(); G.add_nodes_from(datos_proyecto.index); G.add_edges_from((p, a) for a, ps in pred.items() for p in ps)
@@ -300,10 +323,15 @@ def corregir(inicio):
     return nuevo
 corregidos = pd.DataFrame({plan: corregir(planes[plan]) for plan in planes.columns})
 cambios = (corregidos != planes)
-display(pd.concat({'propuesto': planes, 'corregido': corregidos}, axis=1))
+display(pd.concat({'inicio propuesto': planes.rename(columns=NOMBRE), 'inicio corregido': corregidos.rename(columns=NOMBRE)}, axis=1))
 fines_c = corregidos.add(datos_proyecto['duration'], axis='rows').max()
-Markdown('Actividades movidas: ' + '; '.join(f'{plan}: {", ".join(cambios.index[cambios[plan]]) or "ninguna"}' for plan in planes.columns) + '. '
-         + 'Duración tras corregir: ' + ', '.join(f'{plan}: {int(v)}' for plan, v in fines_c.items()) + '.')
+_txt = []
+for p in planes.columns:
+    mov = [f'{a} pasa de {int(planes.loc[a, p])} a {int(corregidos.loc[a, p])}' for a in cambios.index[cambios[p]]]
+    dif = int(fines_c[p] - duracion_minima)
+    _txt.append(f'{NOMBRE[p]}: ' + (lista_y(mov) if mov else 'no hay que mover nada') + f'; termina en la semana {int(fines_c[p])}'
+                + (' (la duración mínima)' if dif == 0 else f' ({plural(dif, "semana")} más que la duración mínima)'))
+Markdown('**Respuesta:** ' + '; '.join(_txt) + '.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -312,13 +340,20 @@ Markdown('Actividades movidas: ' + '; '.join(f'{plan}: {", ".join(cambios.index[
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# El margen de cada actividad en un plan es lo que puede retrasarse sin mover el fin *de ese plan*: su inicio más tardío (recalculado para la duración del plan corregido) menos el inicio programado.
+# El margen de cada actividad en un plan es lo que puede retrasarse sin mover el fin *de ese plan*: su inicio más tardío (recalculado para la duración del plan corregido) menos el inicio programado. Un margen 0 significa que la actividad empieza en su inicio más tardío.
 
 # %%
 margen = pd.DataFrame({plan: (calendario['inicio_mas_tardio'] + (fines_c[plan] - duracion_minima) - corregidos[plan]) for plan in corregidos.columns})
-display(margen.rename(columns=lambda c: f'margen restante ({c})').T)
-sin_margen = (margen <= 0).sum()
-mas_tardio = sin_margen.idxmax()
-Markdown(f'Actividades sin margen (empiezan en su inicio más tardío): ' + ', '.join(f'{p}: {int(v)}' for p, v in sin_margen.items()) + f'. '
-         f'El plan más tardío es {mas_tardio}: en él casi cualquier retraso se traslada al fin del proyecto, porque las actividades han consumido su holgura antes de empezar. '
-         'El otro plan conserva holgura para absorber imprevistos, a cambio de necesitar antes los recursos y de inmovilizar antes el dinero.')
+display(margen.rename(columns=lambda c: f'margen restante ({NOMBRE[c]})').T)
+sin_margen = {p: margen.index[margen[p] <= 0].tolist() for p in margen.columns}
+mas_tardio = max(margen.columns, key=lambda p: len(sin_margen[p]))
+otro = [p for p in margen.columns if p != mas_tardio][0]
+_extra = '; '.join(f'{NOMBRE[p]} termina además {plural(int(fines_c[p] - duracion_minima), "semana")} después de la duración mínima ({duracion_minima})'
+                   for p in margen.columns if fines_c[p] > duracion_minima)
+Markdown('Actividades sin margen: ' + '; '.join(f'{NOMBRE[p]}: {len(sin_margen[p])} ({lista_y(sin_margen[p])})' for p in margen.columns)
+         + '. Suma de márgenes: ' + ', '.join(f'{NOMBRE[p]}: {int(margen[p].sum())}' for p in margen.columns) + ' semanas. '
+         f'**Respuesta:** el plan más tardío es el {NOMBRE[mas_tardio]}: {len(sin_margen[mas_tardio])} de sus {len(margen)} actividades empiezan en su inicio más tardío, '
+         'de modo que casi cualquier retraso se traslada al fin del proyecto (han consumido su holgura antes de empezar). '
+         + (f'El {NOMBRE[otro]} deja más holgura para absorber imprevistos ({int(margen[otro].sum())} semanas de margen sumado frente a {int(margen[mas_tardio].sum())}), '
+            'a cambio de necesitar antes los recursos y de adelantar los pagos.' if margen[otro].sum() > margen[mas_tardio].sum() else
+            f'Aun así, el margen sumado es mayor o igual en el {NOMBRE[mas_tardio]} ({int(margen[mas_tardio].sum())} frente a {int(margen[otro].sum())} semanas), concentrado en pocas actividades.') + (f' Ojo: {_extra}.' if _extra else ''))

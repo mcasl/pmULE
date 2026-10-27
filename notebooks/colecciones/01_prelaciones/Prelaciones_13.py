@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -220,7 +224,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la producción de un cortometraje; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -258,12 +262,15 @@ proyecto.pert(durations=False, ranksep=1)
 # %%
 #| tbl-cap: "Arcos del grafo: origen, destino y comprobación i < j"
 #| label: tbl-arcos
-arcos = pd.DataFrame([{'actividad': d['activity'], 'i': i, 'j': j, 'i < j': i < j}
-                      for i, j, d in proyecto.pert_graph.edges(data=True)]).set_index('actividad')
+arcos = pd.DataFrame([{'actividad': d['activity'], 'i': int(i), 'j': int(j), 'i < j': 'sí' if int(i) < int(j) else 'no'}
+                      for i, j, d in sorted(proyecto.pert_graph.edges(data=True), key=lambda e: (int(e[0]), int(e[1])))]).set_index('actividad')
 arcos
 
 # %%
-Markdown(f'La numeración de la librería cumple la regla en {int(arcos["i < j"].sum())} de {len(arcos)} arcos.')
+_n_ok = int((arcos['i < j'] == 'sí').sum())
+Markdown(f'**Respuesta:** el grafo tiene {len(proyecto.nodes)} nodos, numerados del 1 al {len(proyecto.nodes)}, '
+         f'y {plural(len(proyecto.dummies), "ficticia")}. La numeración cumple $i < j$ en {_n_ok} de los {len(arcos)} arcos'
+         + (' (todos, ficticias incluidas).' if _n_ok == len(arcos) else '.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -279,19 +286,23 @@ G = proyecto.pert_graph
 nodos = sorted(G.nodes)
 intercambiables = [(u, v) for u in nodos for v in nodos if u < v
                    and not nx.has_path(G, u, v) and not nx.has_path(G, v, u)]
-print('Pares de nodos intercambiables:', intercambiables or 'ninguno')
+_txt = ', '.join(f'{u} y {v}' for u, v in intercambiables)
+Markdown(f'Pares de nodos sin ningún camino entre ellos: {_txt}.' if intercambiables else 'No hay ningún par de nodos sin camino entre ellos.')
 
 # %%
 if intercambiables:
     u, v = intercambiables[0]
-    renumerar = {u: v, v: u}
+    renumerar = {int(u): int(v), int(v): int(u)}
     arcos2 = arcos.copy()
     arcos2['i'] = arcos2['i'].map(lambda x: renumerar.get(x, x)); arcos2['j'] = arcos2['j'].map(lambda x: renumerar.get(x, x))
-    arcos2['i < j'] = arcos2['i'] < arcos2['j']
-    display(Markdown(f'Intercambiando los nodos {u} y {v} todos los arcos siguen cumpliendo i < j: {bool(arcos2["i < j"].all())}.'))
+    arcos2['i < j'] = ['sí' if i < j else 'no' for i, j in zip(arcos2['i'], arcos2['j'])]
+    _cambian = [a for a in arcos.index if (arcos.loc[a, 'i'], arcos.loc[a, 'j']) != (arcos2.loc[a, 'i'], arcos2.loc[a, 'j'])]
+    display(Markdown(f'**Respuesta:** pueden intercambiar su número {_txt}. Por ejemplo, intercambiando los nodos {u} y {v} '
+                     f'cambian los arcos de {lista_y(_cambian)} y todos siguen cumpliendo $i < j$: '
+                     f'{"sí" if (arcos2["i < j"] == "sí").all() else "no"}. Segunda numeración válida:'))
     display(arcos2)
 else:
-    display(Markdown('No hay dos nodos intercambiables: la numeración topológica es única.'))
+    display(Markdown('**Respuesta:** no hay dos nodos intercambiables: cada nodo es antecesor o descendiente de todos los demás y la numeración es única.'))
 
 # %% [markdown]
 # ## Apartado 3
@@ -312,13 +323,14 @@ def ordenaciones(restantes):
     S = set(restantes)
     return sum(ordenaciones(tuple(sorted(S - {v}))) for v in S if not (antecesores[v] & S))
 n_numeraciones = ordenaciones(tuple(nodos))
-Markdown(f'El grafo admite **{n_numeraciones}** numeraciones válidas distintas (una sola si cada nodo es antecesor o descendiente de todos los demás).')
+Markdown(f'**Respuesta:** el grafo admite **{plural(n_numeraciones, "numeración válida", "numeraciones válidas")}**.')
 
 # %%
 from itertools import islice
-print('Tres de ellas (nodo de la librería → nuevo número), generadas con networkx:')
-for orden in islice(nx.all_topological_sorts(G), 3):
-    print('  ', {viejo: nuevo + 1 for nuevo, viejo in enumerate(orden)})
+_k = min(3, n_numeraciones)
+_l = [', '.join(f'{viejo}→{nuevo + 1}' for nuevo, viejo in enumerate(orden)) for orden in islice(nx.all_topological_sorts(G), _k)]
+Markdown(('Las dos' if _k == 2 else ('La única' if _k == 1 else 'Tres de ellas')) + ' (nodo de la librería → nuevo número), generadas con networkx:\n\n'
+         + '\n'.join(f'- {x}' for x in _l))
 
 # %% [markdown]
 # ## Apartado 4
@@ -330,9 +342,12 @@ display(Markdown(pregunta_4))
 # Con numeración creciente, la matriz de Zaderenko es triangular superior: cada arco está por encima de la diagonal, los tiempos tempranos se calculan recorriendo las columnas de izquierda a derecha y los tardíos las filas de abajo arriba, sin tener que buscar un orden de cálculo. Además, la regla garantiza que no hay ciclos.
 
 # %%
-#| tbl-cap: "Matriz de Zaderenko (sin duraciones: X marca los arcos)"
+#| tbl-cap: "Matriz de Zaderenko sin duraciones: en la celda (i, j) figura la actividad del arco i → j"
 #| label: tbl-zaderenko
 Z = pd.DataFrame('', index=nodos, columns=nodos)
 for i, j, d in G.edges(data=True):
     Z.loc[i, j] = d['activity']
-Z
+display(Z)
+Markdown('**Respuesta:** con la numeración creciente todos los arcos quedan por encima de la diagonal, así que '
+         'los tiempos de cada nodo se pueden calcular en el orden de su número (hacia delante por columnas y '
+         'hacia atrás por filas) sabiendo que los nodos de los que depende ya están calculados.')

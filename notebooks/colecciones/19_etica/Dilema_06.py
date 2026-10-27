@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -252,6 +256,63 @@ proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
 
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
+
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
@@ -265,6 +326,9 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 display(Markdown(pregunta_1))
+
+# %% [markdown]
+# El algoritmo de Ackoff-Sasieni acorta el proyecto semana a semana: en cada paso busca, entre las combinaciones de actividades que acortan a la vez **todas** las rutas críticas, la de menor coste (suma de los costes unitarios de reducción, `ucr`), respetando las duraciones mínimas (`cap_duration`). La inspección I tiene `ucr` infinito: no puede elegirse nunca.
 
 # %%
 #| tbl-cap: "Algoritmo de Ackoff-Sasieni"
@@ -286,7 +350,10 @@ detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duratio
 # %%
 coste_reduccion = float(sum(datos_proyecto.loc[acts, 'ucr'].sum() for acts in pasos.values()))
 duracion_reducida = int(proyecto.duration(duraciones_reducidas))
-Markdown(f'''Adelantar {semanas_pedidas} semanas acortando actividades cuesta **{coste_reduccion:.0f} k€** (de {duracion} a {duracion_reducida} semanas); pasos: ''' + '; '.join(', '.join(a) for a in pasos.values()) + '.')
+costes_paso = [float(datos_proyecto.loc[acts, 'ucr'].sum()) for acts in pasos.values()]
+lineas = [f'- Paso {i}: se acorta {lista_y(acts)} una semana, coste ' + (' + '.join(f"{datos_proyecto.loc[a, 'ucr']:g}" for a in acts) + ' = ' if len(acts) > 1 else '')
+          + f'{c:g} k€; el proyecto pasa a {duracion - i} semanas.' for i, (acts, c) in enumerate(zip(pasos.values(), costes_paso), 1)]
+Markdown('\n'.join(lineas) + f'''\n\n**Respuesta.** Adelantar {semanas_pedidas} semanas sin tocar {inspeccion} cuesta {' + '.join(f'{c:g}' for c in costes_paso)} = **{coste_reduccion:g} k€** (de {duracion} a {duracion_reducida} semanas).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -296,7 +363,10 @@ display(Markdown(pregunta_2))
 
 # %%
 coste_esperado_sin_inspeccion = p_defecto * coste_defecto
-Markdown(f'''Sin la inspección, el coste esperado del defecto es {p_defecto:.0%} × {coste_defecto} = **{coste_esperado_sin_inspeccion:.0f} k€**, frente a los {coste_reduccion:.0f} k€ de la reducción legítima. La propuesta no ahorra: traslada un coste mayor, incierto y a cargo de otros (usuarios, aseguradora, inspector) a cambio de un ahorro cierto y pequeño.''')
+d_insp = int(datos_proyecto.loc[inspeccion, 'duration'])
+Markdown(f'''Coste esperado de poner en servicio sin la inspección = P(defecto) × coste del defecto = {p_defecto} × {coste_defecto} = **{coste_esperado_sin_inspeccion:g} k€**, frente a los {coste_reduccion:g} k€ de la reducción legítima ({coste_esperado_sin_inspeccion / coste_reduccion:.1f} veces más).
+
+**Respuesta.** La propuesta «ahorra» los {coste_reduccion:g} k€ de la reducción {'(y gana ' + plural(d_insp, 'semana') + ', las ' + str(semanas_pedidas) + ' pedidas)' if d_insp == semanas_pedidas else '(y gana ' + plural(d_insp, 'semana') + ' en lugar de las ' + str(semanas_pedidas) + ' pedidas)'}, pero no los ahorra de verdad: los cambia por un coste esperado de {coste_esperado_sin_inspeccion:g} k€, incierto y que no paga quien decide sino otros (usuarios, cliente, aseguradora). {'En valor esperado es peor negocio: ' + f'{coste_esperado_sin_inspeccion:g} > {coste_reduccion:g} k€.' if coste_esperado_sin_inspeccion > coste_reduccion else 'Aunque en valor esperado saliera más barato, el criterio del apartado 3 no depende de esta cuenta.'}''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -304,8 +374,12 @@ Markdown(f'''Sin la inspección, el coste esperado del defecto es {p_defecto:.0%
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C7.** I está exigida por una norma de seguridad: no es una opción de compresión, de modo que no entra en la tabla de Ackoff (por eso su coste de reducción es infinito y no «cero»). Comprimir el cronograma es hacer el **mismo alcance** en menos tiempo pagando por ello (reducción de duraciones, más recursos, solapes); quitar una actividad es **recortar el alcance**, y cuando la actividad es un requisito legal, incumplir la norma. Hacer las pruebas «en marcha» no es lo mismo: la norma exige la inspección antes de la puesta en servicio, y el inspector que firma después firma algo que no ha visto. La respuesta no depende del cálculo del apartado 2; el cálculo sólo muestra que, además, es mal negocio.
+# %%
+Markdown(f'''**Criterio C7 (cumplimiento de la ley y de las normas de seguridad).** El enunciado dice que {inspeccion} (pruebas de presión e inspección reglamentaria) está exigida por la normativa de seguridad **antes** de la puesta en servicio. Según C7, una actividad exigida por una norma no es una opción de compresión: por eso en la tabla de Ackoff su coste de reducción es infinito, y no «cero» como sugiere el director de operaciones. Hacer las pruebas «en marcha» el primer mes no es lo mismo: incumple el «antes», y el inspector que firma después firma algo que no ha visto.
+
+Comprimir el cronograma es hacer el **mismo alcance** en menos tiempo pagando por ello (acortar duraciones con más recursos, solapar actividades), como en el apartado 1: {coste_reduccion:g} k€ por {semanas_pedidas} semanas. Suprimir {inspeccion} es **recortar el alcance**; y como {inspeccion} es un requisito legal, es además incumplir la norma.
+
+**Respuesta.** No: la supresión de {inspeccion} no es una opción de compresión (C7). La respuesta no depende del cálculo del apartado 2; ese cálculo sólo muestra que, además, la propuesta {'es peor negocio' if coste_esperado_sin_inspeccion > coste_reduccion else 'no aporta un ahorro que la justifique'}.''')
 
 # %%
 preguntas_test = [
@@ -343,5 +417,14 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Al director de operaciones: la inspección no está en la tabla de opciones; la tabla real es «2 semanas por 6 k€» con las actividades del apartado 1, o menos semanas por menos dinero. Al cliente: la oferta de reducción con su precio y, si quiere, la curva coste-semanas; la puesta en servicio sigue exigiendo la inspección. Prueba de publicidad: ¿explicaría al inspector, o a los usuarios, que las pruebas se hicieron después de arrancar?
+# %%
+rubrica_caso(
+    [('Cliente', f'quiere adelantar {semanas_pedidas} semanas; sin la inspección asume, sin saberlo, un {porc(p_defecto, 0)} de un defecto de {coste_defecto} k€'),
+     ('Usuarios y terceros', 'soportan el riesgo de seguridad de una instalación a presión sin probar'),
+     ('Inspector', 'se le pide firmar algo que no ha visto'),
+     ('Empresa', f'«ahorra» {coste_reduccion:g} k€ y se expone a la sanción, a la responsabilidad por el defecto y a perder el cliente')],
+    [(f'Suprimir {inspeccion} y probar «en marcha» (propuesta)', 'no: la norma exige la inspección antes de la puesta en servicio', 'no', 'no: el usuario no aceptaría la instalación sin probar'),
+     (f'Acortar {semanas_pedidas} semanas con Ackoff por {coste_reduccion:g} k€', 'sí', 'sí', 'sí'),
+     ('Adelantar menos semanas por menos dinero (la curva coste-semanas)', 'sí', 'sí', 'sí'),
+     (f'Negociar con el cliente la fecha o el reparto del coste de {coste_reduccion:g} k€', 'sí', 'sí', 'sí')],
+    f'''al director de operaciones: la inspección no está en la tabla de opciones; la tabla real es «{semanas_pedidas} semanas por {coste_reduccion:g} k€» acortando {lista_y(sorted(set(a for acts in pasos.values() for a in acts)))}, o menos semanas por menos dinero. Al cliente: la oferta de reducción con su precio; la puesta en servicio sigue exigiendo la inspección. Prueba de publicidad: ¿explicaría al inspector, o a los usuarios, que las pruebas se hicieron después de arrancar?''')

@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -278,44 +282,56 @@ def calendario_pdm(datos, relaciones):
     orden = list(nx.topological_sort(G))
     ES, EF, como = {}, {}, {}
     for a in orden:
-        cands = {'inicio del proyecto': 0}
+        cands = {}
         for p, _, e in G.in_edges(a, data=True):
             tipo, lag = e['tipo'], e['lag']
-            if tipo == 'FC': v, f = EF[p] + lag, f'EF({p}) + {lag}'
-            elif tipo == 'CC': v, f = ES[p] + lag, f'ES({p}) + {lag}'
-            elif tipo == 'FF': v, f = EF[p] + lag - d[a], f'EF({p}) + {lag} − d({a})'
-            else: v, f = ES[p] + lag - d[a], f'ES({p}) + {lag} − d({a})'
-            cands[f'{tipo} desde {p}: {f} = {v}'] = v
-        ES[a] = max(cands.values()); EF[a] = ES[a] + d[a]
-        como[a] = '; '.join(k for k in cands if k != 'inicio del proyecto') or 'inicial'
+            if tipo == 'FC': v, f = EF[p] + lag, f'EF({p}) + {lag} = {EF[p]} + {lag}'
+            elif tipo == 'CC': v, f = ES[p] + lag, f'ES({p}) + {lag} = {ES[p]} + {lag}'
+            elif tipo == 'FF': v, f = EF[p] + lag - d[a], f'EF({p}) + {lag} − d({a}) = {EF[p]} + {lag} − {d[a]}'
+            else: v, f = ES[p] + lag - d[a], f'ES({p}) + {lag} − d({a}) = {ES[p]} + {lag} − {d[a]}'
+            cands[f'{tipo}+{lag} desde {p}: {f} = {v}'] = v
+        ES[a] = max([0] + list(cands.values())); EF[a] = ES[a] + d[a]
+        if not cands:
+            como[a] = 'sin predecesoras: 0'
+        else:
+            como[a] = '; '.join(cands) + (' (negativo: no puede empezar antes del inicio, 0)' if max(cands.values()) < 0 else '')
     T = max(EF.values())
     LS, LF, como_t = {}, {}, {}
     for a in reversed(orden):
-        cands = {'fin del proyecto': T}
+        cands = {}
         for _, s, e in G.out_edges(a, data=True):
             tipo, lag = e['tipo'], e['lag']
-            if tipo == 'FC': v, f = LS[s] - lag, f'LS({s}) − {lag}'
-            elif tipo == 'CC': v, f = LS[s] - lag + d[a], f'LS({s}) − {lag} + d({a})'
-            elif tipo == 'FF': v, f = LF[s] - lag, f'LF({s}) − {lag}'
-            else: v, f = LF[s] - lag + d[a], f'LF({s}) − {lag} + d({a})'
-            cands[f'{tipo} hacia {s}: {f} = {v}'] = v
-        LF[a] = min(cands.values()); LS[a] = LF[a] - d[a]
-        como_t[a] = '; '.join(k for k in cands if k != 'fin del proyecto') or 'final'
+            if tipo == 'FC': v, f = LS[s] - lag, f'LS({s}) − {lag} = {LS[s]} − {lag}'
+            elif tipo == 'CC': v, f = LS[s] - lag + d[a], f'LS({s}) − {lag} + d({a}) = {LS[s]} − {lag} + {d[a]}'
+            elif tipo == 'FF': v, f = LF[s] - lag, f'LF({s}) − {lag} = {LF[s]} − {lag}'
+            else: v, f = LF[s] - lag + d[a], f'LF({s}) − {lag} + d({a}) = {LF[s]} − {lag} + {d[a]}'
+            cands[f'{tipo}+{lag} hacia {s}: {f} = {v}'] = v
+        LF[a] = min([T] + list(cands.values())); LS[a] = LF[a] - d[a]
+        if not cands:
+            como_t[a] = f'sin sucesoras: T = {T}'
+        else:
+            como_t[a] = '; '.join(cands) + (f' (todos superan T = {T}: no puede acabar después del fin del proyecto)' if min(cands.values()) > T else '')
     cal = pd.DataFrame({'ES': ES, 'EF': EF, 'LS': LS, 'LF': LF}).loc[list(d)]
     cal['H_total'] = cal['LS'] - cal['ES']
     detalle = pd.DataFrame({'ES = máx(…)': como, 'LF = mín(…)': como_t}).loc[list(d)]
     return cal, detalle, T
 
 # %%
-#| tbl-cap: "Calendario PDM"
-#| label: tbl-calendarioPdm
 calendario, detalle, duracion_pdm = calendario_pdm(datos_proyecto, relaciones)
-calendario
+_d = datos_proyecto['duration'].astype(int)
+
+# %% [markdown]
+# Paso hacia delante en orden topológico: para cada actividad, un candidato por cada relación que llega a ella (tipo + desfase, con los números sustituidos); ES es el mayor y EF = ES + d.
 
 # %%
-#| tbl-cap: "Candidatos considerados en cada actividad"
+#| tbl-cap: "Paso hacia delante: candidatos de ES de cada actividad"
 #| label: tbl-candidatos
-detalle
+pd.DataFrame({'candidatos de ES': detalle['ES = máx(…)'], 'ES = máx': calendario['ES'],
+              'EF = ES + d': [f"{calendario.loc[a, 'ES']} + {_d[a]} = {calendario.loc[a, 'EF']}" for a in calendario.index]})
+
+# %%
+_ult = calendario.index[calendario['EF'] == duracion_pdm].tolist()
+Markdown(f'**Respuesta:** ES y EF son los de la tabla. La duración del proyecto es el mayor EF: T = máx(EF) = {duracion_pdm} días (EF de {lista_y(_ult)}).')
 
 # %% [markdown]
 # ## Apartado 2
@@ -324,10 +340,19 @@ detalle
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Hacia atrás, cada relación acota la predecesora: FC: $LF_p \le LS_a - \ell$; CC: $LS_p \le LS_a - \ell$ (luego $LF_p \le LS_a - \ell + d_p$); FF: $LF_p \le LF_a - \ell$; CF: $LS_p \le LF_a - \ell$. LF es el mínimo (la duración del proyecto si no hay sucesoras) y LS = LF − d. La holgura total es LS − ES.
+# Hacia atrás, cada relación acota la predecesora: FC: $LF_p \le LS_a - \ell$; CC: $LS_p \le LS_a - \ell$ (luego $LF_p \le LS_a - \ell + d_p$); FF: $LF_p \le LF_a - \ell$; CF: $LS_p \le LF_a - \ell$ (luego $LF_p \le LF_a - \ell + d_p$). Además ninguna actividad puede acabar después del fin del proyecto (LF ≤ T). LF es el menor de los candidatos, LS = LF − d y la holgura total es LS − ES.
 
 # %%
-Markdown(f'La duración del proyecto es {duracion_pdm} días. Actividades críticas (holgura 0): {", ".join(calendario.index[calendario["H_total"] == 0])}.')
+#| tbl-cap: "Paso hacia atrás: candidatos de LF y holgura total"
+#| label: tbl-calendarioPdm
+pd.DataFrame({'candidatos de LF': detalle['LF = mín(…)'], 'LF = mín': calendario['LF'],
+              'LS = LF − d': [f"{calendario.loc[a, 'LF']} − {_d[a]} = {calendario.loc[a, 'LS']}" for a in calendario.index],
+              'H_total = LS − ES': [f"{calendario.loc[a, 'LS']} − {calendario.loc[a, 'ES']} = {calendario.loc[a, 'H_total']}" for a in calendario.index]})
+
+# %%
+criticas = calendario.index[calendario['H_total'] == 0].tolist()
+Markdown(f'**Respuesta:** la duración del proyecto es {duracion_pdm} días; actividades críticas (holgura total 0): {lista_y(criticas)}; '
+         + 'con holgura: ' + lista_y([f'{a} ({calendario.loc[a, "H_total"]})' for a in calendario.index if a not in criticas]) + '.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -335,22 +360,55 @@ Markdown(f'La duración del proyecto es {duracion_pdm} días. Actividades críti
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Una relación es *activa* si se cumple con igualdad en el calendario temprano (es la que fija la fecha de la sucesora). El camino crítico es la cadena de relaciones activas entre actividades críticas, desde el inicio hasta el fin del proyecto.
+
 # %%
-criticas = calendario.index[calendario['H_total'] == 0].tolist()
 rel_crit = relaciones[relaciones['predecessor'].isin(criticas) & relaciones['successor'].isin(criticas)].copy()
-# una relación es 'activa' si se cumple con igualdad en el calendario temprano
 def activa(r):
     p, s, t, l = r['predecessor'], r['successor'], r['type'], int(r['lag'])
     ES, EF = calendario['ES'], calendario['EF']
     return {'FC': ES[s] == EF[p] + l, 'CC': ES[s] == ES[p] + l, 'FF': EF[s] == EF[p] + l, 'CF': EF[s] == ES[p] + l}[t]
-rel_crit['activa'] = rel_crit.apply(activa, axis=1)
-display(rel_crit)
-solapes = rel_crit[rel_crit['activa'] & rel_crit['type'].isin(['CC', 'FF', 'CF'])]
-Markdown('Camino crítico: la cadena de relaciones activas entre actividades críticas. ' + (
-    f'Las relaciones {", ".join(f"{r.predecessor}→{r.successor} ({r.type})" for r in solapes.itertuples())} no son fin-comienzo: en ellas sólo es crítico el extremo que la relación une. '
-    'Con CC, el *inicio* de la predecesora (alargarla no retrasa el proyecto, salvo que otra relación lo impida); con FF, su *fin* (acortarla no adelanta nada); '
-    'con CF, el inicio de la predecesora y el fin de la sucesora. Es la paradoja del PDM: una actividad crítica puede alargarse sin retrasar el plazo.'
-    if len(solapes) else 'Todas las relaciones activas del camino crítico son FC: el camino crítico se comporta como en el PERT clásico.'))
+rel_crit['activa'] = rel_crit.apply(activa, axis=1).map({True: 'sí', False: 'no'})
+display(rel_crit.rename(columns={'predecessor': 'predecesora', 'successor': 'sucesora', 'type': 'tipo', 'lag': 'desfase'}))
+Ga = nx.DiGraph(); Ga.add_nodes_from(criticas)
+Ga.add_edges_from((r.predecessor, r.successor, {'et': f'{r.type}+{r.lag}'}) for r in rel_crit.itertuples() if r.activa == 'sí')
+_ini = [a for a in criticas if calendario.loc[a, 'ES'] == 0 and Ga.in_degree(a) == 0]
+_fin = [a for a in criticas if Ga.out_degree(a) == 0]
+cadenas = []
+for i in _ini:
+    for f in _fin:
+        for camino in nx.all_simple_paths(Ga, i, f) if i != f else [[i]]:
+            cadenas.append(camino[0] + ''.join(f' →({Ga.edges[u, v]["et"]}) {v}' for u, v in zip(camino, camino[1:])))
+display(Markdown('**Camino crítico:** ' + '; '.join(cadenas) + '.'))
+
+# %% [markdown]
+# Para saber qué pasa con el plazo si una actividad crítica se alarga (o se acorta), se repite el cálculo con su duración cambiada en un día. Con relaciones FC el plazo se mueve lo mismo que la actividad; con CC, FF o CF puede no moverse, o incluso moverse al revés.
+
+# %%
+def _T_con(a, delta):
+    dd = datos_proyecto.copy(); dd.loc[a, 'duration'] = int(dd.loc[a, 'duration']) + delta
+    return calendario_pdm(dd, relaciones)[2] if dd.loc[a, 'duration'] > 0 else None
+sens = pd.DataFrame({'duración': [int(_d[a]) for a in criticas],
+                     'T si se alarga 1 día': [_T_con(a, 1) for a in criticas],
+                     'T si se acorta 1 día': [_T_con(a, -1) for a in criticas]}, index=criticas)
+display(sens)
+_no_retrasa = [a for a in criticas if sens.loc[a, 'T si se alarga 1 día'] <= duracion_pdm]
+_al_reves = [a for a in criticas if sens.loc[a, 'T si se alarga 1 día'] < duracion_pdm]
+_no_adelanta = [a for a in criticas if sens.loc[a, 'T si se acorta 1 día'] is not None and sens.loc[a, 'T si se acorta 1 día'] >= duracion_pdm]
+_solapes = rel_crit[(rel_crit['activa'] == 'sí') & rel_crit['type'].isin(['CC', 'FF', 'CF'])]
+_txt = ('Relaciones activas del camino crítico que no son fin-comienzo: ' + lista_y([f'{r.predecessor}→{r.successor} ({r.type}+{r.lag})' for r in _solapes.itertuples()]) + '. '
+        if len(_solapes) else 'Todas las relaciones activas del camino crítico son FC. ')
+if _no_retrasa:
+    _txt += (f'**Respuesta:** {lista_y(_no_retrasa)} {"es crítica" if len(_no_retrasa) == 1 else "son críticas"} sin estar entera{"s" if len(_no_retrasa) > 1 else ""} en el camino crítico: '
+             f'si se alarga{"n" if len(_no_retrasa) > 1 else ""} un día el plazo no se retrasa (sigue en {duracion_pdm} días o menos)'
+             + (f'; alargar {lista_y(_al_reves)} incluso lo acorta, porque su relación CF/FF fija su *fin* y, al ser más larga, puede empezar antes' if _al_reves else '')
+             + '. Su criticidad viene sólo de su inicio o sólo de su fin (la paradoja del PDM).')
+else:
+    _txt += f'**Respuesta:** todas las actividades críticas lo son enteras: alargar cualquiera de ellas un día retrasa el plazo a {duracion_pdm + 1} días.'
+if _no_adelanta:
+    _txt += f' Acortar {lista_y(_no_adelanta)} un día no adelanta el fin del proyecto.'
+Markdown(_txt)
 
 # %% [markdown]
 # ## Apartado 4
@@ -366,15 +424,36 @@ duracion_fc = proyecto_fc.duration(tabla_fc['duration'])
 calendario_fc = proyecto_fc.calendar(tabla_fc['duration'])
 comparacion = pd.DataFrame({'ES (PDM)': calendario['ES'], 'ES (todo FC+0)': calendario_fc['inicio_mas_temprano'], 'H_total (PDM)': calendario['H_total'], 'H_total (todo FC+0)': calendario_fc['H_total']})
 display(comparacion)
-Markdown(f'''Con todas las relaciones FC + 0 el proyecto dura {duracion_fc} días frente a {duracion_pdm} con PDM. Las relaciones CC y FF permiten solapar actividades (acortan); los desfases positivos en FC son esperas obligadas (alargan); una CF con desfase grande obliga a que la sucesora no termine demasiado pronto, lo que puede retrasarla respecto al FC clásico. El efecto neto depende de cuáles de ellas están en el camino crítico.''')
+display(explica_camino_critico(proyecto_fc, tabla_fc['duration'], 'días'))
+
+# %% [markdown]
+# Para ver qué relaciones acortan y cuáles alargan el proyecto, se cambia cada relación que no es FC + 0, una a una, por FC + 0 (las demás se dejan como están) y se recalcula la duración PDM: si con FC + 0 el proyecto dura más, esa relación lo acortaba; si dura menos, lo alargaba.
+
+# %%
+efectos = []
+for i, r in relaciones.iterrows():
+    if r['type'] == 'FC' and int(r['lag']) == 0:
+        continue
+    rel2 = relaciones.copy(); rel2.loc[i, 'type'] = 'FC'; rel2.loc[i, 'lag'] = 0
+    T2 = calendario_pdm(datos_proyecto, rel2)[2]
+    efectos.append({'relación': f"{r['predecessor']}→{r['successor']} ({r['type']}+{r['lag']})", 'T con esa relación como FC+0': T2,
+                    'efecto de la relación sobre T': duracion_pdm - T2})
+efectos = pd.DataFrame(efectos).set_index('relación')
+display(efectos)
+_acorta = [f'{k}: {plural(-v, "día")}' for k, v in efectos['efecto de la relación sobre T'].items() if v < 0]
+_alarga = [f'{k}: {plural(v, "día")}' for k, v in efectos['efecto de la relación sobre T'].items() if v > 0]
+_nada = [k for k, v in efectos['efecto de la relación sobre T'].items() if v == 0]
+Markdown(f'**Respuesta:** con todas las relaciones FC + 0 el proyecto dura {duracion_fc} días frente a {duracion_pdm} con PDM '
+         + (f'(PDM acorta {plural(duracion_fc - duracion_pdm, "día")}). ' if duracion_pdm < duracion_fc else f'(PDM alarga {plural(duracion_pdm - duracion_fc, "día")}). ' if duracion_pdm > duracion_fc else '(la misma duración). ')
+         + 'Difiere porque CC, FF y CF permiten solapar la sucesora con la predecesora y los desfases añaden esperas. '
+         + 'Acortan el proyecto: ' + ('; '.join(_acorta) or 'ninguna') + '. Lo alargan: ' + ('; '.join(_alarga) or 'ninguna') + '.' + (f' No influyen por separado (no fijan la fecha de ninguna actividad crítica, o hay otra relación que fija la misma fecha): {lista_y(_nada)}.' if _nada else '')
+         + ' Los efectos de cada relación por separado no tienen por qué sumar la diferencia total: al cambiar varias a la vez cambia el camino crítico.')
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo Roy equivalente con todas las relaciones FC + 0"
 #| label: fig-pertFc
-proyecto_fc.roy(durations=tabla_fc['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto_fc.display_roy_pasos(tabla_fc['duration'])
+

@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -212,7 +216,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El organismo de cuenca ha declarado la situación excepcional por sequía y el ayuntamiento, por bando, limita el consumo de las obras a **50 m³ por semana** por contador. El agua que falte puede traerse en camión cuba desde un punto de carga autorizado a 20 km, a 14.0 €/m³ (agua y porte). El retraso de la entrega tiene una penalidad de 6 k€ por semana. El reglamento del servicio sanciona la conexión no autorizada a un hidrante con 30 k€ y el corte del suministro de obra (2 semana(s) hasta restablecerlo); por la experiencia de la empresa, la probabilidad de que se detecte es del 50%.
+# El organismo de cuenca ha declarado la situación excepcional por sequía y el ayuntamiento, por bando, limita el consumo de las obras a **50 m³ por semana** por contador. El agua que falte puede traerse en camión cuba desde un punto de carga autorizado a 20 km, a 14.0 €/m³ (agua y porte). El retraso de la entrega tiene una penalidad de 6 k€ por semana. El reglamento del servicio sanciona la conexión no autorizada a un hidrante con 30 k€ y el corte del suministro de obra (2 semanas hasta restablecerlo); por la experiencia de la empresa, la probabilidad de que se detecte es del 50%.
 
 # %% [markdown]
 # > **De: Jefe de obra**
@@ -246,6 +250,24 @@ for item in sorted(dir()):
 
 # %%
 cuota, coste_cuba, km_cuba, precio_red, penalidad, multa, corte, p_deteccion = 50, 14.0, 20, 2.5, 6, 30, 2, 0.5
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -299,7 +321,10 @@ exceso = (cargas - cuota).clip(lower=0); exceso_niv = (cargas_niveladas - cuota)
 tabla = pd.DataFrame({'consumo inicial': cargas, 'exceso inicial': exceso, 'consumo nivelado': cargas_niveladas, 'exceso nivelado': exceso_niv})
 tabla.loc['Total'] = tabla.sum()
 display(tabla.astype(int).T)
-Markdown(f'''Pico de **{int(cargas.max())} m³** con inicios más tempranos y **{int(cargas_niveladas.max())} m³** tras nivelar, frente a la cuota de {cuota}; el exceso pasa de {int(exceso.sum())} a **{int(exceso_niv.sum())} m³** con la misma duración ({duracion} semanas): ''' + ('el plan nivelado **cabe** en la cuota.' if exceso_niv.sum() == 0 else 'el plan nivelado **no cabe** del todo; quedan semanas por encima de la cuota.'))
+movidas = desplazamientos[desplazamientos['desplazamientos'] > 0]['desplazamientos']
+txt_mov = lista_y(f'{a} {plural(int(v), "semana")} (holgura total {int(calendario.loc[a, "H_total"])})' for a, v in movidas.items())
+sem_exc = [int(c) for c in exceso.index if exceso[c] > 0]; sem_exc_niv = [int(c) for c in exceso_niv.index if exceso_niv[c] > 0]
+Markdown(f'''El exceso de cada semana es máx(0, consumo − {cuota}). Con inicios más tempranos el consumo supera la cuota en las semanas {lista_y(sem_exc)}: exceso = {suma_txt(exceso[exceso > 0])} m³. La nivelación desplaza {txt_mov}, con lo que Σc² baja de {int((cargas ** 2).sum())} a {int((cargas_niveladas ** 2).sum())}, sin cambiar la duración ni el volumen total ({int(cargas.sum())} m³).\n\n**Respuesta:** pico de **{int(cargas.max())} m³** con inicios más tempranos y **{int(cargas_niveladas.max())} m³** tras nivelar, frente a la cuota de {cuota}; el exceso pasa de {int(exceso.sum())} a **{int(exceso_niv.sum())} m³**: ''' + (f'''el plan nivelado **cabe** en la cuota sin alargar el proyecto ({duracion} semanas).''' if exceso_niv.sum() == 0 else f'''el plan nivelado **no cabe** del todo: quedan {suma_txt(exceso_niv[exceso_niv > 0])} m³ por encima de la cuota en las semanas {lista_y(sem_exc_niv)}.'''))
 
 # %% [markdown]
 # ## Apartado 2
@@ -321,7 +346,9 @@ opciones = pd.DataFrame({'plan inicial + cuba': [float(exceso.sum()) * coste_cub
 opciones.loc['coste (k€)'] = opciones.loc['agua en cuba (k€)'] + opciones.loc['penalidad o sanción (k€)']
 display(opciones.round(1))
 legales = opciones.loc['coste (k€)'].drop('hidrante (propuesta)')
-Markdown(f'''Con la asignación limitada a {cuota} m³ el proyecto dura **{duracion_limitada}** semanas ({retraso} de retraso, {retraso * penalidad} k€). La opción legal más barata es **{legales.idxmin()}** ({legales.min():.1f} k€). El hidrante «cuesta» {opciones.loc['coste (k€)', 'hidrante (propuesta)']:.1f} k€ esperados''' + (', más que la opción legal: mal negocio además de infracción.' if opciones.loc['coste (k€)', 'hidrante (propuesta)'] > legales.min() else ', menos que la legal: la respuesta B no depende de esta cuenta.'))
+mas_baratas = [c for c in legales.index if np.isclose(legales[c], legales.min())]
+esperado_h = opciones.loc['coste (k€)', 'hidrante (propuesta)']
+Markdown(f'''- Cuba con el plan inicial: {int(exceso.sum())} m³ × {coste_cuba} €/m³ / 1000 = {exceso.sum() * coste_cuba / 1000:.2f} k€.\n- Cuba con el plan nivelado: {int(exceso_niv.sum())} m³ × {coste_cuba} / 1000 = {exceso_niv.sum() * coste_cuba / 1000:.2f} k€.\n- Asignación con límite de {cuota} m³ por semana (lección 11): el proyecto dura **{duracion_limitada}** semanas, {plural(retraso, 'semana')} de retraso × {penalidad} = {retraso * penalidad} k€.\n- Hidrante: P(detección) × (multa + semanas de corte × penalidad) = {p_deteccion} × ({multa} + {corte} × {penalidad}) = **{esperado_h:.1f} k€** esperados''' + (', más que la opción legal: mal negocio además de infracción.' if esperado_h > legales.min() else ', menos que la legal: la respuesta B no depende de esta cuenta.') + '\n\n**Respuesta:** la opción legal más barata es ' + (f'''**nivelar**: el plan nivelado cabe en la cuota sin cuba ni retraso (0 k€); la asignación con límite también termina en {duracion_limitada} semanas, sin retraso.''' if exceso_niv.sum() == 0 and retraso == 0 else (f'''**nivelar**: el plan nivelado cabe en la cuota sin cuba ni retraso (0 k€).''' if exceso_niv.sum() == 0 else f'''**{lista_y(mas_baratas)}** ({legales.min():.2f} k€).''')))
 
 # %%
 #| fig-cap: "Gantt con asignación limitada a la cuota"
@@ -335,7 +362,9 @@ pinta_tikz(dibujo_asig)
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma y S16.** La cuota del bando es una limitación de uso del agua en situación excepcional (TRLA, arts. 55.2 y 58) y una condición del suministro de obra: es un **límite del plan**, con fecha y cifra, no un riesgo que se acepta pagando la penalidad. Si el plan cabe lo dice el diagrama de cargas: con inicios más tempranos el pico es de 90 m³ y el exceso de 80 m³; tras nivelar, 50 m³ y **cabe** en la cuota sin retraso. El hidrante **no es una opción de la tabla**: una toma no autorizada es infracción (TRLA, art. 116.3.b) y c); reglamento del servicio), y «si alguien pregunta es agua de la cuba» es una afirmación falsa (lección 19, C1). La opción correcta es la legal de menor coste: **nivelar**: el plan nivelado cabe en la cuota sin cuba ni retraso (0 k€). **S11.** La sequía sí es, además, un riesgo del proyecto: que el bando baje la cuota o cierre el punto de carga de las cubas tiene probabilidad e impacto, y entra en el registro. **S1.** El hidrante traslada el impacto a los demás usuarios de la red (ni siquiera compensa); la cuba **compensa** (el consumo es el mismo, pagado y traído de otra fuente); nivelar y asignar **minimizan** el pico sin cambiar el volumen; reducir el consumo (curado con láminas o filmógenos, reutilizar el agua de lavado) **evita** parte del impacto.
+# **Norma y S16.** La cuota del bando es una limitación de uso del agua en situación excepcional (TRLA, arts. 55.2 y 58) y una condición del suministro de obra: es un **límite del plan**, con fecha y cifra, no un riesgo que se acepta pagando la penalidad. Si el plan cabe lo dice el diagrama de cargas: con inicios más tempranos el pico es de 90 m³ y el exceso de 80 m³; tras nivelar, 50 m³ y **cabe** en la cuota sin retraso. El hidrante **no es una opción de la tabla**: una toma no autorizada es infracción (TRLA, art. 116.3.b) y c); reglamento del servicio), y «si alguien pregunta es agua de la cuba» es una afirmación falsa (lección 19, C1). La opción correcta es la legal de menor coste: **nivelar**, porque el plan nivelado cabe en la cuota sin cuba ni retraso (0 k€). **S11.** La sequía sí es, además, un riesgo del proyecto: que el bando baje la cuota o cierre el punto de carga de las cubas tiene probabilidad e impacto, y entra en el registro. **S1.** El hidrante traslada el impacto a los demás usuarios de la red (ni siquiera compensa); la cuba **compensa** (el consumo es el mismo, pagado y traído de otra fuente); nivelar y asignar **minimizan** el pico sin cambiar el volumen; reducir el consumo (curado con láminas o filmógenos, reutilizar el agua de lavado) **evita** parte del impacto.
+#
+# **Respuesta:** la cuota es un **límite del plan**; tras nivelar el plan **cabe** sin retraso; el hidrante **no** es una opción de la tabla (traslada el impacto); la cuba compensa, nivelar y asignar minimizan, y reducir el consumo evita.
 
 # %%
 preguntas_test = [

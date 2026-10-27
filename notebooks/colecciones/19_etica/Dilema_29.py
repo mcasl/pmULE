@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -272,14 +276,68 @@ def indicadores(seguimiento, calendario_plan, semana):
     return detalle, pd.Series({'PV': PV, 'EV': EV, 'AC': AC, 'CV': EV - AC, 'SV': EV - PV, 'CPI': EV / AC, 'SPI': EV / PV})
 
 # %%
-#| fig-cap: "Grafo PERT de la planificación"
-#| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
 
 # %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
+#| fig-cap: "Grafo PERT de la planificación"
+#| label: fig-pert
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
@@ -288,8 +346,11 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# **Notación.** BAC: presupuesto de cada actividad; PV (*planned value*): coste presupuestado del trabajo programado hasta la semana de control; EV (*earned value*): valor ganado, BAC × porcentaje realizado; AC (*actual cost*): coste real incurrido; CV = EV − AC (variación de coste) y SV = EV − PV (variación de plazo); CPI = EV / AC y SPI = EV / PV (índices de rendimiento del coste y del cronograma; menos de 1 es desfavorable); EAC = BAC / CPI (previsión del coste final si se mantiene el CPI) y VAC = BAC − EAC. PV y AC no dependen del método de medir el avance; EV sí, y por eso se calcula dos veces: con la columna `performed_informe` y con `performed_verificado`.
+
 # %%
-#| tbl-cap: "PV, EV y AC actividad a actividad con el avance del informe (EV = AC por construcción)"
+#| tbl-cap: "PV, EV y AC actividad a actividad con el avance del informe (avance = AC / BAC)"
 #| label: tbl-detalleInforme
 seg_informe = seguimiento[['actual_duration', 'AC']].assign(performed=seguimiento['performed_informe'])
 seg_verificado = seguimiento[['actual_duration', 'AC']].assign(performed=seguimiento['performed_verificado'])
@@ -303,15 +364,34 @@ detalle_inf[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'reali
 detalle_ver[['BAC', 'planificado hasta la semana', 'PV = BAC·fracción', 'realizado (%)', 'EV = BAC·%', 'AC']]
 
 # %%
+PV_txt = explica_suma(sin_ceros(detalle_ver['PV_i']), 'PV', 'k€', 1)
+EVi_txt = explica_suma(sin_ceros(detalle_inf['EV_i']), 'EV (informe)', 'k€', 1)
+EVv_txt = explica_suma(sin_ceros(detalle_ver['EV_i']), 'EV (verificado)', 'k€', 1)
+AC_txt = explica_suma(sin_ceros(seguimiento['AC']), 'AC', 'k€', 0)
+Markdown(f'''Totales en la semana {semana_control} (sumas de las columnas de las tablas):
+
+- {PV_txt}
+- {AC_txt}
+- {EVi_txt}
+- {EVv_txt}
+
+{explica_indicadores(ind_inf, BAC_total, '**Con el avance del informe:**')}
+
+{explica_indicadores(ind_ver, BAC_total, '**Con el avance verificado:**')}''')
+
+# %%
 #| tbl-cap: "Indicadores y previsión de coste final con las dos versiones"
 #| label: tbl-indicadores
-comparacion = pd.DataFrame({'informe (EV = AC)': ind_inf, 'verificado': ind_ver})
+comparacion = pd.DataFrame({'informe (avance = AC / BAC)': ind_inf, 'verificado': ind_ver})
 comparacion.loc['EAC = BAC / CPI'] = [BAC_total / ind_inf['CPI'], BAC_total / ind_ver['CPI']]
 comparacion.loc['VAC = BAC − EAC'] = BAC_total - comparacion.loc['EAC = BAC / CPI']
 comparacion.round(3)
 
-# %% [markdown]
-# Con el informe, SPI = 1.11 («en plazo o adelantados») y CPI = 1,00; con el avance verificado, SPI = 0.76 y CPI = 0.69, y el coste final previsto pasa de 450 k€ a 655 k€ (205 k€ de sobrecoste). La diferencia está sólo en EV: las actividades en curso (C, D) han gastado más de lo que han avanzado.
+# %%
+en_curso = [a for a in seguimiento.index if 0 < seguimiento.loc[a, 'performed_verificado'] < 100]
+sobregasto = [a for a in en_curso if seguimiento.loc[a, 'AC'] > detalle_ver.loc[a, 'EV_i'] + 0.05]
+eac_v = BAC_total / ind_ver['CPI']
+Markdown(f'''**Respuesta.** Con el informe, SPI = {ind_inf["SPI"]:.2f} y CPI = {ind_inf["CPI"]:.3f} (prácticamente 1: el proyecto parece en plazo y en presupuesto) y EAC = {BAC_total / ind_inf["CPI"]:.1f} k€. Con el avance verificado, SPI = {ind_ver["SPI"]:.2f} y CPI = {ind_ver["CPI"]:.2f} ({'retrasado' if ind_ver['SPI'] < 1 else 'en plazo'} y {'con sobrecoste' if ind_ver['CPI'] < 1 else 'sin sobrecoste'}), y el coste final previsto pasa de {BAC_total:.0f} a **{eac_v:.1f} k€** ({eac_v - BAC_total:.1f} k€ de desviación, VAC = {BAC_total - eac_v:.1f} k€). PV y AC son iguales en las dos versiones; sólo cambia EV, en {ind_inf["EV"] - ind_ver["EV"]:.1f} k€, y la diferencia procede de las actividades en curso {lista_y(sobregasto)}, que han gastado más de lo que han avanzado.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -319,8 +399,18 @@ comparacion.round(3)
 # %%
 display(Markdown(pregunta_2))
 
-# %% [markdown]
-# Si el porcentaje realizado se define como AC / BAC, entonces EV = BAC · (AC / BAC) = AC para cada actividad, y por tanto CPI = EV / AC = 1 siempre, con independencia de lo que se haya gastado de más. El «porcentaje realizado» del informe no mide avance: mide **consumo de presupuesto**. Y el SPI del informe compara lo gastado con lo planificado (AC / PV): una actividad que gasta de más aparece como adelantada. El método anula por construcción las dos señales que el valor ganado existe para dar.
+# %%
+redondeo = [a for a in seguimiento.index if abs(detalle_inf.loc[a, 'EV_i'] - seguimiento.loc[a, 'AC']) > 0.05]
+x = max(en_curso, key=lambda a: detalle_inf.loc[a, 'EV_i'] - detalle_ver.loc[a, 'EV_i'])
+bac_x, ac_x = float(datos_proyecto.loc[x, 'BAC']), float(seguimiento.loc[x, 'AC'])
+texto_redondeo = (f'''En los datos el CPI del informe sale {ind_inf["CPI"]:.3f} y no exactamente 1 sólo porque el porcentaje se redondea a un entero ({', '.join(f"{a}: {seguimiento.loc[a, 'AC']:.0f}/{datos_proyecto.loc[a, 'BAC']:.0f} = {100 * seguimiento.loc[a, 'AC'] / datos_proyecto.loc[a, 'BAC']:.1f} % → {seguimiento.loc[a, 'performed_informe']} %" for a in redondeo)}).''' if redondeo else 'En los datos, EV = AC actividad a actividad y el CPI del informe es exactamente 1.')
+Markdown(f'''Si el porcentaje realizado se define como AC / BAC, para cada actividad EV = BAC · (AC / BAC) = AC; sumando, EV = AC y CPI = EV / AC = 1, se haya gastado lo que se haya gastado. {texto_redondeo}
+
+Por ejemplo, {x}: el informe declara {seguimiento.loc[x, "performed_informe"]} % = {ac_x:.0f} / {bac_x:.0f}, luego EV = {bac_x:.0f} · {seguimiento.loc[x, "performed_informe"] / 100:.2f} = {detalle_inf.loc[x, "EV_i"]:.1f} ≈ AC = {ac_x:.0f}; el avance verificado es {seguimiento.loc[x, "performed_verificado"]} %, es decir, EV = {detalle_ver.loc[x, "EV_i"]:.1f} k€.
+
+Por la misma razón, el SPI del informe es EV / PV ≈ AC / PV = {ind_inf["AC"]:.1f} / {ind_inf["PV"]:.1f} = {ind_inf["AC"] / ind_inf["PV"]:.3f}: compara lo gastado con lo planificado, y una actividad que gasta de más aparece como adelantada.
+
+**Respuesta.** El CPI del método del informe vale 1 por construcción (EV = AC). Ese «porcentaje realizado» no mide avance físico: mide **consumo de presupuesto** (AC / BAC). El método anula las dos señales que el valor ganado existe para dar: el sobrecoste (CPI {ind_ver["CPI"]:.2f} verificado) y el retraso (SPI {ind_ver["SPI"]:.2f} verificado).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -328,16 +418,20 @@ display(Markdown(pregunta_2))
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C1 (afirmación falsa).** El informe afirma un avance que el jefe de proyecto sabe que no es el real («sé que lo que hay en obra va algo más lento»); no es una estimación discutible sino un dato que se sabe falso, calculado con un método elegido porque da el resultado deseado. También **C3**: los índices son cifras «ciertas» (salen de los datos) presentadas en un marco —un método de medida que no mide avance— que lleva al comité a una conclusión equivocada. Para cumplir el criterio, el informe debe contener los indicadores con el avance verificado (SPI 0.76, CPI 0.69, EAC 655 k€) y, si se quiere, la versión del informe como «consumo de presupuesto», con su nombre.
+# %%
+Markdown(f'''**Criterio C1 (afirmación falsa).** El jefe de proyecto sabe que el avance real es menor («sé que lo que hay en obra va algo más lento») y que con el avance verificado el SPI es {ind_ver["SPI"]:.2f} y el CPI {ind_ver["CPI"]:.2f} («con tu versión nos ponen en rojo»). Aun así, quiere comunicar al comité un valor ganado de {ind_inf["EV"]:.1f} k€ cuando el verificado es {ind_ver["EV"]:.1f} k€. No es una estimación discutible: el método se elige porque da el resultado deseado.
+
+**Criterio C3 (información fuera de contexto).** Los índices del informe salen de los datos («ciertos» aritméticamente), pero se presentan como índices de valor ganado cuando el método no mide avance; el comité, que «sólo mira el SPI y el CPI», concluiría que el proyecto va en plazo y en presupuesto.
+
+**Respuesta.** El informe tal como se quiere enviar incumple **C1** (comunica un avance que se sabe falso) y **C3** (índices en un marco que lleva a una conclusión equivocada). Para cumplir los criterios debe contener los indicadores con el avance verificado: EV {ind_ver["EV"]:.1f} k€, SPI {ind_ver["SPI"]:.2f}, CPI {ind_ver["CPI"]:.2f}, EAC {eac_v:.1f} k€ y VAC {BAC_total - eac_v:.1f} k€; la versión del gasto sólo puede aparecer con su nombre real, «consumo de presupuesto» ({ind_inf["AC"]:.0f} de {BAC_total:.0f} k€).''')
 
 # %%
 preguntas_test = [
-    ('Con el método «avance = gastado / presupuesto», el CPI vale…', ['exactamente 1 siempre', 'menos de 1 si hay sobrecoste', 'más de 1 si hay sobrecoste', 'lo mismo que con el avance físico'],
+    ('Con el método «avance = gastado / presupuesto», el CPI vale…', ['1 por construcción (salvo redondeo)', 'menos de 1 si hay sobrecoste', 'más de 1 si hay sobrecoste', 'lo mismo que con el avance físico'],
      'EV = BAC·(AC/BAC) = AC, luego CPI = EV/AC = 1 sea cual sea el gasto.'),
-    ('Enviar al comité un avance que se sabe inferior al real es, según los criterios de la lección…', ['C1, afirmación falsa', 'C4, retención de información', 'C8, reserva declarada', 'ningún criterio: es una estimación'],
+    ('Enviar al comité un avance que se sabe superior al real es, según los criterios de la lección…', ['C1, afirmación falsa', 'C4, retención de información', 'C8, reserva declarada', 'ningún criterio: es una estimación'],
      'Es un dato que quien lo comunica sabe falso; no una omisión ni una estimación.'),
-    ('¿Qué indicador cambia entre las dos versiones del informe?', ['sólo EV (y con él CPI y SPI)', 'sólo AC', 'PV y AC', 'ninguno'],
+    ('¿Qué indicador cambia entre las dos versiones del informe?', ['sólo EV (y con él CV, SV, CPI, SPI y EAC)', 'sólo AC', 'PV y AC', 'ninguno'],
      'PV depende del plan y AC de lo gastado; el porcentaje de avance sólo entra en EV.'),
 ]
 import os
@@ -367,5 +461,14 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Un camino defendible: no firmar el informe con el método del gasto; proponer al jefe de proyecto enviar el avance verificado con una nota de método (quién lo midió y cómo) y un plan de recuperación para las actividades en curso; si se niega, hacer constar por escrito la discrepancia (73 k€ de valor declarado y no ejecutado) y elevarla a quien corresponda en la organización. Al comité: los índices verificados, el EAC de 655 k€ y las medidas. Lo que no cabe: firmar y «ya lo corregiremos el mes que viene» (publicidad: ¿defendería ese informe si el comité supiera cómo se ha calculado?).
+# %%
+rubrica_caso(
+    [('Comité', f'decide con SPI {ind_inf["SPI"]:.2f} y CPI {ind_inf["CPI"]:.2f} en lugar de {ind_ver["SPI"]:.2f} y {ind_ver["CPI"]:.2f}; no puede reaccionar a un sobrecoste previsto de {eac_v - BAC_total:.1f} k€'),
+     ('Jefe de proyecto', 'evita «ponerse en rojo» este mes, a cambio de un informe que se desmonta en cuanto alguien mire las actividades en curso'),
+     ('Usted (firma el informe)', 'su firma avala un EV que sabe falso'),
+     ('Responsables de ' + lista_y(sobregasto), 'sin el aviso pierden el tiempo de corregir el sobregasto mientras aún hay margen')],
+    [('Firmar el informe con avance = AC / BAC (propuesta)', 'no hay norma legal en juego', 'no: el comité no aceptaría el método si lo conociera', 'no: usted no querría decidir con ese informe'),
+     ('Enviar el avance verificado con nota de método y plan de recuperación', 'sí', 'sí', 'sí'),
+     ('Enviar las dos versiones, cada una con su nombre (avance físico y consumo de presupuesto)', 'sí', 'sí, si el comité ve cuál mide avance', 'sí'),
+     ('No firmar y elevar la discrepancia por escrito si el jefe de proyecto se niega', 'sí', 'sí', 'sí, aunque tensa la relación')],
+    f'''proponer al jefe de proyecto enviar el avance verificado con una nota de método (quién lo midió y cómo) y un plan de recuperación para {lista_y(sobregasto)}; si se niega, no firmar, dejar constancia escrita de la discrepancia ({ind_inf["EV"] - ind_ver["EV"]:.1f} k€ de valor declarado y no ejecutado) y elevarla a quien corresponda en la organización. Al comité: SPI {ind_ver["SPI"]:.2f}, CPI {ind_ver["CPI"]:.2f}, EAC {eac_v:.1f} k€ y las medidas. Lo que no cabe: firmar y «ya lo corregiremos el mes que viene».''')

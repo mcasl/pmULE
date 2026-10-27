@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -243,8 +247,12 @@ display(Markdown(pregunta_1))
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
-print('Iniciales:', ', '.join(sorted(prelaciones.start_activities)), '  Finales:', ', '.join(sorted(prelaciones.end_activities)))
-datos_proyecto[['predecessor', 'duration']]
+display(datos_proyecto[['predecessor', 'duration']])
+_ini, _fin = sorted(prelaciones.start_activities), sorted(prelaciones.end_activities)
+Markdown(f'**Respuesta:** el cuadro de prelaciones y las duraciones son los de la tabla. '
+         f'{"Es inicial" if len(_ini) == 1 else "Son iniciales"} {lista_y(_ini)}: no {"recibe" if len(_ini) == 1 else "reciben"} ninguna flecha y '
+         f'{"empieza" if len(_ini) == 1 else "empiezan"} en la semana 0. {"Es final" if len(_fin) == 1 else "Son finales"} {lista_y(_fin)}: '
+         f'no salen flechas de {"ella" if len(_fin) == 1 else "ellas"}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -261,7 +269,79 @@ display(Markdown(pregunta_2))
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
-Markdown(f'''El PERT representa las actividades como arcos, y un arco sólo puede salir de un nodo: cuando dos actividades comparten *algunas* predecesoras pero no todas, hace falta una ficticia para no inventar prelaciones. El Gantt no tiene ese problema porque dibuja cada prelación como una flecha independiente. Este grafo necesita {len(proyecto.dummies)} ficticia(s).''')
+def explica_ficticias(proyecto, prelaciones):
+    """Una línea por ficticia del PERT: nodos que une, prelación que transmite y por qué no
+    basta con hacer empezar las sucesoras en el nodo donde terminan las predecesoras."""
+    G = proyecto.pert_graph
+    pred = {a: set(ps) for a, ps in prelaciones.immediate_predecessor.items()}
+    R = nx.DiGraph([(p, a) for a, ps in pred.items() for p in ps])
+    R.add_nodes_from(pred)
+    anc = {a: nx.ancestors(R, a) for a in pred}
+    def entran(nodo, salvo=None):
+        acts = set()
+        for i, _, d in G.in_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= entran(i) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def salen(nodo, salvo=None):
+        acts = set()
+        for _, j, d in G.out_edges(nodo, data=True):
+            if d['activity'] != salvo:
+                acts |= salen(j) if d['activity'].startswith('@') else {d['activity']}
+        return acts
+    def arcos_reales(nodo, sentido):
+        aristas = G.in_edges(nodo, data=True) if sentido == 'in' else G.out_edges(nodo, data=True)
+        return {(u if sentido == 'in' else v): d['activity'] for u, v, d in aristas if not d['activity'].startswith('@')}
+    pl = lambda acts, s, p: s if len(acts) == 1 else p
+    lineas = []
+    arcos = sorted(proyecto.nodes_from_edges.items(), key=lambda kv: (int(kv[1][0]), int(kv[1][1])))
+    for nombre, (i, j) in arcos:
+        if not nombre.startswith('@'):
+            continue
+        antes, despues = sorted(entran(i)), sorted(salen(j))
+        # prelaciones inmediatas del cuadro que pasan por la ficticia (las demás ya se deducen de otras)
+        pares = [(x, y) for x in antes for y in despues if x in pred[y]] or [(x, y) for x in antes for y in despues]
+        despues = sorted({y for _, y in pares})
+        grupos = {}
+        for y in despues:
+            grupos.setdefault(tuple(sorted(x for x, z in pares if z == y)), []).append(y)
+        transmite = '; '.join(f'{lista_y(xs)} {pl(xs, "precede", "preceden")} a {lista_y(ys)}' for xs, ys in grupos.items())
+        # Si los nodos i y j fueran uno solo, lo que llega a j precedería a lo que sale de i
+        llegan_j, salen_i = sorted(entran(j, salvo=nombre)), sorted(salen(i, salvo=nombre))
+        falsas = [(x, y) for y in salen_i for x in llegan_j if x not in anc[y]]
+        if falsas:
+            x_s = sorted({x for x, _ in falsas})
+            y_s = sorted({y for _, y in falsas})
+            directas_j, directas_i = set(arcos_reales(j, 'in').values()), set(arcos_reales(i, 'out').values())
+            llega = (f'{pl(x_s, "llega", "llegan")} al nodo {j}' if set(x_s) <= directas_j else
+                     f'{pl(x_s, "llega", "llegan")} al nodo {j} (directamente o por otra ficticia)')
+            sale = (f'{pl(y_s, "sale", "salen")} de ese nodo' if set(y_s) <= directas_i else
+                    f'{pl(y_s, "empieza", "empiezan")} a partir de ese nodo (directamente o tras otra ficticia)')
+            motivo = (f'{lista_y(despues)} {pl(despues, "espera", "esperan")} además a {lista_y(x_s)}, que {llega}; '
+                      f'si {lista_y(despues)} {pl(despues, "saliera", "salieran")} del nodo {i}, {lista_y(x_s)} '
+                      f'{pl(x_s, "precedería", "precederían")} también a {lista_y(y_s)}, que {sale} y no '
+                      f'{pl(y_s, "depende", "dependen")} de {pl(x_s, "ella", "ellas")}')
+        else:
+            gemelas = None
+            ini_i, ini_j = arcos_reales(i, 'in'), arcos_reales(j, 'in')
+            fin_i, fin_j = arcos_reales(i, 'out'), arcos_reales(j, 'out')
+            for u in sorted(set(ini_i) & set(ini_j)):
+                gemelas = gemelas or (ini_i[u], ini_j[u], u, j, f'empiezan en el mismo nodo ({u})')
+            for v in sorted(set(fin_i) & set(fin_j)):
+                gemelas = gemelas or (fin_i[v], fin_j[v], i, v, f'terminan en el mismo nodo ({v})')
+            if gemelas:
+                a, b, n1, n2, verbo = gemelas
+                a, b = sorted([a, b])
+                motivo = (f'{a} y {b} {verbo}; sin la ficticia irían '
+                          f'las dos del nodo {n1} al {n2}, dos arcos entre el mismo par de nodos que no se podrían distinguir')
+            else:
+                motivo = 'sin ella habría que fundir los nodos y se perdería la estructura del grafo'
+        lineas.append(f'- Ficticia {i} → {j}: transmite que {transmite}. Hace falta porque {motivo}.')
+    return lineas
+
+# %%
+_lineas = explica_ficticias(proyecto, prelaciones)
+Markdown(f'''**Respuesta:** el PERT representa las actividades como arcos y las prelaciones compartiendo nodos: cuando dos actividades comparten *algunas* predecesoras pero no todas (o tendrían los mismos dos nodos), hace falta una ficticia para no inventar prelaciones. El Gantt no tiene ese problema porque dibuja cada prelación como una flecha independiente. Este grafo necesita {plural(len(_lineas), 'ficticia')}:''' + '\n\n' + '\n'.join(_lineas))
 
 # %% [markdown]
 # ## Apartado 3
@@ -281,6 +361,12 @@ proyecto.display_calendario(datos_proyecto['duration'])
 _g, _dibujo = proyecto.gantt(datos_proyecto, 'duration', holguras=True, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))
 pinta_tikz(_dibujo)
 
+# %%
+_es = ', '.join(f"{a} {int(calendario.loc[a, 'inicio_mas_temprano'])}" for a in ordena_ruta(calendario.index, calendario))
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas'))
+Markdown(f'**Respuesta:** los inicios más tempranos calculados ({_es}) son los inicios de las barras del Gantt del '
+         f'enunciado, y las actividades de holgura total nula son las unidas por flechas rojas.')
+
 # %% [markdown]
 # ## Apartado 4
 
@@ -295,7 +381,25 @@ lectura = pd.DataFrame({
     'mín ES de sus sucesoras (o fin)': [int(calendario.loc[suc[a], 'inicio_mas_temprano'].min()) if suc[a] else fin for a in calendario.index],
     'H_libre leída = hueco': [int((calendario.loc[suc[a], 'inicio_mas_temprano'].min() if suc[a] else fin) - calendario.loc[a, 'fin_mas_temprano']) for a in calendario.index],
     'H_libre calculada': calendario['H_libre'], 'H_total calculada': calendario['H_total']})
+lectura.columns = ['EF (fin más temprano)', 'mín ES de sus sucesoras (o fin)', 'H_libre leída = hueco', 'H_libre calculada', 'H_total calculada']
 lectura
 
 # %% [markdown]
-# La holgura libre es el hueco visible entre el fin de la barra y el inicio de la sucesora más próxima. La holgura total no se ve en un Gantt de inicios tempranos: requiere saber cuánto podrían retrasarse *también* las sucesoras, es decir, el paso hacia atrás (o el Gantt de inicios tardíos). Sólo coinciden cuando la sucesora es crítica.
+# La holgura libre es el hueco visible entre el fin de la barra y el inicio de la sucesora más próxima. La holgura total no se ve en un Gantt de inicios tempranos: requiere saber cuánto podrían retrasarse *también* las sucesoras, es decir, el paso hacia atrás (o el Gantt de inicios tardíos). Se obtiene sumando al hueco la holgura total de la sucesora: H_total = mín sobre las sucesoras de (ES + H_total) − EF.
+
+# %%
+_l = []
+for a in ordena_ruta(calendario.index[calendario['H_total'] > 0], calendario):
+    ef, ht = int(calendario.loc[a, 'fin_mas_temprano']), int(calendario.loc[a, 'H_total'])
+    if suc[a]:
+        _c = ', '.join(f"{b}: {int(calendario.loc[b, 'inicio_mas_temprano'])} + {int(calendario.loc[b, 'H_total'])}" for b in sorted(suc[a]))
+        _l.append(f'- {a}: hueco {int(calendario.loc[a, "H_libre"])}; H_total = mín({_c}) − {ef} = {ht}')
+    else:
+        _l.append(f'- {a} (final): hueco hasta el fin = H_total = {fin} − {ef} = {ht}')
+_dif = [a for a in calendario.index if calendario.loc[a, 'H_total'] != calendario.loc[a, 'H_libre']]
+_ok = (lectura['H_libre leída = hueco'] == lectura['H_libre calculada']).all()
+Markdown('\n'.join(_l) + '\n\n**Respuesta:** la holgura libre leída como hueco '
+         + ('coincide con la calculada en todas las actividades. ' if _ok else 'NO coincide con la calculada en alguna actividad. ')
+         + 'La holgura total sólo se puede leer en el Gantt temprano cuando coincide con la libre '
+         '(la sucesora que empieza antes es crítica, o la actividad es final)'
+         + (f'; en {lista_y(_dif)} es mayor, y hace falta el paso hacia atrás o el Gantt de inicios tardíos.' if _dif else '; aquí ocurre en todas.'))

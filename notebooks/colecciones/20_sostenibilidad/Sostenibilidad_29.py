@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -242,6 +246,24 @@ for item in sorted(dir()):
 
 # %%
 ventana, penalidad = (9, 22), 12
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -273,7 +295,8 @@ tabla = calendario.loc[afectadas, ['inicio_mas_temprano', 'fin_mas_temprano', 'H
 tabla['semanas en la ventana'] = [semanas_en_ventana(int(r['inicio_mas_temprano']), int(datos_proyecto.loc[a, 'duration'])) for a, r in tabla.iterrows()]
 tabla['espera para empezar en la semana ' + str(ventana[1] + 1)] = [max(0, ventana[1] - int(r['inicio_mas_temprano'])) if r['semanas en la ventana'] > 0 else 0 for a, r in tabla.iterrows()]
 tabla['cabe en la holgura'] = tabla.iloc[:, -1] <= tabla['H_total']
-tabla
+display(limpia_tabla(tabla.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'fin_mas_temprano': 'fin más temprano', 'H_total': 'holgura total'})))
+Markdown(f'''Una actividad que empieza en el instante ES y dura d ocupa las semanas ES + 1 a ES + d; las que caen en la ventana (semanas {ventana[0]} a {ventana[1]}) son máx(0, mín(ES + d, {ventana[1]}) − máx(ES, {ventana[0] - 1})). Si ocupa alguna, para respetar la condición debe empezar en la semana {ventana[1] + 1} (instante {ventana[1]}): espera = {ventana[1]} − ES, que no retrasa el proyecto si cabe en su holgura total.''')
 
 # %%
 #| tbl-cap: "Esperas del plan (recalculando el calendario tras cada una)"
@@ -297,7 +320,9 @@ resumen = pd.DataFrame({'espera (semanas)': espera[afectadas], 'inicio real': ca
                         'fin': calendario_dia.loc[afectadas, 'fin_mas_temprano']})
 display(resumen)
 antes = [a for a in afectadas if espera[a] == 0 and semanas_en_ventana(int(calendario.loc[a, 'inicio_mas_temprano']), int(datos_proyecto.loc[a, 'duration'])) == 0]
-Markdown(f'''Terminan antes de la ventana: {', '.join(antes)}. Esperan hasta la semana {ventana[1] + 1}: {', '.join(a for a in afectadas if espera[a] > 0)}. Con las esperas el proyecto dura **{duracion_dia}** semanas frente a {duracion} del plan.''')
+esperan = [a for a in afectadas if espera[a] > 0]
+cmp = lista_y(f'{a} espera {plural(int(espera[a]), "semana")} con una holgura total de {int(tabla.loc[a, "H_total"])} (' + ('cabe' if espera[a] <= tabla.loc[a, 'H_total'] else 'no cabe') + ')' for a in esperan)
+Markdown(f'''Las esperas se añaden una a una, por orden de inicio, recalculando el calendario después de cada una (una espera puede mover el inicio de otra afectada). ''' + f'''{cmp[0].upper() + cmp[1:]}; el proyecto pasa a durar **{duracion_dia}** semanas (camino crítico {criticas_txt(proyecto, duraciones_dia)}, contando la espera dentro de la barra de cada actividad).\n\n**Respuesta:** terminan antes de la ventana {lista_y(antes) if antes else 'ninguna'}; la ocupan {lista_y(esperan)}, que esperan hasta la semana {ventana[1] + 1} ({lista_y(f'{a} {plural(int(espera[a]), "semana")}' for a in esperan)}). Con las esperas el proyecto dura **{duracion_dia}** semanas frente a {duracion} del plan.''')
 
 # %%
 #| fig-cap: "Gantt del plan con las esperas (la barra incluye la espera de cada actividad afectada)"
@@ -326,11 +351,16 @@ def inicio_valido(x):
 adelanto = next(x for x in range(0, 60) if inicio_valido(x))
 retraso_inicio = next(y for y in range(0, 60) if inicio_valido(-y))
 planes = pd.DataFrame({'esperas selectivas': [duracion_dia, retraso, retraso * penalidad],
-                       f'adelantar el inicio {adelanto} semanas': [duracion, -adelanto, 0],
+                       f'adelantar el inicio {adelanto} semanas': [duracion - adelanto, -adelanto, 0],
                        f'retrasar el inicio {retraso_inicio} semanas': [duracion + retraso_inicio, retraso_inicio, retraso_inicio * penalidad]},
                       index=['fin respecto al inicio previsto (semana)', 'retraso de la entrega (semanas)', 'penalidad (k€)'])
 display(planes)
-Markdown(f'''Esperar sólo en las actividades afectadas retrasa la entrega **{retraso}** semanas ({retraso * penalidad} k€); empezar la obra {adelanto} semanas antes (si la autorización y el contrato lo permiten) la adelanta; empezar {retraso_inicio} semanas después, con todas las actividades afectadas tras la ventana, cuesta {retraso_inicio * penalidad} k€. Son los tres planes posibles; «hacerlo igual» no es el cuarto.''')
+def fechas(x):
+    def sem(a):
+        i, f = int(calendario.loc[a, 'inicio_mas_temprano']) - x + 1, int(calendario.loc[a, 'fin_mas_temprano']) - x
+        return f'{a} (semana {i})' if i == f else f'{a} (semanas {i} a {f})'
+    return lista_y(sem(a) for a in afectadas) + (' —las semanas 0 o negativas son del año anterior, antes del 1 de enero—' if any(int(calendario.loc[a, 'inicio_mas_temprano']) - x + 1 <= 0 for a in afectadas) else '')
+Markdown(f'''Se prueba a desplazar el proyecto entero x semanas (sin esperas): con x semanas de adelanto cada afectada ocupa las semanas ES − x + 1 a EF − x, y basta con que todas terminen antes de la semana {ventana[0]} o empiecen después de la {ventana[1]}. El menor adelanto que lo consigue es **{plural(adelanto, 'semana')}**: {fechas(adelanto)}. El menor retraso del inicio es **{plural(retraso_inicio, 'semana')}**: {fechas(-retraso_inicio)}.\n\nRetraso de la entrega y penalidad: esperas, {duracion_dia} − {duracion} = {retraso} semanas × {penalidad} = {retraso * penalidad} k€; adelantar el inicio, ninguno (la obra termina en la semana {duracion - adelanto} contada desde el inicio previsto); retrasar el inicio, {retraso_inicio} × {penalidad} = {retraso_inicio * penalidad} k€.\n\n**Respuesta:** el plan con esperas retrasa la entrega {plural(retraso, 'semana')} ({retraso * penalidad} k€). El más barato es **adelantar el inicio {plural(adelanto, 'semana')}** (0 k€), si la autorización y el contrato permiten empezar antes; si no, ''' + (f'''las esperas ({retraso * penalidad} k€) son mejores que retrasar el inicio ({retraso_inicio * penalidad} k€)''' if retraso <= retraso_inicio else f'''retrasar el inicio ({retraso_inicio * penalidad} k€) es mejor que las esperas ({retraso * penalidad} k€)''') + '. «Hacerlo igual» no es un cuarto plan.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -339,7 +369,9 @@ Markdown(f'''Esperar sólo en las actividades afectadas retrasa la entrega **{re
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma.** La ventana es una condición de la DIA incorporada a la autorización: ejecutar los trabajos dentro de ella es incumplir la condición (infracción grave, Ley 21/2013, art. 55.3.c) con independencia de que aparezca un nido; y si aparece, molestar a la fauna en reproducción o mover el nido está prohibido con o sin biólogo (Ley 42/2007, art. 54.5): el biólogo puede documentar el daño, no autorizarlo. **S12.** La ventana no tiene probabilidad, tiene fecha: es una **restricción del cronograma** (inicio no antes de la semana 23 o fin no después de la 8) de las actividades afectadas, no un riesgo que se acepta pagando 72 k€. Las actividades que deben reprogramarse las decide el calendario, no la opinión: con inicios más tempranos ocupan la ventana **E, G**; A terminan antes y no se tocan. «No está en el contrato con el cliente» es irrelevante: está en la autorización sin la cual no hay obra, y el cliente la conoce. **S11.** Lo que sí es un riesgo del proyecto es que el órgano ambiental amplíe la ventana, que un nido aparezca fuera de ella o que el tiempo retrase lo que debía terminar antes: eso entra en el registro con su probabilidad, su impacto y su respuesta (empezar antes, reordenar, reserva).
+# **Norma.** La ventana es una condición de la DIA incorporada a la autorización: ejecutar los trabajos dentro de ella es incumplir la condición (infracción grave, Ley 21/2013, art. 55.3.c) con independencia de que aparezca un nido; y si aparece, molestar a la fauna en reproducción o mover el nido está prohibido con o sin biólogo (Ley 42/2007, art. 54.5): el biólogo puede documentar el daño, no autorizarlo. **S12.** La ventana no tiene probabilidad, tiene fecha: es una **restricción del cronograma** (inicio no antes de la semana 23 o fin no después de la 8) de las actividades afectadas, no un riesgo que se acepta pagando 72 k€. Las actividades que deben reprogramarse las decide el calendario, no la opinión: con inicios más tempranos ocupan la ventana **E y G**; A termina antes y no se toca. «No está en el contrato con el cliente» es irrelevante: está en la autorización sin la cual no hay obra, y el cliente la conoce. **S11.** Lo que sí es un riesgo del proyecto es que el órgano ambiental amplíe la ventana, que un nido aparezca fuera de ella o que el tiempo retrase lo que debía terminar antes: eso entra en el registro con su probabilidad, su impacto y su respuesta (empezar antes, reordenar, reserva).
+#
+# **Respuesta:** no puede ejecutarse dentro de la ventana, con biólogo o sin él; la ventana es una **restricción del cronograma**, no un riesgo que se acepta; deben reprogramarse E y G.
 
 # %%
 preguntas_test = [

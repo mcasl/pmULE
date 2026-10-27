@@ -50,6 +50,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -58,7 +59,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 """
@@ -171,7 +175,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -360,9 +364,31 @@ def render(celdas: list[tuple], titulo: str, subtitulo: str, coleccion: str = ""
     partes.append(_celda_code(TEMP))
     for tipo, texto in celdas:
         partes.append(_celda_md(texto) if tipo == "md" else _celda_code(texto))
-    # Cálculo paso a paso de los tiempos (PERT, Roy) y de la matriz de Zaderenko
+    # Visores paso a paso (PERT, Roy, Zaderenko, calendario, Ackoff) como en todos los cuadernos
+    return visores("\n\n".join(partes) + "\n", coleccion=coleccion)
+
+
+def visores(texto: str, coleccion: str = "") -> str:
+    """Deja el cuaderno con los visores interactivos que llevan todos los cuadernos del
+    repositorio: pasos de PERT/Roy en lugar del grafo estático, Zaderenko con el PERT
+    arriba, calendario interactivo y Ackoff-Sasieni paso a paso en TikZ. Son los mismos
+    post-procesos (idempotentes) que se aplicaron a mano a los cuadernos existentes
+    (pert_roy_visor, zaderenko_visor, calendario_visor, ackoff_pasos), de modo que
+    ``regenerar`` reproduce los cuadernos actuales y sólo propaga los cambios de plantilla."""
     from .pasos import anade_pasos
-    return anade_pasos("\n\n".join(partes) + "\n")
+    from . import pert_roy_visor, zaderenko_visor, calendario_visor, ackoff_pasos
+    texto = anade_pasos(texto)
+    for metodo in ("pert", "roy"):
+        texto, _ = pert_roy_visor.convierte(texto, metodo)
+    if ".zaderenko(" in texto:
+        texto, _ = zaderenko_visor.convierte(texto)
+    texto, _, _ = calendario_visor.convierte(texto, grafo="roy" if coleccion == "03_roy" else "pert")
+    if ".ackoff(" in texto:
+        texto, _ = ackoff_pasos.convierte(texto)
+        texto = texto.replace(".display_ackoff_pasos(", ".display_ackoff_pasos_tikz(")
+    # comillas de los visores de selección como en los cuadernos existentes
+    texto = texto.replace("display_rutas('pert')", 'display_rutas("pert")').replace("display_rutas('roy')", 'display_rutas("roy")')
+    return texto
 
 
 def despachar(variantes: list, k: int, rng):

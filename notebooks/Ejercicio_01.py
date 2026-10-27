@@ -23,6 +23,7 @@
 import os, sys
 from IPython.display import display, HTML, Markdown, Math, Latex
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 import sympy as sym
 from scipy.stats import norm
@@ -32,6 +33,7 @@ import math
 sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, pinta_tikz,  beautify
+from pmule import explica_percentil, lista_y, ordena_ruta
 
 
 # %%
@@ -143,6 +145,16 @@ proyecto.display_pert_construccion(tabla=prelaciones)
 #| fig-cap: "Grafo PERT y cuadro de ancestros (prelaciones transitivas)"
 #| label: fig-CuadroAncestros
 proyecto.display_ancestros('pert')
+_pred = {a: [x.strip() for x in str(v).split(',') if x.strip() and x.strip() != '---'] for a, v in datos_enunciado['predecesoras'].items()}
+def _ancestros(a):
+    _r = set()
+    for _p in _pred[a]:
+        _r |= {_p} | _ancestros(_p)
+    return _r
+display(Markdown('**Respuesta:** el grafo PERT es el que se construye paso a paso en la primera figura, y el cuadro de ancestros '
+                 '(todas las actividades que deben haber terminado, directa o indirectamente, antes de empezar cada una) es:\n\n'
+                 + '\n'.join(f'- **{a}**: ' + (lista_y(sorted(_ancestros(a))) if _ancestros(a) else 'ninguno (actividad inicial)')
+                              for a in _pred)))
 
 # %% [markdown]
 # ## Apartado 2
@@ -154,6 +166,12 @@ display(pregunta_2)
 #| tbl-cap: "Matriz de rutas"
 #| label: tbl-MatrixRutas
 proyecto.display_rutas("pert")
+_rutas_txt = {r: ordena_ruta(list(proyecto.path_matrix(dummies=False).columns[proyecto.path_matrix(dummies=False).loc[r] == 1]),
+                             proyecto.calendar(duraciones.iloc[0].to_dict()))
+              for r in proyecto.path_matrix(dummies=False).index}
+display(Markdown(f'**Respuesta:** la matriz de caminos tiene una fila por ruta ({len(_rutas_txt)} rutas) y una columna por actividad; '
+                 'un 1 indica que la actividad pertenece a la ruta. Leídas por filas, las rutas son:\n\n'
+                 + '\n'.join(f'- {r}: **{" – ".join(acts)}**' for r, acts in _rutas_txt.items())))
 
 # %% [markdown]
 # ## Apartado 3
@@ -180,7 +198,11 @@ display_producto_rutas(path_matrix, D, duraciones_de_caminos)
 # %%
 #| tbl-cap: "Duraciones de las rutas en cada iteración"
 #| label: tbl-DuracionesCaminos
-duraciones_de_caminos
+display(duraciones_de_caminos)
+_c0 = duraciones_de_caminos.columns[0]
+display(Markdown(f'Por ejemplo, en la iteración {_c0} cada ruta suma las duraciones de sus actividades:\n\n'
+                 + '\n'.join(f'- {r} = ' + ' + '.join(f'{a}({D.loc[a, _c0]:.3f})' for a in acts)
+                              + f' = **{duraciones_de_caminos.loc[r, _c0]:.3f}**' for r, acts in _rutas_txt.items())))
 
 # %% [markdown]
 # La duración del proyecto se obtiene, en cada iteración, como el máximo de las duraciones de las rutas:
@@ -189,7 +211,12 @@ duraciones_de_caminos
 #| tbl-cap: "Duraciones del proyecto en cada iteración"
 #| label: tbl-DuracionesProyecto
 duraciones_de_proyecto = duraciones_de_caminos.max(axis="rows").to_frame(name='Duración proyecto')
-duraciones_de_proyecto.T
+display(duraciones_de_proyecto.T)
+_ruta_max = duraciones_de_caminos.idxmax(axis="rows")
+display(Markdown(f'En la iteración {_c0}, por ejemplo, máx({", ".join(f"{v:.3f}" for v in duraciones_de_caminos[_c0])}) = '
+                 f'**{duraciones_de_proyecto.iloc[0, 0]:.3f}** ({_ruta_max[_c0]}). La ruta más larga es '
+                 + (f'{_ruta_max.iloc[0]} en todas las iteraciones.' if _ruta_max.nunique() == 1 else
+                    'distinta según la iteración: ' + ', '.join(f'{k}: {v}' for k, v in _ruta_max.items()) + '.')))
 
 # %%
 #| tbl-cap: "Cuadro resumen de descriptores estadísticos de la duración del proyecto"
@@ -199,7 +226,16 @@ duraciones_de_proyecto.describe().round(2)
 # %%
 media_duracion_proyecto = duraciones_de_proyecto.mean().iloc[0]
 desviacion_tipica=duraciones_de_proyecto.std().iloc[0]
-print(f'La duración media del proyecto es {media_duracion_proyecto:.2f} y la desviación típica es {desviacion_tipica:.2f}')
+_x = duraciones_de_proyecto.iloc[:, 0]
+_n = len(_x)
+display(Markdown(
+    f'Con las {_n} duraciones del proyecto $x_i$ de la tabla anterior:\n\n'
+    f'- Media: $\\bar x = \\dfrac{{\\sum x_i}}{{n}} = \\dfrac{{{" + ".join(f"{v:.3f}" for v in _x)}}}{{{_n}}} = '
+    f'\\dfrac{{{_x.sum():.3f}}}{{{_n}}} = {media_duracion_proyecto:.3f}$\n'
+    f'- Desviación típica muestral: $s = \\sqrt{{\\dfrac{{\\sum (x_i-\\bar x)^2}}{{n-1}}}} = '
+    f'\\sqrt{{\\dfrac{{{((_x - media_duracion_proyecto) ** 2).sum():.4f}}}{{{_n - 1}}}}} = {desviacion_tipica:.3f}$\n\n'
+    f'**Respuesta:** la duración del proyecto en cada iteración es el máximo de las duraciones de sus rutas '
+    f'(tabla anterior); en promedio dura **{media_duracion_proyecto:.2f}** periodos, con desviación típica **{desviacion_tipica:.2f}**.'))
 
 # %% [markdown]
 # ## Apartado 4
@@ -215,7 +251,11 @@ percentil = 0.95
 duracion_para_percentil = round(norm.ppf(percentil, loc=media_duracion_proyecto, scale=desviacion_tipica), 2)
 from pmule import display_normal_tikz
 display_normal_tikz(media_duracion_proyecto, desviacion_tipica, percentil=percentil)
-Markdown(f'Si utilizamos la ley normal de distribución, para una duración media {round(media_duracion_proyecto, 2)} y desviación típica {round(desviacion_tipica,2)} la duración para probabilidad igual a {percentil*100} por ciento es {duracion_para_percentil} periodos')
+display(Markdown(f'Suponiendo que la duración del proyecto sigue una ley normal con la media y la desviación típica del apartado anterior, '
+                 f'buscamos la duración $t$ que no se supera con probabilidad {percentil:.0%}:\n\n'
+                 + explica_percentil(media_duracion_proyecto, desviacion_tipica, percentil, 'periodos')
+                 + f'\n\n**Respuesta:** con la ley normal (media {media_duracion_proyecto:.2f}, desviación típica {desviacion_tipica:.2f}), '
+                   f'la duración con probabilidad {percentil:.0%} de no ser superada es **{duracion_para_percentil} periodos**.'))
 
 # %% [markdown]
 # ## Apartado 5
@@ -227,7 +267,18 @@ display(pregunta_5)
 duracion_para_percentil_montecarlo =round(float(duraciones_de_proyecto.quantile(percentil).iloc[0]),2)
 
 # %%
-Markdown(f'Si utilizamos la colección de resultados del método de MonteCarlo, la duración para el cuantil {percentil*100} por ciento es {duracion_para_percentil_montecarlo} periodos.')
+_ord = np.sort(duraciones_de_proyecto.iloc[:, 0].to_numpy())
+_h = (len(_ord) - 1) * percentil
+_k = int(np.floor(_h))
+display(Markdown(
+    f'Ordenamos de menor a mayor las {len(_ord)} duraciones simuladas: ' + ', '.join(f'{v:.3f}' for v in _ord) + '.\n\n'
+    f'El cuantil {percentil:.0%} (interpolación lineal, como `=PERCENTIL.INC(datos; {str(percentil).replace(".", ",")})` en la hoja de cálculo) '
+    f'ocupa la posición $(n-1)\\,p = {len(_ord) - 1}\\times{percentil} = {_h:.2f}$ (contando desde 0), entre el valor {_k + 1}.º ({_ord[_k]:.3f}) '
+    f'y el {_k + 2}.º ({_ord[min(_k + 1, len(_ord) - 1)]:.3f}):\n\n'
+    f'$t_{{{percentil:g}}} = {_ord[_k]:.3f} + {_h - _k:.2f}\\times({_ord[min(_k + 1, len(_ord) - 1)]:.3f} - {_ord[_k]:.3f}) = {duracion_para_percentil_montecarlo:.2f}$\n\n'
+    f'**Respuesta:** con los resultados de MonteCarlo, la duración con probabilidad {percentil:.0%} de no ser superada es '
+    f'**{duracion_para_percentil_montecarlo} periodos** (frente a {duracion_para_percentil} con la ley normal; con solo {len(_ord)} iteraciones '
+    'ambas estimaciones son poco precisas).'))
 
 # %%
 

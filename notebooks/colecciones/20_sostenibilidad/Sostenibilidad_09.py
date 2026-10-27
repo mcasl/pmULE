@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -248,6 +252,24 @@ for item in sorted(dir()):
 # %%
 capacidad_acometida, plazo_acometida, alquiler_grupo, coste_acometida, precio_sombra = 45, 5, 0.8, 8, 250
 consumo_grupo, precio_gasoleo, precio_red, factor_gasoleo, factor_red, horas_semana = 0.3, 1.3, 0.18, 2.47, 0.15, 40
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -296,7 +318,10 @@ plot_cargas(gantt_df=gantt_nivelado, limite_maximo_recursos=[capacidad_acometida
 
 # %%
 energia = float(cargas.sum()) * horas_semana
-Markdown(f'''Pico de **{int(cargas.max())} kW** con inicios más tempranos y **{int(cargas_niveladas.max())} kW** tras nivelar''' + (' (cabe en la acometida)' if cargas_niveladas.max() <= capacidad_acometida else ' (no cabe)') + f''', con la misma duración ({duracion} semanas). Energía de la obra: {energia:,.0f} kWh (la nivelación mueve la demanda, no la cambia).''')
+movidas = desplazamientos[desplazamientos['desplazamientos'] > 0]['desplazamientos']
+txt_mov = lista_y(f'{a} {plural(int(v), "semana")} (holgura total {int(calendario.loc[a, "H_total"])})' for a, v in movidas.items())
+cabe = cargas_niveladas.max() <= capacidad_acometida
+Markdown(f'''Con inicios más tempranos la demanda máxima es de **{int(cargas.max())} kW** (semana {int(cargas.idxmax())}), por encima de los {capacidad_acometida} kW de la acometida. La nivelación desplaza {txt_mov} y deja el pico en **{int(cargas_niveladas.max())} kW** (Σc² de {int((cargas ** 2).sum())} a {int((cargas_niveladas ** 2).sum())}), con la misma duración ({duracion} semanas). Energía de la obra = Σ (kW de cada semana) × {horas_semana} h = {int(cargas.sum())} kW·semana × {horas_semana} h = **{miles(energia)} kWh**; la nivelación mueve la demanda, no la cambia.\n\n**Respuesta:** pico de {int(cargas.max())} kW con inicios más tempranos y de {int(cargas_niveladas.max())} kW tras nivelar, que ''' + ('**cabe** en la acometida' if cabe else '**no cabe** en la acometida') + f''' de {capacidad_acometida} kW sin alargar el proyecto; energía total, {miles(energia)} kWh.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -317,7 +342,20 @@ def opcion(semanas_grupo, kwh_grupo, kwh_red, acometida):
 comparacion = pd.DataFrame({'grupo toda la obra': opcion(duracion, energia, 0, 0),
                             f'grupo {plazo_acometida} semanas + acometida': opcion(plazo_acometida, energia_inicial, energia - energia_inicial, coste_acometida)})
 display(comparacion.round(2))
-Markdown(f'''La opción mixta cuesta **{comparacion.iloc[5, 0] - comparacion.iloc[5, 1]:.1f} k€ menos** y emite **{comparacion.iloc[8, 0] - comparacion.iloc[8, 1]:.1f} t menos**; al precio sombra la diferencia total es de {comparacion.iloc[9, 0] - comparacion.iloc[9, 1]:.1f} k€.''')
+c_g, c_m = comparacion.columns
+def explica_opcion(col, semanas_grupo, kwh_grupo, kwh_red, acometida):
+    t = comparacion[col]; litros = kwh_grupo * consumo_grupo
+    txt = (f'- **{col}**: gasóleo = {miles(kwh_grupo)} kWh × {consumo_grupo} l/kWh = {miles(litros)} l; '
+           f'coste = {semanas_grupo} × {alquiler_grupo} + {miles(litros)} × {precio_gasoleo} / 1000')
+    if acometida:
+        txt += f' + {acometida} + {miles(kwh_red)} × {precio_red} / 1000'
+    txt += f' = **{t["coste (k€)"]:.2f} k€**; emisiones = {miles(litros)} × {factor_gasoleo} / 1000'
+    if acometida:
+        txt += f' + {miles(kwh_red)} × {factor_red} / 1000'
+    txt += f' = **{t["emisiones (t CO₂)"]:.2f} t**; coste total = {t["coste (k€)"]:.2f} + {t["emisiones (t CO₂)"]:.2f} × {precio_sombra} / 1000 = **{t["coste total al precio sombra (k€)"]:.2f} k€**'
+    return txt
+mejor = comparacion.loc['coste total al precio sombra (k€)'].idxmin()
+Markdown(f'''Energía de las {plazo_acometida} primeras semanas con las cargas niveladas: ({suma_txt(cargas_niveladas.iloc[:plazo_acometida])}) kW × {horas_semana} h = {miles(energia_inicial)} kWh; el resto, {miles(energia)} − {miles(energia_inicial)} = {miles(energia - energia_inicial)} kWh, de la red.\n\n''' + explica_opcion(c_g, duracion, energia, 0, 0) + '\n' + explica_opcion(c_m, plazo_acometida, energia_inicial, energia - energia_inicial, coste_acometida) + f'''\n\n**Respuesta:** la opción mixta cuesta {abs(comparacion.loc['coste (k€)', c_g] - comparacion.loc['coste (k€)', c_m]):.1f} k€ ''' + ('menos' if comparacion.loc['coste (k€)', c_m] < comparacion.loc['coste (k€)', c_g] else 'más') + f''' en dinero y emite {comparacion.loc['emisiones (t CO₂)', c_g] - comparacion.loc['emisiones (t CO₂)', c_m]:.1f} t menos; al precio sombra la de menor coste total es **{mejor}** ({comparacion.loc['coste total al precio sombra (k€)', mejor]:.2f} k€ frente a {comparacion.loc['coste total al precio sombra (k€)'].max():.2f}).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -326,7 +364,9 @@ Markdown(f'''La opción mixta cuesta **{comparacion.iloc[5, 0] - comparacion.ilo
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **S2.** Con el precio sombra la opción correcta es la de menor coste total: grupo las 5 primeras semanas y acometida después (20.5 k€ frente a 30.6); aquí ni siquiera hace falta el precio, porque también es más barata en dinero (18.3 frente a 25.9 k€). El argumento del pico (65 kW) desaparece al nivelar: el pico nivelado es 45 kW y cabe. **S1.** El grupo para toda la obra ni siquiera compensa; la opción mixta **minimiza** (10.2 t menos); **evitar** sería pedir la acometida con la antelación suficiente para no necesitar el grupo. **S6.** El gasóleo del grupo es **alcance 1** (fuente controlada por la obra, aunque se alquile); la electricidad de la acometida es **alcance 2**. Que el gasóleo «vaya a costes generales» no cambia el alcance ni la cuenta.
+# **S2.** Con el precio sombra la opción correcta es la de menor coste total: grupo las 5 primeras semanas y acometida después (20.5 k€ frente a 30.6); aquí ni siquiera hace falta el precio, porque también es más barata en dinero (18.3 frente a 25.9 k€). El argumento del pico (65 kW) desaparece al nivelar: el pico nivelado es 45 kW y cabe. **S1.** El grupo para toda la obra no está en ningún escalón de la pirámide (no reduce ni compensa nada); la opción mixta **minimiza** (10.2 t menos); **evitar** sería pedir la acometida con la antelación suficiente para no necesitar el grupo. **S6.** El gasóleo del grupo es **alcance 1** (fuente controlada por la obra, aunque se alquile); la electricidad de la acometida es **alcance 2**. Que el gasóleo «vaya a costes generales» no cambia el alcance ni la cuenta.
+#
+# **Respuesta:** la correcta es grupo 5 semanas + acometida (minimiza); grupo toda la obra no está en la pirámide. Grupo electrógeno: alcance 1; acometida: alcance 2.
 
 # %%
 preguntas_test = [

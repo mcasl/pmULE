@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -246,6 +250,67 @@ for item in sorted(dir()):
 # # Resolución
 
 # %%
+def proyecto_de(predecesoras, duraciones, nombres):
+    '''Tabla de datos y proyecto pmULE a partir de listas de predecesoras y duraciones.'''
+    df = pd.DataFrame({'predecessor': list(predecesoras), 'duration': list(duraciones)}, index=list(nombres))
+    df.index.name = 'activity'
+    p = PredecessorTable.from_dataframe_of_strings(df, activity='activity', predecessor='predecessor').create_project()
+    return df, p
+
+def camino_critico(p, d):
+    return '; '.join('–'.join(ruta) for ruta in p.critical_path(d).values())
+
+def resumen_prob(p, d, sd, plazo):
+    '''Duración media, desviación típica del camino crítico (la mayor si hay varios), P(T ≤ plazo) y retraso esperado.'''
+    R = p.path_matrix(dummies=False)
+    L = R @ d.reindex(R.columns)
+    V = R @ (sd.reindex(R.columns).fillna(0) ** 2)
+    T = float(L.max()); sigma = float(np.sqrt(V[L == T].max()))
+    z = (plazo - T) / sigma
+    retraso_esp = sigma * (norm.pdf(z) - z * norm.cdf(-z))      # E[máx(0, X − plazo)] con X ~ N(T, σ)
+    return T, sigma, float(norm.cdf(z)), float(retraso_esp)
+
+def suma_caminos_criticos(p, d, unidad='semanas'):
+    '''Cada camino crítico, en orden de ejecución, escrito como suma de duraciones.'''
+    cal = p.calendar(d)
+    T = float(p.duration(d))
+    return '; '.join('–'.join(ordena_ruta(r, cal)) + ' = ' + ' + '.join(f'{float(d[a]):g}' for a in ordena_ruta(r, cal)) + f' = {T:g} {unidad}'
+                     for r in p.critical_path(d).values())
+
+def pasos_ackoff(p, d, tope, cur, pasos):
+    '''Paso a paso de Ackoff-Sasieni: caminos críticos, opciones que los cortan todos (con su CUR) y la elegida.'''
+    from itertools import combinations
+    R = p.path_matrix(dummies=False)
+    d = d.astype(float).copy(); filas = []; acumulado = 0.0
+    for paso, elegidas in sorted(pasos.items()):
+        L = R @ d[R.columns]; T = float(L.max())
+        cal = p.calendar(d)
+        criticas = [ordena_ruta(list(R.columns[R.loc[r] == 1]), cal) for r in L.index if np.isclose(L[r], T)]
+        conjuntos = [set(c) for c in criticas]
+        margen = {x for x in R.columns if d[x] > tope[x] and np.isfinite(cur[x])}
+        opciones = {x: float(cur[x]) for x in set.intersection(*conjuntos) & margen}
+        if len(conjuntos) > 1:
+            for a, b in combinations(sorted(set().union(*conjuntos) & margen), 2):
+                if all(a in s or b in s for s in conjuntos) and a not in opciones and b not in opciones:
+                    opciones[f'{a}+{b}'] = float(cur[a] + cur[b])
+        coste = float(sum(cur[x] for x in elegidas)); acumulado += coste
+        filas.append({'paso': paso + 1, 'duración antes': int(T), 'caminos críticos': '; '.join('–'.join(c) for c in criticas),
+                      'opciones con margen (CUR, k€)': '; '.join(f'{k} ({v:g})' for k, v in sorted(opciones.items(), key=lambda kv: kv[1])),
+                      'se acorta': ' + '.join(elegidas), 'coste del paso (k€)': coste, 'coste acumulado (k€)': acumulado,
+                      'duración después': int(T) - 1})
+        for x in elegidas:
+            d[x] -= 1
+    return pd.DataFrame(filas).set_index('paso')
+
+def explica_retraso_esperado(media, sigma, plazo, unidad='semanas'):
+    '''E[máx(0, T − plazo)] con T ~ N(media, σ), sin tipificar: (μ − plazo)·P(T > plazo) + σ²·f(plazo).'''
+    p_mas = 1 - norm.cdf(plazo, media, sigma); f = norm.pdf(plazo, media, sigma)
+    hoja = lambda x: f'{x:g}'.replace('.', ',')
+    return (f'E[máx(0, T − {plazo:g})] = (μ − plazo)·P(T > plazo) + σ²·f(plazo) = ({media:g} − {plazo:g})·{p_mas:.4f} + {sigma:.3f}²·{f:.4f} '
+            f'= **{(media - plazo) * p_mas + sigma ** 2 * f:.2f} {unidad}**, donde f(plazo) es la densidad normal en el plazo: '
+            f'`=DISTR.NORM.N({hoja(plazo)}; {hoja(media)}; {hoja(round(sigma, 3))}; FALSO)` = {f:.4f}')
+
+# %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -260,22 +325,19 @@ dist_base = {a: ('triangular', f.a, f.m, f.b) for a, f in datos_proyecto.iterrow
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT con las duraciones esperadas y el camino crítico (sin límite de operarios)"
 #| label: fig-pert
-proyecto.pert(durations=datos_proyecto['duration'], ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 proyecto.display_pert_pasos(datos_proyecto['duration'])
 
 # %%
 #| tbl-cap: "Calendario sin límite de recursos (meses)"
 #| label: tbl-calendario
 calendario = proyecto.calendar(datos_proyecto['duration'])
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %%
 #| fig-cap: "Carga de operarios con los inicios más tempranos frente al límite"
@@ -304,9 +366,13 @@ pd.DataFrame({'inicio sin límite': calendario['inicio_mas_temprano'].astype(int
 duracion_libre = proyecto.duration(datos_proyecto['duration'])
 cadena = proyecto.copy().cadena_critica_recursos(base.copy(), 'duration', ['operarios'], [L])
 display(cadena['arcos'].rename(columns={'motivo': 'motivo (precedencia o recurso)'}))
-esperas = res0.traza[res0.traza.decision == 'espera']
-Markdown(f'Sin límite {duracion_libre} meses; con {L} operarios {res0.duracion}. Cadena crítica con recursos: '
-         f'{", ".join(sorted(cadena["actividades"]))}. Esperan: {", ".join(sorted(set(esperas.actividad)))}.')
+_esp = res0.esperas[res0.esperas > 0]
+_cadena = sorted(cadena['actividades'], key=lambda a: (res0.inicios[a], a))
+Markdown(f'**Respuesta:** sin límite de operarios el proyecto dura {suma_caminos_criticos(proyecto, datos_proyecto["duration"], "meses")}; '
+         f'con {L} operarios dura **{res0.duracion} meses** ({res0.duracion - duracion_libre:g} más). La cadena crítica con recursos '
+         f'(las actividades que fijan esa duración, encadenadas por precedencias o porque una espera a que otra libere '
+         f'operarios: arcos «recurso» de la tabla) es {"–".join(_cadena)}. Esperan por falta de operarios: '
+         + lista_y([f'{a} ({plural(int(v), "mes", "meses")})' for a, v in _esp.items()]) + '.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -328,8 +394,13 @@ def evaluar(L_op, red, n=3000, semilla=21):
 # %%
 ceros = pd.Series(0.0, index=datos_proyecto.index)
 A = evaluar(L, ceros)
-Markdown(f'Sin hacer nada: P(entregar en el mes {plazo}) = {A["P(τ≤plazo)"]:.3f}; duración media {A["τ medio"]:.2f} meses; '
-         f'VAN esperado neto {A["VAN medio"]:.1f} k€; P(VAN<0) = {A["P(VAN<0)"]:.3f}.')
+Markdown(f'En cada una de las 3000 réplicas se sortean las duraciones (triangulares, redondeadas a meses enteros), se '
+         f'replanifica con {L} operarios y se obtiene la duración τ. El VAN de la réplica descuenta, a la tasa mensual '
+         f'equivalente (1 + k_m)¹² = 1 + {k:g}, los costes (el BAC de cada actividad repartido uniformemente en su duración) y '
+         f'el flujo de {F:g} k€/mes durante {N} meses desde el mes τ; al VAN se le resta la penalización, {penalizacion:g} × máx(0, τ − {plazo}) '
+         f'(sin descontar, como aproximación). Contando las réplicas:\n\n'
+         f'**Respuesta:** si no se hace nada, P(τ ≤ {plazo}) = **{A["P(τ≤plazo)"]:.3f}** (duración media {A["τ medio"]:.2f} meses), '
+         f'VAN esperado neto de penalización = **{A["VAN medio"]:.1f} k€** y P(VAN < 0) = **{A["P(VAN<0)"]:.3f}**.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -358,11 +429,26 @@ red_d = pd.Series(cr_d.reducciones, dtype=float).reindex(datos_proyecto.index).f
 opciones = {'A: no hacer nada': (L, ceros), 'B: un operario más': (L + 1, ceros),
             'C: acelerar dos meses': (L, red_c), 'D: operario más y acelerar': (L + 1, red_d)}
 tabla = pd.DataFrame({n: evaluar(Lo, r) for n, (Lo, r) in opciones.items()}).T
-tabla
+tabla.rename(columns={'VAN medio': 'VAN esperado neto (k€)', 'P(VAN<0)': 'P(VAN < 0)', 'P(τ≤plazo)': f'P(τ ≤ {plazo})',
+                      'τ medio': 'duración media (meses)', 'coste reducción': 'coste de la aceleración (k€)'}).astype(float).round(3)
 
 # %%
 display(pd.DataFrame({'C: reducciones': red_c[red_c > 0], 'D: reducciones': red_d[red_d > 0]}).fillna(0).astype(int).T)
-Markdown('Las reducciones se calculan con `crashing_recursos`: se acorta lo que de verdad acorta el proyecto con el límite de operarios, no lo más barato.')
+def _coste(red):
+    r = red[red > 0]
+    return ' + '.join(f'{ucr[a]:g}·{int(v)}' for a, v in r.items()) + f' = {float((ucr[r.index] * r).sum()):g} k€'
+def _difiere(cr):
+    f = cr.pasos[cr.pasos['ackoff_sin_recursos'].astype(str) != cr.pasos['actividades'].astype(str)]
+    return '; '.join(f'en el paso {i} Ackoff sin recursos habría acortado {r.ackoff_sin_recursos}, pero con el límite de operarios '
+                     f'eso no acorta el proyecto replanificado y se acorta {r.actividades}' for i, r in f.iterrows())
+_dc, _dd = _difiere(cr_c), _difiere(cr_d)
+Markdown(f'Coste de la aceleración (Σ CUR × meses recortados): C, {_coste(red_c)}; D, {_coste(red_d)}. '
+         + (f'Opción C: {_dc}. ' if _dc else 'Opción C: cada paso acorta lo mismo que Ackoff sin recursos. ')
+         + (f'Opción D: {_dd}. ' if _dd else 'Opción D: cada paso acorta lo mismo que Ackoff sin recursos. ')
+         + 'El coste de la aceleración se suma al BAC de las actividades acortadas y el del operario extra '
+         f'({coste_operario:g} k€/mes × τ, sin descontar) se resta del VAN, junto con la penalización.\n\n'
+         '**Respuesta:** la tabla de opciones anterior da, para cada una, el VAN esperado neto, P(VAN < 0), la probabilidad de cumplir '
+         f'el plazo, la duración media y el coste de la aceleración; se comparan en el apartado siguiente.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -372,13 +458,33 @@ display(Markdown(pregunta_4))
 
 # %%
 mejor = tabla['VAN medio'].idxmax()
-ok_cliente = tabla[tabla['P(τ≤plazo)'] >= 0.7].index.tolist()
-suma = (tabla.loc['B: un operario más', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio']
-        + tabla.loc['C: acelerar dos meses', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio'])
-real = tabla.loc['D: operario más y acelerar', 'VAN medio'] - tabla.loc['A: no hacer nada', 'VAN medio']
-Markdown(f'Mayor VAN esperado: {mejor} ({tabla.loc[mejor, "VAN medio"]:.1f} k€). Opciones con P(cumplir) ≥ 70 %: {ok_cliente or "ninguna"}. '
-         f'Respecto a A, B y C por separado suponen {suma:+.1f} k€ en total y juntas (D) {real:+.1f} k€: los efectos no se suman, '
-         'porque las dos medidas atacan el mismo cuello de botella (esperas por operarios y duración de la cadena crítica).')
+cliente = tabla['P(τ≤plazo)'].idxmax()
+A0 = tabla.loc['A: no hacer nada']
+dB = tabla.loc['B: un operario más', 'VAN medio'] - A0['VAN medio']
+dC = tabla.loc['C: acelerar dos meses', 'VAN medio'] - A0['VAN medio']
+dD = tabla.loc['D: operario más y acelerar', 'VAN medio'] - A0['VAN medio']
+pB = tabla.loc['B: un operario más', 'P(τ≤plazo)'] - A0['P(τ≤plazo)']
+pC = tabla.loc['C: acelerar dos meses', 'P(τ≤plazo)'] - A0['P(τ≤plazo)']
+pD = tabla.loc['D: operario más y acelerar', 'P(τ≤plazo)'] - A0['P(τ≤plazo)']
+mejores_A = [n for n in tabla.index if tabla.loc[n, 'VAN medio'] > A0['VAN medio']]
+if np.isclose(dD, dB + dC, atol=0.5):
+    _suma = 'aproximadamente sí: los efectos casi se suman'
+elif dD < dB + dC:
+    _suma = ('no: juntas valen menos que la suma por separado, porque las dos medidas atacan el mismo problema (la '
+             'duración con recursos): una vez que el operario extra elimina esperas, acelerar recorta menos meses útiles, '
+             'y el coste de cada medida sí se paga entero')
+else:
+    _suma = ('no: juntas valen más que la suma por separado, porque con un operario más las actividades aceleradas '
+             'ya no se quedan esperando por operarios y el recorte llega de verdad al final del proyecto')
+Markdown(f'Cambio de cada opción respecto a A (no hacer nada): VAN esperado neto B {dB:+.1f}, C {dC:+.1f}, D {dD:+.1f} k€; '
+         f'probabilidad de cumplir el plazo B {pB:+.3f}, C {pC:+.3f}, D {pD:+.3f}.\n\n'
+         f'**Respuesta:**\n\n'
+         f'- Al director financiero: **{mejor}**, la de mayor VAN esperado neto ({tabla.loc[mejor, "VAN medio"]:.1f} k€ frente a '
+         f'{A0["VAN medio"]:.1f} sin hacer nada; P(VAN < 0) = {tabla.loc[mejor, "P(VAN<0)"]:.3f}). Superan a no hacer nada: {lista_y(mejores_A)}.\n'
+         f'- Al cliente, que pregunta por la probabilidad de cumplir: con la opción recomendada es {tabla.loc[mejor, "P(τ≤plazo)"]:.2f}; '
+         f'la más alta la da {cliente} ({tabla.loc[cliente, "P(τ≤plazo)"]:.2f})'
+         + (', que es la misma.' if cliente == mejor else f', pero cuesta {tabla.loc[mejor, "VAN medio"] - tabla.loc[cliente, "VAN medio"]:.1f} k€ de VAN esperado.') + '\n'
+         f'- ¿Se suman B y C en D? B + C = ({dB:+.1f}) + ({dC:+.1f}) = {dB + dC:+.1f} k€ frente a D = {dD:+.1f} k€: {_suma}.')
 
 # %% [markdown]
 # ## Apartado 5
@@ -386,8 +492,22 @@ Markdown(f'Mayor VAN esperado: {mejor} ({tabla.loc[mejor, "VAN medio"]:.1f} k€
 # %%
 display(Markdown(pregunta_5))
 
-# %% [markdown]
-# **Cliente:** con la cuadrilla actual la probabilidad de cumplir es baja; la opción recomendada la sube a la cifra de la tabla. **Director financiero:** el VAN esperado neto de penalización y de coste es el de la tabla, con la probabilidad de VAN negativo indicada. **Jefe de obra:** se contrata un operario sólo si la tabla lo respalda; las esperas se concentran en la cadena crítica con recursos. **Contratista:** se aceleran únicamente las actividades que de verdad acortan el proyecto con el límite de operarios.
+# %%
+_A, _M = tabla.loc['A: no hacer nada'], tabla.loc[mejor]
+_red = {'C: acelerar dos meses': red_c, 'D: operario más y acelerar': red_d}.get(mejor)
+_acel = lista_y([f'{a} ({plural(int(v), "mes", "meses")})' for a, v in _red[_red > 0].items()]) if _red is not None else ''
+_operario = mejor.startswith(('B', 'D'))
+Markdown(f'- *Cliente:* «Con la cuadrilla actual la probabilidad de entregar en el mes {plazo} es de {_A["P(τ≤plazo)"]:.0%} '
+         f'(duración media {_A["τ medio"]:.1f} meses). Con las medidas que vamos a tomar sube al {_M["P(τ≤plazo)"]:.0%}, con una '
+         f'duración media de {_M["τ medio"]:.1f} meses. Les informaremos cada mes de cómo evoluciona.»\n'
+         f'- *Director financiero:* «Propongo {mejor[3:]}: VAN esperado neto de penalizaciones y costes {_M["VAN medio"]:.1f} k€, '
+         f'frente a {_A["VAN medio"]:.1f} sin hacer nada; probabilidad de VAN negativo {_M["P(VAN<0)"]:.1%} (sin hacer nada, '
+         f'{_A["P(VAN<0)"]:.1%}). Adjunto la tabla de las cuatro opciones.»\n'
+         + (f'- *Jefe de obra:* «Contratamos el operario adicional ({coste_operario:g} k€/mes): la simulación lo respalda.»\n' if _operario else
+            f'- *Jefe de obra:* «De momento no contratamos el operario adicional: con {coste_operario:g} k€/mes, en la simulación no compensa '
+            f'(opción B: {tabla.loc["B: un operario más", "VAN medio"]:.1f} k€ frente a {_M["VAN medio"]:.1f}). Vigilemos las esperas de la cadena crítica.»\n')
+         + (f'- *Contratista:* «Necesitamos acortar {_acel}, con un coste de {_M["coste reducción"]:g} k€ a los CUR de la tabla.»' if _red is not None else
+            '- *Contratista:* «Por ahora no aceleramos: con el límite de operarios, recortar duraciones no compensa su coste. Les avisaremos si cambia.»'))
 
 # %% [markdown]
 # ## Apartado 6
@@ -395,5 +515,19 @@ display(Markdown(pregunta_5))
 # %%
 display(Markdown(pregunta_6))
 
-# %% [markdown]
-# Con el camino crítico y duraciones esperadas se habría dicho que el plazo se cumple (sin límite de recursos y sin incertidumbre); se habría acelerado la actividad más barata aunque no acorte el proyecto; y se habría juzgado cada medida por separado sin ver que se solapan. Los recursos fijan la duración real, la incertidumbre convierte la fecha en una probabilidad y el VAN obliga a comparar el coste de cada medida con lo que vale cobrar antes.
+# %%
+_ack = [str(x) for x in cr_c.pasos['ackoff_sin_recursos']]; _real = [str(x) for x in cr_c.pasos['actividades']]
+_l = [f'- **Sin recursos** se habría dicho que el proyecto dura {duracion_libre:g} meses y que el plazo del mes {plazo} se '
+      f'cumple; con {L} operarios dura {res0.duracion}, y sin hacer nada sólo se cumple el {A["P(τ≤plazo)"]:.0%} de las veces.']
+if _ack != _real:
+    _l.append(f'- **Sin recursos**, Ackoff habría acortado {lista_y(_ack)}; con el límite de operarios lo que de verdad acorta es '
+              f'{lista_y(_real)}: se habría pagado una reducción que no adelanta la entrega.')
+else:
+    _l.append(f'- Aquí Ackoff sin recursos y la reducción con recursos eligen lo mismo ({lista_y(_real)}), pero sólo la segunda '
+              'comprueba que el recorte llega al final con el límite de operarios.')
+_l.append(f'- **Sin incertidumbre** se habría prometido una fecha, no una probabilidad: la duración media simulada sin hacer nada '
+          f'es {A["τ medio"]:.2f} meses (con duraciones esperadas, {res0.duracion}) y P(τ ≤ {plazo}) = {A["P(τ≤plazo)"]:.2f}.')
+_l.append(f'- **Sin VAN** se habría elegido la opción que más acorta ({tabla["τ medio"].idxmin()}) y no la que más valor crea '
+          f'({mejor})' + ('.' if np.isclose(dD, dB + dC, atol=0.5) else
+                         f'; y juzgando cada medida por separado no se ve que B + C ({dB + dC:+.1f} k€) no es D ({dD:+.1f} k€).'))
+Markdown('\n'.join(_l))

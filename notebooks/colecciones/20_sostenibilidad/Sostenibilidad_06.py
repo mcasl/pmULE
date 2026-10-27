@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -238,7 +242,7 @@ medidas
 # - **S7 — Afirmaciones ambientales.** Una afirmación ambiental sobre un proyecto o producto debe ser específica y demostrable. Están prohibidas las afirmaciones genéricas («sostenible», «verde», «respetuoso con el clima») sin un desempeño reconocido que las respalde y las que presentan un producto como de impacto neutro, reducido o positivo sobre el clima basándose en la compensación de emisiones. Se puede decir cuánto se ha reducido y cuánto se compensa, con cifras; no se puede decir «neutro» por haber comprado créditos. *(cf. Directiva (UE) 2024/825 (anexo I de la Directiva 2005/29/CE, aplicable desde el 27-9-2026); cf. C1–C3 de la lección 19.)*
 # - **S1 — Jerarquía de respuesta a los impactos (pirámide de sostenibilidad).** Ante un impacto negativo del proyecto las estrategias se ordenan de menos a más deseable: compensar o contrarrestar el daño, restaurarlo, minimizarlo y evitarlo. Compensar cuando se podía minimizar o evitar es quedarse en el escalón más bajo; clasificar una propuesta en su escalón es una pregunta con respuesta única. *(cf. PMBOK 8, principio «integrar la sostenibilidad en todas las áreas del proyecto» (§3.7, figura 3-7).)*
 # - **S2 — Externalidad internalizada.** Cuando la organización ha fijado un precio para una externalidad (precio sombra del carbono, canon, tasa), toda decisión de planificación —comprimir, comprar, diseñar— se compara por el coste total: coste del proyecto más el valor de la externalidad a ese precio. Con el precio fijado, la alternativa correcta es la de menor coste total, y comprar compensaciones a un precio inferior no cambia la cuenta. *(cf. PMBOK 8 §3.7 (estrategias para abordar las externalidades); LCSP art. 148.2 (externalidades medioambientales monetizables); precio sombra del carbono del BEI.)*
-# - **Norma o dato de referencia — prohibidas las afirmaciones ambientales genéricas sin un desempeño ambiental excelente reconocido que las respalde, y las afirmaciones de que un producto tiene un impacto neutro, reducido o positivo sobre el clima basadas en la compensación de emisiones; aplicable desde el 27 de septiembre de 2026** *(Directiva (UE) 2024/825, que añade los puntos 4 bis y 4 ter al anexo I de la Directiva 2005/29/CE; transposición antes del 27-3-2026.)*
+# - **Norma o dato de referencia — prohibidas las afirmaciones ambientales genéricas sin un desempeño ambiental excelente reconocido que las respalde, y las afirmaciones de que un producto tiene un impacto neutro, reducido o positivo sobre el clima basadas en la compensación de emisiones; aplicable desde el 27 de septiembre de 2026** *(Directiva (UE) 2024/825, que añade los puntos 4 bis (afirmación genérica) y 4 quater (impacto neutro, reducido o positivo basado en compensaciones) al anexo I de la Directiva 2005/29/CE; transposición antes del 27-3-2026.)*
 
 # %% [markdown]
 # Responda a las preguntas: A (cálculo), B (criterio) y C (deliberación).
@@ -257,6 +261,24 @@ for item in sorted(dir()):
 # # Resolución
 
 # %%
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 precio_creditos, precio_sombra, objetivo = 9, 150, 0.4
 inventario = datos_enunciado.copy()
 huella = float(inventario['t CO2'].sum())
@@ -279,7 +301,8 @@ medidas['rentable al precio sombra'] = medidas['coste unitario (€/t)'] <= prec
 display(medidas.round(1))
 rentables = medidas[medidas['rentable al precio sombra']]
 coste_compensar_todo = huella * precio_creditos / 1000
-Markdown(f'''Compensar las {huella:.0f} t a {precio_creditos} €/t cuesta **{coste_compensar_todo:.1f} k€**. Las medidas con coste unitario ≤ {precio_sombra} €/t son {len(rentables)}: reducen **{rentables["reduccion_t"].sum():.0f} t** ({rentables["reduccion_t"].sum() / huella:.0%}) por **{rentables["coste_k"].sum():.0f} k€**; al precio sombra esas toneladas valen {rentables["reduccion_t"].sum() * precio_sombra / 1000:.1f} k€.''')
+m0 = medidas.index[0]
+Markdown(f'''Huella prevista: H = {suma_txt(inventario['t CO2'])} t CO₂. Compensarla entera cuesta {huella:.0f} × {precio_creditos} / 1000 = **{coste_compensar_todo:.2f} k€**.\n\nCoste unitario de cada medida = coste × 1000 / reducción (€ por tonelada evitada); por ejemplo, «{m0}»: {medidas.loc[m0, 'coste_k']} × 1000 / {medidas.loc[m0, 'reduccion_t']} = {medidas.loc[m0, 'coste unitario (€/t)']:.1f} €/t. Ordenadas de menor a mayor coste unitario forman la curva de coste marginal de reducción de la tabla.\n\n**Respuesta:** compensar todo cuesta {coste_compensar_todo:.2f} k€. Las medidas con coste unitario no mayor que el precio sombra ({precio_sombra} €/t) son {plural(len(rentables), 'medida')}: {lista_y('«' + m + '»' for m in rentables.index)}; reducen {suma_txt(rentables['reduccion_t'])} t ({rentables['reduccion_t'].sum() / huella:.0%} de la huella) y cuestan {suma_txt(rentables['coste_k'])} k€ (al precio sombra esas toneladas valen {rentables['reduccion_t'].sum() * precio_sombra / 1000:.1f} k€).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -298,11 +321,18 @@ for n in range(1, len(medidas) + 1):
             mejor = (combo, coste, red)
 combo, coste_combo, red_combo = mejor
 resto = huella - red_combo
+display(Markdown(f'El objetivo es reducir al menos {objetivo:.0%} × {huella:.0f} = **{objetivo_t:.0f} t**. Como las medidas son indivisibles, la combinación más barata que lo alcanza se busca por enumeración '
+                 f'(las {2 ** len(medidas) - 1} combinaciones posibles de {len(medidas)} medidas); es la de la tabla siguiente.'))
 display(medidas.loc[list(combo), ['reduccion_t', 'coste_k', 'coste unitario (€/t)']].round(1))
-Markdown(f'''Reducir al menos {objetivo_t:.0f} t ({objetivo:.0%}) cuesta como mínimo **{coste_combo:.0f} k€** con las medidas de la tabla ({red_combo:.0f} t, {red_combo / huella:.0%}). Quedan {resto:.0f} t: compensarlas cuesta {resto * precio_creditos / 1000:.1f} k€ a precio de créditos y valen {resto * precio_sombra / 1000:.1f} k€ al precio sombra.''')
-
-# %% [markdown]
-# La combinación óptima se busca por enumeración (ocho medidas, 255 combinaciones); con medidas divisibles bastaría recorrer la curva de coste marginal por orden de coste unitario. Obsérvese que la medida más barata por tonelada no siempre entra en la combinación óptima para un objetivo dado: las medidas son indivisibles.
+orden = medidas.index[medidas['reducción acumulada (t)'] >= objetivo_t][0]
+por_curva = list(medidas.index[:list(medidas.index).index(orden) + 1])
+coste_curva = float(medidas.loc[por_curva, 'coste_k'].sum())
+fuera = [m for m in por_curva if m not in combo]; dentro = [m for m in combo if m not in por_curva]
+comparacion_curva = (f'Recorrer la curva por orden de coste unitario hasta alcanzar el objetivo coincide con esta combinación.' if not fuera and not dentro else
+                     f'Recorrer la curva por orden de coste unitario hasta alcanzar el objetivo costaría {coste_curva:.0f} k€; la combinación óptima cambia '
+                     + lista_y('«' + m + '»' for m in fuera) + ' por ' + lista_y('«' + m + '»' for m in dentro)
+                     + f' y ahorra {coste_curva - coste_combo:.0f} k€: con medidas indivisibles la más barata por tonelada no es siempre la que conviene añadir.')
+Markdown(f'''Reducción: {suma_txt(medidas.loc[list(combo), 'reduccion_t'])} t ≥ {objetivo_t:.0f}; coste: {suma_txt(medidas.loc[list(combo), 'coste_k'])} k€. ''' + comparacion_curva + f'''\n\nQuedan {huella:.0f} − {red_combo:.0f} = {resto:.0f} t: compensarlas cuesta {resto:.0f} × {precio_creditos} / 1000 = {resto * precio_creditos / 1000:.2f} k€ a precio de créditos, y al precio sombra valen {resto:.0f} × {precio_sombra} / 1000 = {resto * precio_sombra / 1000:.1f} k€.\n\n**Respuesta:** la combinación de menor coste que alcanza el {objetivo:.0%} reduce {red_combo:.0f} t ({red_combo / huella:.0%}) por **{coste_combo:.0f} k€**; compensar el resto ({resto:.0f} t) costaría {resto * precio_creditos / 1000:.2f} k€ a precio de créditos y {resto * precio_sombra / 1000:.1f} k€ al precio sombra.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -311,7 +341,9 @@ Markdown(f'''Reducir al menos {objetivo_t:.0f} t ({objetivo:.0%}) cuesta como m�
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma y S7.** «Proyecto neutro en carbono» basado en compensaciones es exactamente la afirmación que la Directiva (UE) 2024/825 añade a la lista de prácticas prohibidas (impacto neutro, reducido o positivo por compensación): **no puede anunciarse** así, con independencia del precio de los créditos. «Construcción sostenible» es una afirmación genérica sin un desempeño reconocido que la respalde: **tampoco**. Lo que sí puede afirmarse es lo específico y demostrable: «el proyecto reduce sus emisiones un 40% respecto al diseño inicial mediante [medidas]; las 852 t restantes se compensan con créditos verificados de [proyecto y estándar]». **S1.** Compensar está en el escalón más bajo; las medidas del apartado 2 **minimizan**; cambiar el diseño para no necesitar el hormigón o el acero **evita**. **S2.** Con el precio sombra de 150 €/t, las medidas con coste unitario inferior (188 t por 16 k€) se ejecutan aunque no se anuncie nada: son decisiones rentables según la política de la organización, no publicidad.
+# **Norma y S7.** «Proyecto neutro en carbono» basado en compensaciones es exactamente la afirmación que la Directiva (UE) 2024/825 añade a la lista de prácticas prohibidas (impacto neutro, reducido o positivo por compensación): **no puede anunciarse** así, con independencia del precio de los créditos. «Construcción sostenible» es una afirmación genérica sin un desempeño reconocido que la respalde: **tampoco**. Lo que sí puede afirmarse es lo específico y demostrable: «el proyecto reduce sus emisiones 570 t (40%) respecto al diseño inicial mediante [medidas]; las 850 t restantes se compensan con créditos verificados de [proyecto y estándar]», sin llamarlo «neutro». **S1.** Compensar está en el escalón más bajo; las medidas del apartado 2 **minimizan**; cambiar el diseño para no necesitar el hormigón o el acero **evita**. **S2.** Con el precio sombra de 150 €/t, las medidas con coste unitario inferior (188 t por 16 k€) se ejecutan aunque no se anuncie nada: son decisiones rentables según la política de la organización, no publicidad.
+#
+# **Respuesta:** ni «neutro en carbono» ni «construcción sostenible»; sí la afirmación específica con las toneladas reducidas y las compensadas. Comprar créditos es compensar (el escalón más bajo); las medidas de reducción minimizan; cambiar el diseño evita.
 
 # %%
 preguntas_test = [

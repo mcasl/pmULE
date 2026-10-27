@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -225,7 +229,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en semanas).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -257,15 +261,12 @@ coste_indirecto_semanal, plazo_contrato, penalizacion_semanal, prima_semanal = 8
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con las duraciones normales y el camino crítico"
 #| label: fig-grafo
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
@@ -273,8 +274,17 @@ duracion_normal = proyecto.duration(datos_proyecto['duration'])
 coste_directo_normal = float(datos_proyecto['cost_normal'].sum())
 def coste_plazo(T):
     return penalizacion_semanal * max(0, T - plazo_contrato) - prima_semanal * max(0, plazo_contrato - T)
+def txt_plazo(T):
+    if T > plazo_contrato:
+        return f'penalización {penalizacion_semanal}·({T} − {plazo_contrato}) = {penalizacion_semanal * (T - plazo_contrato)}'
+    if T < plazo_contrato:
+        return f'prima −{prima_semanal}·({plazo_contrato} − {T}) = −{prima_semanal * (plazo_contrato - T)}'
+    return 'ni penalización ni prima (entrega en plazo) = 0'
+_sg = lambda v: f'+ {v:.0f}' if v >= 0 else f'− {-v:.0f}'
 total_normal = coste_directo_normal + coste_indirecto_semanal * duracion_normal + coste_plazo(duracion_normal)
-Markdown(f'''Duración normal {duracion_normal} semanas. Coste total = directo {coste_directo_normal:.0f} + indirecto {coste_indirecto_semanal}·{duracion_normal} = {coste_indirecto_semanal * duracion_normal} + penalización {penalizacion_semanal}·({duracion_normal} − {plazo_contrato}) = {coste_plazo(duracion_normal):.0f} → **{total_normal:.0f} k€**.''')
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas'))
+display(Markdown('Coste directo normal: ' + explica_suma(datos_proyecto['cost_normal'], 'directo', 'k€')))
+Markdown(f'''**Respuesta:** duración normal {duracion_normal} semanas. Coste total = directo {coste_directo_normal:.0f} + indirecto {coste_indirecto_semanal}·{duracion_normal} = {coste_indirecto_semanal * duracion_normal} + {txt_plazo(duracion_normal)} → {coste_directo_normal:.0f} + {coste_indirecto_semanal * duracion_normal} {_sg(coste_plazo(duracion_normal))} = **{total_normal:.0f} k€**.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -282,13 +292,23 @@ Markdown(f'''Duración normal {duracion_normal} semanas. Coste total = directo {
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# Ackoff-Sasieni reduce el proyecto semana a semana: en cada paso hay que acortar una semana todas las rutas críticas, y se elige la actividad (o la combinación de actividades) con margen de reducción que lo consigue con el menor coste unitario. La primera tabla da la duración de cada ruta, para identificar las rutas por su nombre; la segunda, el algoritmo completo; la tercera, las opciones que se comparan en cada paso.
+
+# %%
+explica_rutas(proyecto, datos_proyecto['duration'])
+
 # %%
 #| tbl-cap: "Algoritmo de Ackoff-Sasieni hasta la duración tope"
 #| label: tbl-ackoff
 tabla_ackoff, pasos, duraciones_tope, margen_restante = proyecto.ackoff(
     durations=datos_proyecto['duration'], min_durations=datos_proyecto['cap_duration'],
     costs=datos_proyecto['ucr'], reduction=100, report=False)
-tabla_ackoff
+proyecto.display_ackoff_pasos_tikz(
+    durations=datos_proyecto['duration'],
+    min_durations=datos_proyecto['cap_duration'],
+    costs=datos_proyecto['ucr'],
+    reduction=100)
 
 # %%
 #| tbl-cap: "Opciones consideradas en cada paso"
@@ -301,13 +321,19 @@ resumen = pd.DataFrame({'actividades acortadas': [', '.join(acts) for acts in pa
                        index=pd.Index(range(1, len(pasos) + 1), name='paso'))
 resumen['duración'] = duracion_normal - resumen.index
 resumen['sobrecoste acumulado'] = resumen['sobrecoste del paso'].cumsum()
-resumen
+resumen['acumulado = suma de pasos'] = [' + '.join(f'{v:.0f}' for v in resumen['sobrecoste del paso'].iloc[:i + 1]) + f' = {resumen["sobrecoste acumulado"].iloc[i]:.0f}' for i in range(len(resumen))]
+display(resumen)
+Markdown(f'**Respuesta:** la tabla da el sobrecoste directo acumulado de cada semana de reducción; hasta la duración tope '
+         f'({int(resumen["duración"].iloc[-1])} semanas, {plural(len(resumen), "semana")} de reducción) el sobrecoste acumulado es {resumen["sobrecoste acumulado"].iloc[-1]:.0f} k€.')
 
 # %% [markdown]
 # ## Apartado 3
 
 # %%
 display(Markdown(pregunta_3))
+
+# %% [markdown]
+# Para cada duración: coste directo = normal + sobrecoste acumulado; indirecto = coste semanal × duración; penalización = penalización semanal × semanas de retraso sobre el plazo; prima = −(prima semanal × semanas de adelanto). El coste total es la suma de las cuatro columnas.
 
 # %%
 #| tbl-cap: "Coste total según la duración"
@@ -328,7 +354,13 @@ ax.set_ylabel('k€'); ax.set_xlabel('duración (semanas)'); ax.invert_xaxis(); 
 
 # %%
 duracion_optima = int(curva['coste total'].idxmin())
-Markdown(f'La duración óptima es {duracion_optima} semanas, con un coste total de {curva["coste total"].min():.0f} k€ (frente a {total_normal:.0f} sin reducir): {"antes del plazo" if duracion_optima < plazo_contrato else "en el plazo" if duracion_optima == plazo_contrato else "con retraso"}.')
+_f = curva.loc[duracion_optima]
+_k = duracion_normal - duracion_optima
+Markdown(f'En la duración óptima, {duracion_optima} semanas ({plural(_k, "semana")} de reducción): directo {coste_directo_normal:.0f} + {_f["coste directo"] - coste_directo_normal:.0f} = {_f["coste directo"]:.0f}; '
+         f'indirecto {coste_indirecto_semanal}·{duracion_optima} = {_f["coste indirecto"]:.0f}; {txt_plazo(duracion_optima)}; '
+         f'total {_f["coste directo"]:.0f} + {_f["coste indirecto"]:.0f} {_sg(_f["penalización"] + _f["prima (negativa)"])} = {_f["coste total"]:.0f} k€. '
+         f'**Respuesta:** la duración óptima es {duracion_optima} semanas, con un coste total de {curva["coste total"].min():.0f} k€ (frente a {total_normal:.0f} k€ sin reducir, un ahorro de {total_normal - curva["coste total"].min():.0f} k€), '
+         f'{"antes del plazo contractual" if duracion_optima < plazo_contrato else "justo en el plazo contractual" if duracion_optima == plazo_contrato else "con retraso sobre el plazo contractual"} ({plazo_contrato} semanas).')
 
 # %% [markdown]
 # ## Apartado 4
@@ -337,18 +369,27 @@ Markdown(f'La duración óptima es {duracion_optima} semanas, con un coste total
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# Cada semana de reducción cuesta el sobrecoste del paso de Ackoff-Sasieni y ahorra el coste indirecto semanal **más** la penalización semanal mientras el proyecto esté por detrás del plazo, o **más** la prima mientras esté por delante. La reducción compensa mientras el sobrecoste del paso sea menor que ese ahorro; como la penalización suele ser mayor que la prima, el ahorro marginal cae de golpe al cruzar el plazo y ahí suele detenerse la reducción.
+# Cada semana de reducción cuesta el sobrecoste del paso de Ackoff-Sasieni y ahorra el coste indirecto semanal **más** la penalización semanal mientras el proyecto esté por detrás del plazo, o **más** la prima mientras esté por delante. La reducción compensa mientras el sobrecoste del paso sea menor que ese ahorro.
 
 # %%
-decision = resumen[['sobrecoste del paso', 'duración']].copy()
+decision = resumen[['duración', 'sobrecoste del paso']].copy()
+decision.insert(0, 'de → a', [f'{T + 1} → {T}' for T in decision['duración']])
 decision['ahorro por la semana'] = [coste_indirecto_semanal + (penalizacion_semanal if T + 1 > plazo_contrato else prima_semanal) for T in decision['duración']]
-decision['conviene'] = decision['sobrecoste del paso'] < decision['ahorro por la semana']
-display(decision)
+decision['ahorro = indirecto + penalización o prima'] = [f'{coste_indirecto_semanal} + {penalizacion_semanal} (penalización) = {coste_indirecto_semanal + penalizacion_semanal}' if T + 1 > plazo_contrato
+                                                         else f'{coste_indirecto_semanal} + {prima_semanal} (prima) = {coste_indirecto_semanal + prima_semanal}' for T in decision['duración']]
+decision['conviene'] = (decision['sobrecoste del paso'] < decision['ahorro por la semana']).map({True: 'sí', False: 'no'})
+display(decision.drop(columns='ahorro por la semana'))
+_antes = coste_indirecto_semanal + penalizacion_semanal; _despues = coste_indirecto_semanal + prima_semanal
+_txt = (f'Mientras el proyecto va por detrás del plazo ({plazo_contrato} semanas), cada semana reducida ahorra {coste_indirecto_semanal} + {penalizacion_semanal} = {_antes} k€; '
+        f'una vez alcanzado, sólo {coste_indirecto_semanal} + {prima_semanal} = {_despues} k€, y se compara con el sobrecoste del paso. ')
 paso_siguiente = resumen[resumen['duración'] == duracion_optima - 1]
-if len(paso_siguiente):
+if len(paso_siguiente) and duracion_optima <= plazo_contrato:
     sobre = float(paso_siguiente['sobrecoste del paso'].iloc[0])
     prima_necesaria = sobre - coste_indirecto_semanal
-    display(Markdown(f'Reducir una semana más (a {duracion_optima - 1}) costaría {sobre:.0f} k€ y ahorraría {coste_indirecto_semanal} de indirectos más la prima: '
-                     f'compensaría con una prima de más de {max(prima_necesaria, 0):.0f} k€/semana (ahora es {prima_semanal}).'))
+    _txt += (f'**Respuesta:** se reduce hasta {duracion_optima} semanas; reducir una semana más (a {duracion_optima - 1}) costaría {sobre:.0f} k€ y ahorraría {coste_indirecto_semanal} de indirectos más la prima p: '
+             f'compensa si {sobre:.0f} < {coste_indirecto_semanal} + p, es decir, con una prima de más de {sobre:.0f} − {coste_indirecto_semanal} = {max(prima_necesaria, 0):.0f} k€/semana (ahora es {prima_semanal}).')
+elif len(paso_siguiente):
+    _txt += f'**Respuesta:** se reduce hasta {duracion_optima} semanas; la semana siguiente sigue estando por detrás del plazo, así que la prima no interviene en esa decisión.'
 else:
-    display(Markdown('El óptimo ya está en la duración tope: ninguna prima permitiría reducir más.'))
+    _txt += f'**Respuesta:** se reduce hasta {duracion_optima} semanas, la duración tope: ninguna prima permitiría reducir más.'
+Markdown(_txt)

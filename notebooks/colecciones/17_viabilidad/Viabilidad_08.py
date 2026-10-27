@@ -4,6 +4,7 @@
 # coleccion: 17_viabilidad
 # variante: alternativas
 # nivel: 2
+# grafo: pert
 # lang: es
 # documentclass: scrreprt
 # papersize: A4
@@ -34,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -42,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -155,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -254,6 +259,54 @@ def anualidad_equivalente(VAN, k, n):
     '''Anualidad constante durante n años cuyo valor actual es VAN.'''
     return float(VAN * k / (1 - (1 + k) ** -n))
 
+_SUP = str.maketrans('0123456789-', '⁰¹²³⁴⁵⁶⁷⁸⁹⁻')
+def _num(x, d=1):
+    return f'{round(float(x), d) + 0.0:.{d}f}'.replace('-', '−')
+def _con_signo(x, d=1):
+    return f' − {_num(-x, d)}' if x < 0 else f' + {_num(x, d)}'
+
+def explica_van(flujos, k, unidad='k€', nombre='VAN'):
+    '''VAN término a término: Σ flujo_t / (1 + k)^t con los números sustituidos.'''
+    base = f'{1 + k:.6g}'
+    terminos = _num(flujos[0]) + ''.join(f' {"−" if f < 0 else "+"} {_num(abs(f))}/{base}{str(t).translate(_SUP)}' for t, f in enumerate(flujos) if t > 0)
+    actuales = _num(flujos[0]) + ''.join(_con_signo(f / (1 + k) ** t) for t, f in enumerate(flujos) if t > 0)
+    return f'{nombre} = Σ flujo_t/(1 + k)^t = {terminos} = {actuales} = **{_num(van(flujos, k))} {unidad}**'
+
+def explica_tir(flujos, unidad='k€'):
+    '''Cómo se obtiene la TIR: horquilla de dos tasas enteras con VAN de signo contrario, interpolación y comprobación.'''
+    r = tir(flujos)
+    a = np.floor(r * 100) / 100; b = a + 0.01
+    va, vb = van(flujos, a), van(flujos, b)
+    aprox = a + 0.01 * va / (va - vb)
+    return (f'La TIR es la tasa que anula el VAN. Probando tasas: VAN({a:.0%}) = {_num(va)} {unidad} y VAN({b:.0%}) = {_num(vb)} {unidad} tienen signo distinto, '
+            f'así que la TIR está entre {a:.0%} y {b:.0%}; interpolando linealmente, TIR ≈ {a:.0%} + 1 % × {_num(va)}/({_num(va)} − ({_num(vb)})) = {aprox:.2%}. '
+            f'Afinando (bisección, o =TIR(rango de flujos) en la hoja de cálculo): **TIR = {r:.2%}**. Comprobación: VAN({r:.2%}) = {abs(van(flujos, r)):.4f} ≈ 0.')
+
+def explica_payback(flujos, k=None, unidad='k€'):
+    '''Año en que el acumulado (simple o descontado) se hace positivo e interpolación lineal dentro de ese año.'''
+    acum, nombre = 0.0, 'acumulado' + ('' if k is None else ' descontado')
+    for t, f in enumerate(flujos):
+        v = f if k is None else f / (1 + k) ** t
+        if t > 0 and acum < 0 <= acum + v:
+            return (f'el {nombre} pasa de {_num(acum)} (año {t - 1}) a {_num(acum + v)} (año {t}); dentro del año {t} se recuperan los {_num(-acum)} {unidad} '
+                    f'que faltaban con un flujo{"" if k is None else " descontado"} de {_num(v)}: payback = {t - 1} + {_num(-acum)}/{_num(v)} = **{t - 1 + (-acum) / v:.2f} años**')
+        acum += v
+    return f'el {nombre} no llega a ser positivo: la inversión no se recupera'
+
+def explica_van_mensual(pagos, F, N, km, unidad='k€'):
+    '''VAN mensual = VA de los ingresos (renta de N meses desde el mes T + 1) − VA de los desembolsos de los meses 1…T.'''
+    pagos = [float(x) for x in pagos]; T = len(pagos); base = f'{1 + km:.5f}'
+    va_des = sum(x / (1 + km) ** m for m, x in enumerate(pagos, 1))
+    a_N = (1 - (1 + km) ** -N) / km
+    va_ing = F * a_N * (1 + km) ** -T
+    t_des = ' + '.join(f'{_num(x)}/{base}{str(m).translate(_SUP)}' for m, x in list(enumerate(pagos, 1))[:3])
+    if T > 3:
+        t_des += f' + … + {_num(pagos[-1])}/{base}{str(T).translate(_SUP)}'
+    return (f'- VA de los desembolsos = Σ desembolso_m/(1 + k_m)^m = {t_des} = **{_num(va_des)} {unidad}**.\n'
+            f'- VA de los ingresos: renta de N = {N} meses de {_num(F)} {unidad} que empieza en el mes T + 1 = {T + 1}: '
+            f'F · [1 − (1 + k_m)^−N]/k_m · (1 + k_m)^−T = {_num(F)} × [1 − {base}^−{N}]/{km:.6f} × {base}^−{T} = {_num(F)} × {a_N:.3f} × {(1 + km) ** -T:.4f} = **{_num(va_ing)} {unidad}**.\n'
+            f'- VAN = {_num(va_ing)} − {_num(va_des)} = **{_num(va_ing - va_des)} {unidad}**.')
+
 # %%
 k, n, m = 0.08, 6, 3
 A, B = datos_enunciado['A'].tolist(), datos_enunciado['B'].tolist()
@@ -265,15 +318,26 @@ C = datos_enunciado['C'].tolist()[:m + 1]
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# VAN (valor actual neto) a la tasa de descuento, TIR (tasa interna de rentabilidad, la que anula el VAN) y periodo de recuperación (payback) de cada proyecto, con los cálculos:
+
+# %%
+Markdown('\n'.join(f'**{p}.** ' + explica_van(f, k) + '. ' + explica_tir(f) + f' Payback: {explica_payback(f)}; descontado: {explica_payback(f, k)}.\n'
+                   for p, f in (('A', A), ('B', B))))
+
 # %%
 #| tbl-cap: "Criterios para A y B"
 #| label: tbl-criterios
 criterios = pd.DataFrame({p: {'VAN (k€)': van(f, k), 'TIR': tir(f), 'payback (años)': payback(f), 'payback descontado': payback(f, k)}
                           for p, f in (('A', A), ('B', B))}).T
-criterios.round(3)
+criterios.style.format({'VAN (k€)': '{:.1f}', 'TIR': '{:.2%}', 'payback (años)': '{:.2f}', 'payback descontado': '{:.2f}'})
 
 # %%
-Markdown(f'El VAN prefiere {criterios["VAN (k€)"].idxmax()} y la TIR prefiere {criterios["TIR"].idxmax()}: los criterios discrepan.')
+_v, _t, _p = criterios['VAN (k€)'].idxmax(), criterios['TIR'].idxmax(), criterios['payback (años)'].idxmin()
+Markdown(f'**Respuesta:** el VAN prefiere {_v} ({criterios.loc[_v, "VAN (k€)"]:.1f} frente a {criterios["VAN (k€)"].min():.1f} k€); '
+         f'la TIR prefiere {_t} ({criterios.loc[_t, "TIR"]:.2%} frente a {criterios["TIR"].min():.2%}); '
+         f'el payback prefiere {_p} (recupera la inversión en {criterios.loc[_p, "payback (años)"]:.2f} años frente a {criterios["payback (años)"].max():.2f}). '
+         + ('VAN y TIR discrepan.' if _v != _t else 'VAN y TIR coinciden.'))
 
 # %% [markdown]
 # ## Apartado 2
@@ -282,13 +346,14 @@ Markdown(f'El VAN prefiere {criterios["VAN (k€)"].idxmax()} y la TIR prefiere 
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# La TIR es una medida *relativa* (rentabilidad por euro y año) y supone la reinversión de los flujos a la propia TIR; el VAN es *absoluto* (euros de valor creado a la tasa de descuento). Cuando los proyectos tienen distinto perfil temporal (A cobra tarde, B cobra pronto) sus perfiles de VAN se cruzan: a la tasa de Fisher ambos valen lo mismo.
+# La TIR es una medida *relativa* (rentabilidad por euro y año) y supone la reinversión de los flujos a la propia TIR; el VAN es *absoluto* (euros de valor creado a la tasa de descuento). Cuando los proyectos tienen distinto perfil temporal (A cobra tarde, B cobra pronto) sus perfiles de VAN se cruzan: a la tasa de Fisher ambos valen lo mismo. Como VAN_A − VAN_B es el VAN de los flujos diferenciales A − B, la tasa de Fisher es la TIR de esos flujos.
 
 # %%
 diferencial = [a - b for a, b in zip(A, B)]
 fisher = tir(diferencial)
 display(pd.DataFrame({'A': A, 'B': B, 'A − B': diferencial}, index=pd.Index(range(n + 1), name='año')).T)
-Markdown(f'Tasa de Fisher: TIR de los flujos A − B = {fisher:.2%}; a esa tasa VAN_A = {van(A, fisher):.1f} = VAN_B = {van(B, fisher):.1f}.')
+Markdown('Flujos A − B: ' + explica_tir(diferencial).replace('La TIR es la tasa que anula el VAN', 'Su TIR es la tasa que anula su VAN') + '\n\n'
+         + f'**Respuesta:** tasa de Fisher = {fisher:.2%}; a esa tasa VAN_A = {van(A, fisher):.1f} k€ = VAN_B = {van(B, fisher):.1f} k€ (los perfiles se cortan en el gráfico).')
 
 # %%
 #| fig-cap: "Perfiles de VAN de A y B"
@@ -309,7 +374,7 @@ ax.set_xlabel('tasa (%)'); ax.set_ylabel('VAN (k€)'); ax.legend(); plt.show()
 display(Markdown(pregunta_3))
 
 # %%
-Markdown(f'''Para tasas por debajo de la de Fisher ({fisher:.1%}) se prefiere A (sus flujos tardíos valen más cuando el descuento es suave); por encima, B. A la tasa dada ({k:.0%} < {fisher:.1%}) la decisión correcta es **A**, la de mayor VAN: el objetivo es maximizar el valor creado en euros, y la TIR, al ser relativa e implicar reinversión a la propia TIR, no compara bien proyectos de distinto perfil.''')
+Markdown(f'''**Respuesta:** para tasas por debajo de la de Fisher ({fisher:.2%}) se prefiere A (sus flujos tardíos valen más cuando el descuento es suave); por encima, B (hasta su TIR, {tir(B):.2%}; por encima de ambas TIR ninguno es viable). A la tasa dada ({k:.0%} < {fisher:.2%}) la decisión correcta es **A**, la de mayor VAN ({van(A, k):.1f} frente a {van(B, k):.1f} k€): el objetivo es maximizar el valor creado en euros, y la TIR, al ser relativa e implicar reinversión a la propia TIR, no compara bien proyectos de distinto perfil temporal.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -317,13 +382,21 @@ Markdown(f'''Para tasas por debajo de la de Fisher ({fisher:.1%}) se prefiere A 
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Un VAN de 4 años y uno de 6 no son comparables: el de menor vida deja libre el dinero antes y puede repetirse. La anualidad equivalente reparte cada VAN en una renta constante durante su vida, AE = VAN · k / [1 − (1 + k)^−n]; la cadena de repeticiones suma el VAN de cada repetición descontado hasta una vida común (el mínimo común múltiplo de las vidas).
+
 # %%
 VAN_C = van(C, k)
 AE = {'A': anualidad_equivalente(van(A, k), k, n), 'B': anualidad_equivalente(van(B, k), k, n), 'C': anualidad_equivalente(VAN_C, k, m)}
-# cadena de repeticiones de C hasta igualar la vida de A (mínimo común múltiplo)
 import math
 L = math.lcm(n, m)
 VAN_C_cadena = sum(VAN_C / (1 + k) ** (j * m) for j in range(L // m))
 VAN_A_cadena = sum(van(A, k) / (1 + k) ** (j * n) for j in range(L // n))
-display(pd.DataFrame({'VAN (k€)': {'A': van(A, k), 'B': van(B, k), 'C': VAN_C}, 'vida': {'A': n, 'B': n, 'C': m}, 'anualidad equivalente (k€/año)': AE}).round(2))
-Markdown(f'''El VAN de C ({VAN_C:.1f}) no es comparable directamente con el de A ({van(A, k):.1f}) porque dura {m} años en vez de {n}. La anualidad equivalente convierte cada VAN en una renta anual constante durante su vida: {", ".join(f"{p}: {v:.1f}" for p, v in AE.items())} k€/año. Comprobación con cadenas de repeticiones hasta {L} años: A {VAN_A_cadena:.1f} frente a C {VAN_C_cadena:.1f} k€. {"C pasa a ser la mejor opción." if AE["C"] > max(AE["A"], AE["B"]) else "La decisión no cambia: sigue siendo " + max(AE, key=AE.get) + "."}''')
+display(pd.DataFrame({'VAN (k€)': {'A': van(A, k), 'B': van(B, k), 'C': VAN_C}, 'vida': {'A': n, 'B': n, 'C': m},
+                      'AE = VAN · k / [1 − (1 + k)^−n]': {p: f'{v:.1f} × {k} / [1 − {1 + k:g}^−{vida}] = {AE[p]:.2f}' for p, v, vida in (('A', van(A, k), n), ('B', van(B, k), n), ('C', VAN_C, m))}}).round({'VAN (k€)': 1}))
+_cad = lambda v, vida: ' + '.join([f'{v:.1f}'] + [f'{v:.1f}/{1 + k:g}{str(j * vida).translate(_SUP)}' for j in range(1, L // vida)])
+mejor_AB = 'A' if van(A, k) >= van(B, k) else 'B'
+Markdown(f'VAN de C: ' + explica_van(C, k) + f'. Cadenas de repeticiones hasta {L} años: A, {_cad(van(A, k), n)} = {VAN_A_cadena:.1f} k€; '
+         f'C, {_cad(VAN_C, m)} = {VAN_C_cadena:.1f} k€. '
+         + (f'**Respuesta:** C pasa a ser la mejor opción: su anualidad equivalente ({AE["C"]:.1f} k€/año) supera la de {mejor_AB} ({AE[mejor_AB]:.1f}), aunque su VAN aislado sea menor.' if AE['C'] > max(AE['A'], AE['B']) else
+            f'**Respuesta:** la decisión no cambia, sigue siendo {max(AE, key=AE.get)}: su anualidad equivalente ({max(AE.values()):.1f} k€/año) supera la de C ({AE["C"]:.1f}); la cadena de repeticiones da la misma conclusión.'))

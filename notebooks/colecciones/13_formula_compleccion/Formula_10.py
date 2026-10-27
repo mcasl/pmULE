@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -221,7 +225,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la apertura de una clínica veterinaria; las actividades son las siguientes (las duraciones del cuadro están en semanas).
+# El proyecto corresponde a la apertura de una clínica veterinaria; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -248,6 +252,40 @@ proyecto = prelaciones.create_project()
 R = proyecto.path_matrix(dummies=False)
 t = datos_proyecto['duration'][R.columns]
 
+# %%
+def _num(x, dec=0):
+    x = float(x)
+    return (f'{x:.{dec}f}' if dec else f'{x:g}').replace('-', '−')
+
+
+def producto_Rt(proyecto, R, t, base, decimales=0):
+    """Cada fila de R por el vector t: (R·t)_r = Σ_i R_ri·t_i, con los términos no nulos (actividades de la
+    ruta, en orden de ejecución) y el valor; marca las filas que dan el máximo."""
+    cal = proyecto.calendar(base)
+    orden = {a: k for k, a in enumerate(ordena_ruta(list(R.columns), cal))}
+    filas = {}
+    for r in R.index:
+        acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: orden.get(a, 0))
+        total = float(sum(float(t[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    'fila de R · t = suma': ' + '.join(f'{a}({_num(t[a], decimales)})' for a in acts) + f' = {_num(total, decimales)}',
+                    'R·t': total}
+    tabla = pd.DataFrame(filas).T
+    tabla['R·t'] = tabla['R·t'].astype(float)
+    tabla['máximo'] = np.where(np.isclose(tabla['R·t'], tabla['R·t'].max()), '← τ', '')
+    return tabla
+
+
+def explica_tau(tabla, unidad='', decimales=0, nombre='τ'):
+    """«τ = ‖R·t‖∞ = máx(19, 20, 17) = 20, que da la ruta Route_2 (A – C – E)»."""
+    v = tabla['R·t']
+    T = float(v.max())
+    rutas = [f"{r} ({tabla.loc[r, 'actividades']})" for r in v.index if np.isclose(v[r], T)]
+    u = f' {unidad}' if unidad else ''
+    quien = (f'que corresponde a la ruta {rutas[0]}' if len(rutas) == 1
+             else f'alcanzado a la vez por {len(rutas)} rutas: {lista_y(rutas)}')
+    return (f"{nombre} = ‖R·t‖∞ = máx({', '.join(_num(x, decimales) for x in v)}) = **{_num(T, decimales)}{u}**, {quien}")
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -266,8 +304,9 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 Rt = R @ t
 tau = float(Rt.max())
 criticas = Rt.index[np.isclose(Rt, tau)].tolist()
-display(pd.DataFrame({'actividades': [' - '.join(R.columns[R.loc[r] == 1]) for r in R.index], 'duración': Rt}))
-Markdown(f'τ = {tau:.0f}; rutas críticas: {", ".join(criticas)}.')
+producto = producto_Rt(proyecto, R, t, datos_proyecto['duration'])
+display(producto)
+Markdown('**Respuesta:** ' + explica_tau(producto) + '. Esas son las rutas críticas.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -281,8 +320,12 @@ gradiente = indicadores.mean()
 display(indicadores)
 pd.DataFrame({'∂τ/∂t (media de indicadores)': gradiente, 'tau_sensitivity': proyecto.tau_sensitivity(t.to_dict()).reindex(R.columns)}).T
 
-# %% [markdown]
-# Valor 1: la actividad está en todas las rutas críticas (alargarla o acortarla cambia τ uno a uno). Valor 0: no está en ninguna (τ no cambia, al menos para cambios pequeños). Valor intermedio, por ejemplo 0,5: está en una de las dos rutas críticas; alargarla sí alarga el proyecto, pero acortarla no lo acorta, porque la otra ruta sigue midiendo lo mismo.
+# %%
+clases = {v: gradiente.index[np.isclose(gradiente, v)].tolist() for v in sorted(gradiente.unique(), reverse=True)}
+k_c = len(criticas)
+ejemplos = '; '.join(f"∂τ/∂t_{acts[0]} = ({' + '.join(str(int(R.loc[r, acts[0]])) for r in criticas)})/{k_c} = {_num(v, 2)}" for v, acts in clases.items())
+clases_txt = '; '.join(f'{_num(v, 2)}: {lista_y(acts)}' for v, acts in clases.items())
+Markdown(f'''**Respuesta:** cada valor es la media de la columna de la actividad en las filas críticas, por ejemplo {ejemplos}. Aparecen los valores {clases_txt}. Valor 1: la actividad está en todas las rutas críticas (alargarla o acortarla cambia τ uno a uno). Valor 0: no está en ninguna (τ no cambia, al menos para cambios pequeños). Valor intermedio: está en algunas de las rutas críticas pero no en todas; alargarla sí alarga el proyecto, pero acortarla no lo acorta, porque las otras rutas críticas siguen midiendo lo mismo.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -301,8 +344,11 @@ for v, acts in clases.items():
     filas[a] = {'∂τ/∂t': v, 'τ(t+1) − τ': tau_con(a, 1) - tau, 'τ(t−1) − τ': tau_con(a, -1) - tau}
 pd.DataFrame(filas).T
 
-# %% [markdown]
-# Para las actividades con valor intermedio la pendiente por la derecha (+1) y por la izquierda (0) son distintas: τ es un máximo de funciones lineales y en los puntos donde dos rutas empatan tiene una esquina. La media de los indicadores es un *subgradiente*, no una derivada: el valor que reparte la sensibilidad entre las rutas empatadas.
+# %%
+frases = []
+for a, f in pd.DataFrame(filas).T.iterrows():
+    frases.append(f"{a} (∂τ/∂t = {_num(f['∂τ/∂t'], 2)}): al alargarla τ cambia {_num(f['τ(t+1) − τ'])} y al acortarla {_num(f['τ(t−1) − τ'])}")
+Markdown(f'''**Respuesta:** {'; '.join(frases)}. Para las actividades con valor intermedio la pendiente por la derecha (+1) y por la izquierda (0) son distintas: τ es un máximo de funciones lineales y donde dos rutas empatan tiene una esquina, así que no hay derivada. La media de los indicadores es un *subgradiente*: el valor que reparte la sensibilidad entre las rutas empatadas.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -312,5 +358,6 @@ display(Markdown(pregunta_4))
 
 # %%
 suma = float(gradiente.sum())
-longitud_media = float(indicadores.sum(axis=1).mean())
-Markdown(f'''Σ_i ∂τ/∂t_i = Σ_i (1/k) Σ_{{r crítica}} R_ri = (1/k) Σ_r Σ_i R_ri = media del número de actividades de las rutas críticas. Aquí Σ = {suma:.2f} y la longitud media de las {len(criticas)} rutas críticas es {longitud_media:.2f}.''')
+longitudes = indicadores.sum(axis=1)
+longitud_media = float(longitudes.mean())
+Markdown(f'''**Respuesta:** Σ_i ∂τ/∂t_i = Σ_i (1/k) Σ_{{r crítica}} R_ri = (1/k) Σ_{{r crítica}} Σ_i R_ri = media del número de actividades de las rutas críticas (se intercambia el orden de las sumas). Aquí Σ = {' + '.join(_num(g, 2) for g in gradiente)} = {suma:.2f}, y las {len(criticas)} rutas críticas tienen {lista_y([str(int(x)) for x in longitudes])} actividades: media ({' + '.join(str(int(x)) for x in longitudes)})/{len(criticas)} = {longitud_media:.2f}. Coinciden.''')

@@ -28,7 +28,30 @@ from IPython.display import display, HTML, Markdown, Math
 sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, pinta_tikz, plot_cargas
+from pmule import explica_camino_critico, ordena_ruta, lista_y, plural
 
+def _cargas(gantt, limites=None):
+    """Carga de recursos por periodo (y, si se da, frente al límite, que se prolonga con su último valor)."""
+    import numpy as _np, pandas as _pd
+    _c = gantt.data.loc['Total'].drop('H_total').astype(float)
+    _t = _pd.DataFrame({'Periodo': range(1, len(_c) + 1), 'Carga': _c.astype(int).values})
+    if limites is not None:
+        _l = list(limites) if isinstance(limites, (list, tuple)) else [limites]
+        _t['Límite'] = (_l + [_l[-1]] * len(_c))[:len(_c)]
+        _t['¿Supera?'] = _np.where(_t['Carga'] > _t['Límite'], 'sí', 'no')
+    return _t.set_index('Periodo').T
+
+def _respuesta_ackoff(best_option, costes, T0, T1, unidad='periodos'):
+    """Coste de cada iteración de Ackoff-Sasieni y resumen de las reducciones."""
+    from collections import Counter as _Counter
+    _ci = {it: sum(costes[a] for a in acts) for it, acts in best_option.items()}
+    _n = _Counter(a for acts in best_option.values() for a in acts)
+    return Markdown(
+        'Coste de cada iteración (suma de los costes unitarios de reducción de las actividades acortadas un periodo):\n\n'
+        + '\n'.join(f"- Iteración {it}: " + ' + '.join(f"{a}({costes[a]:g})" for a in acts) + f" = {_ci[it]:g}" for it, acts in best_option.items())
+        + "\n\n**Respuesta:** hay que reducir " + lista_y([f"{a} {plural(n, 'periodo')}" for a, n in _n.items()])
+        + f"; la duración pasa de {T0:g} a {T1:g} {unidad} con un sobrecoste mínimo de "
+        + ' + '.join(f"({c:g})" for c in _ci.values()) + f" = **{sum(_ci.values()):g}** unidades monetarias.")
 # %%
 # %%capture
 # %mkdir -p ~/temp
@@ -61,6 +84,7 @@ display(Markdown(pregunta_5))
 #| label: tbl-datosEnunciado
 
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 
 import numpy as np
 
@@ -150,16 +174,17 @@ resultados_pert['nodes']
 # %%
 #| tbl-cap: "Holgura total de las actividades"
 #| label: tbl-holguras
-resultados_pert['activities']
-
+display(resultados_pert['activities'].rename(columns={'H_total': 'Holgura total'}))
+display(Markdown('(Las filas que empiezan por @ son actividades ficticias.) Actividades con holgura total nula: **'
+                 + lista_y([a for a in ordena_ruta(datos_proyecto.index, proyecto.calendar(datos_proyecto['duration'])) if resultados_pert['activities'].loc[a, 'H_total'] == 0]) + '**.'))
 # %% [markdown]
 # ### Camino crítico
-# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas, cuyas actividades se listan en orden alfabético:
+# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas (actividades en orden de ejecución):
 
 # %%
 camino_critico = proyecto.critical_path(datos_proyecto['duration'])
-proyecto.display_critical_path(datos_proyecto['duration'])
-
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'periodos'))
+display(Markdown('**Respuesta:** el grafo PERT es el de las figuras anteriores y el camino crítico es el indicado.'))
 # %% [markdown]
 # ##### Grafo PERT con indicación de tiempos
 
@@ -218,11 +243,15 @@ pinta_tikz(dibujo)
 # %%
 #| fig-cap: "Diagrama de cargas antes de aplicar el algoritmo de asignación"
 #| label: fig-preAsignacionBarras
-
 plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=limite_maximo_recursos)
-
+_c0 = _cargas(gantt_df, limite_maximo_recursos)
+display(_c0)
+_exc = [p for p in _c0.columns if _c0.loc['¿Supera?', p] == 'sí']
+display(Markdown((f"Se supera el límite en {plural(len(_exc), 'periodo')}: "
+                  + lista_y([f"periodo {p} (carga {_c0.loc['Carga', p]} > {_c0.loc['Límite', p]})" for p in _exc]) + '.')
+                 if _exc else 'La carga no supera el límite en ningún periodo.'))
 # %% [markdown]
-# La demanda de recursos actual infringe el límite impuesto durante los primeros 7 periodos. Es necesario aplicar el algoritmo de asignación.
+# Como la demanda de recursos infringe el límite impuesto durante los primeros 7 periodos, es necesario aplicar el algoritmo de asignación. En el algoritmo se usan los límites del enunciado: 3 recursos en los 7 primeros periodos y 10 a partir del octavo.
 
 # %% [markdown]
 # #### Algoritmo de asignación
@@ -230,12 +259,12 @@ plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=limite_maximo_recursos)
 
 # %%
 duracion_y_recursos = datos_proyecto[['duration', 'resources']]
-proyecto_asignacion.display_asignar_pasos_tikz(data=duracion_y_recursos, duration_label='duration', resource_label='resources', maximo=[3,3,3,3,3,3,3,100])
+proyecto_asignacion.display_asignar_pasos_tikz(data=duracion_y_recursos, duration_label='duration', resource_label='resources', maximo=limite_maximo_recursos)
 my_data, gantt_df, dibujo  = proyecto_asignacion.asignar(
                                     data=duracion_y_recursos,
                                     duration_label='duration',
                                     resource_label='resources',
-                                    maximo=[3,3,3,3,3,3,3,100],
+                                    maximo=limite_maximo_recursos,
                                     report=False
                                     )
 
@@ -247,8 +276,17 @@ pinta_tikz(dibujo)
 # %%
 #| fig-cap: "Diagrama de cargas tras aplicar el algoritmo de asignación"
 #| label: fig-postAsignacionBarras
-
 plot_cargas(gantt_df=gantt_df, limite_maximo_recursos=limite_maximo_recursos)
+_c2 = _cargas(gantt_df, limite_maximo_recursos)
+display(_c2)
+_T2 = int(proyecto_asignacion.duration(my_data['duration']))
+_desp = {a[1:]: int(d) for a, d in my_data['duration'].items() if str(a).startswith('💤')}
+_T0 = int(proyecto.duration(datos_proyecto['duration']))
+display(Markdown(
+    "**Respuesta:** hay que retrasar " + lista_y([f"{a} {plural(d, 'periodo')}" for a, d in _desp.items()])
+    + f" respecto de su inicio más temprano (ver el visor del algoritmo de asignación). Con ello la carga máxima de los 7 primeros periodos es "
+    + f"{_c2.loc['Carga'].iloc[:7].max()} ≤ 3 y la de los siguientes {_c2.loc['Carga'].iloc[7:].max()} ≤ 10, y el proyecto pasa de {_T0} a "
+    + f"**{plural(_T2, 'periodo')}**."))
 
 # %% [markdown]
 # Con las operaciones indicadas el proyecto sería compatible con la restricción en el límite de recursos disponibles impuesta en el enunciado del ejercicio.
@@ -278,7 +316,8 @@ proyecto_ackoff.display_ackoff_pasos_tikz(
 
 # %%
 for iteracion, actividades in best_option.items():
-    display(Markdown(f"- Iteración {iteracion}: " + ", ".join(actividades) + "<br>"))
+    pass
+_respuesta_ackoff(best_option, datos_proyecto['ucr'], proyecto.duration(datos_proyecto['duration']), proyecto_ackoff.duration(duration))
 
 # %% [markdown]
 # ## Apartado 4
@@ -287,7 +326,7 @@ for iteracion, actividades in best_option.items():
 display(Markdown(pregunta_4))
 
 # %% [markdown]
-# Calculamos la duración del proyecto utilizando las duraciones tope y posteriormente alargaremos la duración de las tareas no críticas que han sido recortadas ineficientemente.
+# La duración tope del proyecto es la que se obtiene con todas las actividades en su duración tope; pero acortar todas las actividades sería ineficiente, porque se pagaría la reducción de actividades que no son críticas. Por eso se aplica el algoritmo de Ackoff-Sasieni periodo a periodo hasta que alguna ruta crítica ya no pueda acortarse más: así solo se reducen, y solo lo necesario, las actividades que acortan el proyecto.
 
 # %% [markdown]
 # ::: {style="max-width: 100%; overflow-x: auto;"}
@@ -311,7 +350,13 @@ proyecto.display_ackoff_pasos_tikz(
 
 # %%
 for iteracion, actividades in best_option.items():
-    display(Markdown(f"- Iteración {iteracion}: " + ", ".join(actividades) + "<br>"))
+    pass
+_Ttope = proyecto.duration(datos_proyecto['cap_duration'])
+display(_respuesta_ackoff(best_option, datos_proyecto['ucr'], proyecto.duration(datos_proyecto['duration']), proyecto.duration(duration)))
+display(Markdown(f"Comprobación: con todas las actividades en su duración tope el proyecto dura {_Ttope:g} periodos, "
+                 + ("la misma duración alcanzada por el algoritmo" if np.isclose(_Ttope, proyecto.duration(duration)) else "distinta de la alcanzada por el algoritmo")
+                 + f"; las actividades no reducidas (" + lista_y([a for a in datos_proyecto.index if duration[a] == datos_proyecto.loc[a, 'duration']])
+                 + ") se mantienen en su duración normal, sin sobrecoste."))
 
 # %% [markdown]
 # ## Apartado 5
@@ -322,7 +367,7 @@ display(Markdown(pregunta_5))
 # %% [markdown]
 # La solución de este apartado precisa:  
 #    - Introducir una actividad ficticia (que llamaremos 💤L) tras el final de H y anterior a L con duración 2 periodos.  
-#    - Partir la actividad F en dos partes F1 y F2 e iniciar K tras el final de F1.  
+#    - Partir la actividad F (6 periodos) en dos partes F1 y F2 de 3 periodos cada una e iniciar K tras el final de F1.    
 #
 # El grafo PERT resultante de considerar estos cambios es el siguiente:
 
@@ -384,6 +429,11 @@ pinta_tikz(dibujo)
 
 # %%
 duracion_proyecto_modificado = proyecto_modificado.duration(durations=duracion_modificado.to_frame()['duration'])
-Markdown(f"La duración del proyecto tras estos cambios es {duracion_proyecto_modificado} periodos.")
+display(explica_camino_critico(proyecto_modificado, duracion_modificado, 'periodos'))
+Markdown(f"**Respuesta:** la duración del proyecto tras estos cambios es **{duracion_proyecto_modificado:g} periodos** "
+         f"(frente a {proyecto.duration(datos_proyecto['duration']):g} en la situación original): la espera 💤L de {duracion_modificado['💤L']:g} periodos "
+         + ("está en el camino crítico y alarga el proyecto, " if any('💤L' in r for r in proyecto_modificado.critical_path(duracion_modificado).values()) else "no está en el camino crítico, ")
+         + "mientras que adelantar el inicio de K no acorta el proyecto porque K "
+         + ("no es crítica." if not any('K' in r for r in proyecto_modificado.critical_path(duracion_modificado).values()) else "es crítica."))
 
 # %%

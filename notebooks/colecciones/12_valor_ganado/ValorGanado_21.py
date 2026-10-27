@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -224,6 +228,9 @@ datos_enunciado
 # %% [markdown]
 # # Resolución
 
+# %% [markdown]
+# **Notación** (siglas del PMBOK): BAC (*budget at completion*), presupuesto total del proyecto; PV (*planned value*), valor planificado: presupuesto del trabajo que, según el plan, debía estar hecho en la fecha de control; EV (*earned value*), valor ganado: presupuesto del trabajo realmente hecho; AC (*actual cost*), coste real de ese trabajo. Con ellos: CV = EV − AC (*cost variance*), variación del coste; SV = EV − PV (*schedule variance*), variación del plazo; CPI = EV / AC (*cost performance index*), índice de rendimiento del coste; SPI = EV / PV (*schedule performance index*), índice de rendimiento del plazo. Una variación negativa o un índice menor que 1 indica sobrecoste (CV, CPI) o retraso (SV, SPI).
+
 # %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
@@ -264,21 +271,28 @@ res = proyecto.copy().asignar_multi(datos_proyecto.copy(), 'duration', ['operari
 #| label: fig-ganttRealista
 pinta_tikz(res.dibujos['operarios'])
 
+# %% [markdown]
+# El PV de cada actividad en la semana de control es su BAC por la fracción de su duración que, según cada línea base, debería haberse ejecutado: $\min(\max(t - \text{inicio}, 0), d)/d$.
+
 # %%
 #| tbl-cap: "Valor planificado de cada actividad en la semana de control con cada línea base"
 #| label: tbl-pvLineas
 frac_ingenua = ((t_control - calendario['inicio_mas_temprano']).clip(lower=0).clip(upper=calendario['duracion']) / calendario['duracion'])
 frac_realista = ((t_control - res.inicios.reindex(datos_proyecto.index)).clip(lower=0).clip(upper=datos_proyecto['duration']) / datos_proyecto['duration'])
 pv_lineas = pd.DataFrame({'inicio ingenuo': calendario['inicio_mas_temprano'].astype(int), 'inicio realista': res.inicios.reindex(datos_proyecto.index).astype(int),
-                          'PV ingenuo': BAC * frac_ingenua, 'PV realista': BAC * frac_realista})
-pv_lineas.loc['Total'] = ['', '', pv_lineas['PV ingenuo'].sum(), pv_lineas['PV realista'].sum()]
+                          'PV ingenuo': (BAC * frac_ingenua).round(1), 'PV realista': (BAC * frac_realista).round(1)})
+pv_lineas.loc['Total'] = ['', '', round((BAC * frac_ingenua).sum(), 1), round((BAC * frac_realista).sum(), 1)]
 pv_lineas
 
 # %%
 r = proyecto.monte_carlo_valor_ganado_recursos(dists, datos_proyecto['duration'], demanda, ['operarios'], limite, BAC, t_control, n_samples=3000, seed=11)
-Markdown(f'Línea base ingenua: {r.T_libre:.0f} semanas, PV({t_control}) = {r.pv_libre:.1f} k€. '
-         f'Línea base realista: {r.T_recursos:.0f} semanas, PV({t_control}) = {r.pv_recursos:.1f} k€. '
-         'La realista programa las esperas por falta de operarios; la ingenua las ignora y parte de un plan imposible.')
+pv_i, pv_r = BAC * frac_ingenua, BAC * frac_realista
+suma = lambda v: ' + '.join(f'{a}({x:.1f})' for a, x in v.items() if x > 1e-9) + f' = {v.sum():.1f}'
+retrasadas = [a for a in datos_proyecto.index if pv_lineas.loc[a, 'inicio realista'] > pv_lineas.loc[a, 'inicio ingenuo']]
+Markdown(f'''- PV ingenuo({t_control}) = {suma(pv_i)} k€
+- PV realista({t_control}) = {suma(pv_r)} k€
+
+**Respuesta:** línea base ingenua: {r.T_libre:.0f} semanas y PV({t_control}) = {r.pv_libre:.1f} k€; realista: {r.T_recursos:.0f} semanas y PV({t_control}) = {r.pv_recursos:.1f} k€. La realista retrasa el inicio de {lista_y(retrasadas)} porque no hay operarios para todas a la vez (programa las esperas); la ingenua las ignora y parte de un plan imposible, con {r.pv_libre - r.pv_recursos:.1f} k€ más de trabajo previsto para la semana {t_control}.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -286,16 +300,26 @@ Markdown(f'Línea base ingenua: {r.T_libre:.0f} semanas, PV({t_control}) = {r.pv
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# En cada réplica se sortean las duraciones, se ejecuta el proyecto con el límite de operarios y se calcula SPI = EV / PV en la semana de control con el PV de cada línea base. La tabla resume las 3 000 réplicas.
+
 # %%
 #| tbl-cap: "SPI, duración real y previsión T/SPI con cada línea base"
 #| label: tbl-spiRecursos
 r.summary().round(3)
+
+# %%
+s = r.summary()
+Markdown(f'''**Respuesta:** con la línea base ingenua el SPI tiene media {s.loc["SPI sin recursos", "media"]:.3f} (80 % central entre {s.loc["SPI sin recursos", "P10"]:.3f} y {s.loc["SPI sin recursos", "P90"]:.3f}): {"casi siempre por debajo de 1, aunque nadie trabaje más despacio de lo previsto" if s.loc["SPI sin recursos", "P90"] < 1 else "desplazado hacia abajo"}. Con la realista tiene media {s.loc["SPI con recursos", "media"]:.3f} (entre {s.loc["SPI con recursos", "P10"]:.3f} y {s.loc["SPI con recursos", "P90"]:.3f}): centrado cerca de 1, con la dispersión que causan las duraciones inciertas.''')
 
 # %% [markdown]
 # ## Apartado 3
 
 # %%
 display(Markdown(pregunta_3))
+
+# %% [markdown]
+# Error = previsión T/SPI − duración real de la misma réplica; *sesgo* = media del error (positivo: se prevé más de lo que dura), *error absoluto medio* = media de su valor absoluto.
 
 # %%
 #| tbl-cap: "Calidad de la previsión de duración"
@@ -305,9 +329,10 @@ calidad
 
 # %%
 mejor = calidad['error absoluto medio'].idxmin()
-Markdown(f'Mejor previsión: {mejor} (error absoluto medio {calidad.loc[mejor, "error absoluto medio"]:.2f} semanas). '
-         'Con la línea base ingenua el SPI cae por debajo de 1 aunque el equipo trabaje como se esperaba, y T/SPI sobrestima la duración; '
-         'la realista mide solo las desviaciones que no estaban ya previstas.')
+si, cr = calidad.loc['línea base sin recursos'], calidad.loc['línea base con recursos']
+Markdown(f'''Duración real media {s.loc["duración real", "media"]:.1f} semanas. Con la línea base ingenua T/SPI prevé de media {s.loc["T/SPI sin recursos", "media"]:.1f} (sesgo {si['sesgo']:+.2f}, error absoluto medio {si['error absoluto medio']:.2f} semanas); con la realista {s.loc["T/SPI con recursos", "media"]:.1f} (sesgo {cr['sesgo']:+.2f}, error absoluto medio {cr['error absoluto medio']:.2f}).
+
+**Respuesta:** prevé mejor la {mejor} (error absoluto medio {calidad.loc[mejor, "error absoluto medio"]:.2f} semanas). Con la línea base ingenua el SPI cae por debajo de 1 aunque el equipo trabaje como se esperaba y T/SPI {"sobrestima" if si['sesgo'] > 0 else "subestima"} sistemáticamente la duración; la realista ya incluye las esperas y el SPI solo mide las desviaciones que no estaban previstas.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -323,6 +348,8 @@ for t in sorted({max(2, round(t_control * 0.5)), t_control, round(t_control * 1.
     filas[t] = {'sin recursos': q['línea base sin recursos'], 'con recursos': q['línea base con recursos']}
 evolucion = pd.DataFrame(filas).T.rename_axis('semana de control')
 display(evolucion.round(3))
-peor = (evolucion['sin recursos'] > evolucion['con recursos']).all()
-Markdown(('La línea base ingenua da peor previsión en todas las fechas de control. ' if peor else 'La línea base ingenua da peor previsión en las primeras fechas. ') +
-         'Su error es sobre todo sistemático (sesgo), porque compara con un plan imposible; el de la realista es ruido de las duraciones y no desaparece del todo hasta el final.')
+peores = [str(t) for t in evolucion.index if evolucion.loc[t, 'sin recursos'] > evolucion.loc[t, 'con recursos']]
+serie = lambda c: ' → '.join(f'{v:.2f}' for v in evolucion[c])
+Markdown(f'''Error absoluto medio de T/SPI en las semanas {lista_y([str(t) for t in evolucion.index])}: línea base ingenua {serie("sin recursos")} semanas; realista {serie("con recursos")} semanas.
+
+**Respuesta:** la línea base ingenua da peor previsión en {"todas las fechas de control" if len(peores) == len(evolucion) else ("la semana " if len(peores) == 1 else "las semanas ") + lista_y(peores)}; su error es sobre todo sistemático (compara con un plan imposible) y {"se reduce" if evolucion["sin recursos"].iloc[-1] < evolucion["sin recursos"].iloc[0] else "no se reduce"} al avanzar el proyecto, cuando las esperas ya ocurridas pesan menos en lo que queda. El de la realista ({serie("con recursos")} semanas) es ruido de las duraciones inciertas y no desaparece del todo hasta el final.''')

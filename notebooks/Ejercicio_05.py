@@ -27,7 +27,30 @@ from IPython.display import display, HTML, Markdown, Math
 sys.path.append('../src')
 
 from pmule import PredecessorTable, ProjectGraph, pinta_tikz
+from pmule import explica_camino_critico, explica_probabilidad, ordena_ruta, lista_y, plural
 
+def _tabla_varianzas(caminos, varianzas, calendario):
+    """Varianza de cada ruta crítica, con las actividades en orden de ejecución y la suma término a término."""
+    import pandas as _pd
+    _f = {}
+    for _r, _acts in caminos.items():
+        _acts = ordena_ruta(_acts, calendario)
+        _f[_r] = {'Ruta': ' – '.join(_acts),
+                  'Varianza = suma': ' + '.join(f"σ²({a})" for a in _acts) + ' = '
+                                     + ' + '.join(f"{varianzas[a]:g}" for a in _acts) + f" = {sum(varianzas[a] for a in _acts):g}"}
+    return _pd.DataFrame(_f).T
+
+def _respuesta_ackoff(best_option, costes, T0, T1, unidad='periodos'):
+    """Coste de cada iteración de Ackoff-Sasieni y resumen de las reducciones."""
+    from collections import Counter as _Counter
+    _ci = {it: sum(costes[a] for a in acts) for it, acts in best_option.items()}
+    _n = _Counter(a for acts in best_option.values() for a in acts)
+    return Markdown(
+        'Coste de cada iteración (suma de los costes unitarios de reducción de las actividades acortadas un periodo):\n\n'
+        + '\n'.join(f"- Iteración {it}: " + ' + '.join(f"{a}({costes[a]:g})" for a in acts) + f" = {_ci[it]:g}" for it, acts in best_option.items())
+        + "\n\n**Respuesta:** hay que reducir " + lista_y([f"{a} {plural(n, 'periodo')}" for a, n in _n.items()])
+        + f"; la duración pasa de {T0:g} a {T1:g} {unidad} con un sobrecoste mínimo de "
+        + ' + '.join(f"({c:g})" for c in _ci.values()) + f" = **{sum(_ci.values()):g}** unidades monetarias.")
 # %%
 # %%capture
 # %mkdir -p ~/temp
@@ -54,6 +77,7 @@ display(Markdown(pregunta_4))
 
 # %%
 import pandas as pd
+pd.set_option('display.max_colwidth', None)   # sin recortar con «…» los textos largos de las tablas
 import numpy as np
 
 datos_enunciado = pd.DataFrame([
@@ -105,12 +129,12 @@ prelaciones.display_immediate_linkage_matrix()
 # ### Precálculo de variables de interés
 
 # %% [markdown]
-# A partir de los datos del enunciado podemos calcular la duración media, la desviación típica y el coste unitario de reducción que utilizaremos para contestar las preguntas realizadas.
+# A partir de los datos del enunciado (duraciones optimista $a$, más probable $m$ y pesimista $b$; costes con duración PERT y con duración tope) calculamos, para cada actividad, la duración media $D$, la desviación típica $\sigma$ y el coste unitario de reducción (CUR), es decir, lo que cuesta acortar la actividad un periodo:
 
 # %%
-display(Math(r"$duration=\frac{a+4m+b}{6}$"))
-display(Math(r"$standard ~ deviation=\frac{b-a}{6}$"))
-display(Math(r"$ucr=\frac{C_{cap}-C_{pert}}{d_{cap}-d_{pert}}$"))
+display(Math(r"$D=\frac{a+4m+b}{6}$"))
+display(Math(r"$\sigma=\frac{b-a}{6}$"))
+display(Math(r"$CUR=\frac{C_{tope}-C_{PERT}}{D_{PERT}-d_{tope}}$"))
 
 # %% [markdown]
 # {{< pagebreak >}}
@@ -123,8 +147,15 @@ datos_proyecto['ucr'] = datos_proyecto.eval('(cost_cap_duration - cost_pert_dura
 # %%
 #| tbl-cap: "Duración y desviación típica de las actividades calculadas"
 #| label: tbl-datosInteresantes
-datos_proyecto[['b', 'm', 'a', 'duration', 'standard_deviation', 'ucr']]
-
+def _cur(r):
+    if r['duration'] == r['cap_duration']:
+        return f"no reducible (D = d tope = {r['cap_duration']:g})"
+    return (f"({r['cost_cap_duration']:g} − {r['cost_pert_duration']:g})/({r['duration']:g} − {r['cap_duration']:g}) = {r['ucr']:.2f}")
+pd.DataFrame({
+    'D = (a + 4m + b)/6': [f"({r['a']:g} + 4·{r['m']:g} + {r['b']:g})/6 = {r['duration']:g}" for _, r in datos_proyecto.iterrows()],
+    'σ = (b − a)/6': [f"({r['b']:g} − {r['a']:g})/6 = {r['standard_deviation']:.2f}" for _, r in datos_proyecto.iterrows()],
+    'CUR': [_cur(r) for _, r in datos_proyecto.iterrows()],
+}, index=datos_proyecto.index)
 # %% [markdown]
 # ### Grafo PERT con numeración de nodos
 # Utilizando el cuadro de prelaciones expandido podemos dibujar el grafo Pert correspondiente al proyecto.
@@ -167,7 +198,7 @@ resultados_pert['nodes']
 
 # %%
 duracion_media_proyecto = int(float(proyecto.duration(datos_proyecto['duration'])))
-Markdown(f"De acuerdo a la duración obtenida para el nodo final del proyecto, la duración media del proyecto es {duracion_media_proyecto} periodos.")
+Markdown(f"El tiempo más temprano del nodo final del proyecto es su duración media: **{duracion_media_proyecto} periodos**.")
 
 # %% [markdown]
 # ### Calendario del proyecto
@@ -186,16 +217,18 @@ proyecto.display_calendario(datos_proyecto['duration'])
 # %%
 #| tbl-cap: "Holgura total de las actividades"
 #| label: tbl-holguras
-resultados_pert['activities']
-
+display(resultados_pert['activities'].rename(columns={'H_total': 'Holgura total'}))
+display(Markdown('(Las filas que empiezan por @ son actividades ficticias.) Actividades con holgura total nula: **'
+                 + lista_y([a for a in ordena_ruta(datos_proyecto.index, calendario) if resultados_pert['activities'].loc[a, 'H_total'] == 0]) + '**.'))
 # %% [markdown]
 # ### Camino crítico
-# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas, cuyas actividades se listan en orden alfabético:
+# Las actividades con holgura total cero forman el camino crítico. Según el grafo Pert del proyecto, éste está compuesto por las siguientes rutas (actividades en orden de ejecución):
 
 # %%
 camino_critico = proyecto.critical_path(datos_proyecto['duration'])
-proyecto.display_critical_path(datos_proyecto['duration'])
-
+display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'periodos'))
+display(Markdown(f"**Respuesta:** el grafo PERT es el de las figuras anteriores y el camino crítico lo forman las {len(camino_critico)} rutas anteriores "
+                 f"(actividades críticas: {lista_y([a for a in ordena_ruta(datos_proyecto.index, calendario) if any(a in r for r in camino_critico.values())])})."))
 # %% [markdown]
 # ##### Grafo PERT con indicación de tiempos y camino crítico
 
@@ -225,10 +258,12 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 display(Markdown(pregunta_2))
 
 # %% [markdown]
-# Para responder este apartado tan sólo es necesario sumar los costes indicados en la columna coste_duracion_pert.
+# El coste del proyecto con todas las actividades en su duración PERT es la suma de los costes de la columna `cost_pert_duration`:
 
 # %%
-Markdown(f"La suma de los costes es {int(datos_proyecto['cost_pert_duration'].sum())}")
+Markdown(' + '.join(f"{a}({c:g})" for a, c in datos_proyecto['cost_pert_duration'].items())
+         + f" = **{int(datos_proyecto['cost_pert_duration'].sum())}**\n\n**Respuesta:** el coste de realización con duración PERT "
+         f"({duracion_media_proyecto} periodos) es de **{int(datos_proyecto['cost_pert_duration'].sum())}** unidades monetarias.")
 
 # %% [markdown]
 # {{< pagebreak >}}
@@ -249,12 +284,12 @@ display(Markdown(pregunta_3))
 duracion_media_proyecto = int(proyecto.duration(datos_proyecto['duration']))
 
 # %%
-Markdown(f"La media de la duración del proyecto es {duracion_media_proyecto}")
+Markdown(f"La media de la duración del proyecto es μ = **{duracion_media_proyecto} periodos**.")
 
 # %% [markdown]
 # ### Varianza de la duración del proyecto
 #
-# Se calcula entonces la varianza de cada una de las rutas del camino crítico como suma de las varianzas de las actividades que lo componen. Se indica en color la ruta con máxima varianza, que determina la varianza del proyecto.
+# Se calcula entonces la varianza de cada una de las rutas del camino crítico como suma de las varianzas ($\sigma^2$, con la $\sigma$ redondeada a dos decimales de la tabla anterior) de las actividades que la componen. La ruta con máxima varianza determina la varianza del proyecto.
 
 # %%
 datos_proyecto['variance'] = datos_proyecto.eval('standard_deviation ** 2')
@@ -264,10 +299,12 @@ desviacion_proyecto, varianza_caminos = proyecto.standard_deviation(durations=da
 # %%
 #| tbl-cap: "Varianza de las rutas del camino crítico"
 #| label: tbl-varianzaRutas
-varianza_caminos
-
+_tabla_varianzas(camino_critico, datos_proyecto['variance'].round(2), calendario)
 # %%
-Markdown(f"La desviación típica de la duración del proyecto es la raiz cuadrada de su varianza. En este caso la desviación típica tiene valor {round(float(desviacion_proyecto), 2)}")
+_v = varianza_caminos.data['Variance'].astype(float)
+Markdown(f"Varianza del proyecto: σ² = máx({', '.join(f'{x:g}' for x in _v)}) = **{desviacion_proyecto**2:g}** "
+         f"({lista_y([r for r in _v.index if np.isclose(_v[r], _v.max())])}). "
+         f"La desviación típica es su raíz cuadrada: σ = √{desviacion_proyecto**2:g} = **{float(desviacion_proyecto):.2f}** periodos.")
 
 # %% [markdown]
 # ### Cálculo de la probabilidad
@@ -285,7 +322,9 @@ display_normal_tikz(duracion_media_proyecto, desviacion_proyecto, hasta=periodo_
 probabilidad_de_terminar_antes_de_b  = round(float(probabilidad_de_terminar_antes_de_b * 100), 2)
 
 # %%
-Markdown(f"La probabilidad pedida es {probabilidad_de_terminar_antes_de_b} por ciento.")
+Markdown(explica_probabilidad(duracion_media_proyecto, desviacion_proyecto, periodo_probabilidad_b)
+         + f"\n\n**Respuesta:** la probabilidad de terminar en {periodo_probabilidad_b} periodos o menos es del **{probabilidad_de_terminar_antes_de_b} %**: "
+           "los deseos del jefe tienen pocas probabilidades de cumplirse con la planificación actual.")
 
 # %% [markdown]
 # {{< pagebreak >}}
@@ -315,12 +354,16 @@ proyecto.display_ackoff_pasos_tikz(
     reduction=2)
 
 # %% [markdown]
-# Las actividades reducidas en cada una de las iteraciones son:
+# Las actividades reducidas en cada una de las iteraciones, y su coste, son:
 
 # %%
 for iteracion, actividades in best_option.items():
-    display(Markdown(f"- Iteración {iteracion}: " + ", ".join(actividades) + "<br>"))
-
+    pass
+display(_respuesta_ackoff(best_option, datos_proyecto['ucr'], proyecto.duration(datos_proyecto['duration']), proyecto.duration(durations)))
+_inc = sum(datos_proyecto.loc[a, 'ucr'] for acts in best_option.values() for a in acts)
+display(Markdown(f"El coste total del proyecto pasa a ser {int(datos_proyecto['cost_pert_duration'].sum())} + {_inc:g} = "
+                 f"**{datos_proyecto['cost_pert_duration'].sum() + _inc:g}** unidades monetarias. "
+                 "(Las actividades con CUR = 0 se pueden acortar sin coste: su coste con duración tope es igual al de la duración PERT.)"))
 # %%
 
 # %%

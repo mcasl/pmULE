@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -231,6 +235,40 @@ proyecto = prelaciones.create_project()
 R = proyecto.path_matrix(dummies=False)
 t = datos_proyecto['duration'][R.columns]
 
+# %%
+def _num(x, dec=0):
+    x = float(x)
+    return (f'{x:.{dec}f}' if dec else f'{x:g}').replace('-', '−')
+
+
+def producto_Rt(proyecto, R, t, base, decimales=0):
+    """Cada fila de R por el vector t: (R·t)_r = Σ_i R_ri·t_i, con los términos no nulos (actividades de la
+    ruta, en orden de ejecución) y el valor; marca las filas que dan el máximo."""
+    cal = proyecto.calendar(base)
+    orden = {a: k for k, a in enumerate(ordena_ruta(list(R.columns), cal))}
+    filas = {}
+    for r in R.index:
+        acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: orden.get(a, 0))
+        total = float(sum(float(t[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    'fila de R · t = suma': ' + '.join(f'{a}({_num(t[a], decimales)})' for a in acts) + f' = {_num(total, decimales)}',
+                    'R·t': total}
+    tabla = pd.DataFrame(filas).T
+    tabla['R·t'] = tabla['R·t'].astype(float)
+    tabla['máximo'] = np.where(np.isclose(tabla['R·t'], tabla['R·t'].max()), '← τ', '')
+    return tabla
+
+
+def explica_tau(tabla, unidad='', decimales=0, nombre='τ'):
+    """«τ = ‖R·t‖∞ = máx(19, 20, 17) = 20, que da la ruta Route_2 (A – C – E)»."""
+    v = tabla['R·t']
+    T = float(v.max())
+    rutas = [f"{r} ({tabla.loc[r, 'actividades']})" for r in v.index if np.isclose(v[r], T)]
+    u = f' {unidad}' if unidad else ''
+    quien = (f'que corresponde a la ruta {rutas[0]}' if len(rutas) == 1
+             else f'alcanzado a la vez por {len(rutas)} rutas: {lista_y(rutas)}')
+    return (f"{nombre} = ‖R·t‖∞ = máx({', '.join(_num(x, decimales) for x in v)}) = **{_num(T, decimales)}{u}**, {quien}")
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -243,6 +281,10 @@ mc = proyecto.monte_carlo(dists, n_samples=20000, seed=5)
 criticidad = mc.sensitivity_mean.reindex(R.columns)
 criticidad.sort_values(ascending=False).round(3).to_frame('índice de criticidad').T
 
+# %%
+orden_mc = list(criticidad.sort_values(ascending=False).index)
+Markdown(f'''**Respuesta:** el índice de criticidad es la fracción de las 20 000 réplicas en que la actividad está en la ruta más larga. Las más críticas son {lista_y([f'{a} ({criticidad[a]:.3f})' for a in orden_mc[:3]])}; las menos, {lista_y([f'{a} ({criticidad[a]:.3f})' for a in orden_mc[-2:]])}.''')
+
 # %% [markdown]
 # ## Apartado 2
 
@@ -253,6 +295,10 @@ display(Markdown(pregunta_2))
 U, S, Vt = np.linalg.svd(R.values.astype(float), full_matrices=False)
 v1 = pd.Series(np.abs(Vt[0, :]), index=R.columns)
 v1.sort_values(ascending=False).round(3).to_frame('|v₁|').T
+
+# %%
+Markdown(f'**Respuesta:** ordenadas por |v₁| de mayor a menor: {", ".join(f"{a} ({v1[a]:.3f})" for a in v1.sort_values(ascending=False).index)} '
+         '(las que tienen el mismo valor ocupan posiciones equivalentes en la estructura).')
 
 # %% [markdown]
 # ## Apartado 3
@@ -268,7 +314,11 @@ comparacion['rango MC'] = comparacion['criticidad MC'].rank(ascending=False)
 comparacion['rango SVD'] = comparacion['|v₁|'].rank(ascending=False)
 comparacion['diferencia de rango'] = (comparacion['rango MC'] - comparacion['rango SVD']).abs()
 display(comparacion.sort_values('diferencia de rango', ascending=False).round(3))
-Markdown(f'Correlación de Spearman entre ambos rankings: ρ = {rho:.2f}.')
+dif = comparacion.sort_values('diferencia de rango', ascending=False)
+maxdif = dif['diferencia de rango'].iloc[0]
+peores = dif.index[np.isclose(dif['diferencia de rango'], maxdif)].tolist()
+detalle = lista_y([f"{a} (puesto {_num(dif.loc[a, 'rango MC'], 1)} por Monte Carlo y {_num(dif.loc[a, 'rango SVD'], 1)} por SVD)" for a in peores])
+Markdown(f'**Respuesta:** la correlación de Spearman entre ambos rankings es ρ = **{rho:.2f}**. Donde más discrepan es en {detalle}.')
 
 # %% [markdown]
 # Monte Carlo sabe qué rutas son largas y variables; la SVD sólo sabe qué actividades son estructuralmente centrales. Una actividad por la que pasan muchas rutas cortas tiene |v₁| alto y criticidad baja; una actividad de una única ruta muy larga, lo contrario. Coinciden cuando la estructura y las duraciones apuntan a lo mismo.
@@ -288,4 +338,4 @@ pd.DataFrame({'criticidad (σ)': criticidad, 'criticidad (3σ)': criticidad3, '|
 
 # %%
 cambio = 'sube' if rho3 > rho + 0.03 else ('baja' if rho3 < rho - 0.03 else 'apenas cambia')
-Markdown(f'''Con σ triplicada ρ pasa de {rho:.2f} a {rho3:.2f} ({cambio}). Lo esperable es que con más incertidumbre más rutas tengan ocasión de ser la más larga y el índice de criticidad se reparta según cuántas rutas pasan por cada actividad, que es justo lo que mide la SVD, de modo que los rankings se acerquen; con poca incertidumbre la criticidad se concentra en la ruta crítica determinista y la estructura importa menos. Si aquí el cambio es pequeño es porque la estructura y las duraciones ya apuntan en la misma dirección: las actividades centrales son también las de la ruta crítica.''')
+Markdown(f'''**Respuesta:** con σ triplicada ρ pasa de {rho:.2f} a {rho3:.2f} ({cambio}). Lo esperable es que con más incertidumbre más rutas tengan ocasión de ser la más larga y el índice de criticidad se reparta según cuántas rutas pasan por cada actividad, que es justo lo que mide la SVD, de modo que los rankings se acerquen; con poca incertidumbre la criticidad se concentra en la ruta crítica determinista y la estructura importa menos. Si aquí el cambio es pequeño es porque la estructura y las duraciones ya apuntan en la misma dirección: las actividades centrales son también las de la ruta crítica.''')

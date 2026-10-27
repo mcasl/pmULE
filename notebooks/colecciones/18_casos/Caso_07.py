@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -258,10 +262,11 @@ calendario = proyecto.calendar(datos_proyecto['duration'])
 # El préstamo es un límite de recursos *por periodo*. El algoritmo de asignación de la librería (`asignar`, Wiest-Levy) no interrumpe actividades en curso, así que cuando el límite baja a mitad de una actividad no puede respetarlo; se usa aquí un planificador en paralelo equivalente que sólo deja empezar una actividad si cabe en todas las semanas que va a ocupar.
 
 # %%
-def programar(limite, L):
+def programar(limite, L, registro=None):
     '''Planificador en paralelo con límite por periodo: la semana s admite limite[s] operarios (L si no está en limite).
     Recorre las semanas; en cada una, por orden de holgura total, entra cada actividad disponible (predecesoras terminadas)
-    si cabe en el límite de TODAS las semanas que ocuparía; si no, espera. Devuelve los inicios y fines de cada actividad.'''
+    si cabe en el límite de TODAS las semanas que ocuparía; si no, espera. Devuelve los inicios y fines de cada actividad.
+    Si se pasa una lista en registro, anota cada espera: la primera semana en la que la actividad no cabe y por qué.'''
     D = datos_proyecto['duration'].astype(int); R = datos_proyecto['resources'].astype(int)
     preds = prelaciones.immediate_predecessor
     orden = list(calendario['H_total'].sort_values(kind='stable').index)
@@ -275,6 +280,11 @@ def programar(limite, L):
                 inicio[a], fin[a] = t, t + int(D[a])
                 for s in semanas:
                     carga[s] = carga.get(s, 0) + int(R[a])
+            elif registro is not None:
+                s = next(s for s in semanas if carga.get(s, 0) + int(R[a]) > int(limite.get(s, L)))
+                registro.append({'semana en que podría empezar': t + 1, 'actividad': a, 'operarios': int(R[a]),
+                                 'semanas que ocuparía': f'{t + 1}–{t + int(D[a])}', 'primera semana sin sitio': s,
+                                 'carga ya asignada + operarios > límite': f'{carga.get(s, 0)} + {int(R[a])} = {carga.get(s, 0) + int(R[a])} > {int(limite.get(s, L))}'})
         t += 1
     return pd.Series(inicio).reindex(D.index), pd.Series(fin).reindex(D.index)
 
@@ -327,11 +337,10 @@ plot_cargas(gantt_df=gantt_cargas, limite_maximo_recursos=[L])
 picos = [int(t) for t in cargas.index[cargas == L]]
 en_pico = {t: [a for a in datos_proyecto.index if calendario.loc[a, 'inicio_mas_temprano'] < t <= calendario.loc[a, 'fin_mas_temprano']] for t in picos}
 criticas = list(calendario.index[calendario['H_total'] == 0])
-display(calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'H_total', 'H_libre']])
-Markdown(f'''Duración {int(proyecto.duration(datos_proyecto["duration"]))} semanas; críticas: {", ".join(criticas)}. El máximo de {L} operarios se alcanza en las semanas {", ".join(str(t) for t in picos)}; en ellas coinciden {"; ".join(f"semana {t}: {', '.join(acts)}" for t, acts in en_pico.items())}.''')
+proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
-# El plan de inicios más tempranos satura la cuadrilla en las semanas 2. Prestar operarios en una de esas semanas obliga a aplazar alguna actividad; que eso retrase el proyecto depende de si la actividad aplazada tiene holgura suficiente (y de si al aplazarla arrastra a otras hasta agotar la suya).
+# **Respuesta:** el plan de inicios más tempranos llega al máximo de 8 operarios en las semanas 1 y 2; en todas coinciden A y B. Las actividades críticas (holgura total 0) son A, B, C, D y G. La ventana que pide Delta (2–4) incluye la semana de pico 2. Prestar 2 operarios en una semana en la que la carga supera 6 obliga a aplazar alguna actividad; que eso retrase el proyecto depende de si la actividad aplazada tiene holgura suficiente (y de si al aplazarla arrastra a otras hasta agotar la suya).
 
 # %% [markdown]
 # ## Apartado 2
@@ -345,11 +354,30 @@ display(Markdown(pregunta_2))
 T_prestamo, esperas, dibujo = simular_prestamo(ventana, q, L)
 pinta_tikz(dibujo)
 
-# %%
-Markdown(f'''Con el préstamo el proyecto pasa de {plazo} a **{T_prestamo} semanas** ({T_prestamo - plazo} de retraso, {penalizacion * (T_prestamo - plazo)} k€ de penalización). Esperas introducidas por el algoritmo: {", ".join(f"{a} ({v} sem.)" for a, v in esperas.items()) or "ninguna"}.''')
-
 # %% [markdown]
-# El planificador recorre las semanas; en cada una ordena las actividades disponibles por holgura total y deja empezar las que caben en el límite de todas las semanas que ocuparían. En la ventana 2–4 caben 6 operarios y coinciden A, B, C, E: esperan B (2 sem.), E (2 sem.), y el retraso de 2 semanas es lo que de esa espera no absorben las holguras.
+# El planificador recorre las semanas; al principio de cada una ordena las actividades disponibles (predecesoras terminadas) por holgura total, de menor a mayor (en caso de empate, por orden alfabético), y deja empezar cada una si cabe en el límite de todas las semanas que ocuparía (6 dentro de la ventana 2–4, 8 fuera). Cada vez que una actividad disponible no cabe, se anota la primera semana en la que se pasaría del límite:
+
+# %%
+#| tbl-cap: "Esperas con el préstamo pedido: por qué no cabe cada actividad"
+#| label: tbl-esperasPrestamo
+registro = []
+_ = programar({s: L - q for s in range(ventana[0], ventana[1] + 1)}, L, registro)
+pd.DataFrame(registro).set_index('semana en que podría empezar') if registro else Markdown('Ninguna actividad tiene que esperar.')
+
+# %%
+_ret = T_prestamo - plazo
+_lineas = [f'- {a} espera {plural(v, "semana")} y tenía holgura total {int(calendario.loc[a, "H_total"])}.' for a, v in esperas.items()]
+_criticas = [a for a, v in esperas.items() if calendario.loc[a, 'H_total'] == 0 and v == _ret]
+if _ret == 0:
+    _porque = 'las holguras absorben todas las esperas'
+elif _criticas:
+    _porque = lista_y(_criticas) + (' es crítica' if len(_criticas) == 1 else ' son críticas') + ': su espera pasa entera al plazo'
+else:
+    _porque = f'las esperas superan en {plural(_ret, "semana")} la holgura de las rutas que las contienen'
+_quien = (('espera ' if len(esperas) == 1 else 'esperan ') + lista_y(list(esperas))) if esperas else 'no espera ninguna actividad'
+Markdown('\n'.join(_lineas) + f'\n\n**Respuesta:** con el préstamo en las semanas {ventana[0]}–{ventana[1]} {_quien}; '
+         f'el proyecto pasa de {plazo} a **{T_prestamo} semanas** ({_porque}): {plural(_ret, "semana")} de retraso y '
+         f'{penalizacion} × {_ret} = **{penalizacion * _ret} k€** de penalización.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -364,13 +392,23 @@ w = 3
 filas = []
 for a in range(1, plazo - w + 2):
     T_a, esperas_a, _ = simular_prestamo((a, a + w - 1), q, L)
+    cmax = max(int(cargas[t]) for t in range(a, a + w))
+    hol = ', '.join(f'{x} ({v} sem.; holgura {int(calendario.loc[x, "H_total"])})' for x, v in esperas_a.items())
+    if not esperas_a:
+        motivo = f'carga máxima {cmax} ≤ {L - q}: no hay que aplazar nada'
+    elif T_a == plazo:
+        motivo = f'carga máxima {cmax} > {L - q}; esperan {hol}: lo absorbe la holgura'
+    else:
+        motivo = f'carga máxima {cmax} > {L - q}; esperan {hol}: no basta la holgura'
     filas.append({'semanas': f'{a}–{a + w - 1}', 'carga antes del préstamo': ', '.join(str(int(cargas[t])) for t in range(a, a + w)),
-                  'duración': T_a, 'retraso': T_a - plazo, 'esperas': ', '.join(f'{x} ({v})' for x, v in esperas_a.items()) or '—'})
+                  'duración': T_a, 'retraso': T_a - plazo, 'explicación': motivo})
 ventanas = pd.DataFrame(filas).set_index('semanas')
 ventanas
 
 # %% [markdown]
-# Se puede prestar sin mover el plazo en las ventanas 3–5, 4–6, 5–7, 6–8, 7–9, 8–10, 9–11, 10–12, 11–13, 12–14, 13–15, 14–16: o la carga de esas semanas queda por debajo de 6 sin tocar nada, o lo que hay que aplazar tiene holgura de sobra. El jefe de obra tiene razón: desde la semana 3 el préstamo sale gratis en plazo. La ventana que pide Delta (2–4) cuesta 2 semanas porque cae sobre el pico y lo que se aplaza acaba empujando a una actividad crítica.
+# Se puede prestar sin mover el plazo en todas las que empiezan entre la semana 3 y la 14 (3–5 a 14–16); retrasan el proyecto 1–3 y 2–4. En las ventanas sin retraso, o la carga de esas semanas no pasa de 6 y no hay que aplazar nada, o lo que se aplaza tiene holgura suficiente (columna «explicación»). La ventana que pide Delta (2–4) cuesta 2 semanas porque su carga pasa de 6 y obliga a aplazar B, que es crítica.
+#
+# **Respuesta:** el jefe de obra tiene razón: a partir de la semana 3 todas las ventanas de 3 semanas dejan el plazo en 16 semanas, así que prestar desde entonces no cuesta nada a este proyecto (a Delta le cuesta esperar 1 semana).
 
 # %% [markdown]
 # ## Apartado 4
@@ -395,7 +433,14 @@ opciones.insert(2, 'empresa', opciones['mi proyecto'] + opciones['proyecto Delta
 opciones
 
 # %% [markdown]
-# Para la empresa la opción más barata es **prestar más tarde** (8.0 k€); subcontratar 2 operarios para Delta cuesta 15.0 k€ y llega a tiempo (la ventana empieza en la semana 2, hay una semana de preaviso). Para mi proyecto lo mejor es negarse o prestar en la ventana del jefe de obra (coste cero), pero la primera carga a Delta con 24 k€ y la segunda con 8 k€ de espera. El director de operaciones pide la columna «empresa»: ahí está el conflicto entre la optimización local (cada jefe de proyecto defiende su plazo) y la global.
+# Coste de cada opción (penalizaciones y subcontratación, en k€):
+#
+# - Negarse: Delta se retrasa las 3 semanas → 8 × 3 = **24 k€** (mi proyecto, 0).
+# - Prestar en 2–4: mi proyecto se retrasa 2 semanas → 5 × 2 = **10 k€** (Delta, 0).
+# - Prestar en 3–5: mi plazo no se mueve (apartado 3); Delta espera 3 − 2 = 1 semana → 8 × 1 = **8 k€**.
+# - Subcontratar: 2.5 k€ por operario y semana × 2 × 3 semanas = **15.0 k€** (mi proyecto, 0); llega a tiempo porque la ventana empieza en la semana 2 y RR. HH. puede tenerlos desde la semana 2.
+#
+# **Respuesta:** para la empresa la opción más barata es **prestar en 3–5** (8.0 k€). Para mi proyecto cuestan 0 negarse, prestar en 3–5 y que se subcontrate para Delta; la única que me cuesta es prestar como se pide (10 k€). Por tanto el óptimo de la empresa es también uno de los óptimos de mi proyecto, pero no el único: si yo eligiera negarme, la empresa pagaría 16.0 k€ más. El director de operaciones pide la columna «empresa»: ahí está el conflicto entre la optimización local (cada jefe de proyecto defiende su plazo) y la global.
 
 # %% [markdown]
 # ## Apartado 5
@@ -404,13 +449,13 @@ opciones
 display(Markdown(pregunta_5))
 
 # %% [markdown]
-# Una decisión defendible: prestar los 2 operarios desde la semana 3 (gratis para mi plazo) y proponer a Delta que absorba las 1 semanas de espera, o que pida a RR. HH. la subcontratación para cubrir esas semanas si le sale más barato. Mensajes:
+# Una decisión defendible: prestar los 2 operarios desde la semana 3 (gratis para mi plazo) y proponer a Delta que absorba la semana de espera (8 × 1 = 8 k€). Mejor aún: cubrir esa espera con 2 operarios subcontratados (2.5 × 2 × 1 = 5.0 k€ < 8 k€) y pasar después a Delta los míos, en las semanas 3–4, que no retrasan mi proyecto; la empresa paga sólo la subcontratación. Mensajes:
 #
-# - *Jefa de Delta:* «En 2–4 prestar 2 operarios me cuesta 2 semanas de plazo (10 k€). Te los doy sin coste desde la semana 3: esperar 1 semana te cuesta 8 k€, y sigue siendo lo más barato para la empresa.»
-# - *Director de operaciones:* «Adjunto la tabla con el coste de cada opción para los dos proyectos y para la empresa; la más barata en conjunto es prestar más tarde (8.0 k€). Si decides otra, pido que la penalización resultante se registre como decisión de empresa.»
+# - *Jefa de Delta:* «En 2–4 prestar 2 operarios me cuesta 2 semanas de plazo (10 k€). Te propongo 2 subcontratados en la semana 2 (5.0 k€) y los míos desde la semana 3, que no retrasan mi entrega: tú no te retrasas y la empresa paga lo mínimo.»
+# - *Director de operaciones:* «Adjunto la tabla con el coste de cada opción para los dos proyectos y para la empresa; la más barata en conjunto es prestar en 3–5 (8.0 k€). Si decides otra, pido que la penalización resultante se registre como decisión de empresa.»
 # - *Cliente:* «Mantenemos la entrega en la semana 16.»
 # - *Jefe de obra:* «Tenías razón con la ventana 3–5; va en la propuesta como alternativa. Prepara el plan de personal con los dos escenarios.»
-# - *RR. HH.:* «Por ahora no hace falta subcontratar; os aviso si cambia.»
+# - *RR. HH.:* «Necesito 2 operarios subcontratados para la semana 2 (proyecto Delta); confirmad hoy para respetar el preaviso.»
 
 # %% [markdown]
 # ## Apartado 6

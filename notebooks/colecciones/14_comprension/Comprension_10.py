@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -247,32 +251,124 @@ p_plazo = float(norm.cdf((plazo - duracion) / sigma))
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
-# Cada pregunta se construye con la respuesta correcta calculada y tres distractores *plausibles*: errores típicos (sumar todas las duraciones, confundir holgura libre y total, contar las ficticias como rutas, usar la varianza en lugar de la desviación…).
+# Cada pregunta del test lleva la respuesta correcta calculada y tres distractores *plausibles*: errores típicos (sumar todas las duraciones, confundir holgura libre y total, contar las ficticias como rutas, usar la varianza en lugar de la desviación típica…). En cada apartado se justifica la respuesta correcta con los números del proyecto y se explica de dónde sale cada opción incorrecta.
 
 # %%
+dur = datos_proyecto['duration']
 h_total, h_libre = int(calendario.loc[X, 'H_total']), int(calendario.loc[X, 'H_libre'])
 n_rutas, n_fict = len(R), len(proyecto.dummies)
-p_mal = float(norm.cdf((plazo - duracion) / sigma ** 2))
-def opciones(correcta, distractores):
-    vistos, lista = set(), []
-    for v in [correcta] + distractores:
-        if v not in vistos:
-            vistos.add(v); lista.append(v)
-    return lista[:4]
+camino = ordena_ruta(list(proyecto.critical_path(dur).values())[0], calendario)
+Rt = R @ dur[R.columns]
+_rutas = {r: ' – '.join(ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)) for r in R.index}
+p_mal = float(norm.cdf(plazo, duracion, sigma ** 2))
+
+def opciones(correcta, distractores, motivo_otro):
+    # distractores: lista de (valor, motivo); se descartan los repetidos y se dejan 4 opciones
+    vistos, lista, motivos = {correcta}, [correcta], {}
+    for v, m in distractores:
+        if v not in vistos and len(lista) < 4:
+            vistos.add(v); lista.append(v); motivos[v] = m or motivo_otro
+    return lista, motivos
+
+def ruta_de(v):
+    rs = [_rutas[r] for r in R.index if int(Rt[r]) == v]
+    return f'es la duración de {lista_y(rs, "o")}, que no es la ruta más larga' if rs else None
+
+explicaciones = {}
+ops1, mot1 = opciones(duracion, [(int(dur.sum()), f'suma de las duraciones de todas las actividades ({" + ".join(str(int(d)) for d in dur)} = {int(dur.sum())}): ignora que las actividades en paralelo se solapan'),
+                                 (duracion - 1, ruta_de(duracion - 1)), (duracion + 2, None), (duracion + 1, None), (duracion - 2, ruta_de(duracion - 2))],
+                      'no es la duración de ninguna ruta del grafo')
+explicaciones[1] = (f'La duración del proyecto es la de la ruta más larga (camino crítico) {" – ".join(camino)}: '
+                    f'{" + ".join(str(int(dur[a])) for a in camino)} = **{duracion} semanas**.', mot1)
+_r = calendario.loc[X]
+_suc = sorted(s for s, ps in prelaciones.immediate_predecessor.items() if X in ps)
+ops2, mot2 = opciones(h_total, [(h_libre, f'es la holgura libre de {X}, no la total' + (f' (mín ES de sus sucesoras − EF = mín(' + ', '.join(str(int(calendario.loc[s, "inicio_mas_temprano"])) for s in _suc) + f') − {int(_r.fin_mas_temprano)} = {h_libre})' if _suc else '')),
+                                (0, f'sería la holgura de una actividad crítica, y {X} no lo es'), (h_total + 2, None), (h_total + 1, None), (h_total + 3, None)],
+                      f'no corresponde a ninguna holgura de {X}')
+explicaciones[2] = (f'Holgura total = inicio más tardío − inicio más temprano: H_total({X}) = LS − ES = {int(_r.inicio_mas_tardio)} − {int(_r.inicio_mas_temprano)} = **{h_total} semanas** '
+                    f'(equivale a LF − EF = {int(_r.fin_mas_tardio)} − {int(_r.fin_mas_temprano)}).', mot2)
+ops3, mot3 = opciones(n_rutas, [(n_rutas + n_fict, f'resulta de sumar las {n_fict} ficticias a las {n_rutas} rutas, como si cada ficticia fuera una ruta más'),
+                                (n_rutas - 1, None), (n_rutas + 2, None), (n_rutas + 1, None), (n_rutas + 3, None)],
+                      'no coincide con la enumeración de rutas')
+explicaciones[3] = (f'Enumerando los caminos del nodo inicial al final (las ficticias forman parte de los caminos, pero no son actividades) hay **{n_rutas} rutas**: '
+                    + '; '.join(_rutas.values()) + '.', mot3)
+_G = proyecto.pert_graph
+_fic = []
+for u, v, d in _G.edges(data=True):
+    if str(d['activity']).startswith('@'):
+        llegan = sorted(dd['activity'] for _, _, dd in _G.in_edges(u, data=True) if not str(dd['activity']).startswith('@'))
+        salen = sorted(dd['activity'] for _, _, dd in _G.out_edges(v, data=True) if not str(dd['activity']).startswith('@'))
+        _fic.append(f'{d["activity"]} (del nodo {u} al {v}: ' + (f'{lista_y(salen)} espera{"n" if len(salen) > 1 else ""} también a {lista_y(llegan)}' if llegan and salen else 'separa dos actividades que irían entre los mismos nodos') + ')')
+ops4, mot4 = opciones(n_fict, [(0, 'sin ficticias no pueden representarse las prelaciones en las que dos actividades comparten sólo parte de sus predecesoras'),
+                               (n_fict + 1, None), (n_fict + 2, None), (n_fict + 3, None)],
+                      'sobran ficticias: con menos ya se representan todas las prelaciones')
+explicaciones[4] = (f'El grafo PERT con el mínimo número de ficticias tiene **{n_fict}**: ' + '; '.join(_fic) + '.', mot4)
+ops5, mot5 = opciones(round(p_plazo, 2), [(round(p_mal, 2), f'usa la varianza σ² = {sigma ** 2:.3f} en lugar de la desviación típica σ = {sigma:.3f}'),
+                                          (0.5, f'sería la probabilidad de terminar en la duración media, {duracion} semanas, no en {plazo}'),
+                                          (round(1 - p_plazo, 2), f'es la probabilidad de *no* cumplir el plazo, P(T > {plazo}) = 1 − {p_plazo:.4f}'),
+                                          (0.95, None), (round(p_plazo / 2, 2), None)],
+                      'no sale de ningún cálculo con la normal de la ruta crítica')
+_var = datos_proyecto['variance']
+explicaciones[5] = (f'La duración del proyecto se aproxima por una normal de media la del camino crítico ({duracion} semanas) y desviación típica la raíz de la suma de las varianzas de sus actividades: '
+                    f'{explica_sigma_ruta(camino, _var)} semanas. Entonces ' + explica_probabilidad(duracion, sigma, plazo) + f', que redondeada es **{round(p_plazo, 2)}**.', mot5)
 preguntas_test = [
-    ('¿Cuál es la duración del proyecto (semanas)?', opciones(duracion, [int(datos_proyecto['duration'].sum()), duracion - 1, duracion + 2, duracion + 1, duracion - 2]),
-     'La duración es la de la ruta más larga, no la suma de todas las actividades.'),
-    (f'¿Cuál es la holgura total de {X} (semanas)?', opciones(h_total, [h_libre, 0, h_total + 2, h_total + 1, h_total + 3]),
-     'H_total = inicio más tardío − inicio más temprano; la holgura libre puede ser menor.'),
-    ('¿Cuántas rutas tiene el grafo del nodo inicial al final?', opciones(n_rutas, [n_rutas + n_fict, n_rutas - 1, n_rutas + 2, n_rutas + 1, n_rutas + 3]),
-     'Las ficticias no añaden rutas distintas en términos de actividades.'),
-    ('¿Cuántas actividades ficticias necesita el PERT con el mínimo número de ellas?', opciones(n_fict, [0, n_fict + 1, n_fict + 2, n_fict + 3]),
-     'Hacen falta ficticias cuando dos actividades comparten parte de sus predecesoras o irían entre los mismos nodos.'),
-    (f'¿Probabilidad aproximada de terminar en {plazo} semanas o menos?', opciones(round(p_plazo, 2), [round(p_mal, 2), 0.5, round(1 - p_plazo, 2), 0.95, round(p_plazo / 2, 2)]),
-     'z = (plazo − duración) / σ, con σ la desviación típica de la ruta crítica (raíz de la suma de varianzas).'),
+    ('¿Cuál es la duración del proyecto (semanas)?', ops1),
+    (f'¿Cuál es la holgura total de {X} (semanas)?', ops2),
+    ('¿Cuántas rutas tiene el grafo del nodo inicial al final?', ops3),
+    ('¿Cuántas actividades ficticias necesita el PERT con el mínimo número de ellas?', ops4),
+    (f'¿Probabilidad aproximada de terminar en {plazo} semanas o menos?', ops5),
 ]
-for i, (q, ops, fb) in enumerate(preguntas_test, 1):
-    print(f'{i}. {q}  →  correcta: {ops[0]}   (opciones: {ops})')
+
+def resuelve(k):
+    q, ops = preguntas_test[k - 1]
+    texto, motivos = explicaciones[k]
+    return Markdown(f'**{q}**\n\n' + '\n'.join(f'- {"✅" if j == 0 else "◻️"} {o}' for j, o in enumerate(ops)) + '\n\n'
+                    + f'**Respuesta: {ops[0]}.** {texto}\n\n' + 'Opciones incorrectas:\n\n' + '\n'.join(f'- {v}: {m}.' for v, m in motivos.items()))
+
+# %% [markdown]
+# ## Apartado 1
+
+# %%
+display(Markdown(pregunta_1))
+
+# %%
+resuelve(1)
+
+# %% [markdown]
+# ## Apartado 2
+
+# %%
+display(Markdown(pregunta_2))
+
+# %%
+resuelve(2)
+
+# %% [markdown]
+# ## Apartado 3
+
+# %%
+display(Markdown(pregunta_3))
+
+# %%
+resuelve(3)
+
+# %% [markdown]
+# ## Apartado 4
+
+# %%
+display(Markdown(pregunta_4))
+
+# %%
+resuelve(4)
+
+# %% [markdown]
+# ## Apartado 5
+
+# %%
+display(Markdown(pregunta_5))
+
+# %%
+resuelve(5)
 
 # %% [markdown]
 # ## Apartado 6
@@ -281,24 +377,25 @@ for i, (q, ops, fb) in enumerate(preguntas_test, 1):
 display(Markdown(pregunta_6))
 
 # %% [markdown]
-# El formato GIFT de Moodle escribe cada pregunta como `::título::texto {=correcta ~incorrecta ~incorrecta #retroalimentación}`. Las opciones se barajan al generar el fichero.
+# El formato GIFT de Moodle escribe cada pregunta como `::título::texto {=correcta ~incorrecta ~incorrecta ####retroalimentación general}`; cada opción puede llevar su propia retroalimentación tras `#`. Los caracteres especiales de GIFT (`~ = # { } :`) se escapan con `\` y las opciones se barajan al generar el fichero. Este es el fichero generado:
 
 # %%
-import os
-def a_gift(preguntas_test, titulo, semilla=1):
+import os, re
+def _gift_esc(t):
+    t = re.sub(r'\*\*|`', '', str(t)).replace('*', '')
+    return re.sub(r'([~=#{}:])', r'\\\1', t)
+def a_gift(preguntas_test, explicaciones, titulo, semilla=1):
     r = np.random.default_rng(semilla)
     lineas = [f'$CATEGORY: {titulo}', '']
-    for i, (q, ops, fb) in enumerate(preguntas_test, 1):
-        correcta, resto = ops[0], ops[1:]
+    for i, (q, ops) in enumerate(preguntas_test, 1):
+        texto, motivos = explicaciones[i]
         orden = list(r.permutation(len(ops)))
-        todas = [ops[j] for j in orden]
-        cuerpo = ' '.join((f'={v}' if v == correcta else f'~{v}') for v in todas)
-        lineas.append(f'::{titulo} P{i}::{q} {{{cuerpo} ####{fb}}}')
+        cuerpo = ' '.join(f'={_gift_esc(ops[j])}' if j == 0 else f'~{_gift_esc(ops[j])}#{_gift_esc(motivos[ops[j]])}' for j in orden)
+        lineas.append(f'::{_gift_esc(titulo)} P{i}::{_gift_esc(q)} {{{cuerpo} ####{_gift_esc(texto)}}}')
         lineas.append('')
     return '\n'.join(lineas)
-gift = a_gift(preguntas_test, 'Proyecto test')
+gift = a_gift(preguntas_test, explicaciones, 'Proyecto test')
 os.makedirs(os.path.expanduser('~/temp'), exist_ok=True)
 with open(os.path.expanduser('~/temp/cuestionario.gift'), 'w', encoding='utf8') as f:
     f.write(gift)
-from pmule import muestra_test
-muestra_test(preguntas_test)
+Markdown('```text\n' + gift + '\n```')

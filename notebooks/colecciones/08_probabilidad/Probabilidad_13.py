@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -251,6 +255,28 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 X, plazo, probabilidad_objetivo = 'E', 28, 0.9
 
+# %%
+def tabla_rutas(R, medias, varianzas=None, calendario=None, dec=0, dec_var=3, nombre='media'):
+    """Media (y varianza) de cada ruta con la suma término a término; actividades en orden de ejecución."""
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        m = float(sum(float(medias[a]) for a in acts))
+        fila = {'actividades': ' – '.join(acts),
+                f'{nombre} = suma': ' + '.join(f'{a}({float(medias[a]):.{dec}f})' for a in acts) + f' = {m:.{dec}f}',
+                nombre: m}
+        if varianzas is not None:
+            v = float(sum(float(varianzas[a]) for a in acts))
+            fila['varianza = suma'] = ' + '.join(f'{a}({float(varianzas[a]):.{dec_var}f})' for a in acts) + f' = {v:.{dec_var}f}'
+            fila['varianza'] = v
+            fila['σ = √varianza'] = v ** 0.5
+        filas[r] = fila
+    t = pd.DataFrame(filas).T
+    for c in (nombre, 'varianza', 'σ = √varianza'):
+        if c in t:
+            t[c] = t[c].astype(float)
+    return t
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -267,17 +293,22 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
 duracion_media = proyecto.duration(datos_proyecto['duration'])
-criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts))
-Markdown(f'Duración media {duracion_media} semanas; ruta crítica {" - ".join(criticas)}. {X} {"sí" if X in criticas else "no"} está en ella.')
+calendario = proyecto.calendar(datos_proyecto['duration'])
+criticas = ordena_ruta(sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts)), calendario)
+display(explica_camino_critico(proyecto, datos_proyecto['duration']))
+Markdown(f'**Respuesta:** duración media {plural(duracion_media, "semana")}; ruta crítica {" – ".join(criticas)}. '
+         f'La actividad subcontratada, {X}, {"sí" if X in criticas else "no"} está en ella.')
+
+# %% [markdown]
+# Media de cada ruta y varianza de sus actividades de desviación conocida (la de E se cuenta como 0 hasta conocerla):
 
 # %%
 #| tbl-cap: "Media de cada ruta y varianza de las actividades de desviación conocida"
 #| label: tbl-rutas
 R = proyecto.path_matrix(dummies=False)
 sd_conocida = pd.to_numeric(datos_proyecto['standard_deviation'], errors='coerce').fillna(0.0)
-medias = detalle_rutas(R, datos_proyecto['duration'][R.columns], 'media')
-varianzas = detalle_rutas(R, (sd_conocida ** 2)[R.columns], 'varianza sin ' + X, 3)
-pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)
+rutas = tabla_rutas(R, datos_proyecto['duration'], sd_conocida ** 2, calendario).sort_values('media', ascending=False)
+limpia_tabla(rutas.rename(columns={'varianza = suma': f'varianza sin {X} = suma', 'varianza': f'varianza sin {X}'}).drop(columns='σ = √varianza'), decimales=3)
 
 # %% [markdown]
 # ## Apartado 2
@@ -286,8 +317,11 @@ pd.concat([medias, varianzas.drop(columns='actividades')], axis=1)
 display(Markdown(pregunta_2))
 
 # %%
-var_resto = float((datos_proyecto.loc[[a for a in criticas if a != X], 'standard_deviation'] ** 2).sum())
-Markdown(f'Varianza del proyecto = varianza del resto de la ruta crítica + σ² = {var_resto:.3f} + σ².')
+resto = [a for a in criticas if a != X]
+var_resto = float((datos_proyecto.loc[resto, 'standard_deviation'] ** 2).sum())
+Markdown(f'''La varianza del proyecto es la de la ruta crítica, la suma de las varianzas de sus actividades. Sin {X}: '''
+         f'''{explica_suma((datos_proyecto.loc[resto, "standard_deviation"] ** 2).round(3), "σ²_resto", decimales=3)}; '''
+         f'''a ella se suma la varianza de {X}, σ² (σ_X en lo que sigue).\n\n**Respuesta:** σ²_T = {var_resto:.3f} + σ², es decir, σ_T = √({var_resto:.3f} + σ²).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -296,14 +330,25 @@ Markdown(f'Varianza del proyecto = varianza del resto de la ruta crítica + σ²
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# Se necesita $P(T \le plazo) \ge p$, es decir, $\dfrac{plazo - \mu}{\sigma_T} \ge z_p$, luego $\sigma_T \le \dfrac{plazo - \mu}{z_p}$ y $\sigma_X^2 \le \sigma_T^2 - \sigma_{resto}^2$.
+# Exigir $P(T \le \text{plazo}) \ge p$ equivale a que el plazo sea al menos el percentil $p$ de $T$. En cualquier normal ese percentil está a un número fijo de desviaciones típicas por encima de la media, $k_p$, el percentil de la normal de media 0 y desviación 1 (`=INV.NORM.ESTAND(p)` o `=INV.NORM(p; 0; 1)` en la hoja de cálculo). Por tanto hace falta $\mu + k_p\,\sigma_T \le \text{plazo}$, es decir, $\sigma_T \le (\text{plazo} - \mu)/k_p$, y como $\sigma_T^2 = \sigma^2_{resto} + \sigma_X^2$, $\sigma_X^2 \le \sigma_T^2 - \sigma^2_{resto}$.
 
 # %%
 z_p = norm.ppf(probabilidad_objetivo)
 sigma_T_max = (plazo - duracion_media) / z_p
 var_X_max = sigma_T_max ** 2 - var_resto
 sigma_X_max = np.sqrt(var_X_max) if var_X_max > 0 else 0.0
-Markdown(f'''σ_T ≤ ({plazo} − {duracion_media}) / {z_p:.3f} = {sigma_T_max:.3f}; σ_X² ≤ {sigma_T_max:.3f}² − {var_resto:.3f} = {var_X_max:.3f}, luego **σ_X ≤ {sigma_X_max:.2f} semanas**{" (ningún contratista vale: ni con σ = 0 se alcanza la probabilidad)" if var_X_max <= 0 else ""}.''')
+p_txt = f'{probabilidad_objetivo:g}'.replace('.', ',')
+if var_X_max > 0:
+    comprobacion = (f'Comprobación con σ_X = {sigma_X_max:.3f}: σ_T = √({var_resto:.3f} + {sigma_X_max:.3f}²) = {sigma_T_max:.3f} y '
+                    f'{explica_probabilidad(duracion_media, sigma_T_max, plazo)}.')
+    respuesta = f'la desviación típica de {X} no puede superar **{sigma_X_max:.2f} semanas**'
+else:
+    comprobacion = 'Ni con σ_X = 0 se alcanza la probabilidad exigida: el resto de la ruta crítica ya es demasiado variable.'
+    respuesta = 'ningún contratista permite cumplir la exigencia, ni siquiera uno sin variabilidad'
+Markdown(f'''k_p = `=INV.NORM.ESTAND({p_txt})` = {z_p:.4f}.\n\n'''
+         f'''σ_T ≤ ({plazo} − {duracion_media}) / {z_p:.4f} = {sigma_T_max:.3f}; σ_X² ≤ {sigma_T_max:.3f}² − {var_resto:.3f} = {var_X_max:.3f}'''
+         + (f''', luego σ_X ≤ √{var_X_max:.3f} = {sigma_X_max:.3f}.''' if var_X_max > 0 else '.') + '\n\n' + comprobacion
+         + f'''\n\n**Respuesta:** {respuesta}.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -311,10 +356,22 @@ Markdown(f'''σ_T ≤ ({plazo} − {duracion_media}) / {z_p:.3f} = {sigma_T_max:
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# Con la desviación típica del contratista, $\sigma_T$ queda fijada y lo que se ajusta es la media: hace falta $\mu \le \text{plazo} - k_p\,\sigma_T$.
+
 # %%
 sigma_contratista = 1.5
 sigma_T = np.sqrt(var_resto + sigma_contratista ** 2)
 media_necesaria = plazo - z_p * sigma_T
-reduccion = int(np.ceil(duracion_media - media_necesaria))
-Markdown(f'Con σ_X = 1,5, σ_T = {sigma_T:.3f} y hace falta μ ≤ {plazo} − {z_p:.3f} × {sigma_T:.3f} = {media_necesaria:.2f}: '
-         f'reducir la duración media en {max(reduccion, 0)} semana(s) (suponiendo que la ruta crítica no cambia al acortar).')
+reduccion = max(int(np.ceil(duracion_media - media_necesaria)), 0)
+nueva_media = duracion_media - reduccion
+segunda = float(rutas['media'].iloc[1]) if len(rutas) > 1 else 0.0
+if segunda <= nueva_media:
+    nota_ruta = f'La ruta crítica no cambia: la siguiente ruta dura {segunda:g} semanas de media, no más que {nueva_media}.'
+else:
+    nota_ruta = (f'Ojo: la siguiente ruta dura {segunda:g} semanas de media, más que {nueva_media}; habría que acortarla también '
+                 'y recalcular la varianza con la nueva ruta crítica.')
+Markdown(f'''σ_T = √({var_resto:.3f} + 1.5²) = √{var_resto + 2.25:.3f} = {sigma_T:.3f}; hace falta μ ≤ {plazo} − {z_p:.4f} × {sigma_T:.3f} = {media_necesaria:.2f} semanas. '''
+         f'''Como las duraciones son enteras, la media debe bajar de {duracion_media} a {nueva_media} semanas. Comprobación: '''
+         f'''{explica_probabilidad(nueva_media, sigma_T, plazo)}. {nota_ruta}\n\n'''
+         f'''**Respuesta:** habría que reducir la duración media del proyecto en {plural(reduccion, "semana")} (acortando actividades críticas).''')

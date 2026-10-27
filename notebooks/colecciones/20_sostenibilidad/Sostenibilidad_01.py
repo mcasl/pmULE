@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -243,6 +247,24 @@ for item in sorted(dir()):
 
 # %%
 semanas_pedidas, precio_sombra, precio_creditos = 3, 300, 8
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -291,14 +313,27 @@ detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duratio
 
 # %%
 plan_1 = resumen_plan(pasos_1)
+acts_1 = [a for _, paso in sorted(pasos_1.items()) for a in paso]
 display(plan_1.round(2).to_frame('plan 1: coste monetario').T)
-Markdown('Plan 1: ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_1.items())) + f'''. Coste **{plan_1.iloc[0]:.0f} k€** y **{plan_1.iloc[1]:.0f} t CO₂** adicionales.''')
+Markdown(f'''Plan 1 (por el coste monetario): {pasos_txt(pasos_1)}. El coste del plan es la suma de los costes unitarios de las semanas acortadas, y sus emisiones adicionales, la suma de las emisiones de esas semanas:\n\n- coste = {suma_acts(acts_1, datos_proyecto['ucr'], 1)} k€;\n- emisiones = {suma_acts(acts_1, datos_proyecto['emisiones_reduccion'])} t CO₂.\n\n**Respuesta:** el plan de menor coste monetario ({pasos_txt(pasos_1)}) cuesta **{plan_1.iloc[0]:.1f} k€** y añade **{plan_1.iloc[1]:.0f} t CO₂**.''')
 
 # %% [markdown]
 # ## Apartado 2
 
 # %%
 display(Markdown(pregunta_2))
+
+# %%
+#| tbl-cap: "Coste unitario total de las actividades que pueden acortarse"
+#| label: tbl-ucrTotal
+reducibles = datos_proyecto.index[datos_proyecto['cap_duration'] < datos_proyecto['duration']]
+costes_unitarios = pd.DataFrame({'ucr (k€/semana)': datos_proyecto.loc[reducibles, 'ucr'],
+                                 'emisiones (t/semana)': datos_proyecto.loc[reducibles, 'emisiones_reduccion'],
+                                 'emisiones × precio sombra (k€/semana)': datos_proyecto.loc[reducibles, 'emisiones_reduccion'] * precio_sombra / 1000,
+                                 'ucr total (k€/semana)': datos_proyecto.loc[reducibles, 'ucr_total']})
+display(costes_unitarios.round(2))
+_a = costes_unitarios['emisiones (t/semana)'].idxmax()
+Markdown(f'''El coste unitario total de cada actividad es ucr + emisiones × precio sombra / 1000; por ejemplo, para {_a}: {datos_proyecto.loc[_a, 'ucr']:g} + {datos_proyecto.loc[_a, 'emisiones_reduccion']:g} × {precio_sombra} / 1000 = **{datos_proyecto.loc[_a, 'ucr_total']:.2f} k€** por semana. Con estos costes se repite el algoritmo (en la tabla de opciones los costes van redondeados a enteros; los exactos son los de esta tabla).''')
 
 # %%
 #| tbl-cap: "Ackoff-Sasieni con el coste unitario total (ucr + emisiones × precio sombra)"
@@ -323,10 +358,13 @@ detalle_ackoff(proyecto, datos_proyecto['duration'], datos_proyecto['cap_duratio
 plan_2 = resumen_plan(pasos_2)
 comparacion = pd.DataFrame({'plan 1 (ucr)': plan_1, 'plan 2 (ucr + carbono)': plan_2})
 display(comparacion.round(2))
-Markdown('Plan 2: ' + '; '.join('paso ' + str(k + 1) + ': ' + ', '.join(v) for k, v in sorted(pasos_2.items())) + f'''. Cuesta **{plan_2.iloc[0] - plan_1.iloc[0]:.1f} k€ más** en dinero y emite **{plan_1.iloc[1] - plan_2.iloc[1]:.0f} t menos**; al precio sombra el plan 2 es **{plan_1.iloc[3] - plan_2.iloc[3]:.1f} k€ más barato** en total. Compensar el plan 1 a {precio_creditos} €/t costaría {plan_1.iloc[4]:.1f} k€; esas toneladas valen {plan_1.iloc[2]:.1f} k€ al precio sombra.''')
-
-# %% [markdown]
-# El algoritmo es el mismo; cambia el coste unitario con el que se ordenan las opciones. Con el precio del carbono dentro del coste, una semana «barata» en dinero pero cara en emisiones deja de ser la primera opción, y el plan cambia de actividades.
+acts_2 = [a for _, paso in sorted(pasos_2.items()) for a in paso]
+def linea_plan(n, plan, acts):
+    return (f'- Plan {n}: coste {suma_acts(acts, datos_proyecto["ucr"], 1)} k€; emisiones {suma_acts(acts, datos_proyecto["emisiones_reduccion"])} t; '
+            f'coste total = {plan.iloc[0]:.1f} + {plan.iloc[1]:.0f} × {precio_sombra} / 1000 = {plan.iloc[0]:.1f} + {plan.iloc[2]:.1f} = **{plan.iloc[3]:.1f} k€**; '
+            f'compensar a {precio_creditos} €/t: {plan.iloc[1]:.0f} × {precio_creditos} / 1000 = {plan.iloc[4]:.2f} k€.')
+salen = sorted(set(acts_1) - set(acts_2)); entran = sorted(set(acts_2) - set(acts_1))
+Markdown(f'''Plan 2 (por el coste total): {pasos_txt(pasos_2)}.\n\n''' + linea_plan(1, plan_1, acts_1) + '\n' + linea_plan(2, plan_2, acts_2) + f'''\n\nEl algoritmo es el mismo; cambia el coste unitario con el que se ordenan las opciones. Con el carbono dentro del coste, ''' + ((lista_y(salen) + (' deja' if len(salen) == 1 else ' dejan') + ' de elegirse' + (' y entra' + ('' if len(entran) == 1 else 'n') + ' ' + lista_y(entran) if entran else '')) if salen else 'cambia el orden de los pasos') + f'''.\n\n**Respuesta:** el plan 2 cuesta **{plan_2.iloc[0] - plan_1.iloc[0]:.1f} k€ más** en dinero y emite **{plan_1.iloc[1] - plan_2.iloc[1]:.0f} t menos**; al precio sombra es **{plan_1.iloc[3] - plan_2.iloc[3]:.1f} k€ más barato** en total ({plan_2.iloc[3]:.1f} frente a {plan_1.iloc[3]:.1f} k€). Compensar las emisiones costaría {plan_1.iloc[4]:.2f} k€ (plan 1) y {plan_2.iloc[4]:.2f} k€ (plan 2) a precio de créditos; al precio sombra valen {plan_1.iloc[2]:.1f} y {plan_2.iloc[2]:.1f} k€.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -336,6 +374,8 @@ display(Markdown(pregunta_3))
 
 # %% [markdown]
 # **S2.** La organización ha fijado el precio de la externalidad (300 €/t), de modo que el criterio de decisión es el coste total: el plan 2 (17.6 k€) frente al plan 1 (19.4 k€). El argumento de los créditos a 8 €/t sustituye el precio que la organización ha decidido por el precio que a uno le conviene: si valiera, el precio sombra no serviría para nada. Comprar créditos no reduce las emisiones del proyecto; las compensa, y a un precio que no es el de la política. **S1.** El plan 1 más créditos está en el escalón más bajo de la pirámide (**compensar**); el plan 2 **minimiza** las emisiones de la compresión; **evitar** sería negociar con el cliente las 3 semanas (lección 19, C13 y C10) o acortar por medios sin emisiones (solapes, más personal en jornada ordinaria). La clasificación no es opinable: compensar es compensar.
+#
+# **Respuesta:** el plan correcto es el **plan 2** (acorta A, D y H), el de menor coste total al precio sombra; los créditos a 8 €/t no cambian la elección porque no son el precio que la organización ha fijado. Plan 1 con créditos: compensar; plan 2: minimizar.
 
 # %%
 preguntas_test = [

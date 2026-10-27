@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -247,8 +251,65 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 duracion = float(proyecto.duration(datos_proyecto['duration']))
 sigma, _ = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])
-T80 = duracion + norm.ppf(0.8) * sigma
+T80 = float(norm.ppf(0.8, duracion, sigma))
 reserva = T80 - duracion
+
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -264,6 +325,9 @@ proyecto.display_pert_pasos(datos_proyecto['duration'])
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cada actividad tiene duración media D = (a + 4m + b)/6 y varianza σ² = ((b − a)/6)². La duración esperada del proyecto es la de la ruta más larga con esas medias; su varianza, la suma de las varianzas de esa ruta. La **reserva de contingencia** para un nivel de confianza del 80 % es lo que hay que añadir a la duración esperada para que P(T ≤ duración + reserva) = 0,8.
+
 # %%
 #| tbl-cap: "Media y varianza PERT de cada actividad"
 #| label: tbl-estimaciones
@@ -277,7 +341,12 @@ display(detalle_rutas(R, datos_proyecto['duration'], 'duración', 2))
 detalle_rutas(R, datos_proyecto['variance'], 'varianza', 3)
 
 # %%
-Markdown(f'''Duración esperada **{duracion:.2f}** semanas, σ = {sigma:.2f}; con probabilidad 0,8 se termina en **{T80:.2f}** semanas: la reserva de contingencia para ese nivel de confianza es **{reserva:.2f}** semanas (z₀,₈ · σ = 0,84 · {sigma:.2f}).''')
+camino, _ = camino_critico_sigma(proyecto, datos_proyecto['duration'], datos_proyecto['variance'])
+Markdown(f'''Camino crítico: **{' – '.join(camino)}**, duración esperada {' + '.join(f"{datos_proyecto.loc[a, 'duration']:.2f}" for a in camino)} = **{duracion:.2f}** semanas; {explica_sigma_ruta(camino, datos_proyecto['variance'])} semanas.
+
+Duración que se cumple con probabilidad 0,8: {explica_percentil(duracion, sigma, 0.8, 'semanas')}.
+
+**Respuesta.** Duración esperada {duracion:.2f} semanas, σ = {sigma:.3f} semanas; con probabilidad 0,8 se termina en {T80:.2f} semanas, luego la reserva de contingencia para ese nivel de confianza es {T80:.2f} − {duracion:.2f} = **{reserva:.2f} semanas** (comprometer la semana {int(np.ceil(T80))}).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -286,13 +355,26 @@ Markdown(f'''Duración esperada **{duracion:.2f}** semanas, σ = {sigma:.2f}; co
 display(Markdown(pregunta_2))
 
 # %%
+#| tbl-cap: "Rutas con las estimaciones entregadas (los peores casos)"
+#| label: tbl-rutasEntregadas
+explica_rutas(proyecto, datos_proyecto['estimacion_entregada'])
+
+# %%
 duracion_entregada = int(proyecto.duration(datos_proyecto['estimacion_entregada']))
 duracion_jp = int(np.ceil(1.1 * duracion_entregada))
-camino_entregado = ' / '.join('–'.join(r) for r in proyecto.critical_path(datos_proyecto['estimacion_entregada']).values())
-Markdown(f'''Con las estimaciones entregadas: **{duracion_entregada}** semanas (ruta {camino_entregado}); con el 10 % del jefe de proyecto: **{duracion_jp}**. Margen oculto total: {duracion_jp - duracion:.1f} semanas frente a las {reserva:.2f} que justifica el 80 %: **{(duracion_jp - duracion) / reserva:.1f} veces** la reserva necesaria.''')
+margen_oculto = duracion_jp - duracion
+p_jp = float(norm.cdf(duracion_jp, duracion, sigma))
+ruta_b, _ = camino_critico_sigma(proyecto, datos_proyecto['estimacion_entregada'], datos_proyecto['variance'])
+media_b = float(datos_proyecto.loc[ruta_b, 'duration'].sum())
+sigma_b = float(datos_proyecto.loc[ruta_b, 'variance'].sum()) ** 0.5
+suma_sd = float(datos_proyecto.loc[ruta_b, 'standard_deviation'].sum())
+Markdown(f'''Con las estimaciones entregadas la ruta más larga suma **{duracion_entregada}** semanas (tabla). El jefe de proyecto añade un 10 %: 1.1 × {duracion_entregada} = {1.1 * duracion_entregada:.1f} → **{duracion_jp}** semanas.
 
-# %% [markdown]
-# Sumar los peores casos sobrestima porque las desviaciones no se suman: se suman las **varianzas**, y la raíz de la suma es mucho menor que la suma de las raíces. Que todas las actividades de una ruta salgan a la vez en su peor caso es un suceso improbable; el margen que protege al proyecto se calcula sobre la ruta, no actividad a actividad, y una sola vez.
+Margen oculto total = {duracion_jp} − {duracion:.2f} = **{margen_oculto:.2f} semanas**: {duracion_entregada} − {duracion:.2f} = {duracion_entregada - duracion:.2f} por los peores casos y {duracion_jp} − {duracion_entregada} = {duracion_jp - duracion_entregada} por el 10 %. La reserva necesaria para el 80 % es {reserva:.2f} semanas: el margen oculto es **{margen_oculto / reserva:.1f} veces** la reserva. Con {duracion_jp} semanas la probabilidad de cumplir sería {explica_probabilidad(duracion, sigma, duracion_jp)}: se paga plazo para protegerse de sucesos que prácticamente no ocurren.
+
+Por qué sobrestima tanto: la ruta {' – '.join(ruta_b)} llega a {duracion_entregada} semanas sólo si **todas** sus actividades duran a la vez su peor caso ({' + '.join(str(int(datos_proyecto.loc[a, 'b'])) for a in ruta_b)} = {int(datos_proyecto.loc[ruta_b, 'b'].sum())}). Con las tres estimaciones esa ruta tiene media {media_b:.2f} semanas y {explica_sigma_ruta(ruta_b, datos_proyecto['variance'])}: superar {duracion_entregada} semanas tiene probabilidad 1 − `=DISTR.NORM.N({duracion_entregada}; {f'{media_b:g}'.replace('.', ',')}; {str(round(sigma_b, 4)).replace('.', ',')}; VERDADERO)` = {1 - norm.cdf(duracion_entregada, media_b, sigma_b):.6f}. Las desviaciones de actividades independientes no se suman: se suman las **varianzas** (Σσ = {suma_sd:.3f} frente a √Σσ² = {sigma_b:.3f}), porque los retrasos de unas se compensan con los adelantos de otras. Además, cada responsable protege su actividad y el jefe de proyecto vuelve a proteger el total.
+
+**Respuesta.** {duracion_entregada} semanas con las estimaciones entregadas y {duracion_jp} con el 10 %; el margen oculto ({margen_oculto:.2f} semanas) es {margen_oculto / reserva:.1f} veces la reserva que justifica el 80 % ({reserva:.2f} semanas).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -300,8 +382,10 @@ Markdown(f'''Con las estimaciones entregadas: **{duracion_entregada}** semanas (
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C8.** Una reserva de contingencia correcta se **dimensiona** con un nivel de confianza (1.2 semanas para el 80 %) y se **declara**: el cliente ve la duración esperada (18 semanas), la reserva y a quién pertenece. El margen del enunciado se esconde dos veces (cada responsable en su estimación y el jefe de proyecto en su 10 %), no se dimensiona y no se comunica: es **C4**, retención de información, y cuesta 9 semanas de plazo al cliente. Para cumplir el criterio, el informe de planificación debe llevar las tres estimaciones por actividad, la duración esperada, la reserva calculada y su nivel de confianza.
+# %%
+Markdown(f'''**Criterio C8 (reserva declarada frente a colchón oculto).** Una reserva correcta cumple dos condiciones: se **dimensiona** con un nivel de confianza ({reserva:.2f} semanas para el 80 %) y se **declara** (el cliente ve la duración esperada, {duracion:.2f} semanas, la reserva y quién la gestiona). El margen del enunciado no cumple ninguna: no se dimensiona (es la suma de peores casos más un 10 % elegido a ojo) y se esconde dos veces, en cada estimación entregada y en el 10 % del jefe de proyecto («no hace falta contarlo»). Escondido, es **C4** (retención de información): el cliente decide su calendario con {duracion_jp} semanas sin saber que {int(np.ceil(T80))} bastan con un 80 % de confianza.
+
+**Respuesta.** Lo que distingue el margen del jefe de proyecto de una reserva correcta es el criterio **C8**: estar calculada con un nivel de confianza y declarada; el margen oculto incumple además **C4**. El informe de planificación debe llevar las tres estimaciones de cada actividad, la duración esperada ({duracion:.2f}), la desviación típica ({sigma:.3f}), la reserva y su nivel de confianza ({reserva:.2f} semanas para el 80 %) y el plazo que se compromete con ella (semana {int(np.ceil(T80))}).''')
 
 # %%
 preguntas_test = [
@@ -339,5 +423,12 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Al equipo: pedir las tres estimaciones a cada responsable y explicar que el margen se calcula una vez, sobre la ruta; los colchones individuales no protegen más y alargan el plazo. Al cliente: duración esperada de 18 semanas, reserva de 1.2 semanas para el 80 % y compromiso en 20 semanas, con la reserva visible y gestionada por el jefe de proyecto. Prometer 27 semanas «para no llegar nunca tarde» supera la prueba de legalidad pero no la de publicidad: si el cliente viera la cuenta, no aceptaría pagar el plazo de dos colchones.
+# %%
+rubrica_caso(
+    [('Cliente', f'recibe un compromiso de {duracion_jp} semanas cuando {int(np.ceil(T80))} bastan con un 80 %: {duracion_jp - int(np.ceil(T80))} semanas de plazo pagadas de más'),
+     ('Responsables de actividad', 'su colchón individual no los protege más (el retraso se acumula en la ruta) y queda fuera del control del jefe de proyecto'),
+     ('Jefe de proyecto y empresa', f'«nunca llegan tarde» a costa de ofertas menos competitivas y de un plan que nadie puede auditar')],
+    [(f'Prometer {duracion_jp} semanas sin decir por qué (propuesta)', 'sí', 'no: el cliente no aceptaría pagar el plazo de dos colchones si viera la cuenta', 'no'),
+     (f'Prometer {duracion:.0f} semanas (la media) sin reserva', 'sí', 'sí, pero es una verdad a medias (50 % de cumplir)', 'no: el cliente asumiría un riesgo que no conoce'),
+     (f'Duración esperada {duracion:.2f} + reserva declarada {reserva:.2f} para el 80 %: semana {int(np.ceil(T80))}', 'sí', 'sí', 'sí')],
+    f'''al equipo: pedir las tres estimaciones a cada responsable y explicar que el margen se calcula una vez, sobre la ruta, y lo gestiona el jefe de proyecto. Al cliente: duración esperada de {duracion:.2f} semanas, reserva de {reserva:.2f} semanas para un 80 % de confianza y compromiso en la semana {int(np.ceil(T80))}, con la reserva visible y su consumo informado en cada seguimiento.''')

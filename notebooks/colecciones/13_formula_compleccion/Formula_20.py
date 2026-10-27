@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -239,21 +243,52 @@ proyecto = prelaciones.create_project()
 R = proyecto.path_matrix(dummies=False)
 t = datos_proyecto['duration'][R.columns]
 
+# %%
+def _num(x, dec=0):
+    x = float(x)
+    return (f'{x:.{dec}f}' if dec else f'{x:g}').replace('-', '−')
+
+
+def producto_Rt(proyecto, R, t, base, decimales=0):
+    """Cada fila de R por el vector t: (R·t)_r = Σ_i R_ri·t_i, con los términos no nulos (actividades de la
+    ruta, en orden de ejecución) y el valor; marca las filas que dan el máximo."""
+    cal = proyecto.calendar(base)
+    orden = {a: k for k, a in enumerate(ordena_ruta(list(R.columns), cal))}
+    filas = {}
+    for r in R.index:
+        acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: orden.get(a, 0))
+        total = float(sum(float(t[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    'fila de R · t = suma': ' + '.join(f'{a}({_num(t[a], decimales)})' for a in acts) + f' = {_num(total, decimales)}',
+                    'R·t': total}
+    tabla = pd.DataFrame(filas).T
+    tabla['R·t'] = tabla['R·t'].astype(float)
+    tabla['máximo'] = np.where(np.isclose(tabla['R·t'], tabla['R·t'].max()), '← τ', '')
+    return tabla
+
+
+def explica_tau(tabla, unidad='', decimales=0, nombre='τ'):
+    """«τ = ‖R·t‖∞ = máx(19, 20, 17) = 20, que da la ruta Route_2 (A – C – E)»."""
+    v = tabla['R·t']
+    T = float(v.max())
+    rutas = [f"{r} ({tabla.loc[r, 'actividades']})" for r in v.index if np.isclose(v[r], T)]
+    u = f' {unidad}' if unidad else ''
+    quien = (f'que corresponde a la ruta {rutas[0]}' if len(rutas) == 1
+             else f'alcanzado a la vez por {len(rutas)} rutas: {lista_y(rutas)}')
+    return (f"{nombre} = ‖R·t‖∞ = máx({', '.join(_num(x, decimales) for x in v)}) = **{_num(T, decimales)}{u}**, {quien}")
+
 # %% [markdown]
 # ## Apartado 1
 
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy original"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %%
@@ -261,11 +296,13 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 #| label: tbl-R
 rutas = {r: ' - '.join(acts) for r, acts in proyecto.paths(dummies=False).items()}
 Rt = R @ t
-pd.DataFrame({'actividades': rutas, 'R·t': Rt})
+display(R)
+producto = producto_Rt(proyecto, R, t, datos_proyecto['duration'])
+producto
 
 # %%
 tau = float(Rt.max())
-Markdown(f'τ = ‖R·t‖∞ = {tau:.0f} (ruta {Rt.idxmax()}: {rutas[Rt.idxmax()]}).')
+Markdown(f'**Respuesta:** R tiene {R.shape[0]} filas (rutas) y {R.shape[1]} columnas; ' + explica_tau(producto, 'días') + '.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -312,7 +349,9 @@ R2 = proyecto2.path_matrix(dummies=False)
 t2 = datos_modificados['duration'][R2.columns]
 rutas2 = {r: ' - '.join(acts) for r, acts in proyecto2.paths(dummies=False).items()}
 R2t = R2 @ t2
-pd.DataFrame({'actividades': rutas2, 'R·t': R2t})
+display(R2)
+producto2 = producto_Rt(proyecto2, R2, t2, datos_modificados['duration'])
+producto2
 
 # %%
 conj1 = {frozenset(R.columns[R.loc[r] == 1]) for r in R.index}
@@ -320,12 +359,15 @@ conj2 = {frozenset(R2.columns[R2.loc[r] == 1]) for r in R2.index}
 perdidas = [rutas[r] for r in R.index if frozenset(R.columns[R.loc[r] == 1]) in conj1 - conj2]
 nuevas = [rutas2[r] for r in R2.index if frozenset(R2.columns[R2.loc[r] == 1]) in conj2 - conj1]
 tau2 = float(R2t.max())
-Markdown(f'''Rutas que desaparecen: {'; '.join(perdidas) or 'ninguna'}.\n\nRutas nuevas: {'; '.join(nuevas) or 'ninguna'}.\n\nNuevo τ = {tau2:.0f} (antes {tau:.0f}); ruta crítica {R2t.idxmax()}: {rutas2[R2t.idxmax()]}.''')
+Markdown(f'''**Respuesta:** la matriz modificada tiene {R2.shape[0]} filas (antes {R.shape[0]}).\n\n- Rutas que desaparecen: {'; '.join(perdidas) or 'ninguna'}.\n- Rutas nuevas: {'; '.join(nuevas) or 'ninguna'}.\n\nNuevo {explica_tau(producto2, 'días')} (antes τ = {tau:.0f} días).''')
+
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
 # %%
 #| fig-cap: "Grafo Roy modificado"
 #| label: fig-pert2
-proyecto2.roy(durations=datos_modificados['duration'], ranksep=1.2, nodesep=1.2)
+proyecto2.display_roy_pasos(datos_modificados['duration'])
 
 # %% [markdown]
 # ## Apartado 4
@@ -335,3 +377,8 @@ display(Markdown(pregunta_4))
 
 # %% [markdown]
 # Añadir una prelación nunca reduce τ: cada ruta nueva contiene como subconjunto de actividades a alguna combinación que ya restringía el proyecto, y las rutas que desaparecen son las contenidas en alguna ruta nueva (su suma de duraciones es menor o igual). Formalmente, para cada fila antigua $r$ existe una fila nueva $r'$ con $R'_{r'} \ge R_r$ componente a componente, luego $\max R' t \ge \max R t$. El número de rutas sí puede crecer (producto de prefijos por sufijos) o decrecer (si muchas quedan absorbidas): $R$ no es monótona en tamaño, sólo en lo que restringe.
+
+# %%
+Markdown(f'**Respuesta:** no puede reducir τ; aquí lo aumenta de {tau:.0f} a {tau2:.0f} días. El número de rutas sí puede cambiar en ambos sentidos: '
+         f'aquí pasa de {R.shape[0]} a {R2.shape[0]} ({len(perdidas)} {"desaparece" if len(perdidas) == 1 else "desaparecen"} y '
+         f'{len(nuevas)} {"aparece" if len(nuevas) == 1 else "aparecen"}).')

@@ -1,6 +1,6 @@
 # ---
 # title: Sostenibilidad 24
-# subtitle: "34,000 m³ de desmonte y 34,000 m³ de terraplén: vertedero + préstamo 846 k€ frente a reutilizar 77 k€ con 3 semana(s) de retraso; art. 3.2.b Ley 7/2022"
+# subtitle: "34,000 m³ de desmonte y 34,000 m³ de terraplén: vertedero + préstamo 846 k€ frente a reutilizar 77 k€ con 3 semanas de retraso; art. 3.2.b Ley 7/2022"
 # coleccion: 20_sostenibilidad
 # variante: tierras-sobrantes
 # nivel: 2
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -247,6 +251,24 @@ for item in sorted(dir()):
 desmonte, terraplen, penalidad = 'D', 'E', 12
 coste_vertedero, coste_prestamo, coste_interno, coste_acopio = 4.0, 9.0, 1.2, 2.5
 km_vertedero, km_prestamo, coste_camion, factor_camion, densidad = 25, 30, 0.12, 0.1, 1.8
+def pasos_txt(pasos):
+    '''«paso 1: A; paso 2: A y C»: actividades acortadas en cada paso de Ackoff-Sasieni.'''
+    return '; '.join(f'paso {k + 1}: ' + lista_y(v) for k, v in sorted(pasos.items()))
+def suma_txt(valores, decimales=0):
+    '''«3 + 4 + 4 = 11»: suma término a término.'''
+    vals = [float(v) for v in valores]
+    return ' + '.join(f'{v:.{decimales}f}' for v in vals) + f' = {sum(vals):.{decimales}f}'
+def suma_acts(acts, serie, decimales=0):
+    '''«A(3) + A(3) + C(1) = 7»: suma de una columna sobre una lista de actividades (con repeticiones).'''
+    vals = [float(serie[a]) for a in acts]
+    return ' + '.join(f'{a}({v:.{decimales}f})' for a, v in zip(acts, vals)) + f' = {sum(vals):.{decimales}f}'
+def criticas_txt(proyecto, duraciones):
+    '''Caminos críticos en orden de ejecución: «A–C–F / B–D–F».'''
+    cal = proyecto.calendar(duraciones)
+    return ' / '.join('–'.join(ordena_ruta(list(r), cal)) for r in proyecto.critical_path(duraciones).values())
+def miles(x, decimales=0):
+    '''«25 400»: separador de miles con espacio.'''
+    return f'{x:,.{decimales}f}'.replace(',', ' ')
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
@@ -276,13 +298,13 @@ c_vert = coste_vertedero + densidad * km_vertedero * coste_camion
 c_prest = coste_prestamo + densidad * km_prestamo * coste_camion
 e_vert = densidad * km_vertedero * factor_camion / 1000; e_prest = densidad * km_prestamo * factor_camion / 1000   # t CO₂ por m³
 balance = pd.Series({'excavado (m³)': V_exc, 'necesario (m³)': V_nec, 'reutilizable (m³)': reutilizable, 'sobrante a vertedero (m³)': sobrante, 'déficit de préstamo (m³)': deficit})
-display(balance.to_frame('m³').T)
+display(balance.to_frame('m³').T.astype(int))
 opciones = pd.DataFrame({'propuesta: vertedero + préstamo': [V_exc * c_vert / 1000, V_nec * c_prest / 1000, 0.0, (V_exc * e_vert + V_nec * e_prest)],
                          'reutilizar en obra': [sobrante * c_vert / 1000, deficit * c_prest / 1000, reutilizable * coste_interno / 1000, (sobrante * e_vert + deficit * e_prest)]},
                         index=['vertedero (k€)', 'préstamo (k€)', 'transporte interno (k€)', 'emisiones del transporte (t CO₂)'])
 opciones.loc['coste de tierras (k€)'] = opciones.iloc[:3].sum()
 display(opciones.round(1))
-Markdown(f'''Vertedero: {c_vert:.2f} €/m³ puesto allí; préstamo: {c_prest:.2f} €/m³ puesto en obra. La propuesta mueve {V_exc + V_nec:,.0f} m³ por carretera ({opciones.iloc[4, 0]:.1f} k€, {opciones.iloc[3, 0]:.1f} t); reutilizar deja en {sobrante + deficit:,.0f} m³ lo que sale o entra ({opciones.iloc[4, 1]:.1f} k€, {opciones.iloc[3, 1]:.1f} t).''')
+Markdown(f'''Balance: reutilizable = mín(excavado, necesario) = mín({miles(V_exc)}, {miles(V_nec)}) = {miles(reutilizable)} m³; sobrante = {miles(V_exc)} − {miles(reutilizable)} = {miles(sobrante)} m³; déficit = {miles(V_nec)} − {miles(reutilizable)} = {miles(deficit)} m³.\n\nCoste por m³ (canon más transporte, con {densidad} t/m³ y {coste_camion} €/t·km): vertedero {coste_vertedero} + {densidad} × {km_vertedero} × {coste_camion} = **{c_vert:.2f} €/m³**; préstamo {coste_prestamo} + {densidad} × {km_prestamo} × {coste_camion} = **{c_prest:.2f} €/m³**; dentro de la obra, {coste_interno} €/m³. Emisiones por m³: {densidad} × {km_vertedero} × {factor_camion} / 1000 = {e_vert:.4f} t al vertedero y {densidad} × {km_prestamo} × {factor_camion} / 1000 = {e_prest:.4f} t desde la cantera.\n\n- Propuesta: {miles(V_exc)} × {c_vert:.2f} / 1000 + {miles(V_nec)} × {c_prest:.2f} / 1000 = **{opciones.iloc[4, 0]:.1f} k€**; emisiones {miles(V_exc)} × {e_vert:.4f} + {miles(V_nec)} × {e_prest:.4f} = **{opciones.iloc[3, 0]:.1f} t**.\n- Reutilizar: {miles(sobrante)} × {c_vert:.2f} / 1000 + {miles(deficit)} × {c_prest:.2f} / 1000 + {miles(reutilizable)} × {coste_interno} / 1000 = **{opciones.iloc[4, 1]:.1f} k€**; emisiones {miles(sobrante)} × {e_vert:.4f} + {miles(deficit)} × {e_prest:.4f} = **{opciones.iloc[3, 1]:.1f} t**.\n\n**Respuesta:** se reutilizan {miles(reutilizable)} m³ (sobrante {miles(sobrante)} m³, déficit {miles(deficit)} m³). La propuesta cuesta {opciones.iloc[4, 0]:.1f} k€ y emite {opciones.iloc[3, 0]:.1f} t; reutilizar, {opciones.iloc[4, 1]:.1f} k€ y {opciones.iloc[3, 1]:.1f} t (antes del acopio o del retraso, apartado 2).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -294,7 +316,7 @@ display(Markdown(pregunta_2))
 #| tbl-cap: "Fechas del desmonte y del terraplén"
 #| label: tbl-fechas
 fechas = calendario.loc[[desmonte, terraplen], ['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total']]
-display(fechas)
+display(fechas.rename(columns={'inicio_mas_temprano': 'inicio más temprano', 'fin_mas_temprano': 'fin más temprano', 'inicio_mas_tardio': 'inicio más tardío', 'fin_mas_tardio': 'fin más tardío', 'H_total': 'holgura total'}))
 ef_x = int(calendario.loc[desmonte, 'fin_mas_temprano']); es_y = int(calendario.loc[terraplen, 'inicio_mas_temprano']); ls_y = int(calendario.loc[terraplen, 'inicio_mas_tardio'])
 desplazamiento = max(0, ef_x - es_y)
 retraso = max(0, ef_x - ls_y)
@@ -304,7 +326,8 @@ coste_propuesta = opciones.loc['coste de tierras (k€)', 'propuesta: vertedero 
 comparacion = pd.DataFrame({'propuesta': [coste_propuesta, 0, 0, coste_propuesta], 'reutilizar': [opciones.loc['coste de tierras (k€)', 'reutilizar en obra'], (reutilizable * coste_acopio / 1000 if necesita_acopio else 0), retraso * penalidad, coste_reutilizar]},
                            index=['tierras (k€)', 'acopio (k€)', 'penalidad por retraso (k€)', 'total (k€)'])
 display(comparacion.round(1))
-Markdown(f'''{desmonte} termina, como pronto, en la semana {ef_x}; {terraplen} puede empezar entre la semana {es_y} y la {ls_y}. ''' + (f'''Empezar {terraplen} al terminar {desmonte} exige desplazarlo {desplazamiento} semana(s), ''' + ('que caben en su holgura: **sin retraso ni acopio**.' if retraso == 0 else f'''{retraso} más de las que caben en su holgura: el proyecto se retrasa **{retraso}** semana(s) ({retraso * penalidad} k€).''') if not necesita_acopio else f'''{desmonte} termina antes de que {terraplen} pueda empezar: hacen falta {es_y - ef_x} semana(s) de acopio ({reutilizable * coste_acopio / 1000:.1f} k€), sin retraso.''') + f''' Reutilizar cuesta **{coste_reutilizar:.1f} k€** frente a **{coste_propuesta:.1f}** de la propuesta: los «montones» valen {coste_propuesta - coste_reutilizar:.1f} k€.''')
+ventana_y = (f'sólo en el instante {es_y} (es crítica)' if es_y == ls_y else f'entre los instantes {es_y} (inicio más temprano) y {ls_y} (inicio más tardío)')
+Markdown(f'''Para rellenar con las tierras de la excavación, {terraplen} tiene que empezar cuando termina {desmonte}. {desmonte} termina, como pronto, en el instante {ef_x} (fin de la semana {ef_x}); {terraplen} puede empezar {ventana_y} sin retrasar el proyecto. ''' + (f'''Empezar {terraplen} en el instante {ef_x} exige desplazarlo {ef_x} − {es_y} = {plural(desplazamiento, 'semana')}; ''' + (f'''como {ef_x} ≤ {ls_y}, cabe en su holgura: **sin retraso ni acopio**.''' if retraso == 0 else f'''como {ef_x} > {ls_y}, se pasa de su holgura en {ef_x} − {ls_y} = {plural(retraso, 'semana')}: el proyecto se retrasa **{plural(retraso, 'semana')}** ({retraso} × {penalidad} = {retraso * penalidad} k€).''') if not necesita_acopio else f'''{desmonte} termina antes de que {terraplen} pueda empezar ({ef_x} < {es_y}): hay que acopiar las tierras {plural(es_y - ef_x, 'semana')}, a {coste_acopio} €/m³: {miles(reutilizable)} × {coste_acopio} / 1000 = {reutilizable * coste_acopio / 1000:.1f} k€, sin retraso.''') + f'''\n\n**Respuesta:** {terraplen} puede rellenarse con las tierras de {desmonte} ''' + ('sin acopio ni retraso' if (retraso == 0 and not necesita_acopio) else ('con acopio' if necesita_acopio else f'con {plural(retraso, "semana")} de retraso')) + f'''; reutilizar cuesta en total **{coste_reutilizar:.1f} k€** frente a **{coste_propuesta:.1f} k€** de la propuesta: el «no tener montones» vale {coste_propuesta:.1f} − {coste_reutilizar:.1f} = **{coste_propuesta - coste_reutilizar:.1f} k€**.''')
 
 # %%
 #| fig-cap: "Gantt con holguras: la ventana en la que puede moverse el terraplén"
@@ -319,7 +342,9 @@ pinta_tikz(_dibujo)
 display(Markdown(pregunta_3))
 
 # %% [markdown]
-# **Norma y S13.** Las tierras que se reutilizan en su estado natural en la misma obra **no son residuo** (Ley 7/2022, art. 3.2.b); las que salen al vertedero **sí lo son** (y pagan canon e impuesto), y las 0 m³ sobrantes lo serán en cualquier caso salvo que se valoricen en otra obra conforme a la Orden APM/1007/2017. «No es un residuo de verdad» es cierto sólo para lo que se queda en la obra. **S8.** Reutilizar es **prevención**, el primer escalón; llevar a vertedero tierras aptas es **eliminación**, el último, y traer de cantera lo que ya se tenía consume un recurso natural además. **S1.** La propuesta ni compensa ni minimiza: traslada el impacto al vertedero, a la cantera y a la carretera. Y la pregunta del calendario tiene respuesta única: D termina en la semana 8 y E puede empezar como tarde en la 5; desplazar el terraplén supera su holgura en 3 semana(s): se reutiliza **con 3 semana(s) de retraso** (36 k€), que sigue siendo más barato que la propuesta. Lo que decide no es la opinión sobre los montones, sino las fechas.
+# **Norma y S13.** Las tierras que se reutilizan en su estado natural en la misma obra **no son residuo** (Ley 7/2022, art. 3.2.b); las que salen al vertedero **sí lo son** (y pagan canon e impuesto); aquí, reutilizando, no sale ni un metro cúbico: todo el desmonte cabe en el terraplén. «No es un residuo de verdad» es cierto sólo para lo que se queda en la obra. **S8.** Reutilizar es **prevención**, el primer escalón; llevar a vertedero tierras aptas es **eliminación**, el último, y traer de cantera lo que ya se tenía consume un recurso natural además. **S1.** La propuesta ni compensa ni minimiza: traslada el impacto al vertedero, a la cantera y a la carretera. Y la pregunta del calendario tiene respuesta única: D termina en el instante 8 y E puede empezar como pronto en el 5 y como tarde en el 5; desplazar el terraplén supera su holgura en 3 semanas: se reutiliza **con 3 semanas de retraso** (36 k€), que sigue siendo más barato que la propuesta. Lo que decide no es la opinión sobre los montones, sino las fechas.
+#
+# **Respuesta:** las tierras que se reutilizan en la obra **no son residuo**; las que van al vertedero **sí**. Reutilizar es prevención y llevarlas al vertedero, eliminación. Con el calendario del plan **no** se puede sin retraso: cuesta 3 semanas.
 
 # %%
 preguntas_test = [
@@ -358,4 +383,4 @@ display(Markdown(pregunta_4))
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados, incluidos los que no están en la mesa (la comunidad, los trabajadores de la cadena, quien opere o desmantele lo construido, las generaciones siguientes) y qué pierde o gana cada uno con las cifras del bloque A; (2) formular al menos dos alternativas además de la propuesta, situándolas en la pirámide (compensar, restaurar, minimizar, evitar); (3) someter cada alternativa a tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería ante el inspector, el cliente o la prensa?) y ciclo de vida (¿quién paga el impacto y cuándo?)—; (4) decidir y redactar la comunicación con las cifras. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
 # %% [markdown]
-# Al jefe de obra: la tabla del apartado 2 y el plan de movimiento de tierras con fechas: D a su ritmo, E desplazado hasta la semana 8 aceptando 3 semana(s) de retraso, o D acelerado para evitarlas (lección 10); el sobrante (0 m³) a vertedero o, mejor, ofrecido a otra obra con la orden de valorización. A la dirección facultativa: el estudio de gestión de residuos actualizado con el balance de tierras. Prueba del ciclo de vida: ¿quién paga los camiones de ida al vertedero y los de vuelta de la cantera, y qué queda en cada sitio?
+# Al jefe de obra: la tabla del apartado 2 y el plan de movimiento de tierras con fechas: D a su ritmo, E desplazado hasta el instante 8 aceptando 3 semanas de retraso, o D acelerado para evitarlas (lección 10); no queda sobrante, y si lo hubiera iría a vertedero o, mejor, a otra obra con la orden de valorización. A la dirección facultativa: el estudio de gestión de residuos actualizado con el balance de tierras. Prueba del ciclo de vida: ¿quién paga los camiones de ida al vertedero y los de vuelta de la cantera, y qué queda en cada sitio?

@@ -1,6 +1,6 @@
 # ---
 # title: Probabilidad 20
-# subtitle: "10 actividades; segunda ruta a 1 semana(s) de la crítica y mucho más variable"
+# subtitle: "10 actividades; segunda ruta a 1 semana de la crítica y mucho más variable"
 # coleccion: 08_probabilidad
 # variante: casi-critica-variable
 # nivel: 3
@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -223,7 +227,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en semanas).
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -251,8 +255,29 @@ datos_proyecto['variance'] = datos_proyecto['standard_deviation'] ** 2
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
 proyecto = prelaciones.create_project()
 R = proyecto.path_matrix(dummies=False)
-medias = R @ datos_proyecto['duration'][R.columns]
-varianzas = R @ datos_proyecto['variance'][R.columns]
+calendario = proyecto.calendar(datos_proyecto['duration'])
+
+# %%
+def tabla_rutas(R, medias, varianzas=None, calendario=None, dec=0, dec_var=3, nombre='media'):
+    """Media (y varianza) de cada ruta con la suma término a término; actividades en orden de ejecución."""
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        m = float(sum(float(medias[a]) for a in acts))
+        fila = {'actividades': ' – '.join(acts),
+                f'{nombre} = suma': ' + '.join(f'{a}({float(medias[a]):.{dec}f})' for a in acts) + f' = {m:.{dec}f}',
+                nombre: m}
+        if varianzas is not None:
+            v = float(sum(float(varianzas[a]) for a in acts))
+            fila['varianza = suma'] = ' + '.join(f'{a}({float(varianzas[a]):.{dec_var}f})' for a in acts) + f' = {v:.{dec_var}f}'
+            fila['varianza'] = v
+            fila['σ = √varianza'] = v ** 0.5
+        filas[r] = fila
+    t = pd.DataFrame(filas).T
+    for c in (nombre, 'varianza', 'σ = √varianza'):
+        if c in t:
+            t[c] = t[c].astype(float)
+    return t
 
 # %% [markdown]
 # ## Apartado 1
@@ -260,28 +285,29 @@ varianzas = R @ datos_proyecto['variance'][R.columns]
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy con tiempos y camino crítico"
 #| label: fig-pert
-proyecto.roy(durations=datos_proyecto['duration'], ranksep=1.2, nodesep=1.2)
+proyecto.display_roy_pasos(datos_proyecto['duration'])
 
 # %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
-proyecto.display_roy_pasos(datos_proyecto['duration'])
+# Media y varianza de cada ruta (sumas de las de sus actividades), ordenadas de mayor a menor duración media:
 
 # %%
 #| tbl-cap: "Duración media y varianza de cada ruta"
 #| label: tbl-rutas
-rutas = pd.DataFrame({'actividades': [' - '.join(R.columns[R.loc[r] == 1]) for r in R.index],
-                      'media': medias, 'varianza': varianzas, 'σ': np.sqrt(varianzas)}, index=R.index).sort_values('media', ascending=False)
-rutas.round(3)
+rutas = tabla_rutas(R, datos_proyecto['duration'], datos_proyecto['variance'], calendario).sort_values('media', ascending=False)
+limpia_tabla(rutas, decimales=3)
 
 # %%
 critica, segunda = rutas.index[0], rutas.index[1]
-Markdown(f'La ruta crítica es {critica} ({rutas.loc[critica, "media"]:.0f} semanas, σ = {rutas.loc[critica, "σ"]:.2f}); '
-         f'la segunda, {segunda} ({rutas.loc[segunda, "media"]:.0f} semanas, σ = {rutas.loc[segunda, "σ"]:.2f}), es mucho más variable.')
+txt_c, txt_s = rutas.loc[critica, 'actividades'], rutas.loc[segunda, 'actividades']
+mu_c, mu_s = float(rutas.loc[critica, 'media']), float(rutas.loc[segunda, 'media'])
+s_c, s_s = float(rutas.loc[critica, 'σ = √varianza']), float(rutas.loc[segunda, 'σ = √varianza'])
+Markdown(f'''**Respuesta:** la duración media del proyecto es {plural(mu_c, "semana")}; la ruta crítica es {txt_c} (σ = {s_c:.3f}) y la que le sigue es {txt_s}, con {plural(mu_s, "semana")} de media (sólo {plural(mu_c - mu_s, "semana")} menos) pero una desviación típica mucho mayor (σ = {s_s:.3f}).''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -291,8 +317,9 @@ display(Markdown(pregunta_2))
 
 # %%
 plazo = 24
-p_critica = norm.cdf((plazo - rutas.loc[critica, 'media']) / rutas.loc[critica, 'σ'])
-Markdown(f'Por la ruta crítica: z = ({plazo} − {rutas.loc[critica, "media"]:.0f}) / {rutas.loc[critica, "σ"]:.2f} = {(plazo - rutas.loc[critica, "media"]) / rutas.loc[critica, "σ"]:.2f}, P = {p_critica:.3f}.')
+p_critica = norm.cdf(plazo, mu_c, s_c)
+Markdown(f'''Por la ruta crítica {txt_c}: {explica_probabilidad(mu_c, s_c, plazo)}.\n\n'''
+         f'''**Respuesta:** según el método PERT, P(T ≤ {plazo}) = {p_critica:.4f} ({p_critica:.1%}).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -301,8 +328,15 @@ Markdown(f'Por la ruta crítica: z = ({plazo} − {rutas.loc[critica, "media"]:.
 display(Markdown(pregunta_3))
 
 # %%
-p_segunda = norm.cdf((plazo - rutas.loc[segunda, 'media']) / rutas.loc[segunda, 'σ'])
-Markdown(f'''Por la segunda ruta: P = {p_segunda:.3f}. Para cumplir el plazo deben cumplirlo *todas* las rutas, así que la probabilidad real no puede superar la menor de las dos, {min(p_critica, p_segunda):.3f}; y como las rutas comparten actividades y no son independientes, tampoco es simplemente el producto. {"La ruta crítica sigue mandando también en probabilidad." if p_critica < p_segunda else "Es la segunda ruta, y no la crítica, la que manda en probabilidad, aunque no sea la más larga en media."}''')
+p_segunda = norm.cdf(plazo, mu_s, s_s)
+cota = min(p_critica, p_segunda)
+manda = ('la segunda ruta, y no la crítica, es la que da la probabilidad más baja: manda en probabilidad aunque no sea la más larga en media'
+         if p_segunda < p_critica else 'la ruta crítica sigue dando la probabilidad más baja')
+Markdown(f'''Por la segunda ruta {txt_s} (duración L₂): {explica_probabilidad(mu_s, s_s, plazo, nombre="L₂")}.\n\n'''
+         f'''Para cumplir el plazo deben cumplirlo *todas* las rutas a la vez, así que la probabilidad real no puede superar la menor de las dos; '''
+         f'''y como las rutas comparten actividades y no son independientes, tampoco es simplemente el producto.\n\n'''
+         f'''**Respuesta:** {manda} ({p_segunda:.4f} frente a {p_critica:.4f}). Una cota razonable de la probabilidad de cumplir el plazo es '''
+         f'''P(T ≤ {plazo}) ≤ {cota:.4f}.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -310,13 +344,29 @@ Markdown(f'''Por la segunda ruta: P = {p_segunda:.3f}. Para cumplir el plazo deb
 # %%
 display(Markdown(pregunta_4))
 
+# %% [markdown]
+# En cada réplica se sortea la duración de cada actividad con su normal (recortada en 0), se suman las duraciones a lo largo de cada ruta y la duración del proyecto es la de la ruta más larga en esa réplica. La probabilidad simulada es la proporción de réplicas que terminan dentro del plazo.
+
 # %%
 rng = np.random.default_rng(7)
 N = 10000
 muestras = pd.DataFrame({a: np.clip(rng.normal(datos_proyecto.loc[a, 'duration'], datos_proyecto.loc[a, 'standard_deviation'], N), 0, None) for a in R.columns})
-duracion_mc = (muestras @ R.T).max(axis='columns')
+duraciones_rutas_mc = muestras @ R.T
+duracion_mc = duraciones_rutas_mc.max(axis='columns')
 p_mc = float((duracion_mc <= plazo).mean())
-pd.Series({'PERT (ruta crítica)': p_critica, 'segunda ruta': p_segunda, 'Monte Carlo': p_mc}).round(3).to_frame(f'P(T ≤ {plazo})')
+cumplen = int((duracion_mc <= plazo).sum())
+mas_larga = duraciones_rutas_mc.idxmax(axis='columns')
+frac_segunda = float((mas_larga == segunda).mean())
+frac_critica = float((mas_larga == critica).mean())
+pd.Series({'PERT (ruta crítica)': p_critica, 'segunda ruta': p_segunda, 'Monte Carlo': p_mc}).round(4).to_frame(f'P(T ≤ {plazo})')
 
-# %% [markdown]
-# El método PERT sólo mira la ruta de mayor duración media. Cuando otra ruta casi tan larga es mucho más variable, es *ella* la que más veces hace fallar el plazo: en muchas réplicas resulta la más larga. La probabilidad real es menor que la de cada ruta por separado, porque basta que una de ellas se pase. La regla práctica es examinar todas las rutas casi críticas y quedarse con la probabilidad más baja, o directamente simular.
+# %%
+error_tipico = np.sqrt(cota * (1 - cota) / N)
+if p_mc <= cota:
+    frase_cota = f'queda por debajo de la cota del apartado 3, {cota:.4f}, como debe ser'
+else:
+    frase_cota = (f'supera en {p_mc - cota:.4f} la cota del apartado 3, {cota:.4f}: es error de muestreo, porque con {N} réplicas '
+                  f'una proporción tiene un error típico de √(p(1 − p)/N) = √({cota:.4f} · {1 - cota:.4f} / {N}) = {error_tipico:.4f}')
+culpa = ('es *ella* la que más veces hace fallar el plazo' if p_segunda < p_critica else
+         'en muchas réplicas resulta la más larga y alarga el proyecto')
+Markdown(f'''Monte Carlo: {cumplen} de las {N} réplicas terminan en {plazo} semanas o menos, luego P(T ≤ {plazo}) ≈ {cumplen}/{N} = **{p_mc:.4f}**, que {frase_cota}. La segunda ruta {txt_s} resulta la más larga en el {frac_segunda:.1%} de las réplicas y la crítica {txt_c} en el {frac_critica:.1%}.\n\n**Respuesta:** la probabilidad real es ≈ {p_mc:.4f}, frente al {p_critica:.4f} del método PERT, que la sobrestima en {p_critica - p_mc:.4f}. El método PERT sólo mira la ruta de mayor duración media ({txt_c}, σ = {s_c:.3f}); aquí otra ruta casi tan larga ({plural(mu_c - mu_s, "semana")} menos) es mucho más variable (σ = {s_s:.3f}) y {culpa}. La regla práctica es examinar todas las rutas casi críticas y quedarse con la probabilidad más baja, o directamente simular.''')

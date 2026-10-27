@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -212,7 +216,7 @@ datos_enunciado = pd.DataFrame([
 datos_enunciado
 
 # %% [markdown]
-# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes (las duraciones del cuadro están en días).
+# El proyecto corresponde a la instalación de una planta fotovoltaica sobre cubierta; las actividades son las siguientes.
 
 # %%
 #| tbl-cap: "Descripción de las actividades"
@@ -280,6 +284,14 @@ proyecto.display_distant_linkage_matrix()
 #| label: tbl-ancestrosGrafo
 proyecto_dibujado.display_distant_linkage_matrix()
 
+# %%
+anc_cuadro = proyecto.distant_predecessor()
+anc_grafo = proyecto_dibujado.distant_predecessor()
+difieren = [a for a in datos_proyecto.index if anc_cuadro[a] != anc_grafo[a]]
+Markdown(f'**Respuesta:** los dos cuadros de ancestros difieren en '
+         f'{"la fila" if len(difieren) == 1 else "las filas"} de {lista_y(difieren)}; las demás filas coinciden.'
+         if difieren else '**Respuesta:** los dos cuadros de ancestros coinciden fila a fila.')
+
 # %% [markdown]
 # ## Apartado 2
 
@@ -290,9 +302,6 @@ display(Markdown(pregunta_2))
 # Una prelación que está en el cuadro y no en el grafo se detecta porque alguna actividad tiene menos ancestros en el grafo; una que sobra, porque tiene más. Para localizar la prelación inmediata responsable se comparan las predecesoras inmediatas de las actividades cuyo conjunto de ancestros difiere.
 
 # %%
-anc_cuadro = proyecto.distant_predecessor()
-anc_grafo = proyecto_dibujado.distant_predecessor()
-difieren = [a for a in datos_proyecto.index if anc_cuadro[a] != anc_grafo[a]]
 pd.DataFrame({'ancestros según el cuadro': {a: ', '.join(sorted(anc_cuadro[a])) for a in difieren},
               'ancestros según el grafo': {a: ', '.join(sorted(anc_grafo[a])) for a in difieren}})
 
@@ -301,11 +310,19 @@ inm_cuadro = prelaciones.immediate_predecessor
 inm_grafo = PredecessorTable.from_dict_of_strings(prelaciones_del_grafo).immediate_predecessor
 faltan = sorted((p, a) for a in inm_cuadro for p in inm_cuadro[a] - inm_grafo.get(a, set()))
 sobran = sorted((p, a) for a in inm_grafo for p in inm_grafo[a] - inm_cuadro.get(a, set()))
-print('Faltan en el grafo:', faltan)
-print('Sobran en el grafo:', sobran)
+def _por_que(p, a, anc):
+    return (f'{p} {"sí" if p in anc[a] else "no"} es ancestro de {a}')
+_l = [f'- Falta **{p} → {a}**: está en el cuadro, pero en el grafo {a} no la tiene como predecesora inmediata '
+      f'(según el grafo, {_por_que(p, a, anc_grafo)}).' for p, a in faltan]
+_l += [f'- Sobra **{p} → {a}**: el grafo hace que {p} preceda directamente a {a}, y en el cuadro no es así '
+       f'(según el cuadro, {_por_que(p, a, anc_cuadro)}).' for p, a in sobran]
+Markdown('\n'.join(_l))
 
-# %% [markdown]
-# Las discrepancias son: falta la prelación G → I y sobra la prelación F → I (si la comparación muestra alguna más, es consecuencia de estas dos: al añadir o quitar una prelación cambian las que son redundantes).
+# %%
+_errores = {('G', 'I'), ('F', 'I')}
+_otras = [f'{p} → {a}' for p, a in faltan + sobran if (p, a) not in _errores]
+Markdown('**Respuesta:** en el grafo falta la prelación G → I y sobra la prelación F → I.' + (f' Las demás diferencias de predecesoras inmediatas ({lista_y(_otras)}) son consecuencia de estas dos: al '
+  'añadir o quitar una prelación cambia cuáles son redundantes.' if _otras else ''))
 
 # %% [markdown]
 # ## Apartado 3
@@ -321,4 +338,6 @@ proyecto.roy(durations=False, ranksep=1.2, nodesep=1.2)
 # %%
 arcos = sum(len(ps) for ps in prelaciones.immediate_predecessor.values())
 arcos_dibujado = sum(len(ps) for ps in PredecessorTable.from_dict_of_strings(prelaciones_del_grafo).immediate_predecessor.values())
-Markdown(f'El grafo correcto tiene {arcos} arcos de prelación frente a {arcos_dibujado} del dibujado.')
+Markdown(f'**Respuesta:** el grafo correcto tiene {arcos} arcos de prelación frente a {arcos_dibujado} del dibujado: '
+         + ('el número no cambia.' if arcos == arcos_dibujado
+            else f'{abs(arcos - arcos_dibujado)} {"más" if arcos > arcos_dibujado else "menos"}.'))

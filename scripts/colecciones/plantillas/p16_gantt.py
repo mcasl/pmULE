@@ -6,6 +6,7 @@ import pandas as pd
 from .. import proyectos as P
 from ..cuaderno import (Variante, despachar, md, code, preguntas, apartado, fig_grafo,
                         literal_dataframe, literal_dict, BMATRIX)
+from .p03_roy import _AUX_FICTICIAS
 
 META = dict(slug="16_gantt_grafos", prefijo="Gantt",
             titulo="Gantt y grafos: ida y vuelta",
@@ -70,11 +71,10 @@ def _grafo_a_gantt(rng, tipo):
                        "proyecto = prelaciones.create_project()\n"
                        "datos_proyecto[['predecessor', 'duration']]"))
     if tipo == "pert":
-        celdas.append(code("for d in proyecto.dummies:\n"
-                           "    i, j = [(u, v) for u, v, dd in proyecto.pert_graph.edges(data=True) if dd['activity'] == d][0]\n"
-                           "    origen = [dd['activity'] for _, _, dd in proyecto.pert_graph.in_edges(i, data=True)]\n"
-                           "    destino = [dd['activity'] for _, _, dd in proyecto.pert_graph.out_edges(j, data=True)]\n"
-                           "    print(f'{d}: lleva la prelación de {\", \".join(origen)} hacia {\", \".join(destino)}')"))
+        celdas.append(code(_AUX_FICTICIAS))
+        celdas.append(code("_lineas = explica_ficticias(proyecto, prelaciones)\n"
+                           "Markdown(f'**Respuesta:** el cuadro de prelaciones leído del grafo es el de la tabla. El grafo tiene '\n"
+                           "         f'{plural(len(_lineas), \"ficticia\")}; cada una aporta la prelación indicada:\\n\\n' + '\\n'.join(_lineas))"))
     celdas += apartado(2)
     celdas.append(code('#| tbl-cap: "Calendario y holguras"\n#| label: tbl-calendario\n'
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
@@ -85,11 +85,26 @@ def _grafo_a_gantt(rng, tipo):
                      "fin de cada predecesora con el inicio de su sucesora (en rojo, entre actividades críticas)."))
     celdas.append(_celda_gantt("proyecto", "datos_proyecto", holguras=True, label="fig-ganttTemprano", cap="Gantt de inicios más tempranos (última columna: holgura total)"))
     celdas += apartado(3)
-    celdas.append(code("criticas = calendario.index[calendario['H_total'] == 0].tolist()\n"
-                       "con_hueco = calendario[calendario['H_libre'] > 0]\n"
-                       "Markdown(f'''Camino crítico (flechas rojas, barras sin hueco): {\", \".join(criticas)}. "
-                       "Tienen hueco hasta todas sus sucesoras: {\", \".join(f\"{a} ({int(h)} semanas)\" for a, h in con_hueco[\"H_libre\"].items())}; "
-                       "ese hueco es exactamente la holgura libre (mín ES de las sucesoras − EF).''')"))
+    celdas.append(code("explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas')"))
+    celdas.append(md("En el Gantt las actividades críticas son las barras unidas por flechas rojas. El hueco entre el "
+                     "fin de una barra (EF, fin más temprano) y el inicio de la primera de sus sucesoras (ES, inicio más "
+                     "temprano) es lo que puede retrasarse sin mover a ninguna: su holgura libre."))
+    celdas.append(code("suc = {a: [b for b, ps in prelaciones.immediate_predecessor.items() if a in ps] for a in calendario.index}\n"
+                       "fin = int(calendario['fin_mas_temprano'].max())\n"
+                       "_l = []\n"
+                       "for a in ordena_ruta(calendario.index[calendario['H_libre'] > 0], calendario):\n"
+                       "    ef = int(calendario.loc[a, 'fin_mas_temprano'])\n"
+                       "    if suc[a]:\n"
+                       "        _es = ', '.join(f\"{b}: {int(calendario.loc[b, 'inicio_mas_temprano'])}\" for b in sorted(suc[a]))\n"
+                       "        _min = int(calendario.loc[suc[a], 'inicio_mas_temprano'].min())\n"
+                       "        _l.append(f'- {a}: mín ES de sus sucesoras ({_es}) − EF = {_min} − {ef} = {plural(_min - ef, \"semana\")}')\n"
+                       "    else:\n"
+                       "        _l.append(f'- {a} (final): fin del proyecto − EF = {fin} − {ef} = {plural(fin - ef, \"semana\")}')\n"
+                       "_crit = ordena_ruta(calendario.index[calendario['H_total'] == 0], calendario)\n"
+                       "Markdown(f'**Respuesta:** camino crítico {\" – \".join(_crit)} (barras sin hueco y flechas rojas). Tienen hueco '\n"
+                       "         f'hasta todas sus sucesoras:\\n\\n' + '\\n'.join(_l) + '\\n\\nEse hueco es exactamente la holgura libre del calendario.'\n"
+                       "         + (' Las demás actividades no críticas no tienen hueco: alguna sucesora empieza justo cuando terminan.'\n"
+                       "            if ((calendario['H_libre'] == 0) & (calendario['H_total'] > 0)).any() else ''))"))
     celdas += apartado(4)
     celdas.append(md("En el Gantt tardío cada barra empieza en su inicio más tardío. No basta con retrasar "
                      "cada actividad su holgura total (la holgura de una cadena es compartida: si la gasta la "
@@ -109,13 +124,20 @@ def _grafo_a_gantt(rng, tipo):
                        "proyecto_tardio = PredecessorTable.from_dataframe_of_strings(datos_tardio, activity='activity', predecessor='predecessor').create_project()\n"
                        "esperas = datos_tardio.loc[datos_tardio.index.str.startswith('💤'), 'duration']\n"
                        "desplazamiento = (proyecto_tardio.calendar(datos_tardio['duration']).loc[datos_proyecto.index, 'inicio_mas_temprano'] - calendario['inicio_mas_temprano'])\n"
-                       "pd.DataFrame({'espera insertada': esperas.rename(index=lambda x: x[1:]).reindex(datos_proyecto.index).fillna(0).astype(int),\n"
-                       "              'desplazamiento respecto al Gantt temprano': desplazamiento.astype(int), 'H_total': calendario['H_total']}).T"))
+                       "comparacion = pd.DataFrame({'espera insertada': esperas.rename(index=lambda x: x[1:]).reindex(datos_proyecto.index).fillna(0).astype(int),\n"
+                       "              'desplazamiento respecto al Gantt temprano': desplazamiento.astype(int),\n"
+                       "              'holgura total (LS − ES)': calendario['H_total'].astype(int)})\n"
+                       "comparacion.T"))
     celdas.append(_celda_gantt("proyecto_tardio", "datos_tardio", holguras=False, label="fig-ganttTardio", cap="Gantt de inicios más tardíos (las filas 💤 son las esperas)"))
-    celdas.append(md("El desplazamiento de cada barra respecto al Gantt temprano es su holgura total (LS − ES), "
-                     "pero la espera insertada es menor cuando una predecesora ya ha consumido parte de esa "
-                     "holgura. Las críticas no se mueven y el fin del proyecto no cambia; en el Gantt tardío no "
-                     "queda hueco entre ninguna actividad y sus sucesoras: toda la holgura está gastada."))
+    celdas.append(code("_mov = [a for a in ordena_ruta(comparacion.index, calendario) if comparacion.loc[a, 'desplazamiento respecto al Gantt temprano'] > 0]\n"
+                       "_menor = [a for a in _mov if comparacion.loc[a, 'espera insertada'] < comparacion.loc[a, 'desplazamiento respecto al Gantt temprano']]\n"
+                       "_txt = ', '.join(f\"{a} {plural(int(comparacion.loc[a, 'desplazamiento respecto al Gantt temprano']), 'semana')}\" for a in _mov)\n"
+                       "_pq = '; '.join(f\"{a} (espera {int(comparacion.loc[a, 'espera insertada'])}: el resto de su desplazamiento lo arrastra de \"\n"
+                       "                f\"{lista_y(sorted(p for p in prelaciones.immediate_predecessor[a] if p in _mov))}, que ya se ha retrasado)\" for a in _menor)\n"
+                       "Markdown(f'**Respuesta:** se desplazan {_txt}; las críticas no se mueven. Cada desplazamiento coincide con la '\n"
+                       "         f'holgura total de la actividad (LS − ES), y el fin del proyecto no cambia.'\n"
+                       "         + (f' La espera insertada es menor que el desplazamiento cuando una predecesora ya se ha retrasado: {_pq}.' if _menor else '')\n"
+                       "         + ' En el Gantt tardío no queda hueco entre ninguna actividad y sus sucesoras: toda la holgura está gastada.')"))
     return celdas, f"{len(D)} actividades, {info['n_dummies']} ficticias; del {nombre} al Gantt"
 
 
@@ -149,14 +171,21 @@ def _gantt_a_grafo(rng, tipo):
     celdas.append(code("datos_proyecto = datos_enunciado.copy()\n"
                        "prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')\n"
                        "proyecto = prelaciones.create_project()\n"
-                       "print('Iniciales:', ', '.join(sorted(prelaciones.start_activities)), '  Finales:', ', '.join(sorted(prelaciones.end_activities)))\n"
-                       "datos_proyecto[['predecessor', 'duration']]"))
+                       "display(datos_proyecto[['predecessor', 'duration']])\n"
+                       "_ini, _fin = sorted(prelaciones.start_activities), sorted(prelaciones.end_activities)\n"
+                       "Markdown(f'**Respuesta:** el cuadro de prelaciones y las duraciones son los de la tabla. '\n"
+                       "         f'{\"Es inicial\" if len(_ini) == 1 else \"Son iniciales\"} {lista_y(_ini)}: no {\"recibe\" if len(_ini) == 1 else \"reciben\"} ninguna flecha y '\n"
+                       "         f'{\"empieza\" if len(_ini) == 1 else \"empiezan\"} en la semana 0. {\"Es final\" if len(_fin) == 1 else \"Son finales\"} {lista_y(_fin)}: '\n"
+                       "         f'no salen flechas de {\"ella\" if len(_fin) == 1 else \"ellas\"}.')"))
     celdas += apartado(2)
     celdas += fig_grafo(durations="datos_proyecto['duration']", cap=f"Grafo {nombre} reconstruido, con tiempos y camino crítico", label="fig-grafo")
     if tipo == "pert":
-        celdas.append(code("Markdown(f'''El PERT representa las actividades como arcos, y un arco sólo puede salir de un nodo: cuando dos actividades comparten "
-                           "*algunas* predecesoras pero no todas, hace falta una ficticia para no inventar prelaciones. El Gantt no tiene ese problema porque "
-                           "dibuja cada prelación como una flecha independiente. Este grafo necesita {len(proyecto.dummies)} ficticia(s).''')"))
+        celdas.append(code(_AUX_FICTICIAS))
+        celdas.append(code("_lineas = explica_ficticias(proyecto, prelaciones)\n"
+                           "Markdown(f'''**Respuesta:** el PERT representa las actividades como arcos y las prelaciones compartiendo nodos: "
+                           "cuando dos actividades comparten *algunas* predecesoras pero no todas (o tendrían los mismos dos nodos), hace falta una "
+                           "ficticia para no inventar prelaciones. El Gantt no tiene ese problema porque dibuja cada prelación como una flecha "
+                           "independiente. Este grafo necesita {plural(len(_lineas), 'ficticia')}:''' + '\\n\\n' + '\\n'.join(_lineas))"))
     else:
         celdas.append(md("El Roy y el Gantt contienen la misma información estructural (actividades y prelaciones "
                          "inmediatas) y, si se anotan los tiempos, también las fechas. El Gantt añade la escala "
@@ -167,6 +196,10 @@ def _gantt_a_grafo(rng, tipo):
                        "calendario = proyecto.calendar(datos_proyecto['duration'])\n"
                        "calendario"))
     celdas.append(_celda_gantt("proyecto", "datos_proyecto", holguras=True, label="fig-ganttCalculado", cap="Gantt calculado (coincide con el del enunciado; última columna: holgura total)"))
+    celdas.append(code("_es = ', '.join(f\"{a} {int(calendario.loc[a, 'inicio_mas_temprano'])}\" for a in ordena_ruta(calendario.index, calendario))\n"
+                       "display(explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas'))\n"
+                       "Markdown(f'**Respuesta:** los inicios más tempranos calculados ({_es}) son los inicios de las barras del Gantt del '\n"
+                       "         f'enunciado, y las actividades de holgura total nula son las unidas por flechas rojas.')"))
     celdas += apartado(4)
     celdas.append(code("suc = {a: [b for b, ps in prelaciones.immediate_predecessor.items() if a in ps] for a in calendario.index}\n"
                        "fin = int(calendario['fin_mas_temprano'].max())\n"
@@ -175,11 +208,28 @@ def _gantt_a_grafo(rng, tipo):
                        "    'mín ES de sus sucesoras (o fin)': [int(calendario.loc[suc[a], 'inicio_mas_temprano'].min()) if suc[a] else fin for a in calendario.index],\n"
                        "    'H_libre leída = hueco': [int((calendario.loc[suc[a], 'inicio_mas_temprano'].min() if suc[a] else fin) - calendario.loc[a, 'fin_mas_temprano']) for a in calendario.index],\n"
                        "    'H_libre calculada': calendario['H_libre'], 'H_total calculada': calendario['H_total']})\n"
+                       "lectura.columns = ['EF (fin más temprano)', 'mín ES de sus sucesoras (o fin)', 'H_libre leída = hueco', 'H_libre calculada', 'H_total calculada']\n"
                        "lectura"))
     celdas.append(md("La holgura libre es el hueco visible entre el fin de la barra y el inicio de la sucesora más "
                      "próxima. La holgura total no se ve en un Gantt de inicios tempranos: requiere saber cuánto "
                      "podrían retrasarse *también* las sucesoras, es decir, el paso hacia atrás (o el Gantt de "
-                     "inicios tardíos). Sólo coinciden cuando la sucesora es crítica."))
+                     "inicios tardíos). Se obtiene sumando al hueco la holgura total de la sucesora: "
+                     "H_total = mín sobre las sucesoras de (ES + H_total) − EF."))
+    celdas.append(code("_l = []\n"
+                       "for a in ordena_ruta(calendario.index[calendario['H_total'] > 0], calendario):\n"
+                       "    ef, ht = int(calendario.loc[a, 'fin_mas_temprano']), int(calendario.loc[a, 'H_total'])\n"
+                       "    if suc[a]:\n"
+                       "        _c = ', '.join(f\"{b}: {int(calendario.loc[b, 'inicio_mas_temprano'])} + {int(calendario.loc[b, 'H_total'])}\" for b in sorted(suc[a]))\n"
+                       "        _l.append(f'- {a}: hueco {int(calendario.loc[a, \"H_libre\"])}; H_total = mín({_c}) − {ef} = {ht}')\n"
+                       "    else:\n"
+                       "        _l.append(f'- {a} (final): hueco hasta el fin = H_total = {fin} − {ef} = {ht}')\n"
+                       "_dif = [a for a in calendario.index if calendario.loc[a, 'H_total'] != calendario.loc[a, 'H_libre']]\n"
+                       "_ok = (lectura['H_libre leída = hueco'] == lectura['H_libre calculada']).all()\n"
+                       "Markdown('\\n'.join(_l) + '\\n\\n**Respuesta:** la holgura libre leída como hueco '\n"
+                       "         + ('coincide con la calculada en todas las actividades. ' if _ok else 'NO coincide con la calculada en alguna actividad. ')\n"
+                       "         + 'La holgura total sólo se puede leer en el Gantt temprano cuando coincide con la libre '\n"
+                       "         '(la sucesora que empieza antes es crítica, o la actividad es final)'\n"
+                       "         + (f'; en {lista_y(_dif)} es mayor, y hace falta el paso hacia atrás o el Gantt de inicios tardíos.' if _dif else '; aquí ocurre en todas.'))"))
     return celdas, f"{len(D)} actividades, {info['n_dummies']} ficticias en PERT; del Gantt al {nombre}"
 
 

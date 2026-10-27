@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -277,6 +281,46 @@ def resumen_prob(p, d, sd, plazo):
     retraso_esp = sigma * (norm.pdf(z) - z * norm.cdf(-z))      # E[máx(0, X − plazo)] con X ~ N(T, σ)
     return T, sigma, float(norm.cdf(z)), float(retraso_esp)
 
+def suma_caminos_criticos(p, d, unidad='semanas'):
+    '''Cada camino crítico, en orden de ejecución, escrito como suma de duraciones.'''
+    cal = p.calendar(d)
+    T = float(p.duration(d))
+    return '; '.join('–'.join(ordena_ruta(r, cal)) + ' = ' + ' + '.join(f'{float(d[a]):g}' for a in ordena_ruta(r, cal)) + f' = {T:g} {unidad}'
+                     for r in p.critical_path(d).values())
+
+def pasos_ackoff(p, d, tope, cur, pasos):
+    '''Paso a paso de Ackoff-Sasieni: caminos críticos, opciones que los cortan todos (con su CUR) y la elegida.'''
+    from itertools import combinations
+    R = p.path_matrix(dummies=False)
+    d = d.astype(float).copy(); filas = []; acumulado = 0.0
+    for paso, elegidas in sorted(pasos.items()):
+        L = R @ d[R.columns]; T = float(L.max())
+        cal = p.calendar(d)
+        criticas = [ordena_ruta(list(R.columns[R.loc[r] == 1]), cal) for r in L.index if np.isclose(L[r], T)]
+        conjuntos = [set(c) for c in criticas]
+        margen = {x for x in R.columns if d[x] > tope[x] and np.isfinite(cur[x])}
+        opciones = {x: float(cur[x]) for x in set.intersection(*conjuntos) & margen}
+        if len(conjuntos) > 1:
+            for a, b in combinations(sorted(set().union(*conjuntos) & margen), 2):
+                if all(a in s or b in s for s in conjuntos) and a not in opciones and b not in opciones:
+                    opciones[f'{a}+{b}'] = float(cur[a] + cur[b])
+        coste = float(sum(cur[x] for x in elegidas)); acumulado += coste
+        filas.append({'paso': paso + 1, 'duración antes': int(T), 'caminos críticos': '; '.join('–'.join(c) for c in criticas),
+                      'opciones con margen (CUR, k€)': '; '.join(f'{k} ({v:g})' for k, v in sorted(opciones.items(), key=lambda kv: kv[1])),
+                      'se acorta': ' + '.join(elegidas), 'coste del paso (k€)': coste, 'coste acumulado (k€)': acumulado,
+                      'duración después': int(T) - 1})
+        for x in elegidas:
+            d[x] -= 1
+    return pd.DataFrame(filas).set_index('paso')
+
+def explica_retraso_esperado(media, sigma, plazo, unidad='semanas'):
+    '''E[máx(0, T − plazo)] con T ~ N(media, σ), sin tipificar: (μ − plazo)·P(T > plazo) + σ²·f(plazo).'''
+    p_mas = 1 - norm.cdf(plazo, media, sigma); f = norm.pdf(plazo, media, sigma)
+    hoja = lambda x: f'{x:g}'.replace('.', ',')
+    return (f'E[máx(0, T − {plazo:g})] = (μ − plazo)·P(T > plazo) + σ²·f(plazo) = ({media:g} − {plazo:g})·{p_mas:.4f} + {sigma:.3f}²·{f:.4f} '
+            f'= **{(media - plazo) * p_mas + sigma ** 2 * f:.2f} {unidad}**, donde f(plazo) es la densidad normal en el plazo: '
+            f'`=DISTR.NORM.N({hoja(plazo)}; {hoja(media)}; {hoja(round(sigma, 3))}; FALSO)` = {f:.4f}')
+
 # %%
 plazo, coste_semana, bolsa = 17, 4, 5
 datos_proyecto = datos_enunciado.copy()
@@ -305,22 +349,19 @@ display(Markdown(pregunta_1))
 _g, _d = p0.gantt(df0, 'duration', holguras=True, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))
 pinta_tikz(_d)
 
+# %% [markdown]
+# Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo PERT del plan original con los tiempos de los nodos"
 #| label: fig-grafo0
-p0.pert(durations=dur0, ranksep=1)
-
-# %% [markdown]
-# Cálculo de los tiempos tempranos y tardíos de los sucesos paso a paso (avance con los botones):
-
-# %%
 p0.display_pert_pasos(dur0)
 
 # %%
 #| tbl-cap: "Calendario del plan original"
 #| label: tbl-calendario0
 cal0 = p0.calendar(dur0)
-cal0[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'H_libre']]
+p0.display_calendario(dur0)
 
 # %% [markdown]
 # Efecto de cada mensaje por separado y de los dos juntos:
@@ -335,8 +376,15 @@ for nombre, df, p in (('plan original', df0, p0), ('sólo el retraso del mobilia
     filas.append({'situación': nombre, 'duración': T, f'retraso sobre {plazo}': T - plazo, 'camino crítico': camino_critico(p, df['duration'])})
 pd.DataFrame(filas).set_index('situación')
 
+# %%
+Markdown('Camino crítico de cada situación, escrito como suma de duraciones (en orden de ejecución):\n\n' + '\n'.join(
+    f'- {nombre}: {suma_caminos_criticos(p, df["duration"])}' for nombre, df, p in
+    (('plan original', df0, p0), ('sólo el retraso del mobiliario', dfF, pF), ('sólo la inspección tras G', dfH, pH), ('los dos cambios', df2, p2))))
+
 # %% [markdown]
-# El proveedor aporta 2 semanas porque F era crítica: su retraso va entero al plazo. El inspector aporta 1: H tenía 3 semanas de holgura, pero al pasar detrás de G deja de aprovecharla y se coloca en el camino crítico (A–C–F–G–H–I). Los efectos se suman (2 + 1 = 3) porque los dos cambios caen sobre la misma ruta; no se sumarían si uno de ellos afectara a una ruta con holgura suficiente para absorberlo.
+# El proveedor aporta 2 semanas porque F era crítica (holgura total 0): su retraso va entero al plazo (17 + 2 = 19). El inspector aporta 1 semana: H tenía 3 semanas de holgura (la ruta más larga que pasaba por ella, por D o E, sumaba 17 − 3 = 14), pero al ir detrás de G pasa a la ruta A–C–F–G–H–I, que es el camino crítico anterior más la semana de H (17 + 1 = 18): la holgura que tenía no le sirve, porque estaba en otra ruta. Los efectos se suman tal cual (2 + 1 = 3) porque los dos cambios caen sobre la misma ruta, la crítica; no se sumarían si uno de ellos afectara a una ruta con holgura suficiente para absorberlo.
+#
+# **Respuesta:** si no se hace nada el laboratorio está listo en la semana 20, con **3 semanas de retraso**: 2 del proveedor y 1 del inspector.
 
 # %%
 #| fig-cap: "Plan con los dos cambios: 20 semanas"
@@ -374,12 +422,23 @@ tabla[f'dentro de la bolsa de {bolsa} k€'] = tabla['sobrecoste (k€)'] <= bol
 tabla
 
 # %% [markdown]
-# Para recuperar 1 semana el algoritmo acorta A (las más baratas por semana); G, con CUR 9, sólo entra cuando las demás agotan su margen. Lo que se ve:
+# Cada opción de *r* semanas son los *r* primeros pasos del algoritmo. Paso a paso (caminos críticos del momento, actividades o parejas que los cortan todos y aún tienen margen hasta su tope, con su CUR, y la elegida):
+
+# %%
+#| tbl-cap: "Ackoff-Sasieni paso a paso sobre el plan con los dos cambios"
+#| label: tbl-ackoffPasos
+_, pasos_todos, _, _ = p2.ackoff(durF, tope, cur, reduction=retraso, report=False)
+pasos_ackoff(p2, durF, tope, cur, pasos_todos)
+
+# %% [markdown]
+# Para recuperar 1 semana el algoritmo acorta A: en cada paso elige la opción más barata que corta todos los caminos críticos (CUR de menor a mayor: A 3, I 5, C 6, G 9 k€/semana); G no entra en ninguna opción: en todos los pasos hay otra más barata que corta los mismos caminos críticos. El coste total para la universidad de cada opción es sobrecoste + alquiler × semanas de retraso que quedan:
 #
 # - Sin hacer nada: 3 semanas de alquiler, 12 k€, que además salen de la partida de docencia.
 # - Recuperar **1** semana cuesta 3 k€ y deja 2 de alquiler (8 k€): 11 k€ en total: **el mínimo para la universidad** y dentro de la bolsa del proyecto.
 # - Recuperar **2** semanas cuesta 8 k€ y deja 1 de alquiler (4 k€): 12 k€ en total: supera la bolsa en 3 k€ (modificación presupuestaria, un mes de espera).
 # - Recuperar **3** semanas cuesta 14 k€ y deja 0 de alquiler (0 k€): 14 k€ en total: supera la bolsa en 9 k€ (modificación presupuestaria, un mes de espera).
+#
+# **Respuesta:** el coste total mínimo para la universidad es recuperar **1 semana** (3 + 4 × 2 = 11 k€). Respetan el tope de 5 k€ no acortar nada o recuperar hasta 1 semana; la que más plazo recupera dentro del tope es también la de 1 semana, así que aquí las dos perspectivas coinciden; recuperar más exige la modificación presupuestaria.
 #
 # Obsérvese el conflicto entre perspectivas: para el proyecto (Gerencia) lo barato es no gastar; para la universidad el alquiler es un coste real aunque salga de otra partida; para la vicerrectora el plazo tiene además un coste reputacional que no está en la tabla.
 
@@ -404,8 +463,17 @@ for r, dur in duraciones_opcion.items():
                   'coste total esperado (k€)': round(sobre + coste_semana * retraso_esp, 1)})
 pd.DataFrame(filas).set_index('semanas recuperadas')
 
+# %%
+_r = 1
+_dur = duraciones_opcion[0]
+_ruta = ordena_ruta(list(p2.critical_path(_dur).values())[0], p2.calendar(_dur))
+_T, _s, _, _ = resumen_prob(p2, duraciones_opcion[_r], sd, plazo)
+Markdown(f'''Sin reducciones el camino crítico es {"–".join(_ruta)} y su desviación típica, con las varianzas (σ²) de sus actividades: {explica_sigma_ruta(_ruta, sd ** 2)} semanas. Las reducciones acortan duraciones pero no cambian las varianzas, por eso σ cambia poco de una opción a otra (si aparecen varios caminos críticos se toma el de mayor varianza).\n\nPor ejemplo, para la opción de recuperar {plural(_r, "semana")} (duración media {_T:g}):\n\n- Probabilidad de cumplir: {explica_probabilidad(_T, _s, plazo)}.\n- Retraso esperado: {explica_retraso_esperado(_T, _s, plazo)}.\n- Coste total esperado = sobrecoste + {coste_semana} × retraso esperado = {float(tabla.loc[_r, "sobrecoste (k€)"]):g} + {coste_semana} × {resumen_prob(p2, duraciones_opcion[_r], sd, plazo)[3]:.2f} = **{float(tabla.loc[_r, "sobrecoste (k€)"]) + coste_semana * resumen_prob(p2, duraciones_opcion[_r], sd, plazo)[3]:.1f} k€**.''')
+
 # %% [markdown]
 # La desviación típica del camino crítico es de 1.4 semanas, grande comparada con las diferencias que se están discutiendo. Dos consecuencias: la opción «recuperar 3 semanas» promete terminar en la semana 17 *en media*, es decir, con un 50% de probabilidad, no con seguridad; y en coste esperado la mejor opción es recuperar 1 semana (11.2 k€ frente a 16.3 de la de 3), la misma que sin incertidumbre. Con la incertidumbre delante, las reducciones de pago compran menos de lo que parecían, y las medidas que recortan plazo sin coste (apartado 4) ganan valor.
+#
+# **Respuesta:** la elección no cambia: en coste esperado la mejor opción es recuperar 1 semana (11.2 k€). Es también la más robusta en el sentido de que es la que menos cuesta en promedio cuando la duración real se desvía de la media; ninguna opción de pago asegura el plazo: incluso recuperando las 3 semanas la probabilidad de terminar en la semana 17 es 0.50, y con la opción elegida es 0.08.
 
 # %% [markdown]
 # ## Apartado 4
@@ -437,7 +505,26 @@ T4, sigma4, prob4, _ = resumen_prob(p4, dur4, sd4, plazo)
 Markdown(f'''Duración: **{int(p4.duration(dur4))} semanas** (P(≤ {plazo}) = {prob4:.2f}); camino crítico {camino_critico(p4, dur4)}. F2 (el resto del mobiliario) termina en la semana {int(cal4.loc['F2', 'fin_mas_temprano'])} con holgura {int(cal4.loc['F2', 'H_total'])}.''')
 
 # %% [markdown]
-# Con las dos negociaciones el plan vuelve a 16 semanas en media sin gastar un euro, pero fíjese en que F2 queda crítica: cualquier semana más del proveedor vuelve a retrasar el proyecto. Los riesgos y a quién preguntar: al inspector, si acepta la inspección en dos fases por escrito; al proveedor, qué garantía da de las 2 semanas; al técnico, si instalar sobre las mesas sin campana ni armarios es seguro y no obliga a desmontar después; y a Gerencia, si la bolsa puede reservarse para una reducción *contingente* (acortar I al final sólo si F2 se retrasa).
+# Para cuantificar cuánto recupera cada negociación, se aplica cada una por separado sobre el plan con los dos cambios (la inspección en dos fases devuelve H a su posición original, detrás de D y E; la entrega parcial parte F en F1 y F2):
+
+# %%
+#| tbl-cap: "Plazo que recupera cada negociación"
+#| label: tbl-negociaciones
+preds_parcial = list(preds4); preds_parcial[nombres4.index('H')] = 'D,E,G'      # sólo entrega parcial: H sigue tras G
+df_par, p_par = proyecto_de(preds_parcial, dur4, nombres4)
+_T2 = int(p2.duration(durF))
+filas = []
+for nombre, p, d in (('ninguna (los dos cambios)', p2, durF), ('sólo la inspección en dos fases', pF, durF),
+                     ('sólo la entrega parcial', p_par, dur4), ('las dos', p4, dur4)):
+    T = int(p.duration(d))
+    filas.append({'negociación': nombre, 'duración': T, 'semanas recuperadas': _T2 - T, f'retraso sobre {plazo} (−: margen)': T - plazo,
+                  'camino crítico (suma)': suma_caminos_criticos(p, d)})
+pd.DataFrame(filas).set_index('negociación')
+
+# %% [markdown]
+# La inspección en dos fases sola recupera 1 semana y la entrega parcial sola 3 semanas; juntas, 4 semanas (1 + 3 = 4: se suman porque cada una actúa sobre un tramo distinto del camino crítico). Con las dos negociaciones el plan baja a 16 semanas en media, 1 semana antes del plazo, sin gastar un euro, pero fíjese en que F2 queda crítica: cualquier semana más del proveedor vuelve a retrasar el proyecto. Los riesgos y a quién preguntar: al inspector, si acepta la inspección en dos fases por escrito; al proveedor, qué garantía da de las 2 semanas; al técnico, si instalar sobre las mesas sin campana ni armarios es seguro y no obliga a desmontar después; y a Gerencia, si la bolsa puede reservarse para una reducción *contingente* (acortar I al final sólo si F2 se retrasa). El solape formación–instalación no se modela: depende de una relación comienzo-comienzo que el técnico propone sólo como último recurso.
+#
+# **Respuesta:** aceptando la inspección en dos fases y la entrega parcial se recuperan 4 semanas: todo el retraso (3) y 1 semana de margen; P(terminar ≤ 17) = 0.77. Antes de contar con ellas hay que confirmarlas con el inspector y con el proveedor.
 
 # %% [markdown]
 # ## Apartado 5
@@ -445,13 +532,19 @@ Markdown(f'''Duración: **{int(p4.duration(dur4))} semanas** (P(≤ {plazo}) = {
 # %%
 display(Markdown(pregunta_5))
 
+# %%
+dur5 = dur4.copy(); dur5['A'] -= 1                      # plan negociado + reducción de A (una semana)
+_, sigma4, _, _ = resumen_prob(p4, dur4, sd4, plazo)
+T5, sigma5, _, _ = resumen_prob(p4, dur5, sd4, plazo)
+Markdown(f'''Cálculos de apoyo para la decisión:\n\n- Plan negociado: {suma_caminos_criticos(p4, dur4)}; σ = {sigma4:.3f}; {explica_probabilidad(T4, sigma4, plazo)}.\n- Plan negociado acortando además A una semana: {suma_caminos_criticos(p4, dur5)}; σ = {sigma5:.3f}; {explica_probabilidad(T5, sigma5, plazo)}; y {explica_probabilidad(T5, sigma5, plazo + 1)}.''')
+
 # %% [markdown]
 # No hay una única respuesta correcta; sí hay respuestas mal justificadas. Una decisión defendible con los números anteriores:
 #
-# 1. Negociar hoy la inspección en dos fases y la entrega parcial del mobiliario (coste cero; recuperan 4 de las 3 semanas si el proveedor cumple con F2).
+# 1. Negociar hoy la inspección en dos fases y la entrega parcial del mobiliario (coste cero; recuperan las 3 semanas de retraso y dejan 1 semana de margen si el proveedor cumple con F2).
 # 2. Contratar ya la reducción de A (3 k€): es la más barata, A está en curso y cada semana ganada ahora es margen contra la incertidumbre del proveedor. Con ello la duración media baja a 15 y la probabilidad de terminar en la 17 sube del 77% al 93%.
 # 3. Reservar la reducción de I (5 k€) como medida contingente: se decide en la semana 13, cuando se sepa si F2 ha llegado. Sobrecoste máximo 8 k€, que supera la bolsa de 5 k€ en 3 k€: habría que pedir a Gerencia la ampliación ya, por si acaso.
-# 4. Prometer a la vicerrectora la semana 17 con probabilidad alta y la 18 como peor caso razonable, y pedirle que no comprometa el alquiler externo hasta la semana 13.
+# 4. Prometer a la vicerrectora la semana 17 (probabilidad 0.93 con la reducción de A, y más si se activa la de I) y la 18 como peor caso razonable (P(T ≤ 18) = 0.99), y pedirle que no comprometa el alquiler externo hasta la semana 13. Sobrecoste: 3 k€ seguros y 5 k€ más si hace falta la reducción de I.
 #
 # Mensajes (un ejemplo de tono y contenido):
 #

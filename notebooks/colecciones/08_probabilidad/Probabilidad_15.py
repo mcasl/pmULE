@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -250,6 +254,28 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 X, fecha_hito = 'E', 15
 
+# %%
+def tabla_rutas(R, medias, varianzas=None, calendario=None, dec=0, dec_var=3, nombre='media'):
+    """Media (y varianza) de cada ruta con la suma término a término; actividades en orden de ejecución."""
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        m = float(sum(float(medias[a]) for a in acts))
+        fila = {'actividades': ' – '.join(acts),
+                f'{nombre} = suma': ' + '.join(f'{a}({float(medias[a]):.{dec}f})' for a in acts) + f' = {m:.{dec}f}',
+                nombre: m}
+        if varianzas is not None:
+            v = float(sum(float(varianzas[a]) for a in acts))
+            fila['varianza = suma'] = ' + '.join(f'{a}({float(varianzas[a]):.{dec_var}f})' for a in acts) + f' = {v:.{dec_var}f}'
+            fila['varianza'] = v
+            fila['σ = √varianza'] = v ** 0.5
+        filas[r] = fila
+    t = pd.DataFrame(filas).T
+    for c in (nombre, 'varianza', 'σ = √varianza'):
+        if c in t:
+            t[c] = t[c].astype(float)
+    return t
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -277,9 +303,12 @@ if not cadenas:
 R_hito = pd.DataFrame(0, index=[f'cadena_{i + 1}' for i in range(len(cadenas))], columns=list(datos_proyecto.index))
 for i, c in enumerate(cadenas):
     R_hito.loc[f'cadena_{i + 1}', c] = 1
-medias_hito = detalle_rutas(R_hito, datos_proyecto['duration'], 'media')
-varianzas_hito = detalle_rutas(R_hito, datos_proyecto['variance'], 'varianza', 3)
-pd.concat([medias_hito, varianzas_hito.drop(columns='actividades')], axis=1)
+calendario = proyecto.calendar(datos_proyecto['duration'])
+tabla_hito = tabla_rutas(R_hito, datos_proyecto['duration'], datos_proyecto['variance'], calendario)
+limpia_tabla(tabla_hito, decimales=3)
+
+# %%
+Markdown('**Respuesta:** ' + '; '.join(f"{tabla_hito.loc[c, 'actividades']}: media {tabla_hito.loc[c, 'media']:g}, varianza {tabla_hito.loc[c, 'varianza']:.3f}" for c in tabla_hito.index) + '.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -288,17 +317,20 @@ pd.concat([medias_hito, varianzas_hito.drop(columns='actividades')], axis=1)
 display(Markdown(pregunta_2))
 
 # %%
-fecha_media = float(medias_hito['media'].max())
-criticas_hito = medias_hito.index[np.isclose(medias_hito['media'], fecha_media)]
-varianza_hito = float(varianzas_hito.loc[criticas_hito, 'varianza'].max())
+fecha_media = float(tabla_hito['media'].max())
+criticas_hito = tabla_hito.index[np.isclose(tabla_hito['media'].astype(float), fecha_media)]
+cadena_hito = max(criticas_hito, key=lambda c: tabla_hito.loc[c, 'varianza'])
+varianza_hito = float(tabla_hito.loc[cadena_hito, 'varianza'])
 sigma_hito = float(np.sqrt(varianza_hito))
-z = (fecha_hito - fecha_media) / sigma_hito
-p_hito = norm.cdf(z)
-Markdown(f'''La fecha media del hito es la de la cadena más larga: {fecha_media:.0f} (coincide con el fin más temprano de {X} en el calendario). Su varianza es la de esa cadena ({", ".join(criticas_hito)}; si hay empate, la de mayor varianza): {varianza_hito:.3f}, σ = {sigma_hito:.3f}. Entonces z = ({fecha_hito} − {fecha_media:.0f}) / {sigma_hito:.3f} = {z:.3f} y P(hito ≤ {fecha_hito}) = Φ({z:.3f}) = {p_hito:.4f} ({p_hito * 100:.1f} %).''')
-
-# %%
-calendario = proyecto.calendar(datos_proyecto['duration'])
-Markdown(f'Comprobación: el fin más temprano de {X} en el calendario es {int(calendario.loc[X, "fin_mas_temprano"])}.')
+p_hito = norm.cdf(fecha_hito, fecha_media, sigma_hito)
+txt_cadena = tabla_hito.loc[cadena_hito, 'actividades']
+empate = (f' Hay {len(criticas_hito)} cadenas con esa media; se toma la de mayor varianza.' if len(criticas_hito) > 1 else '')
+Markdown(f'''La fecha media del hito es la de la cadena más larga, {txt_cadena}: {fecha_media:g} semanas (coincide con el fin más temprano de {X} '''
+         f'''en el calendario, {int(calendario.loc[X, "fin_mas_temprano"])}).{empate} Esa cadena determina la varianza del hito: '''
+         f'''{explica_sigma_ruta(ordena_ruta(cadenas[list(R_hito.index).index(cadena_hito)], calendario), datos_proyecto["variance"], nombre="σ_hito")}.\n\n'''
+         f'''{explica_probabilidad(fecha_media, sigma_hito, fecha_hito, nombre="T_hito")}.\n\n'''
+         f'''**Respuesta:** fecha media del hito: semana {fecha_media:g}; determina su varianza la cadena {txt_cadena} '''
+         f'''(σ² = {varianza_hito:.3f}); la probabilidad de alcanzar el hito en la semana {fecha_hito} o antes es {p_hito:.4f} ({p_hito:.1%}).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -310,9 +342,16 @@ display(Markdown(pregunta_3))
 plazo = 28
 duracion_media = proyecto.duration(datos_proyecto['duration'])
 sigma_proyecto, varianza_rutas = proyecto.standard_deviation(durations=datos_proyecto['duration'], variances=datos_proyecto['variance'])
-z_p = (plazo - duracion_media) / sigma_proyecto
-p_proyecto = norm.cdf(z_p)
-Markdown(f'''Para el proyecto completo: media {duracion_media}, σ = {sigma_proyecto:.3f}; z = ({plazo} − {duracion_media}) / {sigma_proyecto:.3f} = {z_p:.3f}, P(T ≤ {plazo}) = {p_proyecto:.4f}. Es la misma técnica aplicada a otro suceso: el hito depende sólo de las cadenas que llegan a {X}; el fin del proyecto, de todas las rutas completas. Una probabilidad alta del hito no garantiza una probabilidad alta del plazo, ni al revés.''')
+rutas_criticas = proyecto.critical_path(datos_proyecto['duration'])
+ruta_var = max(rutas_criticas, key=lambda r: datos_proyecto.loc[list(rutas_criticas[r]), 'variance'].sum())
+acts_var = ordena_ruta(rutas_criticas[ruta_var], calendario)
+p_proyecto = norm.cdf(plazo, duracion_media, sigma_proyecto)
+display(explica_camino_critico(proyecto, datos_proyecto['duration']))
+Markdown(f'''{explica_sigma_ruta(acts_var, datos_proyecto["variance"], nombre="σ_T")}.\n\n'''
+         f'''{explica_probabilidad(duracion_media, sigma_proyecto, plazo)}.\n\n'''
+         f'''**Respuesta:** P(T ≤ {plazo}) = {p_proyecto:.4f} ({p_proyecto:.1%}). Es la misma técnica aplicada a otro suceso: el hito depende sólo '''
+         f'''de las cadenas que llegan a {X} (media {fecha_media:g}, σ = {sigma_hito:.3f}); el fin del proyecto, de todas las rutas completas '''
+         f'''(media {duracion_media}, σ = {sigma_proyecto:.3f}). Una probabilidad alta del hito no garantiza una probabilidad alta del plazo, ni al revés.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -323,5 +362,7 @@ display(Markdown(pregunta_4))
 # %%
 es_critica = int(calendario.loc[X, 'H_total']) == 0
 antecesoras = nx.ancestors(G, X) | {X}
-ajenas = sorted(set(datos_proyecto.index) - antecesoras)
-Markdown(f'''{X} {"es" if es_critica else "no es"} crítica (holgura total {int(calendario.loc[X, "H_total"])}). La probabilidad del hito sólo depende de las actividades de sus cadenas ({", ".join(sorted(antecesoras))}); un retraso en {", ".join(ajenas)} no la altera, aunque sí pueda alterar la del proyecto.''')
+ajenas = ordena_ruta(sorted(set(datos_proyecto.index) - antecesoras), calendario)
+Markdown(f'''**Respuesta:** {X} {"es" if es_critica else "no es"} crítica (holgura total {plural(int(calendario.loc[X, "H_total"]), "semana")}). '''
+         f'''La probabilidad del hito sólo depende de las actividades de sus cadenas ({lista_y(ordena_ruta(sorted(antecesoras), calendario))}): '''
+         f'''un retraso en {lista_y(ajenas, "o")} no la altera, aunque sí pueda alterar la del proyecto.''')

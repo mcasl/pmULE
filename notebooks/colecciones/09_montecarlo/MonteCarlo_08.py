@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -230,6 +234,28 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 N, plazo = 20000, 34
 
+# %%
+def tabla_rutas(R, medias, varianzas=None, calendario=None, dec=0, dec_var=3, nombre='media'):
+    """Media (y varianza) de cada ruta con la suma término a término; actividades en orden de ejecución."""
+    filas = {}
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), calendario)
+        m = float(sum(float(medias[a]) for a in acts))
+        fila = {'actividades': ' – '.join(acts),
+                f'{nombre} = suma': ' + '.join(f'{a}({float(medias[a]):.{dec}f})' for a in acts) + f' = {m:.{dec}f}',
+                nombre: m}
+        if varianzas is not None:
+            v = float(sum(float(varianzas[a]) for a in acts))
+            fila['varianza = suma'] = ' + '.join(f'{a}({float(varianzas[a]):.{dec_var}f})' for a in acts) + f' = {v:.{dec_var}f}'
+            fila['varianza'] = v
+            fila['σ = √varianza'] = v ** 0.5
+        filas[r] = fila
+    t = pd.DataFrame(filas).T
+    for c in (nombre, 'varianza', 'σ = √varianza'):
+        if c in t:
+            t[c] = t[c].astype(float)
+    return t
+
 # %% [markdown]
 # ## Apartado 1
 
@@ -250,15 +276,19 @@ pd.DataFrame({'(a + m + b)/3': [f"({r['a']:g} + {r['m']:g} + {r['b']:g})/3 = {r[
 proyecto.display_pert_pasos(datos_proyecto['duration'].round(1))
 
 # %%
-path_matrix = proyecto.path_matrix(dummies=False)
-duraciones_rutas_medias = path_matrix @ datos_proyecto['duration'][path_matrix.columns]
-duracion_media = float(duraciones_rutas_medias.max())
-Markdown(f'Con las medias, la ruta más larga es {duraciones_rutas_medias.idxmax()} ({" - ".join(path_matrix.columns[path_matrix.loc[duraciones_rutas_medias.idxmax()] == 1])}) y la duración {duracion_media:.2f} semanas.')
-
-# %%
 #| tbl-cap: "Duración media de cada ruta"
 #| label: tbl-rutas
-detalle_rutas(path_matrix, datos_proyecto['duration'][path_matrix.columns], nombre='duración media', decimales=2)
+path_matrix = proyecto.path_matrix(dummies=False).drop_duplicates()   # rutas que sólo difieren en ficticias, una vez
+calendario = proyecto.calendar(datos_proyecto['duration'])
+duraciones_rutas_medias = path_matrix @ datos_proyecto['duration'][path_matrix.columns]
+duracion_media = float(duraciones_rutas_medias.max())
+rutas = tabla_rutas(path_matrix, datos_proyecto['duration'], calendario=calendario, dec=2, nombre='duración media')
+limpia_tabla(rutas)
+
+# %%
+criticas_txt = [rutas.loc[r, 'actividades'] for r in rutas.index if np.isclose(rutas.loc[r, 'duración media'], duracion_media)]
+Markdown(f'**Respuesta:** con las medias de las triangulares la duración del proyecto es {duracion_media:.2f} semanas y el camino crítico '
+         f'{lista_y(criticas_txt)}.')
 
 # %% [markdown]
 # ## Apartado 2
@@ -266,14 +296,18 @@ detalle_rutas(path_matrix, datos_proyecto['duration'][path_matrix.columns], nomb
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# En cada réplica se sortea la duración de cada actividad con su triangular, se suman las duraciones a lo largo de cada ruta y la duración del proyecto es la de la ruta más larga. El percentil $p$ de las réplicas es el valor que deja por debajo la proporción $p$ de ellas: se ordenan de menor a mayor y se toma la que ocupa la posición $p\cdot N$ (interpolando).
+
 # %%
 rng = np.random.default_rng(9265)
 duraciones_mc = pd.DataFrame({act: rng.triangular(fila['a'], fila['m'], fila['b'], N) for act, fila in datos_proyecto.iterrows()})
 duraciones_rutas_mc = duraciones_mc[path_matrix.columns] @ path_matrix.T
 T_mc = duraciones_rutas_mc.max(axis='columns')
 percentiles = T_mc.quantile([0.10, 0.50, 0.80, 0.90, 0.95])
-percentiles.index = [f'P{int(p * 100)}' for p in percentiles.index]
-percentiles.round(2).to_frame('duración (semanas)').T
+percentiles.index = [f'P{int(round(p * 100))}' for p in percentiles.index]
+pd.DataFrame({'posición en la muestra ordenada': [f'≈ {int(round(p * N))} de {N}' for p in (0.10, 0.50, 0.80, 0.90, 0.95)],
+              'duración (semanas)': percentiles.round(2).values}, index=percentiles.index).T
 
 # %%
 #| fig-cap: "Función de distribución simulada de la duración"
@@ -287,8 +321,13 @@ for nombre, v in percentiles.items():
 ax.axvline(plazo, color='red', linestyle='--', label=f'plazo del cliente ({plazo})')
 ax.set_xlabel('Duración (semanas)'); ax.set_ylabel('P(T ≤ t)'); ax.legend(); plt.show()
 
-# %% [markdown]
-# El percentil $p$ es la duración que no se supera con probabilidad $p$: P50 es la mediana (tan probable acabar antes como después), P80 la fecha que se cumple cuatro de cada cinco veces, P95 una fecha «segura». La diferencia P95 − P50 mide cuánto margen hay que añadir a una previsión central para hacerla fiable.
+# %%
+pc = percentiles
+Markdown(f'''**Respuesta:** P10 = {pc['P10']:.2f}, P50 = {pc['P50']:.2f}, P80 = {pc['P80']:.2f}, P90 = {pc['P90']:.2f} y P95 = {pc['P95']:.2f} semanas. '''
+         f'''Para el jefe de proyecto, P10 es una fecha optimista (sólo 1 de cada 10 réplicas termina antes); P50, la mediana (tan probable '''
+         f'''acabar antes como después); P80, una fecha que se cumple cuatro de cada cinco veces; P90 y P95, fechas «seguras» que sólo se '''
+         f'''superan el 10 % y el 5 % de las veces. La diferencia P95 − P50 = {pc['P95'] - pc['P50']:.2f} semanas es el margen que hay que '''
+         '''añadir a una previsión central para hacerla fiable.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -296,12 +335,20 @@ ax.set_xlabel('Duración (semanas)'); ax.set_ylabel('P(T ≤ t)'); ax.legend(); 
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Se paga penalización en las réplicas que superan el plazo del cliente; el retraso de cada réplica es $\max(0, T - \text{plazo})$ y se estudia como cualquier otra variable simulada.
+
 # %%
+superan = int((T_mc > plazo).sum())
 p_penalizacion = float((T_mc > plazo).mean())
 retraso = (T_mc - plazo).clip(lower=0)
 retraso_95 = float(retraso.quantile(0.95))
 retraso_medio = float(retraso.mean())
-Markdown(f'''P(T > {plazo}) = {p_penalizacion:.3f}: se paga penalización en el {p_penalizacion * 100:.1f} % de las réplicas. El retraso supera {retraso_95:.2f} semanas sólo con probabilidad 0,05 (percentil 95 de máx(0, T − {plazo})). El retraso medio esperado es {retraso_medio:.3f} semanas: multiplicado por la penalización semanal da el coste esperado de la cláusula.''')
+Markdown(f'''P(T > {plazo}) ≈ {superan}/{N} = {p_penalizacion:.4f}: se paga penalización en el {p_penalizacion * 100:.1f} % de las réplicas. '''
+         f'''El percentil 95 del retraso es {retraso_95:.2f} semanas{" (= P95 − plazo = " + f"{pc['P95']:.2f} − {plazo}" + ")" if retraso_95 > 0 else " (el plazo ya es mayor que el P95)"}. '''
+         f'''El retraso medio es la media de las {N} réplicas de máx(0, T − {plazo}) (las que terminan a tiempo cuentan 0): {retraso.sum():.1f}/{N} = {retraso_medio:.3f} semanas.\n\n'''
+         f'''**Respuesta:** probabilidad de pagar penalización {p_penalizacion:.4f}; el retraso supera {retraso_95:.2f} semanas sólo con '''
+         f'''probabilidad 0,05; retraso medio esperado {retraso_medio:.3f} semanas (multiplicado por la penalización semanal da el coste esperado de la cláusula).''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -311,4 +358,12 @@ display(Markdown(pregunta_4))
 
 # %%
 fecha_10 = float(T_mc.quantile(0.90))
-Markdown(f'''Para que P(T > fecha) = 0,10 hay que comprometer el percentil 90: {fecha_10:.2f} semanas, es decir, {fecha_10 - duracion_media:.2f} semanas de margen sobre la duración media ({duracion_media:.2f}). Comprometer la media supone penalización aproximadamente la mitad de las veces (P(T > media) = {float((T_mc > duracion_media).mean()):.3f}, algo más de 0,5 por el sesgo de fusión de las rutas).''')
+fecha_entera = int(np.ceil(round(fecha_10, 2)))
+p_entera = float((T_mc > fecha_entera).mean())
+p_media = float((T_mc > duracion_media).mean())
+Markdown(f'''Para que P(T > fecha) = 0,10 hay que comprometer el percentil 90 de las réplicas: {fecha_10:.2f} semanas, es decir, semana '''
+         f'''{fecha_entera} en semanas enteras (P(T > {fecha_entera}) ≈ {p_entera:.3f}). Comprometer la media ({duracion_media:.2f}) supondría '''
+         f'''penalización en el {p_media:.1%} de los casos'''
+         + (', algo más de la mitad por el sesgo de fusión de las rutas.' if p_media > 0.5 else '.') + '''\n\n'''
+         f'''**Respuesta:** habría que haber comprometido {fecha_10:.2f} semanas (semana {fecha_entera}), con un margen de '''
+         f'''{fecha_10:.2f} − {duracion_media:.2f} = {fecha_10 - duracion_media:.2f} semanas sobre la duración media.''')

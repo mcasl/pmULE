@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -247,6 +251,73 @@ proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 duracion = int(proyecto.duration(datos_proyecto['duration']))
 
+# %%
+def porc(p, d=1):
+    """Probabilidad o fracción como porcentaje: 0.453 -> «45.3 %»."""
+    return f'{100 * float(p):.{d}f} %'
+
+def tabla_md(filas, columnas):
+    """Tabla Markdown a partir de una lista de filas."""
+    esc = lambda x: str(x).replace('|', '\\|')
+    lineas = ['| ' + ' | '.join(columnas) + ' |', '|' + '---|' * len(columnas)]
+    lineas += ['| ' + ' | '.join(esc(x) for x in f) + ' |' for f in filas]
+    return '\n'.join(lineas)
+
+def explica_indicadores(ind, BAC=None, titulo=''):
+    """CV, SV, CPI y SPI (y EAC y VAC si se da el BAC) con la fórmula y la sustitución."""
+    PV, EV, AC = float(ind['PV']), float(ind['EV']), float(ind['AC'])
+    lineas = [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{EV - AC:.1f}** k€',
+              f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{EV - PV:.1f}** k€',
+              f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}**',
+              f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{EV / PV:.3f}**']
+    if BAC is not None:
+        eac = BAC / (EV / AC)
+        lineas += [f'- EAC = BAC / CPI = {BAC:.0f} / {EV / AC:.3f} = **{eac:.1f}** k€',
+                   f'- VAC = BAC − EAC = {BAC:.0f} − {eac:.1f} = **{BAC - eac:.1f}** k€']
+    return (f'{titulo}\n\n' if titulo else '') + '\n'.join(lineas)
+
+def rubrica_caso(afectados, alternativas, decision):
+    """La rúbrica del bloque C aplicada al caso: afectados con cifras, alternativas con las tres pruebas y decisión."""
+    partes = ['**La rúbrica aplicada a este caso** (lo que debe contener una respuesta que la supere):', '',
+              '*(1) Afectados y qué gana o pierde cada uno:*', '']
+    partes += [f'- **{a}**: {b}' for a, b in afectados]
+    partes += ['', '*(2) y (3) Alternativas y las tres pruebas:*', '',
+               tabla_md(alternativas, ['alternativa', 'legalidad', 'publicidad', 'reversibilidad']), '',
+               '*(4) Decisión y comunicación* (un camino defendible, no el único): ' + decision]
+    return Markdown('\n'.join(partes))
+
+def sin_ceros(valores):
+    """Los términos no nulos de una suma (para escribirla sin «+ 0.0»)."""
+    v = pd.Series(valores).astype(float)
+    return v[v != 0]
+
+def camino_critico_sigma(proyecto, duraciones, varianzas):
+    """Camino crítico en orden de ejecución (el de mayor varianza si hay varios) y su desviación típica."""
+    cal = proyecto.calendar(duraciones)
+    rutas = [ordena_ruta([a for a in r if not str(a).startswith('@')], cal) for r in proyecto.critical_path(duraciones).values()]
+    acts = max(rutas, key=lambda r: sum(float(varianzas[a]) for a in r))
+    return acts, float(sum(float(varianzas[a]) for a in acts)) ** 0.5
+
+def rutas_media_varianza(proyecto, duraciones, varianzas):
+    """Todas las rutas en orden de ejecución con su duración media y su varianza, de más larga a más corta."""
+    R = proyecto.path_matrix(dummies=False)
+    cal = proyecto.calendar(duraciones)
+    filas = []
+    for r in R.index:
+        acts = ordena_ruta(list(R.columns[R.loc[r] == 1]), cal)
+        filas.append((' – '.join(acts), float(sum(float(duraciones[a]) for a in acts)), float(sum(float(varianzas[a]) for a in acts))))
+    return pd.DataFrame(filas, columns=['ruta', 'media', 'varianza']).sort_values(['media', 'varianza'], ascending=False).reset_index(drop=True)
+
+def rangos(semanas):
+    '''«3, 5–8 y 10»: semanas consecutivas agrupadas.'''
+    semanas, grupos = sorted(int(s) for s in semanas), []
+    for s in semanas:
+        if grupos and s == grupos[-1][1] + 1:
+            grupos[-1][1] = s
+        else:
+            grupos.append([s, s])
+    return lista_y([f'{a}' if a == b else f'{a}–{b}' for a, b in grupos])
+
 # %% [markdown]
 # Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
 
@@ -273,6 +344,9 @@ pinta_tikz(dibujo)
 cargas = gantt_inicial.data.loc['Total'].drop('H_total').astype(float)
 plot_cargas(gantt_df=gantt_inicial, limite_maximo_recursos=[plantilla])
 
+# %% [markdown]
+# La tabla siguiente da, semana a semana, los operarios necesarios con inicios más tempranos (fila «Total» del Gantt), el exceso sobre la plantilla, exceso = máx(0, necesarios − 4), las horas extra que ese exceso supone (exceso × 40 h) y su reparto uniforme entre los 4 operarios (horas extra / 4).
+
 # %%
 #| tbl-cap: "Exceso de operarios y horas extraordinarias semana a semana"
 #| label: tbl-exceso
@@ -281,8 +355,21 @@ tabla = pd.DataFrame({'operarios necesarios': cargas, 'exceso sobre la plantilla
                       'horas extra de la semana': exceso * jornada, 'horas extra por operario': exceso * jornada / plantilla})
 tabla.loc['Total'] = tabla.sum()
 horas_persona = float(tabla.loc['Total', 'horas extra por operario'])
-display(tabla.round(1).T)
-Markdown(f'''Pico de **{int(cargas.max())}** operarios frente a {plantilla}; exceso en {int((exceso > 0).sum())} semanas; **{horas_persona:.0f} horas extraordinarias por operario** en el año (máximo legal: {maximo_horas_extra}).''')
+limpia_tabla(tabla, 1).T
+
+# %%
+semanas_exceso = [s for s in exceso.index if exceso[s] > 0]
+op_semanas = float(exceso.sum())
+horas_totales = op_semanas * jornada
+semana_max = max(semanas_exceso, key=lambda s: exceso[s])
+Markdown(f'''Pico de **{int(cargas.max())}** operarios frente a {plantilla}; hay exceso en {plural(len(semanas_exceso), 'semana')} ({'semana' if len(semanas_exceso) == 1 else 'semanas'} {rangos(semanas_exceso)}).
+
+- Exceso total: {' + '.join(str(int(exceso[s])) for s in semanas_exceso)} = **{op_semanas:.0f} operario-semanas**.
+- Horas extra: {op_semanas:.0f} × {jornada} h = **{horas_totales:.0f} h**.
+- Por operario (reparto uniforme): {horas_totales:.0f} / {plantilla} = **{horas_persona:.0f} h** en el año (el proyecto dura {duracion} semanas, menos de un año).
+- En la peor semana (la {semana_max}) cada operario trabajaría {jornada} + {exceso[semana_max] * jornada / plantilla:.0f} = {jornada + exceso[semana_max] * jornada / plantilla:.0f} h.
+
+**Respuesta.** El plan exige **{horas_persona:.0f} horas extraordinarias por operario** en el año, {'más que' if horas_persona > maximo_horas_extra else 'dentro de'} las {maximo_horas_extra} que permite la ley.''')
 
 # %% [markdown]
 # ## Apartado 2
@@ -296,7 +383,16 @@ datos_asignados, gantt_asignado, dibujo = proyecto_asignado.asignar(data=datos_p
                                                                   resource_label='resources', maximo=[plantilla], report=False, params=GANTT_PARAMS)
 duracion_con_limite = len(gantt_asignado.data.columns.drop('H_total'))
 contratar = int(cargas.max()) - plantilla
-Markdown(f'''Respetando los {plantilla} operarios el proyecto dura **{duracion_con_limite}** semanas ({duracion_con_limite - duracion} más que el plan); para cumplir las {duracion} semanas sin horas extra habría que contratar **{contratar}** operarios durante las semanas de pico (o nivelar primero y ver si baja el pico).''')
+por_nivel = {int(k): [s for s in semanas_exceso if exceso[s] == k] for k in sorted(set(exceso[semanas_exceso]))}
+horas_legales = maximo_horas_extra * plantilla
+op_sem_legales = horas_legales / jornada
+Markdown(f'''**Con el límite de {plantilla} operarios** (asignación: cada semana entran las actividades por orden de prioridad mientras caben en la plantilla; las demás esperan) el proyecto dura **{duracion_con_limite}** semanas, {plural(duracion_con_limite - duracion, 'semana')} más que las {duracion} del plan (Gantt siguiente).
+
+**Para cumplir las {duracion} semanas sin horas extra** hay que cubrir el exceso con personal contratado: como máximo {int(cargas.max())} − {plantilla} = **{contratar}** operarios a la vez, y no todas las semanas: {'; '.join(f'{plural(k, "operario")} {"en la semana" if len(v) == 1 else "en las semanas"} {rangos(v)}' for k, v in por_nivel.items())}, en total {op_semanas:.0f} operario-semanas de refuerzo.
+
+Combinación legal: las {maximo_horas_extra} h por operario permiten {maximo_horas_extra} × {plantilla} = {horas_legales} h = {op_sem_legales:.0f} operario-semanas en horas extra; el resto, {max(op_semanas - op_sem_legales, 0):.0f} operario-semanas, con refuerzo.
+
+**Respuesta.** Con el límite de {plantilla} operarios el proyecto dura {duracion_con_limite} semanas; para cumplir {duracion} sin horas extra hay que contratar {plural(contratar, 'operario')} en el pico ({op_semanas:.0f} operario-semanas en total).''')
 
 # %%
 #| fig-cap: "Gantt con asignación limitada a la plantilla"
@@ -309,8 +405,10 @@ pinta_tikz(dibujo)
 # %%
 display(Markdown(pregunta_3))
 
-# %% [markdown]
-# **C7 y la norma.** El plan exige 110 horas extraordinarias por operario en el año, más de las 80 que fija el Estatuto de los Trabajadores (art. 35.2) salvo las compensadas con descanso, y supone sostener semanas por encima de la jornada ordinaria (art. 34.1). No es una opción de planificación: una actividad o un plan que incumple una norma no está en la tabla de opciones, por mucho que «se paguen». La cifra objetiva es la del apartado 1; con menos de 80 horas por operario el plan sería legal (y entonces la pregunta pasaría al bloque C: si conviene).
+# %%
+Markdown(f'''**Criterio C7 y norma.** El Estatuto de los Trabajadores limita las horas extraordinarias a {maximo_horas_extra} por trabajador y año (art. 35.2), sin contar las compensadas con descanso, y la jornada ordinaria a {jornada} horas semanales de promedio (art. 34.1). El plan del jefe de proyecto exige {horas_persona:.0f} h por operario, {horas_persona - maximo_horas_extra:+.0f} h sobre el máximo, con semanas de {jornada + exceso[semana_max] * jornada / plantilla:.0f} h. Según C7, un plan que incumple una norma no es una opción de planificación, por mucho que las horas «se paguen»: pagar no convierte en legal lo que la ley limita.
+
+**Respuesta.** {'**No puede ejecutarse**: ' + f'{horas_persona:.0f} h > {maximo_horas_extra} h por operario y año, salvo que el exceso se compense con descanso (lo que alargaría el proyecto igualmente).' if horas_persona > maximo_horas_extra else 'Puede ejecutarse legalmente: ' + f'{horas_persona:.0f} h ≤ {maximo_horas_extra}; la pregunta pasa al bloque C (si conviene).'}''')
 
 # %%
 preguntas_test = [
@@ -348,5 +446,14 @@ display(Markdown(pregunta_4))
 # %% [markdown]
 # La pregunta del bloque C es abierta: no tiene una respuesta única y se evalúa el **procedimiento**: (1) identificar a todos los afectados y qué pierde o gana cada uno; (2) formular al menos dos alternativas además de la que se propone en el enunciado; (3) someter cada alternativa a las tres pruebas —legalidad (¿cumple la norma?), publicidad (¿la defendería si se hiciera pública?) y reversibilidad (¿la aceptaría en el papel del afectado?)—; (4) decidir y redactar la comunicación con las cifras del bloque A. Una respuesta que sólo opina, sin cifras ni alternativas, no supera la rúbrica.
 
-# %% [markdown]
-# Tabla de opciones para el jefe de proyecto: (1) aceptar 23 semanas con la plantilla; (2) contratar 3 operarios temporales las 7 semanas de pico y cumplir 20; (3) nivelar y combinar: parte en horas extra dentro de las 80 y el resto con refuerzo. Al cliente se le cuenta la opción elegida con su coste y su fecha; lo que no se le cuenta es que el plazo «se consigue» incumpliendo la ley (prueba de publicidad).
+# %%
+rubrica_caso(
+    [('Operarios', f'{horas_persona:.0f} h extra cada uno y semanas de hasta {jornada + exceso[semana_max] * jornada / plantilla:.0f} h: salud, seguridad y descanso'),
+     ('Cliente', f'quiere {duracion} semanas; con la plantilla serían {duracion_con_limite}'),
+     ('Empresa', f'ahorra la contratación de {op_semanas:.0f} operario-semanas a cambio de un incumplimiento sancionable y de un riesgo de accidentes'),
+     ('Jefe de proyecto', 'cumple el plazo «sobre el papel» con un plan que no puede firmar')],
+    [(f'Horas extra sin límite: {horas_persona:.0f} h por operario (propuesta)', f'no: supera las {maximo_horas_extra} h del art. 35.2', 'no', 'no: ningún operario aceptaría esas semanas si pudiera elegir'),
+     (f'Aceptar {duracion_con_limite} semanas con la plantilla', 'sí', 'sí', 'sí, si el cliente lo acepta informado'),
+     (f'Contratar el refuerzo: {op_semanas:.0f} operario-semanas (hasta {contratar} a la vez)', 'sí', 'sí', 'sí'),
+     (f'Combinar: {op_sem_legales:.0f} operario-semanas en horas extra (≤ {maximo_horas_extra} h por operario) y el resto con refuerzo', 'sí', 'sí', 'sí')],
+    f'''al jefe de proyecto, la tabla de opciones con su coste y su fecha ({duracion_con_limite} semanas con la plantilla; {duracion} contratando {op_semanas:.0f} operario-semanas; o la combinación dentro de las {maximo_horas_extra} h); al cliente, la opción elegida con su precio y su fecha. Lo que no se le cuenta es que el plazo «se consigue» incumpliendo la ley, porque no está en la tabla.''')

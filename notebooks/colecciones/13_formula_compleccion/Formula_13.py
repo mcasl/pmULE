@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -258,7 +262,42 @@ prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activit
 proyecto = prelaciones.create_project()
 R = proyecto.path_matrix(dummies=False)
 t = datos_proyecto['duration'][R.columns]
-Markdown(f'{len(proyecto)} actividades (incluidas las dos ficticias del formato, de duración 0), {len(proyecto.dummies)} ficticias añadidas por el grafo, {len(proyecto.nodes)} nodos y {R.shape[0]} rutas.')
+n_fict = len(proyecto.dummies)
+Markdown(f'''**Respuesta:** el cuadro tiene {len(proyecto)} actividades: {len(proyecto) - 2} reales y las 2 ficticias de inicio y fin del formato RCP (duración 0, {datos_proyecto.index[0]} y {datos_proyecto.index[-1]}). El grafo PERT añade {n_fict} {'ficticia' if n_fict == 1 else 'ficticias'} para representar las prelaciones, tiene {len(proyecto.nodes)} nodos y {R.shape[0]} rutas del nodo inicial al final.''')
+
+# %%
+def _num(x, dec=0):
+    x = float(x)
+    return (f'{x:.{dec}f}' if dec else f'{x:g}').replace('-', '−')
+
+
+def producto_Rt(proyecto, R, t, base, decimales=0):
+    """Cada fila de R por el vector t: (R·t)_r = Σ_i R_ri·t_i, con los términos no nulos (actividades de la
+    ruta, en orden de ejecución) y el valor; marca las filas que dan el máximo."""
+    cal = proyecto.calendar(base)
+    orden = {a: k for k, a in enumerate(ordena_ruta(list(R.columns), cal))}
+    filas = {}
+    for r in R.index:
+        acts = sorted([a for a in R.columns if R.loc[r, a] == 1], key=lambda a: orden.get(a, 0))
+        total = float(sum(float(t[a]) for a in acts))
+        filas[r] = {'actividades': ' – '.join(acts),
+                    'fila de R · t = suma': ' + '.join(f'{a}({_num(t[a], decimales)})' for a in acts) + f' = {_num(total, decimales)}',
+                    'R·t': total}
+    tabla = pd.DataFrame(filas).T
+    tabla['R·t'] = tabla['R·t'].astype(float)
+    tabla['máximo'] = np.where(np.isclose(tabla['R·t'], tabla['R·t'].max()), '← τ', '')
+    return tabla
+
+
+def explica_tau(tabla, unidad='', decimales=0, nombre='τ'):
+    """«τ = ‖R·t‖∞ = máx(19, 20, 17) = 20, que da la ruta Route_2 (A – C – E)»."""
+    v = tabla['R·t']
+    T = float(v.max())
+    rutas = [f"{r} ({tabla.loc[r, 'actividades']})" for r in v.index if np.isclose(v[r], T)]
+    u = f' {unidad}' if unidad else ''
+    quien = (f'que corresponde a la ruta {rutas[0]}' if len(rutas) == 1
+             else f'alcanzado a la vez por {len(rutas)} rutas: {lista_y(rutas)}')
+    return (f"{nombre} = ‖R·t‖∞ = máx({', '.join(_num(x, decimales) for x in v)}) = **{_num(T, decimales)}{u}**, {quien}")
 
 # %% [markdown]
 # Cálculo de los tiempos tempranos y tardíos de los sucesos y de las holguras totales paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
@@ -279,7 +318,9 @@ Rt = R @ t
 tau = float(Rt.max())
 cpm = proyecto.duration(datos_proyecto['duration'])
 criticas = sorted(set(a for acts in proyecto.critical_path(datos_proyecto['duration']).values() for a in acts))
-Markdown(f'τ = ‖R·t‖∞ = {tau:.0f}; CPM = {cpm}; coinciden: {tau == cpm}. Actividades críticas: {", ".join(criticas)}.')
+producto = producto_Rt(proyecto, R, t, datos_proyecto['duration'])
+display(producto)
+Markdown(f'''**Respuesta:** {explica_tau(producto)}. El cálculo de tiempos (CPM) da {cpm}: {'coinciden' if np.isclose(tau, cpm) else 'no coinciden'}. Actividades críticas: {lista_y(ordena_ruta(criticas, proyecto.calendar(datos_proyecto['duration'])))} ({datos_proyecto.index[0]} y {datos_proyecto.index[-1]} son las ficticias del formato).''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -293,8 +334,12 @@ v1 = np.abs(Vt[0, :])
 ranking = pd.Series(v1, index=R.columns).sort_values(ascending=False)
 k = len(criticas)
 precision = len(set(ranking.index[:k]) & set(criticas)) / k
-display(pd.DataFrame({'v₁': ranking.round(3), 'crítica': [a in criticas for a in ranking.index]}).T)
-Markdown(f'σ₁/σ₂ = {S[0]/S[1]:.2f}. La mejor clasificada, {ranking.index[0]}, {"es" if ranking.index[0] in criticas else "no es"} crítica; precisión en las {k} primeras: {precision:.2f}.')
+display(pd.DataFrame({'v₁': ranking.round(3), 'crítica': ['sí' if a in criticas else 'no' for a in ranking.index]}).T)
+top_k = list(ranking.index[:k])
+aciertos = len(set(top_k) & set(criticas))
+empate_corte = k < len(ranking) and np.isclose(ranking.iloc[k], ranking.iloc[k - 1])
+nota = f' (en el puesto {k} hay un empate de v₁, así que la precisión depende de cómo se ordenen los empatados)' if empate_corte else ''
+Markdown(f'''**Respuesta:** σ₁/σ₂ = {S[0]:.3f}/{S[1]:.3f} = **{S[0]/S[1]:.2f}**. La mejor clasificada, {ranking.index[0]}, {"es" if ranking.index[0] in criticas else "no es"} crítica. Con k = {k} críticas, entre las {k} primeras ({lista_y(top_k)}) hay {aciertos} críticas: precisión {aciertos}/{k} = **{precision:.2f}**{nota}.''')
 
 # %% [markdown]
 # En el conjunto de Patterson (110 instancias) la actividad mejor clasificada por $v_1$ es crítica en el 77 % de los casos, y la identificación falla sobre todo cuando σ₁/σ₂ está cerca de 1 (dos direcciones dominantes). El ranking es informativo, no determinista.
@@ -306,4 +351,4 @@ Markdown(f'σ₁/σ₂ = {S[0]/S[1]:.2f}. La mejor clasificada, {ranking.index[0
 display(Markdown(pregunta_4))
 
 # %%
-Markdown(f'''El grafo tiene {len(proyecto.nodes)} nodos y {len(proyecto.activities)} arcos, pero R tiene {R.shape[0]} filas: el número de rutas crece de forma combinatoria con la anchura del grafo (en las instancias de 51 actividades de Patterson hay hasta varios miles). Por eso la fórmula es útil como herramienta analítica (sensibilidad, estructura, simulación vectorizada), mientras que para calcular τ en proyectos grandes basta el cálculo de tiempos hacia delante, que es lineal en el número de arcos.''')
+Markdown(f'''**Respuesta:** el grafo tiene {len(proyecto.nodes)} nodos y {len(proyecto.activities)} arcos, y R tiene {R.shape[0]} filas × {R.shape[1]} columnas. En un proyecto tan pequeño R es manejable, pero el número de rutas crece de forma combinatoria con la anchura del grafo (en las instancias de 51 actividades de Patterson hay hasta varios miles). Por eso la fórmula es útil como herramienta analítica (sensibilidad, estructura, simulación vectorizada), mientras que para calcular τ en proyectos grandes basta el cálculo de tiempos hacia delante, que es lineal en el número de arcos.''')

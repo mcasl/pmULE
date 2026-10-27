@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -241,6 +245,9 @@ descripciones.to_frame()
 # %% [markdown]
 # # Resolución
 
+# %% [markdown]
+# **Notación** (siglas del PMBOK): BAC (*budget at completion*), presupuesto total del proyecto; PV (*planned value*), valor planificado: presupuesto del trabajo que, según el plan, debía estar hecho en la fecha de control; EV (*earned value*), valor ganado: presupuesto del trabajo realmente hecho; AC (*actual cost*), coste real de ese trabajo. Con ellos: CV = EV − AC (*cost variance*), variación del coste; SV = EV − PV (*schedule variance*), variación del plazo; CPI = EV / AC (*cost performance index*), índice de rendimiento del coste; SPI = EV / PV (*schedule performance index*), índice de rendimiento del plazo. Una variación negativa o un índice menor que 1 indica sobrecoste (CV, CPI) o retraso (SV, SPI).
+
 # %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
@@ -257,15 +264,12 @@ plan = datos_proyecto['m']
 # %%
 display(Markdown(pregunta_1))
 
+# %% [markdown]
+# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso. El primer paso muestra el grafo resuelto; a partir del siguiente se calcula desde el principio (avance con los botones):
+
 # %%
 #| fig-cap: "Grafo Roy de la línea base (duraciones más probables) con el camino crítico"
 #| label: fig-pert
-proyecto.roy(durations=plan, ranksep=1.2, nodesep=1.2)
-
-# %% [markdown]
-# Cálculo de los tiempos mínimos y máximos de los nodos del grafo Roy paso a paso (avance con los botones):
-
-# %%
 proyecto.display_roy_pasos(plan)
 
 # %%
@@ -273,7 +277,7 @@ proyecto.display_roy_pasos(plan)
 #| label: tbl-calendario
 calendario = proyecto.calendar(plan)
 T_plan = proyecto.duration(plan)
-calendario[['inicio_mas_temprano', 'fin_mas_temprano', 'inicio_mas_tardio', 'fin_mas_tardio', 'H_total', 'duracion']]
+proyecto.display_calendario(plan)
 
 # %% [markdown]
 # El valor planificado de cada actividad en una fecha es su BAC por la fracción de su duración que, según el calendario, debería haberse ejecutado; el PV del proyecto es la suma.
@@ -295,10 +299,30 @@ Markdown(f'Línea base: {T_plan} semanas, BAC = {datos_proyecto["BAC"].sum():.0f
 # %%
 display(Markdown(pregunta_2))
 
+# %% [markdown]
+# En cada réplica se sortean las duraciones (triangulares) y los factores de coste, se ejecuta el proyecto y, en cada fecha de control, se calculan SPI = EV / PV y CPI = EV / AC con la línea base anterior. La tabla resume las 3 000 réplicas: media, desviación típica y percentiles 10 y 90 (entre ellos queda el 80 % central).
+
 # %%
 resultados = {t: proyecto.monte_carlo_valor_ganado(dists, plan, datos_proyecto['BAC'], t, n_samples=3000, seed=11, factor_coste=factor_coste)
               for t in puntos}
 pd.concat({f'semana {t}': r.summary().round(3) for t, r in resultados.items()})
+
+# %%
+lineas = []
+for t, r in resultados.items():
+    s = r.summary()
+    lineas.append(f'- Semana {t}: SPI medio {s.loc["SPI", "media"]:.3f} (σ = {s.loc["SPI", "desv. típica"]:.3f}; 80 % central entre '
+                  f'{s.loc["SPI", "P10"]:.3f} y {s.loc["SPI", "P90"]:.3f}); CPI medio {s.loc["CPI", "media"]:.3f} '
+                  f'(σ = {s.loc["CPI", "desv. típica"]:.3f}; entre {s.loc["CPI", "P10"]:.3f} y {s.loc["CPI", "P90"]:.3f})')
+sd_spi = {t: r.summary().loc['SPI', 'desv. típica'] for t, r in resultados.items()}
+sd_cpi = {t: r.summary().loc['CPI', 'desv. típica'] for t, r in resultados.items()}
+f_medio = (0.9 + 1.0 + 1.4) / 3
+sem = lambda x: ('la semana ' if len(x) == 1 else 'las semanas ') + lista_y(x)
+mas = [str(t) for t in puntos if sd_spi[t] > sd_cpi[t]]; menos = [str(t) for t in puntos if sd_spi[t] <= sd_cpi[t]]
+comp = ('más disperso que el CPI en las tres fechas' if not menos else 'menos disperso que el CPI en las tres fechas' if not mas else
+        f'más disperso que el CPI en {sem(mas)} y menos en {sem(menos)}')
+cpi_baja = all(b < a for a, b in zip(list(sd_cpi.values())[:-1], list(sd_cpi.values())[1:]))
+Markdown('\n'.join(lineas) + f'''\n\n**Respuesta:** el SPI es {comp} (σ del SPI {" / ".join(f"{v:.3f}" for v in sd_spi.values())} frente a {" / ".join(f"{v:.3f}" for v in sd_cpi.values())} del CPI en las semanas {lista_y([str(t) for t in puntos])}); el SPI depende de qué actividades se han adelantado o retrasado y de su peso en la fecha de control, y su media va de {" a ".join(f"{r.summary().loc['SPI', 'media']:.3f}" for r in resultados.values())}. El CPI se concentra cerca de 1 / {f_medio:.2f} = {1 / f_medio:.3f}, porque el factor de coste medio de la triangular (0,9; 1,0; 1,4) es (0,9 + 1,0 + 1,4) / 3 = {f_medio:.2f}{", y su dispersión baja a medida que se acumulan más actividades en el EV" if cpi_baja else ""}.''')
 
 # %% [markdown]
 # ## Apartado 3
@@ -306,16 +330,32 @@ pd.concat({f'semana {t}': r.summary().round(3) for t, r in resultados.items()})
 # %%
 display(Markdown(pregunta_3))
 
+# %% [markdown]
+# Para cada réplica se compara la previsión con lo que ocurre de verdad en esa misma réplica: error = previsión − real. El *sesgo* es la media del error (negativo: se prevé de menos), el *error absoluto medio* la media de su valor absoluto y la *correlación* mide si las réplicas que se prevén peores terminan siendo peores.
+
 # %%
 #| tbl-cap: "Calidad de las previsiones en cada fecha de control"
 #| label: tbl-calidad
 pd.concat({f'semana {t}': r.calidad_prevision().round(3) for t, r in resultados.items()})
 
 # %%
-mae = {t: r.calidad_prevision().loc['duración', 'error absoluto medio'] for t, r in resultados.items()}
-Markdown('El error absoluto medio de la previsión de duración pasa de ' + ' a '.join(f'{v:.2f}' for v in mae.values()) +
-         ' semanas al avanzar el proyecto: cuanto más hecho, menos queda por incertidumbre; y T/SPI es sesgado al principio, '
-         'porque el avance temprano incluye la parte aún no afectada por los retrasos de las actividades futuras.')
+q = {t: r.calidad_prevision() for t, r in resultados.items()}
+lineas = []
+for t, c in q.items():
+    sd = c.loc['duración', 'sesgo']
+    lineas.append(f'- Semana {t}: duración con sesgo {sd:+.2f} semanas ({"infravalora" if sd < 0 else "sobrevalora"} la duración real en media), '
+                  f'error absoluto medio {c.loc["duración", "error absoluto medio"]:.2f} semanas y correlación {c.loc["duración", "correlación"]:.2f}; '
+                  f'coste con sesgo {c.loc["coste", "sesgo"]:+.2f} k€, error absoluto medio {c.loc["coste", "error absoluto medio"]:.1f} k€ y correlación {c.loc["coste", "correlación"]:.2f}')
+mae = [c.loc['duración', 'error absoluto medio'] for c in q.values()]
+mae_c = [c.loc['coste', 'error absoluto medio'] for c in q.values()]
+baja = all(b < a for a, b in zip(mae[:-1], mae[1:]))
+s0 = list(q.values())[0].loc['duración', 'sesgo']
+sesgo_txt = ('Al principio T/SPI infravalora la duración (sesgo negativo) porque el avance temprano aún no refleja los retrasos de las actividades futuras. ' if s0 < -0.25 else
+             'Al principio T/SPI sobrevalora la duración (sesgo positivo): un retraso temprano en euros se extrapola a todo el proyecto aunque luego se absorba en holguras. ' if s0 > 0.25 else
+             'T/SPI apenas tiene sesgo en la primera fecha. ')
+Markdown('\n'.join(lineas) + '\n\n**Respuesta:** el error absoluto medio de la previsión de duración ' + ('baja' if baja else 'pasa') + ' de '
+         + ' a '.join(f'{v:.2f}' for v in mae) + ' semanas y el del coste de ' + ' a '.join(f'{v:.1f}' for v in mae_c) + ' k€ al avanzar el proyecto: '
+         'cuanto más hecho, menos queda sujeto a incertidumbre. ' + sesgo_txt + 'BAC/CPI apenas tiene sesgo, porque el factor de sobrecoste es el mismo para todas las actividades.')
 
 # %% [markdown]
 # ## Apartado 4
@@ -327,8 +367,16 @@ display(Markdown(pregunta_4))
 r = resultados[puntos[1]]
 retraso = r.tau_samples > r.T_plan
 alarma = r.spi < umbral
+n, n_al, n_re = len(retraso), int(alarma.sum()), int(retraso.sum())
+n_al_re = int((alarma & retraso).sum()); n_sin_re = int((~alarma & retraso).sum())
 p_con, p_sin = retraso[alarma].mean(), retraso[~alarma].mean()
 sens = alarma[retraso].mean()
 falsas = (~retraso[alarma]).mean()
-Markdown(f'P(retraso | alarma) = {p_con:.3f}; P(retraso | sin alarma) = {p_sin:.3f}; sensibilidad = {sens:.3f}; '
-         f'alarmas falsas = {falsas:.3f}. La alarma discrimina, pero no es infalible: el SPI en una fecha es una señal con ruido.')
+Markdown(f'''En la semana {puntos[1]}, de las {n} réplicas, {n_al} dan alarma (SPI < {umbral}) y {n_re} terminan después de las {r.T_plan:.0f} semanas planificadas:
+
+- P(retraso | alarma) = {n_al_re} / {n_al} = **{p_con:.3f}**
+- P(retraso | sin alarma) = {n_sin_re} / {n - n_al} = **{p_sin:.3f}**
+- Sensibilidad = P(alarma | retraso) = {n_al_re} / {n_re} = **{sens:.3f}**
+- Alarmas falsas = P(sin retraso | alarma) = {n_al - n_al_re} / {n_al} = **{falsas:.3f}**
+
+**Respuesta:** con alarma la probabilidad de terminar tarde es {p_con:.3f} y sin ella {p_sin:.3f}; la alarma avisa del {100 * sens:.1f} % de los proyectos que terminarán con retraso y el {100 * falsas:.1f} % de sus avisos son falsos. {"Cuando suena es muy fiable, pero se calla en la mayoría de los retrasos: " if sens < 0.5 and falsas < 0.1 else "La alarma discrimina (la probabilidad de retraso cambia mucho con ella), pero no es infalible: "}el SPI en una sola fecha es una señal con ruido.''')

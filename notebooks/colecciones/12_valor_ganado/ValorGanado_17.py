@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -239,6 +243,9 @@ seguimiento
 # %% [markdown]
 # # Resolución
 
+# %% [markdown]
+# **Notación** (siglas del PMBOK): BAC (*budget at completion*), presupuesto total del proyecto; PV (*planned value*), valor planificado: presupuesto del trabajo que, según el plan, debía estar hecho en la fecha de control; EV (*earned value*), valor ganado: presupuesto del trabajo realmente hecho; AC (*actual cost*), coste real de ese trabajo. Con ellos: CV = EV − AC (*cost variance*), variación del coste; SV = EV − PV (*schedule variance*), variación del plazo; CPI = EV / AC (*cost performance index*), índice de rendimiento del coste; SPI = EV / PV (*schedule performance index*), índice de rendimiento del plazo. Una variación negativa o un índice menor que 1 indica sobrecoste (CV, CPI) o retraso (SV, SPI).
+
 # %%
 datos_proyecto = datos_enunciado.copy()
 prelaciones = PredecessorTable.from_dataframe_of_strings(datos_proyecto, activity='activity', predecessor='predecessor')
@@ -246,6 +253,132 @@ proyecto = prelaciones.create_project()
 calendario = proyecto.calendar(datos_proyecto['duration'])
 semana_control = 8
 BAC_total = float(datos_proyecto['BAC'].sum())
+
+# %%
+def suma_vg(detalle, columna, nombre):
+    """«PV = A(50.0) + B(40.0) + … = 261.0 k€» con las actividades que aportan algo."""
+    v = detalle[columna].astype(float)
+    nz = v[v.abs() > 1e-9]
+    if len(nz) == 0:
+        return f'{nombre} = **0** k€'
+    otras = ' (las demás aportan 0)' if len(nz) < len(v) else ''
+    return f'{nombre} = ' + ' + '.join(f'{a}({x:.1f})' for a, x in nz.items()) + f' = **{v.sum():.1f}** k€{otras}'
+
+
+def lectura_vg(PV, EV, AC):
+    """Lectura del coste y del plazo con los números: (texto coste, texto plazo)."""
+    CV, SV, CPI, SPI = EV - AC, EV - PV, EV / AC, EV / PV
+    if abs(CV) < 1e-9:
+        coste = f'CV = 0 y CPI = 1: el coste va **según presupuesto**'
+    elif CV < 0:
+        coste = (f'CV = {CV:.1f} k€ < 0 y CPI = {CPI:.3f} < 1: va **por encima del presupuesto** (sobrecoste de '
+                 f'{-CV:.1f} k€; cada k€ gastado ha producido solo {CPI:.3f} k€ de valor)')
+    else:
+        coste = (f'CV = {CV:.1f} k€ > 0 y CPI = {CPI:.3f} > 1: va **por debajo del presupuesto** (ahorro de '
+                 f'{CV:.1f} k€; cada k€ gastado ha producido {CPI:.3f} k€ de valor)')
+    if abs(SV) < 1e-9:
+        plazo = 'SV = 0 y SPI = 1: va **en plazo**'
+    elif SV < 0:
+        plazo = (f'SV = {SV:.1f} k€ < 0 y SPI = {SPI:.3f} < 1: va **retrasado** (se ha hecho el {100 * SPI:.1f} % '
+                 f'del trabajo que el plan preveía para esta fecha)')
+    else:
+        plazo = (f'SV = {SV:.1f} k€ > 0 y SPI = {SPI:.3f} > 1: va **adelantado** (se ha hecho el {100 * SPI:.1f} % '
+                 f'del trabajo que el plan preveía para esta fecha)')
+    return coste, plazo
+
+
+def explica_vg(detalle, PV, EV, AC, respuesta=True):
+    """Sumas por actividad, CV, SV, CPI y SPI con los números sustituidos y su lectura."""
+    CV, SV, CPI, SPI = EV - AC, EV - PV, EV / AC, EV / PV
+    lineas = []
+    if detalle is not None:
+        lineas += ['Sumando las columnas de la tabla:', '',
+                   '- ' + suma_vg(detalle, 'PV_i', 'PV'), '- ' + suma_vg(detalle, 'EV_i', 'EV'),
+                   '- ' + suma_vg(detalle, 'AC', 'AC'), '', 'Variaciones e índices:', '']
+    lineas += [f'- CV = EV − AC = {EV:.1f} − {AC:.1f} = **{CV:.1f}** k€',
+               f'- SV = EV − PV = {EV:.1f} − {PV:.1f} = **{SV:.1f}** k€',
+               f'- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{CPI:.3f}**',
+               f'- SPI = EV / PV = {EV:.1f} / {PV:.1f} = **{SPI:.3f}**']
+    if respuesta:
+        coste, plazo = lectura_vg(PV, EV, AC)
+        lineas += ['', f'**Respuesta:** PV = {PV:.1f} k€, EV = {EV:.1f} k€ y AC = {AC:.1f} k€. En coste, {coste}. '
+                       f'En plazo, {plazo}.']
+    return Markdown('\n'.join(lineas))
+
+
+def explica_eac(BAC, PV, EV, AC):
+    """Las tres previsiones de EAC con ETC y VAC, el orden entre ellas y por qué."""
+    CPI, SPI = EV / AC, EV / PV
+    resto = BAC - EV
+    hip = {'(a)': (1.0, '1'), '(b)': (CPI, f'CPI = {CPI:.3f}'),
+           '(c)': (CPI * SPI, f'CPI · SPI = {CPI:.3f} · {SPI:.3f} = {CPI * SPI:.3f}')}
+    eac = {h: AC + resto / d for h, (d, _) in hip.items()}
+    lin = [f'Trabajo pendiente valorado a precio de presupuesto: BAC − EV = {BAC:.0f} − {EV:.1f} = {resto:.1f} k€. '
+           'Cada hipótesis lo divide por un índice distinto para obtener lo que costará de verdad (ETC, *estimate to '
+           'complete*); después EAC = AC + ETC (*estimate at completion*) y VAC = BAC − EAC (*variance at completion*):', '']
+    for h, (d, txt) in hip.items():
+        etc = resto / d
+        lin.append(f'- **{h}** índice {txt}: ETC = {resto:.1f} / {d:.3f} = {etc:.1f} k€; EAC = {AC:.1f} + {etc:.1f} = '
+                   f'**{eac[h]:.1f}** k€; VAC = {BAC:.0f} − {eac[h]:.1f} = **{BAC - eac[h]:.1f}** k€'
+                   + (f' (equivale a BAC / CPI = {BAC:.0f} / {CPI:.3f})' if h == '(b)' else ''))
+    orden = sorted(hip, key=lambda h: eac[h])
+    lin += ['', f'Cuanto menor es el índice que divide al trabajo pendiente, mayor es la previsión. Aquí los índices son '
+                f'{lista_y([f"{h} {hip[h][0]:.3f}" for h in hip])}, así que de menor a mayor EAC el orden es '
+                f'{lista_y(orden)}.']
+    expl = []
+    if CPI < 1:
+        expl.append(f'Con CPI = {CPI:.3f} < 1, la (a) supone que el sobrecoste sufrido hasta ahora no se repetirá en lo que queda')
+    elif CPI > 1:
+        expl.append(f'Con CPI = {CPI:.3f} > 1, la (a) renuncia al ahorro que se viene obteniendo y es más prudente que la (b)')
+    if SPI < 1:
+        expl.append(f'con SPI = {SPI:.3f} < 1 el retraso añade un factor que encarece el resto, y la (c) queda por encima de la (b)')
+    elif SPI > 1:
+        expl.append(f'con SPI = {SPI:.3f} > 1 el adelanto abarata el resto en la (c), que queda por debajo de la (b)')
+    if expl:
+        lin[-1] += ' ' + '; '.join(expl) + '.'
+    lin += ['', f'**Respuesta:** EAC (a) = {eac["(a)"]:.1f} k€ (VAC = {BAC - eac["(a)"]:.1f}), (b) = {eac["(b)"]:.1f} k€ '
+                f'(VAC = {BAC - eac["(b)"]:.1f}), (c) = {eac["(c)"]:.1f} k€ (VAC = {BAC - eac["(c)"]:.1f}). La más optimista '
+                f'es la {orden[0]} y la más pesimista la {orden[-1]}. Como previsión central se suele tomar la (b): '
+                f'**{eac["(b)"]:.1f} k€ frente a los {BAC:.0f} k€ presupuestados**.']
+    return Markdown('\n'.join(lin))
+
+
+def explica_tcpi(BAC, EV, AC):
+    """TCPI con los números y si es realista frente al CPI."""
+    CPI = EV / AC
+    resto, fondos = BAC - EV, BAC - AC
+    if fondos <= 0:
+        return Markdown(f'TCPI = (BAC − EV) / (BAC − AC) = ({BAC:.0f} − {EV:.1f}) / ({BAC:.0f} − {AC:.1f}) = {resto:.1f} / {fondos:.1f}: '
+                        f'ya se ha gastado todo el presupuesto y queda trabajo por valor de {resto:.1f} k€. **Respuesta:** terminar en '
+                        'presupuesto es imposible; hay que pedir más fondos (rehacer la línea base de coste).')
+    TCPI = resto / fondos
+    mejora = (TCPI / CPI - 1) * 100
+    if TCPI <= CPI:
+        juicio = (f'basta con mantener el rendimiento actual (CPI = {CPI:.3f} ≥ TCPI): **es realista**')
+    elif mejora <= 10:
+        juicio = (f'exige mejorar el rendimiento actual (CPI = {CPI:.3f}) un {mejora:.0f} %: **es alcanzable** con medidas correctoras')
+    else:
+        juicio = (f'exige mejorar el rendimiento actual (CPI = {CPI:.3f}) un {mejora:.0f} % (TCPI / CPI − 1 = {TCPI:.3f} / {CPI:.3f} − 1): '
+                  '**no es realista** sin cambios de fondo (alcance, método o contrato); lo prudente es aceptar un EAC mayor que el BAC')
+    return Markdown(f'TCPI = (BAC − EV) / (BAC − AC) = ({BAC:.0f} − {EV:.1f}) / ({BAC:.0f} − {AC:.1f}) = {resto:.1f} / {fondos:.1f} = '
+                    f'**{TCPI:.3f}**: queda trabajo por valor de {resto:.1f} k€ y solo quedan {fondos:.1f} k€ de presupuesto, así que '
+                    f'cada k€ que se gaste a partir de ahora tendría que producir {TCPI:.3f} k€ de valor.\n\n'
+                    f'**Respuesta:** TCPI = {TCPI:.3f}; {juicio}.')
+
+
+def explica_es(pv_acumulado, EV, AT):
+    """Programación ganada: (ES, texto con la interpolación). pv_acumulado indexado por semana (incluye la 0)."""
+    pv = pv_acumulado.astype(float)
+    C = int(pv[pv <= EV + 1e-9].index.max())
+    if C + 1 not in pv.index:
+        return float(C), f'El EV = {EV:.1f} k€ alcanza el PV acumulado de la última semana del plan: ES = {C}.'
+    PV_C, PV_C1 = float(pv[C]), float(pv[C + 1])
+    ES = C + (EV - PV_C) / (PV_C1 - PV_C)
+    txt = (f'El EV = {EV:.1f} k€ queda entre el PV acumulado de la semana {C} ({PV_C:.1f}) y el de la semana {C + 1} '
+           f'({PV_C1:.1f}), así que C = {C} y ES = {C} + ({EV:.1f} − {PV_C:.1f}) / ({PV_C1:.1f} − {PV_C:.1f}) = '
+           f'{C} + {EV - PV_C:.1f} / {PV_C1 - PV_C:.1f} = **{ES:.2f}** semanas: el valor ganado hasta la semana {AT} '
+           f'se había previsto ganarlo en la semana {ES:.2f}.')
+    return ES, txt
 
 # %% [markdown]
 # ## Apartado 1
@@ -267,7 +400,7 @@ proyecto.display_roy_pasos(datos_proyecto['duration'])
 proyecto.display_calendario(datos_proyecto['duration'])
 
 # %% [markdown]
-# Con el inicio más temprano de cada actividad se reparte su BAC semana a semana según su perfil; la fila *suma* comprueba que se recupera el BAC.
+# Con el inicio más temprano de cada actividad se reparte su BAC semana a semana según su perfil (una actividad que empieza en el instante ES ocupa las semanas ES + 1 a ES + duración); la columna *suma* comprueba que se recupera el BAC.
 
 # %%
 def perfil_semanal(BAC, d, perfil):
@@ -286,13 +419,31 @@ coste_semanal['suma'] = coste_semanal.sum(axis=1)
 coste_semanal.round(1)
 
 # %%
-Markdown(f'Cada fila suma su BAC: {bool(np.allclose(coste_semanal["suma"], datos_proyecto["BAC"]))}.')
+num = lambda x: f'{x:.1f}' if abs(10 * x - round(10 * x)) < 1e-9 else f'{x:.2f}'
+rango = lambda a, b: f'la semana {a}' if a == b else f'cada una de las semanas {a} a {b}'
+lineas = []
+for a, f in datos_proyecto.iterrows():
+    es, d, B = int(calendario.loc[a, 'inicio_mas_temprano']), int(f['duration']), float(f['BAC'])
+    if f['profile'] == 'uniforme' or d == 1:
+        continue
+    resto = B / 2 / (d - 1)
+    otras = rango(es + 2, es + d) if f['profile'] == 'inicio' else rango(es + 1, es + d - 1)
+    clave = f'semana {es + 1}' if f['profile'] == 'inicio' else f'semana {es + d}'
+    lineas.append(f'- {a} (perfil {f["profile"]}, BAC = {B:.0f}, {d} semanas, semanas {es + 1} a {es + d}): {B:.0f} / 2 = {B / 2:.1f} en la {clave} '
+                  f'y ({B:.0f} − {B / 2:.1f}) / {d - 1} = {num(resto)} en {otras}; suma {B / 2:.1f} + {d - 1}·{num(resto)} = {B:.1f}')
+ok = bool(np.allclose(coste_semanal['suma'], datos_proyecto['BAC']))
+Markdown('Las de perfil uniforme reciben BAC / duración cada semana. Las de perfil no uniforme:\n\n' + '\n'.join(lineas)
+         + f'\n\n**Respuesta:** el calendario es el de la tabla anterior y el reparto semanal el de la tabla de costes; '
+         + ('todas las filas suman su BAC.' if ok else 'hay filas que no suman su BAC: revisar el reparto.'))
 
 # %% [markdown]
 # ## Apartado 2
 
 # %%
 display(Markdown(pregunta_2))
+
+# %% [markdown]
+# El PV de cada actividad en la semana de control es la suma de sus costes planificados hasta esa semana (columnas 1 a la semana de control de la tabla anterior); con reparto uniforme sería BAC por la fracción de duración transcurrida.
 
 # %%
 semanas = [c for c in coste_semanal.columns if c != 'suma' and c <= semana_control]
@@ -305,7 +456,19 @@ comparacion.round(1)
 
 # %%
 PV, PV_uniforme = float(PV_i.sum()), float(PV_uniforme_i.sum())
-Markdown(f'PV = {PV:.1f} k€ con los perfiles reales frente a {PV_uniforme:.1f} con reparto uniforme; la diferencia está sólo en las actividades en curso con perfil no uniforme.')
+difieren = [a for a in datos_proyecto.index if abs(PV_i[a] - PV_uniforme_i[a]) > 1e-6]
+lineas = []
+for a in difieren:
+    es, d, B = int(calendario.loc[a, 'inicio_mas_temprano']), int(datos_proyecto.loc[a, 'duration']), float(datos_proyecto.loc[a, 'BAC'])
+    k = min(max(semana_control - es, 0), d)
+    lineas.append(f'- {a} (perfil {datos_proyecto.loc[a, "profile"]}, {k} de {d} semanas transcurridas): según perfil '
+                  f'{" + ".join(num(x) for x in coste_semanal.loc[a, semanas] if x > 0)} = {PV_i[a]:.1f}; uniforme {B:.0f}·{k}/{d} = {PV_uniforme_i[a]:.1f}')
+Markdown('Solo cambian las actividades en curso con perfil no uniforme (las terminadas suman su BAC y las no empezadas, 0 con los dos criterios):\n\n'
+         + '\n'.join(lineas)
+         + f'\n\n- PV según perfil = {" + ".join(f"{x:.1f}" for x in PV_i if x > 0)} = **{PV:.1f}** k€\n'
+         + f'- PV uniforme = {" + ".join(f"{x:.1f}" for x in PV_uniforme_i if x > 0)} = **{PV_uniforme:.1f}** k€\n\n'
+         + f'**Respuesta:** PV = {PV:.1f} k€ con los perfiles reales frente a {PV_uniforme:.1f} k€ con reparto uniforme '
+         + f'({abs(PV - PV_uniforme):.1f} k€ {"más" if PV > PV_uniforme else "menos"}), por {lista_y(difieren)}.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -314,7 +477,8 @@ Markdown(f'PV = {PV:.1f} k€ con los perfiles reales frente a {PV_uniforme:.1f}
 display(Markdown(pregunta_3))
 
 # %%
-EV = float((datos_proyecto['BAC'] * seguimiento['performed'] / 100).sum())
+EV_i = datos_proyecto['BAC'] * seguimiento['performed'] / 100
+EV = float(EV_i.sum())
 AC = float(seguimiento['AC'].sum())
 indices = pd.DataFrame({'PV según perfil': [PV, EV, AC, EV / AC, EV / PV], 'PV uniforme': [PV_uniforme, EV, AC, EV / AC, EV / PV_uniforme]},
                        index=['PV', 'EV', 'AC', 'CPI = EV / AC', 'SPI = EV / PV']).round(3)
@@ -322,7 +486,13 @@ indices
 
 # %%
 s1, s2 = EV / PV, EV / PV_uniforme
-Markdown(f'''SPI = {EV:.1f} / {PV:.1f} = {s1:.3f} con el perfil correcto y {EV:.1f} / {PV_uniforme:.1f} = {s2:.3f} con el uniforme: {'el diagnóstico de plazo cambia de signo' if (s1 < 1) != (s2 < 1) else 'el signo del diagnóstico no cambia, pero sí su magnitud'}. El CPI no cambia: no depende del PV.''')
+lee = lambda s: 'retraso' if s < 1 else ('adelanto' if s > 1 else 'en plazo')
+Markdown(f'''- EV = Σ BAC·% = {" + ".join(f"{a}({x:.1f})" for a, x in EV_i.items() if x > 0)} = **{EV:.1f}** k€
+- AC = Σ coste real = {" + ".join(f"{a}({x:.0f})" for a, x in seguimiento['AC'].items() if x > 0)} = **{AC:.1f}** k€
+- CPI = EV / AC = {EV:.1f} / {AC:.1f} = **{EV / AC:.3f}** (el mismo con los dos PV: no depende del PV)
+- SPI con el PV correcto = {EV:.1f} / {PV:.1f} = **{s1:.3f}** ({lee(s1)}); con el PV uniforme = {EV:.1f} / {PV_uniforme:.1f} = **{s2:.3f}** ({lee(s2)})
+
+**Respuesta:** {'el diagnóstico de plazo cambia: ' + lee(s2) + ' con el PV uniforme, ' + lee(s1) + ' con el correcto' if lee(s1) != lee(s2) else 'el diagnóstico de plazo (' + lee(s1) + ') no cambia, pero sí su magnitud: SPI ' + format(s1, '.3f') + ' frente a ' + format(s2, '.3f')}; el de coste (CPI = {EV / AC:.3f}, {"sobrecoste" if EV < AC else "ahorro"}) es el mismo.''')
 
 # %% [markdown]
 # ## Apartado 4
@@ -332,3 +502,9 @@ display(Markdown(pregunta_4))
 
 # %% [markdown]
 # El EV es el BAC por el porcentaje *físico* realizado: mide trabajo hecho, no dinero desembolsado, y por eso no depende de cuándo se planeó pagar. El PV sí es dinero planificado hasta la fecha. Si una actividad en plazo tiene perfil `final` (el gran pago al terminar), su PV a mitad de camino es pequeño y el EV (proporcional al avance físico) lo supera: el proyecto parece adelantado sin estarlo. Con perfil `inicio` ocurre lo contrario. Para que el SPI mida plazo, el PV debe seguir el mismo criterio que el EV.
+
+# %%
+ejemplos = [f'{a} (perfil {datos_proyecto.loc[a, "profile"]}): PV según perfil {PV_i[a]:.1f} frente a {PV_uniforme_i[a]:.1f} uniforme' for a in difieren]
+Markdown(f'En este proyecto se ve en {"; ".join(ejemplos)}. **Respuesta:** el EV no depende del perfil porque mide avance físico; '
+         'el perfil `final` hace parecer adelantado un proyecto que va en plazo (y el `inicio`, retrasado).' if ejemplos else
+         '**Respuesta:** el EV no depende del perfil porque mide avance físico; el perfil `final` hace parecer adelantado un proyecto que va en plazo.')

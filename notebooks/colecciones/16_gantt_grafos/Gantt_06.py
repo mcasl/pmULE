@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -278,9 +282,28 @@ pinta_tikz(_dibujo)
 display(Markdown(pregunta_3))
 
 # %%
-criticas = calendario.index[calendario['H_total'] == 0].tolist()
-con_hueco = calendario[calendario['H_libre'] > 0]
-Markdown(f'''Camino crítico (flechas rojas, barras sin hueco): {", ".join(criticas)}. Tienen hueco hasta todas sus sucesoras: {", ".join(f"{a} ({int(h)} semanas)" for a, h in con_hueco["H_libre"].items())}; ese hueco es exactamente la holgura libre (mín ES de las sucesoras − EF).''')
+explica_camino_critico(proyecto, datos_proyecto['duration'], 'semanas')
+
+# %% [markdown]
+# En el Gantt las actividades críticas son las barras unidas por flechas rojas. El hueco entre el fin de una barra (EF, fin más temprano) y el inicio de la primera de sus sucesoras (ES, inicio más temprano) es lo que puede retrasarse sin mover a ninguna: su holgura libre.
+
+# %%
+suc = {a: [b for b, ps in prelaciones.immediate_predecessor.items() if a in ps] for a in calendario.index}
+fin = int(calendario['fin_mas_temprano'].max())
+_l = []
+for a in ordena_ruta(calendario.index[calendario['H_libre'] > 0], calendario):
+    ef = int(calendario.loc[a, 'fin_mas_temprano'])
+    if suc[a]:
+        _es = ', '.join(f"{b}: {int(calendario.loc[b, 'inicio_mas_temprano'])}" for b in sorted(suc[a]))
+        _min = int(calendario.loc[suc[a], 'inicio_mas_temprano'].min())
+        _l.append(f'- {a}: mín ES de sus sucesoras ({_es}) − EF = {_min} − {ef} = {plural(_min - ef, "semana")}')
+    else:
+        _l.append(f'- {a} (final): fin del proyecto − EF = {fin} − {ef} = {plural(fin - ef, "semana")}')
+_crit = ordena_ruta(calendario.index[calendario['H_total'] == 0], calendario)
+Markdown(f'**Respuesta:** camino crítico {" – ".join(_crit)} (barras sin hueco y flechas rojas). Tienen hueco '
+         f'hasta todas sus sucesoras:\n\n' + '\n'.join(_l) + '\n\nEse hueco es exactamente la holgura libre del calendario.'
+         + (' Las demás actividades no críticas no tienen hueco: alguna sucesora empieza justo cuando terminan.'
+            if ((calendario['H_libre'] == 0) & (calendario['H_total'] > 0)).any() else ''))
 
 # %% [markdown]
 # ## Apartado 4
@@ -305,8 +328,10 @@ datos_tardio = pd.DataFrame(filas).T; datos_tardio.index.name = 'activity'; dato
 proyecto_tardio = PredecessorTable.from_dataframe_of_strings(datos_tardio, activity='activity', predecessor='predecessor').create_project()
 esperas = datos_tardio.loc[datos_tardio.index.str.startswith('💤'), 'duration']
 desplazamiento = (proyecto_tardio.calendar(datos_tardio['duration']).loc[datos_proyecto.index, 'inicio_mas_temprano'] - calendario['inicio_mas_temprano'])
-pd.DataFrame({'espera insertada': esperas.rename(index=lambda x: x[1:]).reindex(datos_proyecto.index).fillna(0).astype(int),
-              'desplazamiento respecto al Gantt temprano': desplazamiento.astype(int), 'H_total': calendario['H_total']}).T
+comparacion = pd.DataFrame({'espera insertada': esperas.rename(index=lambda x: x[1:]).reindex(datos_proyecto.index).fillna(0).astype(int),
+              'desplazamiento respecto al Gantt temprano': desplazamiento.astype(int),
+              'holgura total (LS − ES)': calendario['H_total'].astype(int)})
+comparacion.T
 
 # %%
 #| fig-cap: "Gantt de inicios más tardíos (las filas 💤 son las esperas)"
@@ -314,5 +339,13 @@ pd.DataFrame({'espera insertada': esperas.rename(index=lambda x: x[1:]).reindex(
 _g, _dibujo = proyecto_tardio.gantt(datos_tardio, 'duration', holguras=False, tikz=True, params=dict(inner_text=None, **GANTT_PARAMS))
 pinta_tikz(_dibujo)
 
-# %% [markdown]
-# El desplazamiento de cada barra respecto al Gantt temprano es su holgura total (LS − ES), pero la espera insertada es menor cuando una predecesora ya ha consumido parte de esa holgura. Las críticas no se mueven y el fin del proyecto no cambia; en el Gantt tardío no queda hueco entre ninguna actividad y sus sucesoras: toda la holgura está gastada.
+# %%
+_mov = [a for a in ordena_ruta(comparacion.index, calendario) if comparacion.loc[a, 'desplazamiento respecto al Gantt temprano'] > 0]
+_menor = [a for a in _mov if comparacion.loc[a, 'espera insertada'] < comparacion.loc[a, 'desplazamiento respecto al Gantt temprano']]
+_txt = ', '.join(f"{a} {plural(int(comparacion.loc[a, 'desplazamiento respecto al Gantt temprano']), 'semana')}" for a in _mov)
+_pq = '; '.join(f"{a} (espera {int(comparacion.loc[a, 'espera insertada'])}: el resto de su desplazamiento lo arrastra de "
+                f"{lista_y(sorted(p for p in prelaciones.immediate_predecessor[a] if p in _mov))}, que ya se ha retrasado)" for a in _menor)
+Markdown(f'**Respuesta:** se desplazan {_txt}; las críticas no se mueven. Cada desplazamiento coincide con la '
+         f'holgura total de la actividad (LS − ES), y el fin del proyecto no cambia.'
+         + (f' La espera insertada es menor que el desplazamiento cuando una predecesora ya se ha retrasado: {_pq}.' if _menor else '')
+         + ' En el Gantt tardío no queda hueco entre ninguna actividad y sus sucesoras: toda la holgura está gastada.')

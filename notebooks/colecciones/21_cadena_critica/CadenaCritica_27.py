@@ -35,6 +35,7 @@ import networkx as nx
 from scipy.stats import norm
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)   # las columnas «… = suma» no se truncan con «...»
 
 # Versión local de la librería: se busca src/pmule.py subiendo desde el directorio actual
 _aqui = os.path.abspath('.')
@@ -43,7 +44,10 @@ while _aqui != os.path.dirname(_aqui) and not os.path.isfile(os.path.join(_aqui,
 sys.path.append(os.path.join(_aqui, 'src'))
 from pmule import (PredecessorTable, ProjectGraph, EarnedValue,
                    pinta_tikz, plot_cargas, plot_curvas_valor_ganado,
-                   tanto_por_uno, ordena_rutas)
+                   tanto_por_uno, ordena_rutas,
+                   explica_camino_critico, explica_rutas, explica_suma, explica_sigma_ruta,
+                   explica_probabilidad, explica_intervalo, explica_percentil,
+                   plural, lista_y, ordena_ruta, limpia_tabla, gantt_tramos_tikz)
 
 GANTT_PARAMS = dict(arrows=True)   # flechas de prelación en los diagramas de Gantt (rojas las críticas)
 
@@ -156,7 +160,7 @@ def detalle_ackoff(proyecto, duraciones, topes, cur, pasos):
                     opciones[f'{p}+{q}'] = float(cur[p] + cur[q])
         orden = sorted(opciones.items(), key=lambda kv: kv[1])
         filas.append({'paso': paso + 1, 'duración': int(T), 'rutas críticas': ', '.join(criticas),
-                      'opciones (coste)': '; '.join(f'{k} ({v:.0f})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
+                      'opciones (coste)': '; '.join(f'{k} ({round(v, 2):g})' for k, v in orden[:6]) + (' …' if len(orden) > 6 else ''),
                       'elegida': ', '.join(elegidas), 'coste del paso': float(sum(cur[x] for x in elegidas))})
         for x in elegidas:
             d[x] -= 1
@@ -244,19 +248,14 @@ def multitarea(duraciones, bloque=None, cambio=0):
     return pd.Series(fin).reindex(list(duraciones)), pd.DataFrame(turnos, columns=['tarea', 'inicio', 'días'])
 
 
-def dibuja_turnos(turnos, tareas, titulo, ax):
-    """Diagrama de barras de los turnos (los cambios, en gris)."""
-    colores = dict(zip(tareas, ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple', 'tab:brown']))
-    for i, tarea in enumerate(tareas):
-        tramos = [(r.inicio, r.días) for r in turnos.itertuples() if r.tarea == tarea]
-        ax.broken_barh(tramos, (i - 0.35, 0.7), color=colores[tarea])
-    cambios = [(r.inicio, r.días) for r in turnos.itertuples() if r.tarea == 'cambio']
+def tramos_turnos(turnos, tareas):
+    """Tramos de trabajo de cada tarea (y de los cambios, en gris) para el Gantt de pmule."""
+    colores = dict(zip(tareas, ['blue!25', 'orange!35', 'green!30', 'violet!25', 'brown!30']))
+    tramos = {t: [(r.inicio, r.días, r.días, colores[t]) for r in turnos.itertuples() if r.tarea == t] for t in tareas}
+    cambios = [(r.inicio, r.días, '', 'black!15') for r in turnos.itertuples() if r.tarea == 'cambio']
     if cambios:
-        ax.broken_barh(cambios, (len(tareas) - 0.35, 0.7), color='lightgrey')
-    ax.set_yticks(range(len(tareas) + (1 if cambios else 0)))
-    ax.set_yticklabels(list(tareas) + (['cambios'] if cambios else []))
-    ax.set_xlim(0, float((turnos['inicio'] + turnos['días']).max()) + 0.5)
-    ax.invert_yaxis(); ax.set_title(titulo, fontsize=10); ax.grid(axis='x', alpha=0.3)
+        tramos['cambios'] = cambios
+    return tramos
 
 
 def sin_decimales(tabla):
@@ -311,10 +310,19 @@ sin_decimales(comparacion.astype(float).round(2))
 
 # %%
 retrasadas = [t for t in tareas if comparacion.loc[t, 'retraso'] > 0]
-Markdown(f'El último trabajo termina igual (día {fin_multi.max()}: el trabajo total es el mismo), pero '
-         f'{", ".join(retrasadas)} terminan más tarde: el tiempo medio pasa de {fin_seguidas.mean():.2f} a {fin_multi.mean():.2f} días '
-         f'(+{fin_multi.mean() - fin_seguidas.mean():.2f}). Cada proyecto recibe su resultado más tarde y, si la tarea es crítica, '
-         'el proyecto entero se retrasa.')
+adelantadas = [t for t in tareas if comparacion.loc[t, 'retraso'] < 0]
+def efecto(t):
+    r = int(comparacion.loc[t, 'retraso'])
+    return (f'adelanto de {plural(-r, "día")}' if r < 0 else plural(r, 'día')) + f' ({t})'
+Markdown(f'Cada tarea termina al acabar su último turno. El último trabajo termina igual (día {fin_multi.max()}: el trabajo total es el mismo), pero '
+         f'{lista_y(retrasadas)} {"termina" if len(retrasadas) == 1 else "terminan"} más tarde'
+         + (f' (y {lista_y(adelantadas)} antes, porque con la rotación se empieza antes a trabajar en {"ella" if len(adelantadas) == 1 else "ellas"})' if adelantadas else '')
+         + f', y el tiempo medio pasa de {fin_seguidas.mean():.2f} a '
+         f'({" + ".join(str(v) for v in fin_multi)})/{len(tareas)} = {fin_multi.mean():.2f} días. Cada proyecto recibe su resultado más tarde y, '
+         'si la tarea es crítica, el proyecto entero se retrasa.\n\n'
+         f'**Respuesta:** con multitarea las tareas terminan los días {lista_y([f"{fin_multi[t]} ({t})" for t in tareas])}; '
+         f'retrasos: {lista_y([efecto(t) for t in tareas])}; '
+         f'el tiempo medio aumenta {fin_multi.mean() - fin_seguidas.mean():.2f} días.')
 
 # %% [markdown]
 # ## Apartado 3
@@ -336,16 +344,31 @@ tabla_c.loc['días perdidos'] = n_cambios * cambio
 sin_decimales(tabla_c.astype(float).round(2))
 
 # %%
-#| fig-cap: "Turnos de trabajo: sin multitarea y con multitarea (con pérdida en cada cambio)"
-#| label: fig-turnos
-from matplotlib import pyplot as plt
-fig, axs = plt.subplots(2, 1, figsize=(7, 4.6), sharex=True)
-dibuja_turnos(turnos_seguidas_c, tareas, 'Sin multitarea', axs[0])
-dibuja_turnos(turnos_multi_c, tareas, f'Multitarea en turnos de {bloque} días', axs[1])
-axs[1].set_xlabel('días'); plt.tight_layout(); plt.show()
+def con_cambios(j):
+    partes = []
+    for i, x in enumerate(tareas[:j + 1]):
+        partes += ([str(cambio)] if i else []) + [str(duraciones[x])]
+    return ' + '.join(partes)
+total = sum(duraciones.values())
+nc = int(n_cambios['con multitarea'])
+Markdown(f'Sin multitarea hay {plural(len(tareas) - 1, "cambio")} (uno antes de cada tarea, salvo la primera): '
+         + '; '.join(f'{t} termina el día ' + (f'{con_cambios(j)} = ' if j else '') + f'{fin_seguidas_c[t]}' for j, t in enumerate(tareas))
+         + f'. Media: ({" + ".join(str(v) for v in fin_seguidas_c)})/{len(tareas)} = {fin_seguidas_c.mean():.2f} días.\n\n'
+         f'Con multitarea se cambia de tarea en cada turno mientras queda más de una tarea pendiente: {plural(nc, "cambio")}. '
+         f'El último trabajo termina cuando se han hecho los {total} días de trabajo y se han perdido los de los cambios: '
+         f'{total} + {nc}·{cambio} = {total + nc * cambio}. Media: ({" + ".join(str(v) for v in fin_multi_c)})/{len(tareas)} = {fin_multi_c.mean():.2f} días.')
 
 # %%
-Markdown(f'Con la pérdida por cambio, la multitarea ya no sólo retrasa las tareas intermedias: el último trabajo pasa del día '
+#| fig-cap: "Turnos de trabajo: sin multitarea y con multitarea (con pérdida en cada cambio)"
+#| label: fig-turnos
+H = int(max((turnos_seguidas_c['inicio'] + turnos_seguidas_c['días']).max(), (turnos_multi_c['inicio'] + turnos_multi_c['días']).max()))
+display(Markdown('**Sin multitarea** (cada tramo lleva sus días de trabajo):'))
+pinta_tikz(gantt_tramos_tikz(tramos_turnos(turnos_seguidas_c, tareas), horizonte=H))
+display(Markdown(f'**Multitarea en turnos de {bloque} días** (en gris, los días perdidos en cada cambio):'))
+pinta_tikz(gantt_tramos_tikz(tramos_turnos(turnos_multi_c, tareas), horizonte=H))
+
+# %%
+Markdown(f'**Respuesta:** con la pérdida por cambio, la multitarea ya no sólo retrasa las tareas intermedias: el último trabajo pasa del día '
          f'{fin_seguidas_c.max()} al {fin_multi_c.max()} ({n_cambios["con multitarea"]} cambios frente a {n_cambios["sin multitarea"]}), '
          'es decir, la persona produce menos. Es el efecto que Goldratt atribuye a la multitarea mal entendida.')
 
@@ -358,7 +381,8 @@ display(Markdown(pregunta_4))
 # %%
 orden_spt = sorted(tareas, key=lambda t: (duraciones[t], t))
 fin_spt, _ = multitarea({t: duraciones[t] for t in orden_spt})
-Markdown(f'Ordenando de la más corta a la más larga ({" → ".join(orden_spt)}) el tiempo medio de terminación es '
+Markdown(f'**Respuesta:** ordenando de la más corta a la más larga ({" → ".join(orden_spt)}) las tareas terminan los días '
+         f'{", ".join(str(v) for v in fin_spt)} y el tiempo medio de terminación es ({" + ".join(str(v) for v in fin_spt)})/{len(tareas)} = '
          f'{fin_spt.mean():.2f} días, el mínimo posible sin multitarea (frente a {fin_seguidas.mean():.2f} en el orden del cuadro): '
          'es la regla de la duración más corta primero: si dos tareas seguidas están en orden larga–corta, intercambiarlas '
          'adelanta la corta lo que dura la larga y retrasa la larga sólo lo que dura la corta.')
@@ -380,7 +404,7 @@ preguntas_test = [
     ('Con multitarea en turnos de 3 días y sin pérdida al cambiar de tarea, ¿qué día termina la última tarea?',
      ['día 25', 'día 28', 'día 33', 'día 36'],
      'El trabajo total es el mismo, así que la última tarea termina el mismo día que sin multitarea; lo que se retrasa son las demás.'),
-    ('Con multitarea en turnos de 3 días y una pérdida de 1 día(s) en cada cambio de tarea, ¿qué día termina la última tarea?',
+    ('Con multitarea en turnos de 3 días y una pérdida de 1 día en cada cambio de tarea, ¿qué día termina la última tarea?',
      ['día 33', 'día 25', 'día 27', 'día 36'],
      'Hay 8 cambios de tarea, que añaden 8 días al trabajo: la persona produce menos.'),
     ('¿Qué orden minimiza, sin multitarea, el tiempo medio de terminación?',
