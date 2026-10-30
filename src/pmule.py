@@ -4449,6 +4449,22 @@ class ProjectGraph:
         dag = self.roy_dag(); _, V, _ = implicit_svd_roy(dag, k=k); t = np.array([durations.get(a, 0.0) for a in dag.acts], float)
         return tau_rank_k_roy(dag, t, V, ks=[k])[k]
 
+    def soft_criticality(self, durations: dict, beta):
+        """Criticidad blanda de cada actividad: probabilidad de que una ruta s→f elegida con P ∝ exp(β·duración) pase por ella.
+
+        Interpola entre el conteo topologico de cadenas (β → 0: aᵢbᵢ/P) y la fraccion de rutas criticas del CPM
+        (β → ∞, subgradiente uniforme en empates); es ∂τ_β/∂tᵢ. Se calcula por DP sin enumerar rutas.
+        ``beta`` escalar → ``Series``; secuencia → ``DataFrame`` (actividades × β). β en 1/unidades de tiempo."""
+        dag = self.roy_dag(); t = np.array([durations.get(a, 0.0) for a in dag.acts], float)
+        crit, _ = dag.soft_criticality(t, beta)
+        return pd.Series(crit[:, 0], index=dag.acts) if np.ndim(beta) == 0 else pd.DataFrame(crit, index=dag.acts, columns=list(beta))
+
+    def tau_soft(self, durations: dict, beta):
+        """τ_β = (1/β)·log Σ_p exp(β·(R t)_p): cota superior suave de τ (τ ≤ τ_β ≤ τ + log(nº rutas)/β)."""
+        dag = self.roy_dag(); t = np.array([durations.get(a, 0.0) for a in dag.acts], float)
+        _, tb = dag.soft_criticality(t, beta)
+        return float(tb[0]) if np.ndim(beta) == 0 else tb
+
     # ------------------------------------------------------------------
     # Lectura nativa de .sm (PSPLIB)
     # ------------------------------------------------------------------
@@ -8783,6 +8799,30 @@ class RoyDAG:
             np.add(LS, Tb, out=LS); np.subtract(LS, EF, out=LS)
             mask[:, a:b] = LS < 1e-9 * np.maximum(tb, 1.0); tau[a:b] = tb
         return mask, tau
+
+    def soft_criticality(self, t, beta):
+        """Criticidad blanda (softmax) por DP, sin construir R, en el dominio logaritmico (estable para beta*t grande).
+
+        Cadena de Markov de Gibbs sobre las rutas s->f: P(ruta p) ∝ exp(beta·(R t)_p). Devuelve (crit, tau_beta):
+          crit[i, j]   = P(la ruta pasa por la actividad i) con beta[j] = ∂τ_β/∂tᵢ  (en [0, 1]),
+          tau_beta[j]  = (1/beta[j])·log Σ_p exp(beta[j]·(R t)_p)  (nan si beta[j] == 0).
+        beta -> 0: aᵢbᵢ/P (camino uniforme; es la ocupacion de la cadena de Doob, diag(RᵀR)/P);
+        beta -> ∞: fraccion de rutas criticas por i (subgradiente uniforme en empates) y τ_β -> τ.
+        t en orden topologico (n,); beta escalar o (m,) con beta >= 0. Coste O(m·aristas)."""
+        t = np.asarray(t, float); beta = np.atleast_1d(np.asarray(beta, float)); n, m = self.n, beta.size
+        if (beta < 0).any(): raise ValueError("beta debe ser >= 0")
+        W = t[:, None] * beta[None, :]; LA = np.empty((n, m)); LB = np.empty((n, m)); succ = self.succ
+
+        def lse(X):                                   # logsumexp por columnas de X (k, m)
+            mx = X.max(axis=0); return mx + np.log(np.exp(X - mx).sum(axis=0))
+        for i in range(n):
+            p = self.pred[i]; LA[i] = W[i] + (lse(LA[p]) if p.size else 0.0)
+        for i in range(n - 1, -1, -1):
+            s = succ[i]; LB[i] = lse(W[s] + LB[s]) if s else 0.0
+        ends = np.flatnonzero(self.snk); logZ = lse(LA[ends])
+        crit = np.clip(np.exp(LA + LB - logZ[None, :]), 0.0, 1.0)
+        with np.errstate(divide="ignore", invalid="ignore"): tau_beta = np.where(beta > 0, logZ / beta, np.nan)
+        return crit, tau_beta
 
 
 def _eigsh_robust(op, n, kk, tol, rng):
