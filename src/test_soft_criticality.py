@@ -72,6 +72,17 @@ class TestSoftCriticality(unittest.TestCase):
     def test_beta_negativo_rechazado(self):
         with self.assertRaises(ValueError): self.proj.soft_criticality(self.T, -1.0)
 
+    def test_auto_usa_beta_c_sobre_mu_con_suelo(self):
+        mu = np.mean([self.T[a] for a in self.proj.roy_dag().acts])
+        for cv, c in ((0.25, 4.0), (0.5, 2.0), (1.0, 1.0), (3.0, 1.0), (7.3, 1.0)):
+            esperado = self.proj.soft_criticality(self.T, c / mu)
+            pd_auto = self.proj.soft_criticality_auto(self.T, cv)
+            np.testing.assert_allclose(pd_auto.reindex(esperado.index).values, esperado.values, atol=1e-14)
+
+    def test_auto_rechaza_cv_no_positivo(self):
+        for cv in (0.0, -1.0, float("nan")):
+            with self.assertRaises(ValueError): self.proj.soft_criticality_auto(self.T, cv)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

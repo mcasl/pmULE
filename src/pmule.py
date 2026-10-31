@@ -4465,6 +4465,20 @@ class ProjectGraph:
         _, tb = dag.soft_criticality(t, beta)
         return float(tb[0]) if np.ndim(beta) == 0 else tb
 
+    def soft_criticality_auto(self, durations: dict, cv: float):
+        """Criticidad blanda con β = c/μ̄ y c = máx(1, 1/CV) (regla confirmada en exp11b y exp11c).
+
+        ``cv`` es el coeficiente de variación del multiplicador de las duraciones (se supone conocido o estimado);
+        μ̄ es la duración media nominal de las actividades. Contrastada con 0,35 ≲ CV ≲ 7,3; con CV ≲ 0,2 la holgura
+        nominal o el subgradiente (β grande) bastan. Devuelve una ``Series``."""
+        if not cv > 0:
+            raise ValueError("cv debe ser positivo")
+        dag = self.roy_dag(); t = np.array([durations.get(a, 0.0) for a in dag.acts], float)
+        mu = float(t.mean())
+        if mu <= 0:
+            raise ValueError("la duración media nominal debe ser positiva")
+        return self.soft_criticality(durations, max(1.0, 1.0 / cv) / mu)
+
     # ------------------------------------------------------------------
     # Lectura nativa de .sm (PSPLIB)
     # ------------------------------------------------------------------
